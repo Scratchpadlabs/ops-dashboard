@@ -78,6 +78,13 @@
           </template>
         </Column>
 
+        <Column field="installment_type" header="Stage" style="width: 110px">
+          <template #body="{ data }">
+            <span v-if="data.installment_type" class="text-xs font-medium text-slate-500">{{ data.installment_type }}</span>
+            <span v-else class="text-xs text-slate-300">—</span>
+          </template>
+        </Column>
+
         <Column field="amount" header="Amount" sortable>
           <template #body="{ data }">
             <span class="text-sm font-semibold text-slate-900">{{ formatRupee(data.price_per_student * data.quantity) }}</span>
@@ -180,6 +187,22 @@
           <div>
             <label class="form-label">School Phone *</label>
             <InputText v-model="form.school_phone" class="w-full" placeholder="Phone" />
+          </div>
+        </div>
+
+        <!-- Payment Stage -->
+        <div>
+          <label class="form-label">Payment Stage *</label>
+          <div class="grid grid-cols-2 gap-2">
+            <button
+              v-for="opt in installmentTypes"
+              :key="opt"
+              @click="form.installment_type = opt"
+              class="py-2 px-3 rounded-lg text-sm font-medium border transition-all"
+              :class="form.installment_type === opt
+                ? 'bg-slate-900 text-white border-slate-900'
+                : 'bg-white text-slate-600 border-slate-200 hover:border-slate-400'"
+            >{{ opt }}</button>
           </div>
         </div>
 
@@ -289,12 +312,14 @@ const agreements = ref([])
 const allSchools = ref([])
 
 const descPresets = ['Digital HPC', 'Printed HPC']
+const installmentTypes = ['Onboarding', 'Installment 2', 'After Delivery', 'Ad-hoc']
 
 const emptyForm = () => ({
   school_id: null,
   school_name: '',
   school_address: '',
   school_phone: '',
+  installment_type: '',
   description: '',
   price_per_student: null,
   quantity: null,
@@ -398,6 +423,7 @@ async function openNewInvoice() {
     school_name:       '',
     school_address:    '',
     school_phone:      '',
+    installment_type:  '',
     description:       '',
     price_per_student: null,
     quantity:          null,
@@ -413,6 +439,7 @@ function validate() {
   if (!form.school_name.trim())    return 'School name is required'
   if (!form.school_address.trim()) return 'School address is required'
   if (!form.school_phone.trim())   return 'School phone is required'
+  if (!form.installment_type)      return 'Select a payment stage'
   if (!form.description.trim())    return 'Description is required'
   if (!form.price_per_student)     return 'Price per student is required'
   if (!form.quantity)              return 'Student count is required'
@@ -433,6 +460,7 @@ async function saveInvoice() {
       school_name:       form.school_name,
       school_address:    form.school_address,
       school_phone:      form.school_phone,
+      installment_type:  form.installment_type,
       description:       form.description.trim(),
       price_per_student: form.price_per_student,
       quantity:          form.quantity,

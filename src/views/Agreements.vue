@@ -61,16 +61,40 @@
           </template>
         </Column>
 
+        <Column field="status" header="Status" style="width:90px">
+          <template #body="{ data }">
+            <span
+              class="px-2 py-0.5 rounded-full text-xs font-semibold"
+              :class="data.status === 'Signed' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'"
+            >{{ data.status || 'Sent' }}</span>
+          </template>
+        </Column>
+
         <Column field="created_at" header="Date" sortable>
           <template #body="{ data }">
             <span class="text-xs text-slate-400">{{ formatDate(data.created_at) }}</span>
           </template>
         </Column>
 
-        <Column header="" style="width:80px">
+        <Column header="" style="width:130px">
           <template #body="{ data }">
             <div class="flex gap-1">
               <Button icon="pi pi-download" text rounded size="small" v-tooltip="'Download PDF'" @click="download(data)" />
+              <Button
+                v-if="data.signed_pdf_url"
+                icon="pi pi-file-check"
+                text rounded size="small"
+                severity="success"
+                v-tooltip="'View Signed PDF'"
+                @click="viewSignedPdf(data)"
+              />
+              <Button
+                icon="pi pi-upload"
+                text rounded size="small"
+                :loading="uploadingId === data.id"
+                v-tooltip="'Upload Signed PDF'"
+                @click="triggerUpload(data)"
+              />
               <Button icon="pi pi-trash" text rounded size="small" severity="danger" @click="confirmDelete(data)" />
             </div>
           </template>
@@ -78,6 +102,14 @@
 
       </DataTable>
     </div>
+
+    <input
+      ref="fileInputEl"
+      type="file"
+      accept="application/pdf"
+      class="hidden"
+      @change="onFileSelected"
+    />
 
     <!-- New Agreement Dialog -->
     <Dialog v-model:visible="dialogVisible" header="New Agreement" modal :style="{ width: '540px' }">
@@ -206,12 +238,13 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
-import { db } from '../firebase/config'
+import { db, storage } from '../firebase/config'
 import { opsCollection, opsDoc } from '../firebase/collections.js'
 import {
-  getDocs, addDoc, deleteDoc,
+  getDocs, addDoc, updateDoc, deleteDoc,
   doc, orderBy, query, serverTimestamp
 } from 'firebase/firestore'
+import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage'
 import { useConfirm } from 'primevue/useconfirm'
 import { useConvertedSchools } from '../composables/useConvertedSchools.js'
 import { useToast } from 'primevue/usetoast'
@@ -236,6 +269,9 @@ const loading    = ref(true)
 const dialogVisible = ref(false)
 const saving     = ref(false)
 const formError  = ref('')
+const fileInputEl  = ref(null)
+const uploadTarget = ref(null)
+const uploadingId  = ref(null)
 
 const hpcTypes = [
   { label: 'Printed + Digital HPC', value: 'printed and digital' },
@@ -332,6 +368,7 @@ async function saveAndDownload() {
       student_count:         form.student_count,
       installment_plan:      form.installment_plan,
       agreement_number:      aNum,
+      status:                'Sent',
       created_at:            serverTimestamp(),
     }
 
@@ -357,6 +394,40 @@ async function download(a) {
   } catch (e) {
     console.error(e)
     toast.add({ severity: 'error', summary: 'Download failed', detail: e.message || 'Could not generate files', life: 4000 })
+  }
+}
+
+function viewSignedPdf(a) {
+  if (a.signed_pdf_url) window.open(a.signed_pdf_url, '_blank')
+}
+
+function triggerUpload(a) {
+  uploadTarget.value = a
+  fileInputEl.value?.click()
+}
+
+async function onFileSelected(e) {
+  const file = e.target.files?.[0]
+  e.target.value = ''
+  if (!file || !uploadTarget.value) return
+
+  const a = uploadTarget.value
+  uploadingId.value = a.id
+  try {
+    const path = `agreements/${a.id}/signed_${Date.now()}.pdf`
+    const sRef = storageRef(storage, path)
+    await uploadBytes(sRef, file)
+    const url = await getDownloadURL(sRef)
+
+    await updateDoc(opsDoc('agreements', a.id), { status: 'Signed', signed_pdf_url: url })
+    toast.add({ severity: 'success', summary: 'Signed', detail: `Signed agreement saved for ${a.school_name}`, life: 3000 })
+    await loadAgreements()
+  } catch (err) {
+    console.error(err)
+    toast.add({ severity: 'error', summary: 'Upload failed', detail: err.message || 'Could not upload signed PDF', life: 4000 })
+  } finally {
+    uploadingId.value = null
+    uploadTarget.value = null
   }
 }
 

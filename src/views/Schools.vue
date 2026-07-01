@@ -152,6 +152,35 @@
           </div>
         </div>
 
+        <!-- Agreements -->
+        <div>
+          <div class="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Agreements</div>
+          <div v-if="schoolAgreements.length === 0" class="text-center py-6 text-slate-300 text-sm">
+            No agreements yet
+          </div>
+          <div v-else class="space-y-2">
+            <div
+              v-for="a in schoolAgreements"
+              :key="a.id"
+              class="bg-slate-50 rounded-lg p-3 flex items-center justify-between"
+            >
+              <div>
+                <div class="text-sm font-medium text-slate-800">{{ a.agreement_number }}</div>
+                <div class="text-xs text-slate-400">
+                  Plan {{ a.installment_plan }} · ₹{{ (a.fee_per_student * a.student_count).toLocaleString('en-IN') }}
+                </div>
+              </div>
+              <div class="flex items-center gap-2">
+                <span
+                  class="px-2 py-0.5 rounded-full text-xs font-semibold"
+                  :class="a.status === 'Signed' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'"
+                >{{ a.status || 'Sent' }}</span>
+                <Button icon="pi pi-download" text rounded size="small" @click="downloadAgreement(a)" />
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- Notes -->
         <div>
           <div class="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Notes</div>
@@ -266,6 +295,7 @@ import { getDocs, addDoc, updateDoc, deleteDoc, orderBy, query, serverTimestamp 
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
 import { useCelebration } from '../composables/useCelebration'
+import { generateAgreementFiles } from '../utils/api.js'
 
 import Button from 'primevue/button'
 import DataTable from 'primevue/datatable'
@@ -284,6 +314,7 @@ const toast = useToast()
 const { celebrate } = useCelebration()
 
 const schools       = ref([])
+const agreements    = ref([])
 const loading       = ref(true)
 const dialogVisible = ref(false)
 const drawerVisible = ref(false)
@@ -330,6 +361,30 @@ async function loadSchools() {
     toast.add({ severity: 'error', summary: 'Error', detail: 'Could not load schools', life: 3000 })
   } finally {
     loading.value = false
+  }
+}
+
+async function loadAgreements() {
+  try {
+    const snap = await getDocs(opsCollection('agreements'))
+    agreements.value = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+  } catch (e) {
+    console.error('Could not load agreements', e)
+  }
+}
+
+const schoolAgreements = computed(() => {
+  if (!drawerSchool.value) return []
+  const name = (drawerSchool.value.name || '').trim().toLowerCase()
+  return agreements.value.filter(a => (a.school_name || '').trim().toLowerCase() === name)
+})
+
+async function downloadAgreement(a) {
+  try {
+    await generateAgreementFiles(a)
+  } catch (e) {
+    console.error(e)
+    toast.add({ severity: 'error', summary: 'Download failed', detail: e.message || 'Could not generate files', life: 4000 })
   }
 }
 
@@ -509,7 +564,9 @@ function formatDateTime(iso) {
     d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
 }
 
-onMounted(loadSchools)
+onMounted(async () => {
+  await Promise.all([loadSchools(), loadAgreements()])
+})
 </script>
 
 <style scoped>
