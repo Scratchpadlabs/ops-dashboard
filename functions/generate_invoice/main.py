@@ -71,6 +71,8 @@ def generate_invoice(request: Request):
 
     # Required fields
     school_name    = (data.get("schoolName") or "").strip()
+    school_address = (data.get("schoolAddress") or "").strip()
+    school_phone   = (data.get("schoolPhone") or "").strip()
     invoice_number = (data.get("invoiceNumber") or "").strip()
     description    = (data.get("description") or "").strip()
     price          = int(data.get("pricePerStudent") or 0)
@@ -78,15 +80,16 @@ def generate_invoice(request: Request):
 
     if not school_name:
         return Response("Missing schoolName", 400, headers={"Access-Control-Allow-Origin": "*"})
+    if not school_address:
+        return Response("Missing schoolAddress", 400, headers={"Access-Control-Allow-Origin": "*"})
+    if not school_phone:
+        return Response("Missing schoolPhone", 400, headers={"Access-Control-Allow-Origin": "*"})
     if not invoice_number:
         return Response("Missing invoiceNumber", 400, headers={"Access-Control-Allow-Origin": "*"})
     if price <= 0 or quantity <= 0:
         return Response("Invalid price or quantity", 400, headers={"Access-Control-Allow-Origin": "*"})
 
-    # Optional fields
-    school_address = (data.get("schoolAddress") or "").strip()
-    school_phone   = (data.get("schoolPhone") or "").strip()
-    date_str       = data.get("date") or datetime.today().strftime("%-d %B, %Y")
+    date_str = data.get("date") or datetime.today().strftime("%-d %B, %Y")
 
     amount = price * quantity
     amount_str = _format_inr(amount)

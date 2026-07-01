@@ -154,7 +154,7 @@
         <!-- School name - free text + converted quick-pick -->
         <div>
           <label class="form-label">School Name *</label>
-          <InputText v-model="form.school_name" class="w-full" placeholder="Type school name..." />
+          <InputText v-model="form.school_name" class="w-full" placeholder="Type school name..." @blur="autoFillFromLookup" />
           <div v-if="convertedSchools.length" class="mt-2">
             <div class="text-xs text-slate-400 mb-1.5">Quick pick — Converted schools:</div>
             <div class="flex flex-wrap gap-1.5">
@@ -168,6 +168,18 @@
                   : 'bg-green-50 text-green-700 border-green-200 hover:border-green-400'"
               >{{ s.name }}</button>
             </div>
+          </div>
+        </div>
+
+        <!-- School address + phone - auto-filled from agreement/school data when available -->
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="form-label">School Address *</label>
+            <InputText v-model="form.school_address" class="w-full" placeholder="Address" />
+          </div>
+          <div>
+            <label class="form-label">School Phone *</label>
+            <InputText v-model="form.school_phone" class="w-full" placeholder="Phone" />
           </div>
         </div>
 
@@ -273,6 +285,8 @@ const dialogVisible = ref(false)
 const saving   = ref(false)
 const formError = ref('')
 const activeTab = ref('all')
+const agreements = ref([])
+const allSchools = ref([])
 
 const descPresets = ['Digital HPC', 'Printed HPC']
 
@@ -335,6 +349,19 @@ async function loadInvoices() {
   }
 }
 
+async function loadLookupData() {
+  try {
+    const [agreementsSnap, schoolsSnap] = await Promise.all([
+      getDocs(opsCollection('agreements')),
+      getDocs(opsCollection('schools')),
+    ])
+    agreements.value = agreementsSnap.docs.map(d => d.data())
+    allSchools.value = schoolsSnap.docs.map(d => d.data())
+  } catch (e) {
+    console.error('Could not load agreement/school lookup data', e)
+  }
+}
+
 // ── Form helpers ──────────────────────────────────────────────────────────────
 
 function pickConvertedSchool(s) {
@@ -342,6 +369,24 @@ function pickConvertedSchool(s) {
   form.school_address = s.address || ''
   form.school_phone   = s.contact_phone || ''
   form.quantity       = s.student_count || null
+}
+
+// Auto-fills address/phone for a free-typed school name — prefers the
+// matching Agreement's school data, falls back to the Schools record.
+// Never overwrites a value the user already typed.
+function autoFillFromLookup() {
+  const name = form.school_name.trim().toLowerCase()
+  if (!name) return
+
+  const agreement = agreements.value.find(a => (a.school_name || '').trim().toLowerCase() === name)
+  const school     = allSchools.value.find(s => (s.name || '').trim().toLowerCase() === name)
+
+  if (!form.school_address.trim()) {
+    form.school_address = agreement?.school_address || school?.address || ''
+  }
+  if (!form.school_phone.trim()) {
+    form.school_phone = school?.contact_phone || ''
+  }
 }
 
 function recalc() {
@@ -365,10 +410,12 @@ async function openNewInvoice() {
 }
 
 function validate() {
-  if (!form.school_name.trim())  return 'School name is required'
-  if (!form.description.trim())  return 'Description is required'
-  if (!form.price_per_student)   return 'Price per student is required'
-  if (!form.quantity)            return 'Student count is required'
+  if (!form.school_name.trim())    return 'School name is required'
+  if (!form.school_address.trim()) return 'School address is required'
+  if (!form.school_phone.trim())   return 'School phone is required'
+  if (!form.description.trim())    return 'Description is required'
+  if (!form.price_per_student)     return 'Price per student is required'
+  if (!form.quantity)              return 'Student count is required'
   return ''
 }
 
@@ -486,7 +533,7 @@ function formatRupee(amount) {
 }
 
 onMounted(async () => {
-  await Promise.all([loadInvoices(), loadConverted()])
+  await Promise.all([loadInvoices(), loadConverted(), loadLookupData()])
 })
 </script>
 
