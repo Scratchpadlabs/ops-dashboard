@@ -290,8 +290,9 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
+import { db } from '../firebase/config'
 import { opsCollection, opsDoc } from '../firebase/collections.js'
-import { getDocs, addDoc, updateDoc, deleteDoc, orderBy, query, serverTimestamp } from 'firebase/firestore'
+import { getDocs, getDoc, addDoc, updateDoc, deleteDoc, doc, orderBy, query, serverTimestamp } from 'firebase/firestore'
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
 import { useCelebration } from '../composables/useCelebration'
@@ -328,7 +329,7 @@ const editingNoteId = ref(null)
 const editNoteText  = ref('')
 
 const allStatuses   = ['Lead', 'Negotiation', 'Converted']
-const moduleOptions = ['HPC', 'SEW', 'Co-Scholastic', 'Remarks', 'Parent App']
+const moduleOptions = ref(['HPC', 'SEW', 'Co-Scholastic', 'Remarks', 'Parent App'])
 
 // ── Filters ───────────────────────────────────────────────────────────────────
 const statusTabs = computed(() => [
@@ -361,6 +362,18 @@ async function loadSchools() {
     toast.add({ severity: 'error', summary: 'Error', detail: 'Could not load schools', life: 3000 })
   } finally {
     loading.value = false
+  }
+}
+
+async function loadModuleSettings() {
+  try {
+    const snap = await getDoc(doc(db, 'operations', 'settings'))
+    if (snap.exists()) {
+      const data = snap.data()
+      if (Array.isArray(data.modules) && data.modules.length) moduleOptions.value = data.modules
+    }
+  } catch (e) {
+    console.error('Could not load settings', e)
   }
 }
 
@@ -565,7 +578,7 @@ function formatDateTime(iso) {
 }
 
 onMounted(async () => {
-  await Promise.all([loadSchools(), loadAgreements()])
+  await Promise.all([loadSchools(), loadAgreements(), loadModuleSettings()])
 })
 </script>
 

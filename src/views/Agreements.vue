@@ -241,7 +241,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { db, storage } from '../firebase/config'
 import { opsCollection, opsDoc } from '../firebase/collections.js'
 import {
-  getDocs, addDoc, updateDoc, deleteDoc,
+  getDocs, getDoc, addDoc, updateDoc, deleteDoc,
   doc, orderBy, query, serverTimestamp
 } from 'firebase/firestore'
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage'
@@ -272,6 +272,7 @@ const formError  = ref('')
 const fileInputEl  = ref(null)
 const uploadTarget = ref(null)
 const uploadingId  = ref(null)
+const settings     = ref({ default_installment_plan: 'A' })
 
 const hpcTypes = [
   { label: 'Printed + Digital HPC', value: 'printed and digital' },
@@ -296,6 +297,15 @@ const totalValue = computed(() =>
     ? form.fee_per_student * form.student_count
     : 0
 )
+
+async function loadSettings() {
+  try {
+    const snap = await getDoc(doc(db, 'operations', 'settings'))
+    if (snap.exists()) settings.value = { ...settings.value, ...snap.data() }
+  } catch (e) {
+    console.error('Could not load settings', e)
+  }
+}
 
 // ── Load ──────────────────────────────────────────────────────────────────────
 async function loadAgreements() {
@@ -334,7 +344,7 @@ function openNew() {
     hpc_type:              'printed and digital',
     fee_per_student:       null,
     student_count:         null,
-    installment_plan:      'A',
+    installment_plan:      settings.value.default_installment_plan || 'A',
   })
   formError.value = ''
   dialogVisible.value = true
@@ -458,7 +468,7 @@ function formatDate(ts) {
 }
 
 onMounted(async () => {
-  await Promise.all([loadAgreements(), loadConverted()])
+  await Promise.all([loadAgreements(), loadConverted(), loadSettings()])
 })
 </script>
 

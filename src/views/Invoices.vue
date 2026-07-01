@@ -278,7 +278,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { db } from '../firebase/config'
 import { opsCollection, opsDoc } from '../firebase/collections.js'
 import {
-  getDocs, addDoc, updateDoc, deleteDoc,
+  getDocs, getDoc, addDoc, updateDoc, deleteDoc,
   doc, orderBy, query, serverTimestamp, Timestamp
 } from 'firebase/firestore'
 import { useConfirm } from 'primevue/useconfirm'
@@ -310,6 +310,7 @@ const formError = ref('')
 const activeTab = ref('all')
 const agreements = ref([])
 const allSchools = ref([])
+const settings   = ref({ invoice_due_days: 45 })
 
 const descPresets = ['Digital HPC', 'Printed HPC']
 const installmentTypes = ['Onboarding', 'Installment 2', 'After Delivery', 'Ad-hoc']
@@ -387,6 +388,15 @@ async function loadLookupData() {
   }
 }
 
+async function loadSettings() {
+  try {
+    const snap = await getDoc(doc(db, 'operations', 'settings'))
+    if (snap.exists()) settings.value = { ...settings.value, ...snap.data() }
+  } catch (e) {
+    console.error('Could not load settings', e)
+  }
+}
+
 // ── Form helpers ──────────────────────────────────────────────────────────────
 
 function pickConvertedSchool(s) {
@@ -454,7 +464,7 @@ async function saveInvoice() {
   try {
     const now = new Date()
     const dueDate = new Date(now)
-    dueDate.setDate(dueDate.getDate() + 45)
+    dueDate.setDate(dueDate.getDate() + (settings.value.invoice_due_days || 45))
 
     await addDoc(opsCollection('invoices'), {
       school_name:       form.school_name,
@@ -561,7 +571,7 @@ function formatRupee(amount) {
 }
 
 onMounted(async () => {
-  await Promise.all([loadInvoices(), loadConverted(), loadLookupData()])
+  await Promise.all([loadInvoices(), loadConverted(), loadLookupData(), loadSettings()])
 })
 </script>
 

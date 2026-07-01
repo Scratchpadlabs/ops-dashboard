@@ -5,6 +5,7 @@ import Schools from '../views/Schools.vue'
 import Quotations from '../views/Quotations.vue'
 import Agreements from '../views/Agreements.vue'
 import Invoices from '../views/Invoices.vue'
+import Settings from '../views/Settings.vue'
 
 const routes = [
   { path: '/',            component: Dashboard,   name: 'dashboard' },
@@ -12,6 +13,7 @@ const routes = [
   { path: '/quotations',  component: Quotations,  name: 'quotations' },
   { path: '/agreements',  component: Agreements,  name: 'agreements' },
   { path: '/invoices',    component: Invoices,    name: 'invoices' },
+  { path: '/settings',    component: Settings,    name: 'settings' },
 ]
 
 export const router = createRouter({

@@ -59,6 +59,7 @@ const navItems = [
   { to: '/quotations',  label: 'Quotations',  icon: 'pi pi-file' },
   { to: '/agreements',  label: 'Agreements',  icon: 'pi pi-file-edit' },
   { to: '/invoices',    label: 'Invoices',    icon: 'pi pi-receipt' },
+  { to: '/settings',    label: 'Settings',    icon: 'pi pi-cog' },
 ]
 
 const pageTitles = {
@@ -67,6 +68,7 @@ const pageTitles = {
   'quotations': 'Quotations',
   'agreements': 'Agreements',
   'invoices':   'Invoices',
+  'settings':   'Settings',
 }
 
 const pageTitle = computed(() => pageTitles[route.name] || 'Dashboard')
