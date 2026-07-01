@@ -1,266 +1,280 @@
 <template>
-  <div>
+  <div class="min-h-screen" style="background: var(--surface-ground)">
 
-    <!-- Welcome -->
-    <div class="mb-6">
-      <h2 class="text-lg font-semibold text-slate-900">Good {{ timeOfDay }}, Sid 👋</h2>
-      <p class="text-sm text-slate-500 mt-0.5">Here's where things stand today.</p>
+    <!-- ── STAT CARDS ──────────────────────────────────────────────────── -->
+    <div class="grid grid-cols-4 gap-4 mb-6">
+      <div
+        v-for="stat in stats"
+        :key="stat.label"
+        class="rounded-2xl p-5 flex flex-col gap-2 shadow-sm border transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md"
+        :style="{ background: stat.bg, borderColor: stat.border }"
+      >
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-semibold uppercase tracking-widest" :style="{ color: stat.labelColor }">{{ stat.label }}</span>
+          <span class="text-xl">{{ stat.emoji }}</span>
+        </div>
+        <div class="text-3xl font-black tracking-tight" :style="{ color: stat.valueColor }">
+          <span v-if="loading">—</span>
+          <AnimatedNumber v-else :value="stat.rawValue" :prefix="stat.prefix" />
+        </div>
+        <div class="text-xs font-medium" :style="{ color: stat.subColor }">{{ stat.sub }}</div>
+      </div>
     </div>
 
-    <!-- Loading -->
-    <div v-if="loading" class="flex items-center justify-center py-20">
-      <ProgressSpinner style="width:32px;height:32px" />
-    </div>
+    <!-- ── QUICK LINKS + RECENT WINS ──────────────────────────────────── -->
+    <div class="grid grid-cols-5 gap-5">
 
-    <div v-else>
-
-      <!-- KPI Cards -->
-      <div class="grid grid-cols-4 gap-4 mb-6">
-        <div class="bg-white rounded-xl border border-slate-200 p-4">
-          <div class="text-xs font-medium text-slate-400 uppercase tracking-wide mb-1">Schools</div>
-          <div class="text-3xl font-bold text-slate-900">{{ stats.schoolCount }}</div>
-          <div class="text-xs text-slate-400 mt-1">active partners</div>
+      <!-- Quick Links — 3 cols -->
+      <div class="col-span-3 bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+        <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+          <div>
+            <h3 class="font-bold text-slate-900 text-sm">Quick Links</h3>
+            <p class="text-xs text-slate-400 mt-0.5">Your most-used files</p>
+          </div>
+          <Button icon="pi pi-plus" size="small" text @click="openAddLink" />
         </div>
 
-        <div class="bg-white rounded-xl border border-slate-200 p-4">
-          <div class="text-xs font-medium text-slate-400 uppercase tracking-wide mb-1">Total Receivable</div>
-          <div class="text-3xl font-bold text-slate-900">{{ formatRupee(stats.totalReceivable) }}</div>
-          <div class="text-xs text-slate-400 mt-1">{{ stats.unpaidCount }} unpaid invoice{{ stats.unpaidCount !== 1 ? 's' : '' }}</div>
+        <!-- Empty state -->
+        <div v-if="links.length === 0 && !linksLoading" class="flex flex-col items-center justify-center py-14 text-center px-6">
+          <div class="text-4xl mb-3">🔗</div>
+          <p class="text-slate-500 font-medium text-sm">No links yet</p>
+          <p class="text-slate-400 text-xs mt-1">Add your Google Sheets, Docs, and other tools</p>
+          <Button label="Add your first link" size="small" class="mt-4" @click="openAddLink" />
         </div>
 
-        <div class="bg-white rounded-xl border border-red-100 p-4" :class="stats.overdueAmount > 0 ? 'bg-red-50' : 'bg-white'">
-          <div class="text-xs font-medium uppercase tracking-wide mb-1" :class="stats.overdueAmount > 0 ? 'text-red-400' : 'text-slate-400'">Overdue</div>
-          <div class="text-3xl font-bold" :class="stats.overdueAmount > 0 ? 'text-red-600' : 'text-slate-900'">{{ formatRupee(stats.overdueAmount) }}</div>
-          <div class="text-xs mt-1" :class="stats.overdueAmount > 0 ? 'text-red-400' : 'text-slate-400'">{{ stats.overdueCount }} overdue</div>
-        </div>
-
-        <div class="bg-white rounded-xl border border-slate-200 p-4">
-          <div class="text-xs font-medium text-slate-400 uppercase tracking-wide mb-1">Collected</div>
-          <div class="text-3xl font-bold text-green-600">{{ formatRupee(stats.totalCollected) }}</div>
-          <div class="text-xs text-slate-400 mt-1">{{ stats.paidCount }} paid invoice{{ stats.paidCount !== 1 ? 's' : '' }}</div>
+        <!-- Links grid -->
+        <div v-else class="p-4 grid grid-cols-2 gap-3">
+          <a
+            v-for="link in links"
+            :key="link.id"
+            :href="link.url"
+            target="_blank"
+            rel="noopener"
+            class="group flex items-center gap-3 p-3 rounded-xl border border-slate-100 hover:border-blue-200 hover:bg-blue-50 transition-all duration-150 cursor-pointer no-underline"
+          >
+            <div class="w-9 h-9 rounded-xl flex items-center justify-center text-lg flex-shrink-0" style="background: #f1f5f9">
+              {{ link.emoji || '🔗' }}
+            </div>
+            <div class="flex-1 min-w-0">
+              <div class="text-sm font-semibold text-slate-800 truncate group-hover:text-blue-700">{{ link.name }}</div>
+              <div class="text-xs text-slate-400 truncate">{{ link.url }}</div>
+            </div>
+            <button
+              @click.prevent="deleteLink(link)"
+              class="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-red-400 transition-all p-1 rounded"
+            >
+              <i class="pi pi-times text-xs"></i>
+            </button>
+          </a>
         </div>
       </div>
 
-      <!-- Two columns -->
-      <div class="grid grid-cols-2 gap-5">
-
-        <!-- Overdue invoices -->
-        <div class="bg-white rounded-xl border border-slate-200">
-          <div class="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
-            <span class="text-sm font-semibold text-slate-900">Overdue Invoices</span>
-            <RouterLink to="/invoices" class="text-xs text-blue-600 hover:underline">View all</RouterLink>
-          </div>
-          <div v-if="overdueInvoices.length === 0" class="px-4 py-8 text-center">
-            <i class="pi pi-check-circle text-2xl text-green-400 mb-2 block"></i>
-            <p class="text-sm text-slate-400">All clear — no overdue invoices</p>
-          </div>
-          <div v-else class="divide-y divide-slate-50">
+      <!-- Recent Wins — 2 cols -->
+      <div class="col-span-2 bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+        <div class="px-5 py-4 border-b border-slate-100">
+          <h3 class="font-bold text-slate-900 text-sm">Recent Wins</h3>
+          <p class="text-xs text-slate-400 mt-0.5">Latest activity</p>
+        </div>
+        <div v-if="loading" class="flex items-center justify-center py-10">
+          <ProgressSpinner style="width:24px;height:24px" />
+        </div>
+        <div v-else-if="recentWins.length === 0" class="flex flex-col items-center justify-center py-14 text-center px-6">
+          <div class="text-4xl mb-3">🏆</div>
+          <p class="text-slate-400 text-xs">Your wins will show up here</p>
+        </div>
+        <div v-else class="divide-y divide-slate-50 overflow-y-auto" style="max-height: 380px">
+          <div
+            v-for="win in recentWins"
+            :key="win.id"
+            class="px-5 py-3 flex items-start gap-3 hover:bg-slate-50 transition-colors"
+          >
             <div
-              v-for="inv in overdueInvoices"
-              :key="inv.id"
-              class="px-4 py-3 flex items-center justify-between"
+              class="w-8 h-8 rounded-full flex items-center justify-center text-sm flex-shrink-0 mt-0.5"
+              :style="{ background: win.bg }"
             >
-              <div>
-                <div class="text-sm font-medium text-slate-900">{{ inv.school_name }}</div>
-                <div class="text-xs text-slate-400 mt-0.5">{{ inv.invoice_number }} · Due {{ formatDate(inv.due_date) }}</div>
-              </div>
-              <div class="text-right">
-                <div class="text-sm font-bold text-red-600">{{ formatRupee(inv.price_per_student * inv.quantity) }}</div>
-                <div class="text-xs text-red-400">{{ daysOverdue(inv.due_date) }}d overdue</div>
-              </div>
+              {{ win.emoji }}
+            </div>
+            <div class="flex-1 min-w-0">
+              <p class="text-sm text-slate-800 font-medium leading-snug">{{ win.title }}</p>
+              <p v-if="win.sub" class="text-xs font-semibold mt-0.5" :style="{ color: win.subColor }">{{ win.sub }}</p>
+              <p class="text-xs text-slate-400 mt-0.5">{{ win.time }}</p>
             </div>
           </div>
         </div>
-
-        <!-- Recent activity -->
-        <div class="bg-white rounded-xl border border-slate-200">
-          <div class="px-4 py-3 border-b border-slate-100">
-            <span class="text-sm font-semibold text-slate-900">Recent Activity</span>
-          </div>
-          <div v-if="recentActivity.length === 0" class="px-4 py-8 text-center">
-            <p class="text-sm text-slate-400">No recent activity</p>
-          </div>
-          <div v-else class="divide-y divide-slate-50">
-            <div
-              v-for="item in recentActivity"
-              :key="item.id"
-              class="px-4 py-3 flex items-center gap-3"
-            >
-              <div class="w-8 h-8 rounded-full flex items-center justify-center text-sm flex-shrink-0" :class="item.iconBg">
-                <i :class="item.icon + ' ' + item.iconColor" class="text-xs"></i>
-              </div>
-              <div class="flex-1 min-w-0">
-                <div class="text-sm text-slate-800 truncate">{{ item.label }}</div>
-                <div class="text-xs text-slate-400 mt-0.5">{{ item.time }}</div>
-              </div>
-              <div v-if="item.amount" class="text-sm font-semibold text-green-600 flex-shrink-0">
-                {{ formatRupee(item.amount) }}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Unpaid by school -->
-        <div class="bg-white rounded-xl border border-slate-200 col-span-2">
-          <div class="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
-            <span class="text-sm font-semibold text-slate-900">Receivables by School</span>
-            <span class="text-xs text-slate-400">Unpaid invoices only</span>
-          </div>
-          <div v-if="receivablesBySchool.length === 0" class="px-4 py-8 text-center">
-            <p class="text-sm text-slate-400">No outstanding receivables</p>
-          </div>
-          <div v-else class="p-4">
-            <div
-              v-for="school in receivablesBySchool"
-              :key="school.name"
-              class="flex items-center gap-3 mb-3 last:mb-0"
-            >
-              <div class="text-sm text-slate-700 w-48 flex-shrink-0 truncate">{{ school.name }}</div>
-              <div class="flex-1 bg-slate-100 rounded-full h-2 overflow-hidden">
-                <div
-                  class="h-2 rounded-full transition-all"
-                  :class="school.hasOverdue ? 'bg-red-500' : 'bg-blue-500'"
-                  :style="{ width: school.pct + '%' }"
-                ></div>
-              </div>
-              <div class="text-sm font-semibold text-slate-900 w-28 text-right flex-shrink-0">
-                {{ formatRupee(school.amount) }}
-              </div>
-              <div v-if="school.hasOverdue" class="text-xs text-red-500 flex-shrink-0">⚠ overdue</div>
-            </div>
-          </div>
-        </div>
-
       </div>
     </div>
+
+    <!-- ── ADD LINK DIALOG ─────────────────────────────────────────────── -->
+    <Dialog v-model:visible="linkDialogVisible" header="Add Quick Link" modal :style="{ width: '420px' }">
+      <div class="space-y-4 pt-2">
+        <div>
+          <label class="form-label">Name *</label>
+          <InputText v-model="linkForm.name" class="w-full" placeholder="e.g. Quotation Sheet" />
+        </div>
+        <div>
+          <label class="form-label">URL *</label>
+          <InputText v-model="linkForm.url" class="w-full" placeholder="https://docs.google.com/..." />
+        </div>
+        <div>
+          <label class="form-label">Emoji (optional)</label>
+          <InputText v-model="linkForm.emoji" class="w-full" placeholder="📊" maxlength="2" />
+        </div>
+        <div v-if="linkError" class="text-sm text-red-500 bg-red-50 rounded-lg px-3 py-2">{{ linkError }}</div>
+      </div>
+      <template #footer>
+        <Button label="Cancel" text @click="linkDialogVisible = false" />
+        <Button label="Add Link" :loading="linkSaving" @click="saveLink" />
+      </template>
+    </Dialog>
+
+    <ConfirmDialog />
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
-import { db } from '../firebase/config'
+import { ref, computed, onMounted, defineComponent, h } from 'vue'
 import { opsCollection, opsDoc } from '../firebase/collections.js'
-import { getDocs, orderBy, query } from 'firebase/firestore'
+import { getDocs, addDoc, deleteDoc, orderBy, query, serverTimestamp } from 'firebase/firestore'
+import { useConfirm } from 'primevue/useconfirm'
+import { useToast } from 'primevue/usetoast'
+
+import Button from 'primevue/button'
+import Dialog from 'primevue/dialog'
+import InputText from 'primevue/inputtext'
 import ProgressSpinner from 'primevue/progressspinner'
+import ConfirmDialog from 'primevue/confirmdialog'
 
-const loading  = ref(true)
-const schools  = ref([])
-const invoices = ref([])
-const quotations  = ref([])
-const agreements  = ref([])
-
-// ── Time of day ───────────────────────────────────────────────────────────────
-const timeOfDay = computed(() => {
-  const h = new Date().getHours()
-  if (h < 12) return 'morning'
-  if (h < 17) return 'afternoon'
-  return 'evening'
+// ── Animated number component ──────────────────────────────────────────────
+const AnimatedNumber = defineComponent({
+  props: { value: Number, prefix: { type: String, default: '' } },
+  setup(props) {
+    const displayed = ref(0)
+    let raf = null
+    const animate = () => {
+      const target = props.value || 0
+      const diff   = target - displayed.value
+      if (Math.abs(diff) < 1) { displayed.value = target; return }
+      displayed.value += diff * 0.12
+      raf = requestAnimationFrame(animate)
+    }
+    onMounted(() => { raf = requestAnimationFrame(animate) })
+    return () => h('span', {},
+      props.prefix + Math.round(displayed.value).toLocaleString('en-IN')
+    )
+  }
 })
 
-// ── Stats ─────────────────────────────────────────────────────────────────────
-const unpaidInvoices = computed(() => invoices.value.filter(i => i.status !== 'paid'))
+const confirm  = useConfirm()
+const toast    = useToast()
+
+const loading      = ref(true)
+const linksLoading = ref(true)
+const links        = ref([])
+
+// Data
+const schools   = ref([])
+const invoices  = ref([])
+const agreements = ref([])
+
+// ── Stats ──────────────────────────────────────────────────────────────────
 const paidInvoices   = computed(() => invoices.value.filter(i => i.status === 'paid'))
-const overdueInvoices = computed(() =>
-  unpaidInvoices.value.filter(i => {
-    if (!i.due_date) return false
-    const due = i.due_date.toDate ? i.due_date.toDate() : new Date(i.due_date)
-    return due < new Date()
-  }).sort((a, b) => {
-    const da = a.due_date.toDate ? a.due_date.toDate() : new Date(a.due_date)
-    const db2 = b.due_date.toDate ? b.due_date.toDate() : new Date(b.due_date)
-    return da - db2
-  })
-)
+const unpaidInvoices = computed(() => invoices.value.filter(i => i.status !== 'paid'))
+const signedAgreements = computed(() => agreements.value.filter(a => a.status === 'Signed'))
 
-const stats = computed(() => ({
-  schoolCount:     schools.value.length,
-  totalReceivable: unpaidInvoices.value.reduce((s, i) => s + i.price_per_student * i.quantity, 0),
-  totalCollected:  paidInvoices.value.reduce((s, i) => s + i.price_per_student * i.quantity, 0),
-  overdueAmount:   overdueInvoices.value.reduce((s, i) => s + i.price_per_student * i.quantity, 0),
-  unpaidCount:     unpaidInvoices.value.length,
-  paidCount:       paidInvoices.value.length,
-  overdueCount:    overdueInvoices.value.length,
-}))
+const totalCollected  = computed(() => paidInvoices.value.reduce((s, i) => s + (i.price_per_student || 0) * (i.quantity || 0), 0))
+const totalOutstanding = computed(() => unpaidInvoices.value.reduce((s, i) => s + (i.price_per_student || 0) * (i.quantity || 0), 0))
 
-// ── Receivables by school ─────────────────────────────────────────────────────
-const receivablesBySchool = computed(() => {
-  const map = {}
-  unpaidInvoices.value.forEach(inv => {
-    if (!map[inv.school_name]) map[inv.school_name] = { name: inv.school_name, amount: 0, hasOverdue: false }
-    map[inv.school_name].amount += inv.price_per_student * inv.quantity
-    const due = inv.due_date?.toDate ? inv.due_date.toDate() : new Date(inv.due_date)
-    if (inv.due_date && due < new Date()) map[inv.school_name].hasOverdue = true
-  })
-  const list = Object.values(map).sort((a, b) => b.amount - a.amount)
-  const max = list[0]?.amount || 1
-  return list.map(s => ({ ...s, pct: Math.round(s.amount / max * 100) }))
-})
+const stats = computed(() => [
+  {
+    label: 'Schools', emoji: '🏫',
+    rawValue: schools.value.length, prefix: '',
+    sub: 'active partners',
+    bg: '#eff6ff', border: '#dbeafe',
+    labelColor: '#3b82f6', valueColor: '#1e3a8a', subColor: '#93c5fd',
+  },
+  {
+    label: 'Collected', emoji: '💰',
+    rawValue: totalCollected.value, prefix: '₹',
+    sub: `${paidInvoices.value.length} paid invoices`,
+    bg: '#f0fdf4', border: '#bbf7d0',
+    labelColor: '#16a34a', valueColor: '#14532d', subColor: '#86efac',
+  },
+  {
+    label: 'Outstanding', emoji: '⏳',
+    rawValue: totalOutstanding.value, prefix: '₹',
+    sub: `${unpaidInvoices.value.length} pending`,
+    bg: '#fffbeb', border: '#fde68a',
+    labelColor: '#d97706', valueColor: '#78350f', subColor: '#fcd34d',
+  },
+  {
+    label: 'Agreements Signed', emoji: '✍️',
+    rawValue: signedAgreements.value.length, prefix: '',
+    sub: `of ${agreements.value.length} total`,
+    bg: '#fdf4ff', border: '#e9d5ff',
+    labelColor: '#9333ea', valueColor: '#3b0764', subColor: '#d8b4fe',
+  },
+])
 
-// ── Recent activity ───────────────────────────────────────────────────────────
-const recentActivity = computed(() => {
+// ── Recent Wins ─────────────────────────────────────────────────────────────
+const recentWins = computed(() => {
   const items = []
 
-  invoices.value.slice(0, 5).forEach(inv => {
-    const ts = inv.created_at?.toDate ? inv.created_at.toDate() : null
+  paidInvoices.value.forEach(inv => {
+    const ts = inv.paid_on?.toDate ? inv.paid_on.toDate() : inv.created_at?.toDate?.()
     items.push({
-      id: 'inv-' + inv.id,
-      label: `Invoice ${inv.invoice_number} · ${inv.school_name}`,
-      time: ts ? timeAgo(ts) : '',
-      amount: inv.status === 'paid' ? inv.price_per_student * inv.quantity : null,
-      icon: inv.status === 'paid' ? 'pi pi-check' : 'pi pi-receipt',
-      iconBg: inv.status === 'paid' ? 'bg-green-100' : 'bg-amber-100',
-      iconColor: inv.status === 'paid' ? 'text-green-600' : 'text-amber-600',
-      sortTs: ts,
+      id:       'inv-' + inv.id,
+      emoji:    '💰', bg: '#f0fdf4',
+      title:    `Payment received — ${inv.school_name}`,
+      sub:      `₹${Number((inv.price_per_student || 0) * (inv.quantity || 0)).toLocaleString('en-IN')}`,
+      subColor: '#16a34a',
+      time:     ts ? timeAgo(ts) : '',
+      sortTs:   ts || new Date(0),
     })
   })
 
-  schools.value.slice(0, 3).forEach(s => {
-    const ts = s.created_at?.toDate ? s.created_at.toDate() : null
+  schools.value.forEach(s => {
+    const ts = s.created_at?.toDate?.()
     items.push({
-      id: 'sch-' + s.id,
-      label: `${s.name} added as partner`,
-      time: ts ? timeAgo(ts) : '',
-      amount: null,
-      icon: 'pi pi-building',
-      iconBg: 'bg-blue-100',
-      iconColor: 'text-blue-600',
-      sortTs: ts,
+      id:       'sch-' + s.id,
+      emoji:    '🏫', bg: '#eff6ff',
+      title:    `${s.name} onboarded`,
+      sub:      s.city || '',
+      subColor: '#3b82f6',
+      time:     ts ? timeAgo(ts) : '',
+      sortTs:   ts || new Date(0),
     })
   })
 
-  agreements.value.slice(0, 3).forEach(a => {
-    const ts = a.created_at?.toDate ? a.created_at.toDate() : null
+  signedAgreements.value.forEach(a => {
+    const ts = a.signed_at?.toDate?.() || a.created_at?.toDate?.()
     items.push({
-      id: 'agr-' + a.id,
-      label: `Agreement ${a.agreement_number} · ${a.school_name}`,
-      time: ts ? timeAgo(ts) : '',
-      amount: null,
-      icon: 'pi pi-file-edit',
-      iconBg: 'bg-purple-100',
-      iconColor: 'text-purple-600',
-      sortTs: ts,
+      id:       'agr-' + a.id,
+      emoji:    '✍️', bg: '#fdf4ff',
+      title:    `Agreement signed — ${a.school_name}`,
+      sub:      a.agreement_number || '',
+      subColor: '#9333ea',
+      time:     ts ? timeAgo(ts) : '',
+      sortTs:   ts || new Date(0),
     })
   })
 
   return items
     .filter(i => i.sortTs)
     .sort((a, b) => b.sortTs - a.sortTs)
-    .slice(0, 8)
+    .slice(0, 12)
 })
 
-// ── Load ──────────────────────────────────────────────────────────────────────
+// ── Load ────────────────────────────────────────────────────────────────────
 async function loadAll() {
   loading.value = true
   try {
-    const [sSnap, iSnap, qSnap, aSnap] = await Promise.all([
+    const [sSnap, iSnap, aSnap] = await Promise.all([
       getDocs(query(opsCollection('schools'),    orderBy('created_at', 'desc'))),
       getDocs(query(opsCollection('invoices'),   orderBy('created_at', 'desc'))),
-      getDocs(query(opsCollection('quotations'), orderBy('created_at', 'desc'))),
       getDocs(query(opsCollection('agreements'), orderBy('created_at', 'desc'))),
     ])
     schools.value    = sSnap.docs.map(d => ({ id: d.id, ...d.data() }))
     invoices.value   = iSnap.docs.map(d => ({ id: d.id, ...d.data() }))
-    quotations.value = qSnap.docs.map(d => ({ id: d.id, ...d.data() }))
     agreements.value = aSnap.docs.map(d => ({ id: d.id, ...d.data() }))
   } catch (e) {
     console.error(e)
@@ -269,24 +283,73 @@ async function loadAll() {
   }
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-function formatRupee(n) {
-  if (!n) return '₹0'
-  return '₹' + Number(n).toLocaleString('en-IN')
+async function loadLinks() {
+  linksLoading.value = true
+  try {
+    const snap = await getDocs(query(opsCollection('links'), orderBy('created_at', 'asc')))
+    links.value = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+  } catch (e) {
+    console.error(e)
+  } finally {
+    linksLoading.value = false
+  }
 }
 
-function formatDate(ts) {
-  if (!ts) return '—'
-  const d = ts.toDate ? ts.toDate() : new Date(ts)
-  return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+// ── Quick Links CRUD ────────────────────────────────────────────────────────
+const linkDialogVisible = ref(false)
+const linkSaving        = ref(false)
+const linkError         = ref('')
+const linkForm          = ref({ name: '', url: '', emoji: '' })
+
+function openAddLink() {
+  if (links.value.length >= 6) {
+    toast.add({ severity: 'warn', summary: 'Max 6 links', detail: 'Remove one to add another', life: 3000 })
+    return
+  }
+  linkForm.value = { name: '', url: '', emoji: '' }
+  linkError.value = ''
+  linkDialogVisible.value = true
 }
 
-function daysOverdue(ts) {
-  if (!ts) return 0
-  const d = ts.toDate ? ts.toDate() : new Date(ts)
-  return Math.floor((new Date() - d) / 86400000)
+async function saveLink() {
+  if (!linkForm.value.name.trim()) { linkError.value = 'Name is required'; return }
+  if (!linkForm.value.url.trim())  { linkError.value = 'URL is required';  return }
+  linkSaving.value = true
+  try {
+    await addDoc(opsCollection('links'), {
+      name:       linkForm.value.name.trim(),
+      url:        linkForm.value.url.trim(),
+      emoji:      linkForm.value.emoji.trim() || '🔗',
+      created_at: serverTimestamp(),
+    })
+    linkDialogVisible.value = false
+    await loadLinks()
+    toast.add({ severity: 'success', summary: 'Link added', life: 2000 })
+  } catch (e) {
+    linkError.value = 'Could not save. Try again.'
+  } finally {
+    linkSaving.value = false
+  }
 }
 
+async function deleteLink(link) {
+  confirm.require({
+    message: `Remove "${link.name}"?`,
+    header: 'Remove Link',
+    icon: 'pi pi-exclamation-triangle',
+    rejectLabel: 'Cancel', acceptLabel: 'Remove', acceptClass: 'p-button-danger',
+    accept: async () => {
+      try {
+        await deleteDoc(opsDoc('links', link.id))
+        await loadLinks()
+      } catch (e) {
+        toast.add({ severity: 'error', summary: 'Error', life: 3000 })
+      }
+    }
+  })
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
 function timeAgo(date) {
   const diff = Math.floor((new Date() - date) / 1000)
   if (diff < 60)     return 'just now'
@@ -296,5 +359,13 @@ function timeAgo(date) {
   return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
 }
 
-onMounted(loadAll)
+onMounted(() => Promise.all([loadAll(), loadLinks()]))
 </script>
+
+<style scoped>
+.form-label {
+  display: block; font-size: 12px; font-weight: 500;
+  color: #64748b; margin-bottom: 4px;
+  text-transform: uppercase; letter-spacing: 0.04em;
+}
+</style>
