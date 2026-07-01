@@ -352,8 +352,12 @@ async function saveAndDownload() {
 }
 
 async function download(a) {
-
-  await generateAgreementFiles(a)
+  try {
+    await generateAgreementFiles(a)
+  } catch (e) {
+    console.error(e)
+    toast.add({ severity: 'error', summary: 'Download failed', detail: e.message || 'Could not generate files', life: 4000 })
+  }
 }
 
 function confirmDelete(a) {

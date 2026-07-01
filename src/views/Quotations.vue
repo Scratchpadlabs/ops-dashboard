@@ -82,16 +82,21 @@
         <!-- School -->
         <div>
           <label class="form-label">School *</label>
-          <Select
-            v-model="form.school_id"
-            :options="schools"
-            optionLabel="name"
-            optionValue="id"
-            placeholder="Select school"
-            class="w-full"
-            filter
-            @change="onSchoolChange"
-          />
+          <InputText v-model="form.school_name" class="w-full" placeholder="Type school name..." />
+          <div v-if="convertedSchools.length" class="mt-2">
+            <div class="text-xs text-slate-400 mb-1.5">Quick pick — Converted schools:</div>
+            <div class="flex flex-wrap gap-1.5">
+              <button
+                v-for="s in convertedSchools"
+                :key="s.id"
+                @click="pickConvertedSchool(s)"
+                class="px-2.5 py-1 rounded-lg text-xs font-medium border transition-all"
+                :class="form.school_name === s.name
+                  ? 'bg-green-600 text-white border-green-600'
+                  : 'bg-green-50 text-green-700 border-green-200 hover:border-green-400'"
+              >{{ s.name }}</button>
+            </div>
+          </div>
         </div>
 
         <!-- Student count -->
@@ -180,6 +185,7 @@ import {
 } from 'firebase/firestore'
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
+import { useConvertedSchools } from '../composables/useConvertedSchools.js'
 import { generateQuotationPDF } from '../utils/api.js'
 import { generateQuotationNumber, calcPrice } from '../utils/quotationPDF.js'
 
@@ -187,7 +193,7 @@ import Button from 'primevue/button'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Dialog from 'primevue/dialog'
-import Select from 'primevue/select'
+import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
 import ToggleButton from 'primevue/togglebutton'
 import ProgressSpinner from 'primevue/progressspinner'
@@ -195,16 +201,15 @@ import ConfirmDialog from 'primevue/confirmdialog'
 
 const confirm = useConfirm()
 const toast = useToast()
+const { convertedSchools, loadConverted } = useConvertedSchools()
 
 const quotations = ref([])
-const schools    = ref([])
 const loading    = ref(true)
 const dialogVisible = ref(false)
 const saving     = ref(false)
 const formError  = ref('')
 
 const emptyForm = () => ({
-  school_id:    null,
   school_name:  '',
   student_count: null,
   show_a:       true,
@@ -231,18 +236,10 @@ async function loadQuotations() {
   }
 }
 
-async function loadSchools() {
-  const snap = await getDocs(opsCollection('schools'))
-  schools.value = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-}
-
 // ── Handlers ──────────────────────────────────────────────────────────────────
-function onSchoolChange() {
-  const s = schools.value.find(s => s.id === form.school_id)
-  if (s) {
-    form.school_name   = s.name
-    form.student_count = s.student_count || null
-  }
+function pickConvertedSchool(s) {
+  form.school_name   = s.name
+  form.student_count = s.student_count || null
 }
 
 function calcPrices() {
@@ -252,7 +249,6 @@ function calcPrices() {
 
 function openNew() {
   Object.assign(form, {
-    school_id:    null,
     school_name:  '',
     student_count: null,
     show_a:       true,
@@ -267,7 +263,7 @@ function openNew() {
 }
 
 function validate() {
-  if (!form.school_id)            return 'Select a school'
+  if (!form.school_name.trim())   return 'School name is required'
   if (!form.student_count)        return 'Student count is required'
   if (!form.show_a && !form.show_b) return 'At least one option must be included'
   return ''
@@ -283,7 +279,6 @@ async function saveAndDownload() {
     const qNum = generateQuotationNumber(existingNums)
 
     const payload = {
-      school_id:      form.school_id,
       school_name:    form.school_name,
       student_count:  form.student_count,
       show_a:         form.show_a,
@@ -314,8 +309,12 @@ async function saveAndDownload() {
 }
 
 async function download(q) {
-  await generateQuotationPDF(q)
-
+  try {
+    await generateQuotationPDF(q)
+  } catch (e) {
+    console.error(e)
+    toast.add({ severity: 'error', summary: 'Download failed', detail: e.message || 'Could not generate PDF', life: 4000 })
+  }
 }
 
 function confirmDelete(q) {
@@ -345,7 +344,7 @@ function formatDate(ts) {
 }
 
 onMounted(async () => {
-  await Promise.all([loadQuotations(), loadSchools()])
+  await Promise.all([loadQuotations(), loadConverted()])
 })
 </script>
 

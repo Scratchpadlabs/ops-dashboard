@@ -9,13 +9,12 @@ Deploy:
     --trigger-http --allow-unauthenticated \
     --memory 256MB --max-instances 3 --project clarified-1501
 
-Folder needs: main.py, requirements.txt, invoice_template.pdf,
-Montserrat-Regular.ttf, Montserrat-Bold.ttf
+Folder needs: main.py, requirements.txt, invoice_template.pdf
 """
 
 import io
 import os
-from datetime import datetime, timedelta
+from datetime import datetime
 
 import fitz  # pymupdf
 import functions_framework
@@ -41,10 +40,6 @@ COORDS = {
     "total":         dict(x=476.9, y=406.1, size=13, bold=True),
 }
 
-FONT_REGULAR = os.path.join(_DIR, "Montserrat-Regular.ttf")
-FONT_BOLD    = os.path.join(_DIR, "Montserrat-Bold.ttf")
-
-
 def _format_inr(amount):
     """Format number as Indian number system: 68,127"""
     s = str(int(amount))
@@ -57,18 +52,6 @@ def _format_inr(amount):
         result = s[-2:] + "," + result
         s = s[:-2]
     return result.lstrip(",")
-
-
-def _overlay_text(page, text, x, y, size, bold, font_reg, font_bold):
-    """Insert text at exact (x, y from top) coordinates."""
-    font = font_bold if bold else font_reg
-    page.insert_text(
-        fitz.Point(x, y + size),  # pymupdf y is baseline
-        text,
-        fontname=font,
-        fontsize=size,
-        color=(0, 0, 0),
-    )
 
 
 @functions_framework.http
@@ -117,17 +100,12 @@ def generate_invoice(request: Request):
     doc = fitz.open(TEMPLATE_PATH)
     page = doc[0]
 
-    # Register fonts
-    page.insert_font(fontname="Mont",     fontfile=FONT_REGULAR)
-    page.insert_font(fontname="MontBold", fontfile=FONT_BOLD)
-
     def draw(key, text):
         c = COORDS[key]
-        font = "MontBold" if c["bold"] else "Mont"
         page.insert_text(
             fitz.Point(c["x"], c["y"] + c["size"]),
             text,
-            fontname=font,
+            fontname="hebo" if c["bold"] else "helv",
             fontsize=c["size"],
             color=(0, 0, 0),
         )

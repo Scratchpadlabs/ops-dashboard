@@ -342,26 +342,23 @@ function openDrawer(school) {
 }
 
 async function toggleStatus(status) {
-  const statuses = [...(drawerSchool.value.statuses || [])]
-  const idx = statuses.indexOf(status)
+  const current = [...(drawerSchool.value.statuses || [])]
+  let newStatuses
 
-  // If setting Converted, keep only Converted
-  if (status === 'Converted' && idx === -1) {
-    drawerSchool.value.statuses = ['Converted']
-  } else if (idx === -1) {
-    // Remove Converted if adding another status
-    const filtered = statuses.filter(s => s !== 'Converted')
-    filtered.push(status)
-    drawerSchool.value.statuses = filtered
+  if (status === 'Converted' && !current.includes('Converted')) {
+    newStatuses = ['Converted']
+  } else if (!current.includes(status)) {
+    newStatuses = current.filter(s => s !== 'Converted').concat(status)
   } else {
-    statuses.splice(idx, 1)
-    drawerSchool.value.statuses = statuses
+    newStatuses = current.filter(s => s !== status)
   }
 
-  await saveDrawerField('statuses', drawerSchool.value.statuses)
-  // Sync back to list
-  const idx2 = schools.value.findIndex(s => s.id === drawerSchool.value.id)
-  if (idx2 !== -1) schools.value[idx2].statuses = drawerSchool.value.statuses
+  // Replace entire drawerSchool object so Vue 3 ref reactivity fires reliably
+  drawerSchool.value = { ...drawerSchool.value, statuses: newStatuses }
+
+  await saveDrawerField('statuses', newStatuses)
+  const idx = schools.value.findIndex(s => s.id === drawerSchool.value.id)
+  if (idx !== -1) schools.value[idx].statuses = newStatuses
 }
 
 async function addNote() {

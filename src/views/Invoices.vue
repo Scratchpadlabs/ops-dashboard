@@ -457,8 +457,12 @@ function confirmDelete(invoice) {
 // ── Download PDF ──────────────────────────────────────────────────────────────
 
 async function downloadInvoice(invoice) {
-  await generateInvoicePDF(invoice)
-
+  try {
+    await generateInvoicePDF(invoice)
+  } catch (e) {
+    console.error(e)
+    toast.add({ severity: 'error', summary: 'Download failed', detail: e.message || 'Could not generate PDF', life: 4000 })
+  }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

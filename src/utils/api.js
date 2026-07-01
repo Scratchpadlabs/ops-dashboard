@@ -64,16 +64,8 @@ export async function generateAgreementFiles(a) {
     installmentPlan:       a.installment_plan,
     agreementNumber:       a.agreement_number,
   })
-
-  const data = await res.json()
-
-  // Download PDF
-  const pdfBytes  = base64ToBlob(data.pdf, 'application/pdf')
-  downloadBlob(pdfBytes, `${data.filename}.pdf`)
-
-  // Download DOCX
-  const docxBytes = base64ToBlob(data.docx, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')
-  downloadBlob(docxBytes, `${data.filename}.docx`)
+  const blob = await res.blob()
+  downloadBlob(blob, `Agreement_${a.school_name}_${a.agreement_number}.pdf`)
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -86,12 +78,6 @@ function downloadBlob(blob, filename) {
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
-function base64ToBlob(b64, mime) {
-  const binary = atob(b64)
-  const bytes  = new Uint8Array(binary.length)
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
-  return new Blob([bytes], { type: mime })
-}
 
 function formatDate(d) {
   return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })
