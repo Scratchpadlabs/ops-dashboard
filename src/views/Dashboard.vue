@@ -104,6 +104,30 @@
       </div>
     </div>
 
+    <!-- ── INSPIRATION BAND ────────────────────────────────────────────── -->
+    <div
+      class="mt-5 rounded-2xl overflow-hidden relative"
+      style="height: 180px; background: linear-gradient(135deg, #0b1223 0%, #1e293b 100%)"
+    >
+      <canvas ref="particlesCanvas" class="absolute inset-0 w-full h-full"></canvas>
+
+      <div class="relative z-10 h-full flex flex-col items-center justify-center px-8" style="padding-bottom: 30px">
+        <transition name="quote-fade" mode="out-in">
+          <p :key="quoteIndex" class="text-white text-lg font-semibold text-center max-w-2xl leading-snug">
+            {{ quotes[quoteIndex] }}
+          </p>
+        </transition>
+      </div>
+
+      <div class="absolute bottom-0 left-0 right-0 h-9 flex items-center overflow-hidden" style="background: rgba(0,0,0,0.28)">
+        <div class="inline-flex items-center gap-10 whitespace-nowrap ticker-track pl-4">
+          <span v-for="(t, i) in [...tickerStats, ...tickerStats]" :key="i" class="text-xs font-medium tracking-wide" style="color: #cbd5e1">
+            {{ t }}
+          </span>
+        </div>
+      </div>
+    </div>
+
     <!-- ── ADD LINK DIALOG ─────────────────────────────────────────────── -->
     <Dialog v-model:visible="linkDialogVisible" header="Add Quick Link" modal :style="{ width: '420px' }">
       <div class="space-y-4 pt-2">
@@ -117,7 +141,22 @@
         </div>
         <div>
           <label class="form-label">Emoji (optional)</label>
-          <InputText v-model="linkForm.emoji" class="w-full" placeholder="📊" maxlength="2" />
+          <div class="flex items-center gap-2 mb-2">
+            <div class="w-10 h-10 rounded-lg flex items-center justify-center text-xl border border-slate-200 flex-shrink-0" style="background:#f8fafc">
+              {{ linkForm.emoji || '🔗' }}
+            </div>
+            <InputText v-model="linkForm.emoji" class="flex-1" placeholder="or type a custom emoji" maxlength="4" />
+          </div>
+          <div class="grid grid-cols-10 gap-1">
+            <button
+              v-for="e in emojiOptions"
+              :key="e"
+              type="button"
+              @click="linkForm.emoji = e"
+              class="w-7 h-7 flex items-center justify-center rounded-md text-base hover:bg-slate-100 transition-colors"
+              :class="linkForm.emoji === e ? 'bg-blue-100 ring-1 ring-blue-300' : ''"
+            >{{ e }}</button>
+          </div>
         </div>
         <div v-if="linkError" class="text-sm text-red-500 bg-red-50 rounded-lg px-3 py-2">{{ linkError }}</div>
       </div>
@@ -132,7 +171,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, defineComponent, h } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, defineComponent, h } from 'vue'
 import { opsCollection, opsDoc } from '../firebase/collections.js'
 import { getDocs, addDoc, deleteDoc, orderBy, query, serverTimestamp } from 'firebase/firestore'
 import { useConfirm } from 'primevue/useconfirm'
@@ -301,6 +340,12 @@ const linkSaving        = ref(false)
 const linkError         = ref('')
 const linkForm          = ref({ name: '', url: '', emoji: '' })
 
+const emojiOptions = [
+  '📊', '📈', '📋', '📁', '📂', '🗂️', '📝', '✅', '🎯', '💡',
+  '🔗', '📌', '📎', '🗃️', '💼', '🏫', '👥', '📅', '🗓️', '⚡',
+  '🚀', '💰', '📣', '🔔', '📧', '📱', '🖥️', '⚙️', '🎨', '🌟',
+]
+
 function openAddLink() {
   if (links.value.length >= 6) {
     toast.add({ severity: 'warn', summary: 'Max 6 links', detail: 'Remove one to add another', life: 3000 })
@@ -349,6 +394,70 @@ async function deleteLink(link) {
   })
 }
 
+// ── Inspiration band ─────────────────────────────────────────────────────────
+const quotes = [
+  "Every school we onboard is a child's future made brighter. 🌟",
+  'Revenue is the fuel, impact is the engine. 🚀',
+  'Small team. Big mission. Changing education one HPC at a time. 💪',
+  'Every signed agreement is a promise kept. ✍️',
+  "The best edtech isn't about tech — it's about the teacher who uses it. 🏫",
+  "Growth isn't just in the numbers. It's in every student who gets seen. 💙",
+]
+const quoteIndex = ref(0)
+let quoteTimer = null
+
+const tickerStats = computed(() => [
+  `🏫 ${schools.value.length} School Partner${schools.value.length === 1 ? '' : 's'}`,
+  `💰 ₹${totalCollected.value.toLocaleString('en-IN')} Collected`,
+  `✍️ ${signedAgreements.value.length} Agreement${signedAgreements.value.length === 1 ? '' : 's'}`,
+  `📄 ${invoices.value.length} Invoice${invoices.value.length === 1 ? '' : 's'} Raised`,
+])
+
+const particlesCanvas = ref(null)
+let particleFrame = null
+let particleCleanup = null
+
+function startParticles(canvas) {
+  const ctx = canvas.getContext('2d')
+  const resize = () => {
+    canvas.width = canvas.clientWidth
+    canvas.height = canvas.clientHeight
+  }
+  resize()
+  window.addEventListener('resize', resize)
+
+  const particles = Array.from({ length: 34 }, () => ({
+    x: Math.random() * canvas.width,
+    y: Math.random() * canvas.height,
+    r: Math.random() * 1.6 + 0.6,
+    speed: Math.random() * 0.35 + 0.12,
+    drift: (Math.random() - 0.5) * 0.12,
+    opacity: Math.random() * 0.5 + 0.2,
+  }))
+
+  const draw = () => {
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
+    particles.forEach(p => {
+      p.y -= p.speed
+      p.x += p.drift
+      if (p.y < -4) { p.y = canvas.height + 4; p.x = Math.random() * canvas.width }
+      if (p.x < -4) p.x = canvas.width + 4
+      if (p.x > canvas.width + 4) p.x = -4
+
+      ctx.beginPath()
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2)
+      ctx.fillStyle = `rgba(147, 197, 253, ${p.opacity})`
+      ctx.shadowBlur = 6
+      ctx.shadowColor = 'rgba(147, 197, 253, 0.8)'
+      ctx.fill()
+    })
+    particleFrame = requestAnimationFrame(draw)
+  }
+  draw()
+
+  return () => window.removeEventListener('resize', resize)
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 function timeAgo(date) {
   const diff = Math.floor((new Date() - date) / 1000)
@@ -359,7 +468,19 @@ function timeAgo(date) {
   return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
 }
 
-onMounted(() => Promise.all([loadAll(), loadLinks()]))
+onMounted(() => {
+  Promise.all([loadAll(), loadLinks()])
+  quoteTimer = setInterval(() => {
+    quoteIndex.value = (quoteIndex.value + 1) % quotes.length
+  }, 8000)
+  if (particlesCanvas.value) particleCleanup = startParticles(particlesCanvas.value)
+})
+
+onBeforeUnmount(() => {
+  if (quoteTimer) clearInterval(quoteTimer)
+  if (particleFrame) cancelAnimationFrame(particleFrame)
+  if (particleCleanup) particleCleanup()
+})
 </script>
 
 <style scoped>
@@ -367,5 +488,22 @@ onMounted(() => Promise.all([loadAll(), loadLinks()]))
   display: block; font-size: 12px; font-weight: 500;
   color: #64748b; margin-bottom: 4px;
   text-transform: uppercase; letter-spacing: 0.04em;
+}
+
+.quote-fade-enter-active,
+.quote-fade-leave-active {
+  transition: opacity 0.6s ease;
+}
+.quote-fade-enter-from,
+.quote-fade-leave-to {
+  opacity: 0;
+}
+
+.ticker-track {
+  animation: ticker-scroll 24s linear infinite;
+}
+@keyframes ticker-scroll {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
 }
 </style>

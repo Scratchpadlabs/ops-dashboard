@@ -24,11 +24,15 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import cm
+from reportlab.lib.utils import ImageReader
 from reportlab.platypus import (
-    HRFlowable, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle,
+    HRFlowable, Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle,
 )
 
 API_KEY = "9421060748"
+
+_DIR = os.path.dirname(os.path.abspath(__file__))
+LOGO_PATH = os.path.join(_DIR, "logo.png")
 
 # ── Brand palette ──────────────────────────────────────────────────────────────
 NAVY  = colors.HexColor("#1e3a5f")
@@ -97,6 +101,13 @@ def _table(*rows, col_widths, style_cmds):
     return t
 
 
+def _logo_flowable(height=35):
+    if not os.path.exists(LOGO_PATH):
+        return None
+    iw, ih = ImageReader(LOGO_PATH).getSize()
+    return Image(LOGO_PATH, width=height * (iw / ih), height=height)
+
+
 # ── PDF builder ────────────────────────────────────────────────────────────────
 
 def _build_pdf(data):
@@ -126,13 +137,16 @@ def _build_pdf(data):
     story = []
 
     # ── Header band ───────────────────────────────────────────────────────────
+    logo_cell = _logo_flowable(35) or Paragraph('<font size="17" color="white"><b>ClarifiEd</b></font>', BODY)
+
     header = _table(
         [
-            Paragraph('<font size="17" color="white"><b>ClarifiEd</b></font>', BODY),
-            Paragraph('<font size="10" color="#90bef7">Service Agreement</font>',
-                      _make_style("hr", size=10, color=colors.HexColor("#90bef7"), align=2)),
+            logo_cell,
+            Paragraph(
+                '<font size="9" color="white"><b>AGREEMENT FOR THE PROVISION OF HOLISTIC PROGRESS CARD SERVICES</b></font>',
+                _make_style("hr", size=9, leading=11, color=WHITE, align=2)),
         ],
-        col_widths=[BODY_W * 0.55, BODY_W * 0.45],
+        col_widths=[BODY_W * 0.35, BODY_W * 0.65],
         style_cmds=[
             ("BACKGROUND",    (0,0), (-1,-1), NAVY),
             ("TOPPADDING",    (0,0), (-1,-1), 14),
