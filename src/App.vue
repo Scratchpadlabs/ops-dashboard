@@ -116,6 +116,7 @@ const navItems = [
   { to: '/quotations',  label: 'Quotations',  icon: 'pi pi-file' },
   { to: '/agreements',  label: 'Agreements',  icon: 'pi pi-file-edit' },
   { to: '/invoices',    label: 'Invoices',    icon: 'pi pi-receipt' },
+  { to: '/expenses',    label: 'Expenses',    icon: 'pi pi-wallet' },
   { to: '/settings',    label: 'Settings',    icon: 'pi pi-cog' },
 ]
 
@@ -125,6 +126,7 @@ const pageTitles = {
   'quotations': 'Quotations',
   'agreements': 'Agreements',
   'invoices':   'Invoices',
+  'expenses':   'Expenses',
   'settings':   'Settings',
 }
 
