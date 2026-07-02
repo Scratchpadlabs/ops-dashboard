@@ -115,24 +115,11 @@
     <Dialog v-model:visible="dialogVisible" header="New Agreement" modal :style="{ width: '540px' }">
       <div class="space-y-4 pt-2">
 
-        <!-- School name - free text + converted quick-pick -->
+        <!-- School name - searchable dropdown, free text still works -->
         <div>
           <label class="form-label">School Name *</label>
-          <InputText v-model="form.school_name" class="w-full" placeholder="Type school name..." />
-          <div v-if="convertedSchools.length" class="mt-2">
-            <div class="text-xs text-slate-400 mb-1.5">Quick pick — Converted schools:</div>
-            <div class="flex flex-wrap gap-1.5">
-              <button
-                v-for="s in convertedSchools"
-                :key="s.id"
-                @click="pickConvertedSchool(s)"
-                class="px-2.5 py-1 rounded-lg text-xs font-medium border transition-all"
-                :class="form.school_name === s.name
-                  ? 'bg-green-600 text-white border-green-600'
-                  : 'bg-green-50 text-green-700 border-green-200 hover:border-green-400'"
-              >{{ s.name }}</button>
-            </div>
-          </div>
+          <SchoolSearchSelect v-model="form.school_name" :schools="allSchools" @select="onSchoolSelect" />
+          <p class="text-xs text-slate-400 mt-1">Search an existing school or type a new name.</p>
         </div>
 
         <!-- Signatory -->
@@ -246,7 +233,7 @@ import {
 } from 'firebase/firestore'
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage'
 import { useConfirm } from 'primevue/useconfirm'
-import { useConvertedSchools } from '../composables/useConvertedSchools.js'
+import { useAllSchools } from '../composables/useAllSchools.js'
 import { useToast } from 'primevue/usetoast'
 import { generateAgreementFiles } from '../utils/api.js'
 import { generateAgreementNumber } from '../utils/agreementPDF.js'
@@ -259,10 +246,11 @@ import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
 import ProgressSpinner from 'primevue/progressspinner'
 import ConfirmDialog from 'primevue/confirmdialog'
+import SchoolSearchSelect from '../components/shared/SchoolSearchSelect.vue'
 
 const confirm = useConfirm()
 const toast = useToast()
-const { convertedSchools, loadConverted } = useConvertedSchools()
+const { allSchools, loadAllSchools } = useAllSchools()
 
 const agreements = ref([])
 const loading    = ref(true)
@@ -280,6 +268,7 @@ const hpcTypes = [
 ]
 
 const emptyForm = () => ({
+  school_id:             null,
   school_name:           '',
   school_address:        '',
   signatory_name:        '',
@@ -322,7 +311,8 @@ async function loadAgreements() {
 }
 
 // ── Handlers ──────────────────────────────────────────────────────────────────
-function pickConvertedSchool(s) {
+function onSchoolSelect(s) {
+  form.school_id             = s.id || null
   form.school_name           = s.name
   form.school_address        = s.address || ''
   form.student_count         = s.student_count || null
@@ -369,6 +359,7 @@ async function saveAndDownload() {
     const aNum = generateAgreementNumber(existingNums)
 
     const payload = {
+      school_id:             form.school_id || null,
       school_name:           form.school_name,
       school_address:        form.school_address,
       signatory_name:        form.signatory_name.trim(),
@@ -468,7 +459,7 @@ function formatDate(ts) {
 }
 
 onMounted(async () => {
-  await Promise.all([loadAgreements(), loadConverted(), loadSettings()])
+  await Promise.all([loadAgreements(), loadAllSchools(), loadSettings()])
 })
 </script>
 

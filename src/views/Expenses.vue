@@ -84,66 +84,148 @@
       </div>
     </div>
 
-    <!-- Category breakdown -->
-    <div class="mb-6">
-      <h3 class="text-sm font-semibold text-slate-900 mb-2.5">Spend by Category — This Month</h3>
-      <div v-if="categoryBreakdown.length" class="flex flex-wrap gap-2">
-        <span
-          v-for="c in categoryBreakdown"
-          :key="c.name"
-          class="category-pill"
-          :style="{ background: categoryColor(c.name).bg, color: categoryColor(c.name).text }"
-        >
-          <span class="text-sm">{{ c.emoji }}</span>
-          {{ c.name }}
-          <b>{{ formatRupee(c.amount) }}</b>
-        </span>
-      </div>
-      <p v-else class="text-xs text-slate-400">No expenses logged this month yet.</p>
-    </div>
-
     <!-- Loading -->
     <div v-if="loading" class="flex items-center justify-center py-20">
       <ProgressSpinner style="width:32px;height:32px" />
     </div>
 
     <!-- Empty -->
-    <div v-else-if="sortedExpenses.length === 0" class="text-center py-20 bg-white rounded-xl border border-slate-200">
+    <div v-else-if="expenses.length === 0" class="text-center py-20 bg-white rounded-xl border border-slate-200">
       <i class="pi pi-wallet text-4xl text-slate-300 mb-3 block"></i>
       <p class="text-slate-500 font-medium">No expenses logged yet</p>
       <p class="text-xs text-slate-400 mt-1">Click "New Expense" to log your first one.</p>
     </div>
 
-    <!-- Expense list -->
-    <TransitionGroup v-else name="expense-pop" tag="div" class="space-y-2">
-      <div
-        v-for="e in sortedExpenses"
-        :key="e.id"
-        class="expense-row"
-        :class="{ 'recurring-glow': e.recurring }"
-      >
-        <div class="w-10 h-10 rounded-xl flex items-center justify-center text-lg flex-shrink-0" :style="{ background: categoryColor(e.category).bg }">
-          {{ e.category_emoji }}
+    <template v-else>
+
+      <!-- Filter bar -->
+      <div class="filter-bar mb-5">
+        <div class="filter-field">
+          <label class="form-label">Category</label>
+          <MultiSelect
+            v-model="filterCategories"
+            :options="allCategories"
+            optionLabel="name"
+            optionValue="name"
+            display="chip"
+            placeholder="All categories"
+            class="w-full"
+          >
+            <template #option="{ option }">
+              <span>{{ option.emoji }} {{ option.name }}</span>
+            </template>
+          </MultiSelect>
         </div>
-        <div class="flex-1 min-w-0">
-          <div class="flex items-center gap-2">
-            <span class="text-sm font-semibold text-slate-900 truncate">{{ e.name }}</span>
-            <span v-if="e.recurring" class="recurring-badge">
-              <i class="pi pi-sync text-[10px]"></i> {{ e.frequency }}
-            </span>
-          </div>
-          <div class="text-xs text-slate-400 mt-0.5">
-            {{ e.category }} · {{ formatDate(e.date) }}
-            <span v-if="e.notes"> · {{ e.notes }}</span>
-          </div>
+        <div class="filter-field">
+          <label class="form-label">Month</label>
+          <DatePicker v-model="filterMonth" view="month" dateFormat="M yy" placeholder="Any month" showIcon class="w-full" />
         </div>
-        <div class="text-sm font-bold text-rose-600 flex-shrink-0">{{ formatRupee(e.amount) }}</div>
-        <div class="flex gap-1 flex-shrink-0">
-          <Button icon="pi pi-pencil" text rounded size="small" v-tooltip="'Edit'" @click="openEditExpense(e)" />
-          <Button icon="pi pi-trash" text rounded size="small" severity="danger" v-tooltip="'Delete'" @click="confirmDelete(e)" />
+        <div class="filter-field">
+          <label class="form-label">From</label>
+          <DatePicker v-model="filterFrom" dateFormat="d M yy" placeholder="From date" showIcon class="w-full" />
         </div>
+        <div class="filter-field">
+          <label class="form-label">To</label>
+          <DatePicker v-model="filterTo" dateFormat="d M yy" placeholder="To date" showIcon class="w-full" />
+        </div>
+        <Button label="Clear Filters" icon="pi pi-filter-slash" text @click="clearFilters" />
       </div>
-    </TransitionGroup>
+
+      <!-- Category-wise summary table -->
+      <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden mb-6">
+        <div class="px-5 py-3.5 border-b border-slate-100">
+          <h3 class="text-sm font-semibold text-slate-900">Category-wise Summary</h3>
+          <p class="text-xs text-slate-400 mt-0.5">Click a category to filter the list below.</p>
+        </div>
+        <DataTable
+          :value="categorySummaryTable"
+          size="small"
+          stripedRows
+          class="category-summary-table"
+          @row-click="e => onCategoryRowClick(e.data)"
+        >
+          <Column header="Category">
+            <template #body="{ data }">
+              <span class="text-sm font-medium text-slate-800">{{ data.emoji }} {{ data.name }}</span>
+            </template>
+          </Column>
+          <Column header="This Month">
+            <template #body="{ data }">
+              <span
+                class="text-sm font-semibold"
+                :class="data.thisMonth > data.lastMonth ? 'text-red-600' : data.thisMonth < data.lastMonth ? 'text-green-600' : 'text-slate-600'"
+              >{{ formatRupee(data.thisMonth) }}</span>
+            </template>
+          </Column>
+          <Column header="Last Month">
+            <template #body="{ data }">
+              <span class="text-sm text-slate-500">{{ formatRupee(data.lastMonth) }}</span>
+            </template>
+          </Column>
+          <Column header="Total">
+            <template #body="{ data }">
+              <span class="text-sm font-bold text-slate-900">{{ formatRupee(data.total) }}</span>
+            </template>
+          </Column>
+          <Column header="% of Expenses">
+            <template #body="{ data }">
+              <span class="text-sm text-slate-500">{{ data.pct.toFixed(1) }}%</span>
+            </template>
+          </Column>
+        </DataTable>
+      </div>
+
+      <!-- Expense list -->
+      <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+        <div v-if="filteredExpensesList.length === 0" class="text-center py-16">
+          <p class="text-sm text-slate-400">No expenses match the current filters.</p>
+        </div>
+        <DataTable v-else :value="filteredExpensesList" size="small" stripedRows>
+          <Column header="Date" style="width:110px">
+            <template #body="{ data }">
+              <span class="text-xs text-slate-500">{{ formatDate(data.date) }}</span>
+            </template>
+          </Column>
+          <Column header="Category">
+            <template #body="{ data }">
+              <span class="text-sm text-slate-700">{{ data.category_emoji }} {{ data.category }}</span>
+            </template>
+          </Column>
+          <Column header="Name">
+            <template #body="{ data }">
+              <span class="text-sm font-medium text-slate-900">{{ data.name }}</span>
+            </template>
+          </Column>
+          <Column header="Amount">
+            <template #body="{ data }">
+              <span class="text-sm font-bold text-rose-600">{{ formatRupee(data.amount) }}</span>
+            </template>
+          </Column>
+          <Column header="Recurring" style="width:130px">
+            <template #body="{ data }">
+              <span v-if="data.recurring" class="recurring-badge pulse-badge">
+                <span class="pulse-dot"></span> {{ data.frequency }}
+              </span>
+              <span v-else class="text-xs text-slate-300">—</span>
+            </template>
+          </Column>
+          <Column header="Notes">
+            <template #body="{ data }">
+              <span class="text-xs text-slate-400">{{ data.notes || '—' }}</span>
+            </template>
+          </Column>
+          <Column header="" style="width:90px">
+            <template #body="{ data }">
+              <div class="flex gap-1">
+                <Button icon="pi pi-pencil" text rounded size="small" v-tooltip="'Edit'" @click="openEditExpense(data)" />
+                <Button icon="pi pi-trash" text rounded size="small" severity="danger" v-tooltip="'Delete'" @click="confirmDelete(data)" />
+              </div>
+            </template>
+          </Column>
+        </DataTable>
+      </div>
+
+    </template>
 
     <!-- New/Edit Expense Dialog -->
     <Dialog v-model:visible="dialogVisible" :header="editingId ? 'Edit Expense' : 'New Expense'" modal :style="{ width: '520px' }">
@@ -263,6 +345,9 @@ import Textarea from 'primevue/textarea'
 import ToggleSwitch from 'primevue/toggleswitch'
 import ProgressSpinner from 'primevue/progressspinner'
 import ConfirmDialog from 'primevue/confirmdialog'
+import DataTable from 'primevue/datatable'
+import Column from 'primevue/column'
+import MultiSelect from 'primevue/multiselect'
 
 const confirm = useConfirm()
 const toast = useToast()
@@ -289,17 +374,6 @@ const categoryEmojiOptions = [
 
 const frequencies = ['monthly', 'quarterly', 'yearly']
 
-const PILL_COLORS = [
-  { bg: '#eff6ff', text: '#2563eb' },
-  { bg: '#f0fdf4', text: '#16a34a' },
-  { bg: '#fef2f2', text: '#dc2626' },
-  { bg: '#fffbeb', text: '#d97706' },
-  { bg: '#fdf4ff', text: '#9333ea' },
-  { bg: '#ecfeff', text: '#0891b2' },
-  { bg: '#fff1f2', text: '#e11d48' },
-  { bg: '#f5f3ff', text: '#7c3aed' },
-]
-
 // ── State ─────────────────────────────────────────────────────────────────────
 
 const expenses = ref([])
@@ -316,6 +390,12 @@ const addCategoryOpen = ref(false)
 const newCategoryName = ref('')
 const newCategoryEmoji = ref('')
 const nameSuggestions = ref([])
+
+// Filters
+const filterCategories = ref([])
+const filterMonth = ref(null)
+const filterFrom = ref(null)
+const filterTo = ref(null)
 
 const emptyForm = () => ({
   name: '',
@@ -423,12 +503,60 @@ function monthTotals(offsetMonths) {
   return totals
 }
 
-const categoryBreakdown = computed(() => {
-  const totals = monthTotals(0)
-  return Object.entries(totals)
-    .map(([name, amount]) => ({ name, amount, emoji: categoryEmoji(name) }))
-    .sort((a, b) => b.amount - a.amount)
+const categorySummaryTable = computed(() => {
+  const thisMonth = monthTotals(0)
+  const lastMonth = monthTotals(1)
+  const totals = {}
+  expenses.value.forEach(e => {
+    totals[e.category] = (totals[e.category] || 0) + Number(e.amount || 0)
+  })
+  const grandTotal = Object.values(totals).reduce((s, v) => s + v, 0) || 1
+  return Object.keys(totals)
+    .map(name => ({
+      name,
+      emoji: categoryEmoji(name),
+      thisMonth: thisMonth[name] || 0,
+      lastMonth: lastMonth[name] || 0,
+      total: totals[name],
+      pct: (totals[name] / grandTotal) * 100,
+    }))
+    .sort((a, b) => b.total - a.total)
 })
+
+// ── Filters ───────────────────────────────────────────────────────────────────
+
+const filteredExpensesList = computed(() => {
+  return sortedExpenses.value.filter(e => {
+    if (filterCategories.value.length && !filterCategories.value.includes(e.category)) return false
+
+    const d = toDate(e.date)
+    if (filterMonth.value && d) {
+      if (d.getFullYear() !== filterMonth.value.getFullYear() || d.getMonth() !== filterMonth.value.getMonth()) return false
+    }
+    if (filterFrom.value && d && d < filterFrom.value) return false
+    if (filterTo.value && d) {
+      const to = new Date(filterTo.value)
+      to.setHours(23, 59, 59, 999)
+      if (d > to) return false
+    }
+    return true
+  })
+})
+
+function clearFilters() {
+  filterCategories.value = []
+  filterMonth.value = null
+  filterFrom.value = null
+  filterTo.value = null
+}
+
+function onCategoryRowClick(row) {
+  if (filterCategories.value.length === 1 && filterCategories.value[0] === row.name) {
+    filterCategories.value = []
+  } else {
+    filterCategories.value = [row.name]
+  }
+}
 
 // Smart prompts
 const smartPrompts = computed(() => {
@@ -513,12 +641,6 @@ function searchNames(e) {
 function categoryEmoji(name) {
   const found = allCategories.value.find(c => c.name === name)
   return found ? found.emoji : '💸'
-}
-
-function categoryColor(name) {
-  let hash = 0
-  for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) >>> 0
-  return PILL_COLORS[hash % PILL_COLORS.length]
 }
 
 async function addCustomCategory() {
@@ -723,57 +845,49 @@ onMounted(async () => {
   min-height: 3px;
 }
 
-.category-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  border-radius: 999px;
-  font-size: 12.5px;
-  font-weight: 600;
-}
-
-.expense-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  background: white;
-  border: 1px solid #e2e8f0;
-  border-radius: 14px;
-  padding: 12px 14px;
-  transition: box-shadow 0.2s, border-color 0.2s;
-}
-.expense-row:hover {
-  border-color: #cbd5e1;
-}
-
 .recurring-badge {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
   background: #ede9fe;
   color: #7c3aed;
   font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.03em;
-  padding: 2px 7px;
+  padding: 3px 8px;
   border-radius: 999px;
 }
 
-.recurring-glow {
-  animation: pulseGlow 2.4s ease-in-out infinite;
+.pulse-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: #7c3aed;
+  display: inline-block;
+  animation: pulseDot 1.4s ease-in-out infinite;
 }
-@keyframes pulseGlow {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.35); border-color: #e2e8f0; }
-  50% { box-shadow: 0 0 0 6px rgba(139, 92, 246, 0); border-color: #c4b5fd; }
+@keyframes pulseDot {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(124, 58, 237, 0.5); }
+  50%      { box-shadow: 0 0 0 5px rgba(124, 58, 237, 0); }
 }
 
-.expense-pop-enter-active {
-  animation: popIn 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+.filter-bar {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 12px;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 14px 16px;
 }
-@keyframes popIn {
-  from { transform: scale(0.7); opacity: 0; }
-  to   { transform: scale(1);   opacity: 1; }
+.filter-field {
+  flex: 1;
+  min-width: 160px;
+}
+
+.category-summary-table :deep(.p-datatable-tbody > tr) {
+  cursor: pointer;
 }
 </style>

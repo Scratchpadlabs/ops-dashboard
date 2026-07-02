@@ -51,102 +51,118 @@
     </div>
 
     <!-- Empty -->
-    <div v-else-if="filteredInvoices.length === 0" class="text-center py-20 bg-white rounded-xl border border-slate-200">
+    <div v-else-if="filteredSchoolGroups.length === 0" class="text-center py-20 bg-white rounded-xl border border-slate-200">
       <i class="pi pi-receipt text-4xl text-slate-300 mb-3 block"></i>
       <p class="text-slate-500 font-medium">No invoices here</p>
     </div>
 
-    <!-- Table -->
-    <div v-else class="bg-white rounded-xl border border-slate-200 overflow-hidden">
-      <DataTable :value="filteredInvoices" size="small" stripedRows>
+    <!-- School groups -->
+    <div v-else class="space-y-3">
+      <div v-for="g in filteredSchoolGroups" :key="g.school_name" class="bg-white rounded-xl border border-slate-200 overflow-hidden">
 
-        <Column field="invoice_number" header="Invoice #" style="width: 130px">
-          <template #body="{ data }">
-            <span class="font-mono text-xs text-slate-700">{{ data.invoice_number }}</span>
-          </template>
-        </Column>
-
-        <Column field="school_name" header="School" sortable>
-          <template #body="{ data }">
-            <span class="text-sm font-medium text-slate-900">{{ data.school_name }}</span>
-          </template>
-        </Column>
-
-        <Column field="description" header="Description">
-          <template #body="{ data }">
-            <span class="text-sm text-slate-600">{{ data.description }}</span>
-          </template>
-        </Column>
-
-        <Column field="installment_type" header="Stage" style="width: 110px">
-          <template #body="{ data }">
-            <span v-if="data.installment_type" class="text-xs font-medium text-slate-500">{{ data.installment_type }}</span>
-            <span v-else class="text-xs text-slate-300">—</span>
-          </template>
-        </Column>
-
-        <Column field="amount" header="Amount" sortable>
-          <template #body="{ data }">
-            <span class="text-sm font-semibold text-slate-900">{{ formatRupee(data.price_per_student * data.quantity) }}</span>
-          </template>
-        </Column>
-
-        <Column field="due_date" header="Due Date" sortable>
-          <template #body="{ data }">
-            <span
-              class="text-xs font-medium"
-              :class="isOverdue(data) ? 'text-red-600' : 'text-slate-500'"
-            >
-              {{ formatDate(data.due_date) }}
-              <span v-if="isOverdue(data)" class="ml-1">⚠</span>
-            </span>
-          </template>
-        </Column>
-
-        <Column field="status" header="Status" style="width: 100px">
-          <template #body="{ data }">
-            <span
-              class="px-2 py-0.5 rounded-full text-xs font-semibold"
-              :class="data.status === 'paid'
-                ? 'bg-green-100 text-green-700'
-                : isOverdue(data)
-                  ? 'bg-red-100 text-red-700'
-                  : 'bg-amber-100 text-amber-700'"
-            >
-              {{ data.status === 'paid' ? 'Paid' : isOverdue(data) ? 'Overdue' : 'Unpaid' }}
-            </span>
-          </template>
-        </Column>
-
-        <Column header="" style="width: 110px">
-          <template #body="{ data }">
-            <div class="flex gap-1">
-              <Button
-                icon="pi pi-download"
-                text rounded size="small"
-                v-tooltip="'Download PDF'"
-                @click="downloadInvoice(data)"
-              />
-              <Button
-                v-if="data.status !== 'paid'"
-                icon="pi pi-check"
-                text rounded size="small"
-                severity="success"
-                v-tooltip="'Mark as Paid'"
-                @click="markPaid(data)"
-              />
-              <Button
-                icon="pi pi-trash"
-                text rounded size="small"
-                severity="danger"
-                v-tooltip="'Delete'"
-                @click="confirmDelete(data)"
-              />
+        <button
+          @click="toggleSchool(g.school_name)"
+          class="w-full flex items-center justify-between px-4 py-3.5 hover:bg-slate-50 transition-colors"
+        >
+          <div class="flex items-center gap-3">
+            <i class="pi text-xs text-slate-400" :class="isExpanded(g.school_name) ? 'pi-chevron-down' : 'pi-chevron-right'"></i>
+            <div class="text-left">
+              <div class="text-sm font-semibold text-slate-900">{{ g.school_name }}</div>
+              <div class="text-xs text-slate-400 mt-0.5">{{ g.count }} invoice{{ g.count !== 1 ? 's' : '' }}</div>
             </div>
-          </template>
-        </Column>
+          </div>
+          <div class="flex items-center gap-3">
+            <span class="text-sm font-bold text-slate-900">{{ formatRupee(g.totalAmount) }}</span>
+            <span class="px-2 py-0.5 rounded-full text-xs font-semibold" :class="groupBadgeClass(g)">{{ groupBadgeLabel(g) }}</span>
+          </div>
+        </button>
 
-      </DataTable>
+        <div v-if="isExpanded(g.school_name)" class="border-t border-slate-100">
+          <DataTable :value="g.invoices" size="small" stripedRows>
+
+            <Column field="invoice_number" header="Invoice #" style="width: 130px">
+              <template #body="{ data }">
+                <span class="font-mono text-xs text-slate-700">{{ data.invoice_number }}</span>
+              </template>
+            </Column>
+
+            <Column field="description" header="Description">
+              <template #body="{ data }">
+                <span class="text-sm text-slate-600">{{ data.description }}</span>
+              </template>
+            </Column>
+
+            <Column field="installment_type" header="Stage" style="width: 110px">
+              <template #body="{ data }">
+                <span v-if="data.installment_type" class="text-xs font-medium text-slate-500">{{ data.installment_type }}</span>
+                <span v-else class="text-xs text-slate-300">—</span>
+              </template>
+            </Column>
+
+            <Column field="amount" header="Amount" sortable>
+              <template #body="{ data }">
+                <span class="text-sm font-semibold text-slate-900">{{ formatRupee(data.price_per_student * data.quantity) }}</span>
+              </template>
+            </Column>
+
+            <Column field="due_date" header="Due Date" sortable>
+              <template #body="{ data }">
+                <span
+                  class="text-xs font-medium"
+                  :class="isOverdue(data) ? 'text-red-600' : 'text-slate-500'"
+                >
+                  {{ formatDate(data.due_date) }}
+                  <span v-if="isOverdue(data)" class="ml-1">⚠</span>
+                </span>
+              </template>
+            </Column>
+
+            <Column field="status" header="Status" style="width: 100px">
+              <template #body="{ data }">
+                <span
+                  class="px-2 py-0.5 rounded-full text-xs font-semibold"
+                  :class="data.status === 'paid'
+                    ? 'bg-green-100 text-green-700'
+                    : isOverdue(data)
+                      ? 'bg-red-100 text-red-700'
+                      : 'bg-amber-100 text-amber-700'"
+                >
+                  {{ data.status === 'paid' ? 'Paid' : isOverdue(data) ? 'Overdue' : 'Unpaid' }}
+                </span>
+              </template>
+            </Column>
+
+            <Column header="" style="width: 110px">
+              <template #body="{ data }">
+                <div class="flex gap-1">
+                  <Button
+                    icon="pi pi-download"
+                    text rounded size="small"
+                    v-tooltip="'Download PDF'"
+                    @click="downloadInvoice(data)"
+                  />
+                  <Button
+                    v-if="data.status !== 'paid'"
+                    icon="pi pi-check"
+                    text rounded size="small"
+                    severity="success"
+                    v-tooltip="'Mark as Paid'"
+                    @click="markPaid(data)"
+                  />
+                  <Button
+                    icon="pi pi-trash"
+                    text rounded size="small"
+                    severity="danger"
+                    v-tooltip="'Delete'"
+                    @click="confirmDelete(data)"
+                  />
+                </div>
+              </template>
+            </Column>
+
+          </DataTable>
+        </div>
+      </div>
     </div>
 
     <!-- New Invoice Dialog -->
@@ -158,24 +174,11 @@
     >
       <div class="space-y-4 pt-2">
 
-        <!-- School name - free text + converted quick-pick -->
+        <!-- School name - searchable dropdown, free text still works -->
         <div>
           <label class="form-label">School Name *</label>
-          <InputText v-model="form.school_name" class="w-full" placeholder="Type school name..." @blur="autoFillFromLookup" />
-          <div v-if="convertedSchools.length" class="mt-2">
-            <div class="text-xs text-slate-400 mb-1.5">Quick pick — Converted schools:</div>
-            <div class="flex flex-wrap gap-1.5">
-              <button
-                v-for="s in convertedSchools"
-                :key="s.id"
-                @click="pickConvertedSchool(s)"
-                class="px-2.5 py-1 rounded-lg text-xs font-medium border transition-all"
-                :class="form.school_name === s.name
-                  ? 'bg-green-600 text-white border-green-600'
-                  : 'bg-green-50 text-green-700 border-green-200 hover:border-green-400'"
-              >{{ s.name }}</button>
-            </div>
-          </div>
+          <SchoolSearchSelect v-model="form.school_name" :schools="allSchools" @select="onSchoolSelect" />
+          <p class="text-xs text-slate-400 mt-1">Search an existing school or type a new name.</p>
         </div>
 
         <!-- School address + phone - auto-filled from agreement/school data when available -->
@@ -274,7 +277,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { db } from '../firebase/config'
 import { opsCollection, opsDoc } from '../firebase/collections.js'
 import {
@@ -284,7 +287,6 @@ import {
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
 import { useCelebration } from '../composables/useCelebration'
-import { useConvertedSchools } from '../composables/useConvertedSchools.js'
 import { generateInvoicePDF } from '../utils/api.js'
 import { generateInvoiceNumber } from '../utils/invoicePDF.js'
 
@@ -296,11 +298,11 @@ import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
 import ProgressSpinner from 'primevue/progressspinner'
 import ConfirmDialog from 'primevue/confirmdialog'
+import SchoolSearchSelect from '../components/shared/SchoolSearchSelect.vue'
 
 const confirm = useConfirm()
 const toast = useToast()
 const { celebrate } = useCelebration()
-const { convertedSchools, loadConverted } = useConvertedSchools()
 
 const invoices = ref([])
 const loading  = ref(true)
@@ -311,6 +313,7 @@ const activeTab = ref('all')
 const agreements = ref([])
 const allSchools = ref([])
 const settings   = ref({ invoice_due_days: 45 })
+const expandedSchools = ref(new Set())
 
 const descPresets = ['Digital HPC', 'Printed HPC']
 const installmentTypes = ['Onboarding', 'Installment 2', 'After Delivery', 'Ad-hoc']
@@ -352,13 +355,65 @@ const tabs = computed(() => [
   { key: 'paid',    label: 'Paid',    count: paidInvoices.value.length },
 ])
 
-const filteredInvoices = computed(() => {
-  if (activeTab.value === 'all')     return invoices.value
-  if (activeTab.value === 'unpaid')  return unpaidInvoices.value
-  if (activeTab.value === 'overdue') return overdueInvoices.value
-  if (activeTab.value === 'paid')    return paidInvoices.value
-  return invoices.value
+// ── Grouping by school ───────────────────────────────────────────────────────
+
+const schoolGroups = computed(() => {
+  const map = new Map()
+  invoices.value.forEach(inv => {
+    const key = inv.school_name || 'Unknown School'
+    if (!map.has(key)) map.set(key, [])
+    map.get(key).push(inv)
+  })
+  return Array.from(map.entries())
+    .map(([school_name, invs]) => {
+      const unpaidCount  = invs.filter(i => i.status !== 'paid').length
+      const paidCount    = invs.filter(i => i.status === 'paid').length
+      const overdueCount = invs.filter(i => i.status !== 'paid' && isOverdue(i)).length
+      return {
+        school_name,
+        invoices: invs,
+        count: invs.length,
+        totalAmount: invs.reduce((s, i) => s + i.price_per_student * i.quantity, 0),
+        unpaidCount,
+        paidCount,
+        overdueCount,
+      }
+    })
+    .sort((a, b) => a.school_name.localeCompare(b.school_name))
 })
+
+const filteredSchoolGroups = computed(() => {
+  return schoolGroups.value.filter(g => {
+    if (activeTab.value === 'all')     return true
+    if (activeTab.value === 'unpaid')  return g.unpaidCount > 0
+    if (activeTab.value === 'overdue') return g.overdueCount > 0
+    if (activeTab.value === 'paid')    return g.paidCount > 0
+    return true
+  })
+})
+
+function isExpanded(name) {
+  return expandedSchools.value.has(name)
+}
+
+function toggleSchool(name) {
+  const next = new Set(expandedSchools.value)
+  if (next.has(name)) next.delete(name)
+  else next.add(name)
+  expandedSchools.value = next
+}
+
+function groupBadgeLabel(g) {
+  if (g.unpaidCount === 0)   return 'All Paid'
+  if (g.overdueCount > 0)    return `${g.overdueCount} Overdue`
+  return `${g.unpaidCount} Unpaid`
+}
+
+function groupBadgeClass(g) {
+  if (g.unpaidCount === 0)   return 'bg-green-100 text-green-700'
+  if (g.overdueCount > 0)    return 'bg-red-100 text-red-700'
+  return 'bg-amber-100 text-amber-700'
+}
 
 // ── Data loading ──────────────────────────────────────────────────────────────
 
@@ -382,7 +437,7 @@ async function loadLookupData() {
       getDocs(opsCollection('schools')),
     ])
     agreements.value = agreementsSnap.docs.map(d => d.data())
-    allSchools.value = schoolsSnap.docs.map(d => d.data())
+    allSchools.value = schoolsSnap.docs.map(d => ({ id: d.id, ...d.data() }))
   } catch (e) {
     console.error('Could not load agreement/school lookup data', e)
   }
@@ -399,11 +454,12 @@ async function loadSettings() {
 
 // ── Form helpers ──────────────────────────────────────────────────────────────
 
-function pickConvertedSchool(s) {
-  form.school_name    = s.name
-  form.school_address = s.address || ''
-  form.school_phone   = s.contact_phone || ''
-  form.quantity       = s.student_count || null
+function onSchoolSelect(s) {
+  form.school_id       = s.id || null
+  form.school_name     = s.name
+  form.school_address  = s.address || ''
+  form.school_phone    = s.contact_phone || ''
+  form.quantity        = s.student_count || null
 }
 
 // Auto-fills address/phone for a free-typed school name — prefers the
@@ -424,12 +480,15 @@ function autoFillFromLookup() {
   }
 }
 
+watch(() => form.school_name, autoFillFromLookup)
+
 function recalc() {
   // just reactive — total computed in template
 }
 
 async function openNewInvoice() {
   Object.assign(form, {
+    school_id:         null,
     school_name:       '',
     school_address:    '',
     school_phone:      '',
@@ -467,6 +526,7 @@ async function saveInvoice() {
     dueDate.setDate(dueDate.getDate() + (settings.value.invoice_due_days || 45))
 
     await addDoc(opsCollection('invoices'), {
+      school_id:         form.school_id || null,
       school_name:       form.school_name,
       school_address:    form.school_address,
       school_phone:      form.school_phone,
@@ -571,7 +631,7 @@ function formatRupee(amount) {
 }
 
 onMounted(async () => {
-  await Promise.all([loadInvoices(), loadConverted(), loadLookupData(), loadSettings()])
+  await Promise.all([loadInvoices(), loadLookupData(), loadSettings()])
 })
 </script>
 

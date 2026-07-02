@@ -82,21 +82,8 @@
         <!-- School -->
         <div>
           <label class="form-label">School *</label>
-          <InputText v-model="form.school_name" class="w-full" placeholder="Type school name..." />
-          <div v-if="convertedSchools.length" class="mt-2">
-            <div class="text-xs text-slate-400 mb-1.5">Quick pick — Converted schools:</div>
-            <div class="flex flex-wrap gap-1.5">
-              <button
-                v-for="s in convertedSchools"
-                :key="s.id"
-                @click="pickConvertedSchool(s)"
-                class="px-2.5 py-1 rounded-lg text-xs font-medium border transition-all"
-                :class="form.school_name === s.name
-                  ? 'bg-green-600 text-white border-green-600'
-                  : 'bg-green-50 text-green-700 border-green-200 hover:border-green-400'"
-              >{{ s.name }}</button>
-            </div>
-          </div>
+          <SchoolSearchSelect v-model="form.school_name" :schools="allSchools" @select="onSchoolSelect" />
+          <p class="text-xs text-slate-400 mt-1">Search an existing school or type a new name.</p>
         </div>
 
         <!-- Student count -->
@@ -118,16 +105,11 @@
               <ToggleButton v-model="form.show_a" onLabel="Yes" offLabel="No" size="small" />
             </div>
           </div>
-          <div v-if="form.show_a" class="grid grid-cols-2 gap-3">
-            <div>
-              <label class="form-label">Discount %</label>
-              <InputNumber v-model="form.discount_a" class="w-full" :min="0" :max="100" suffix="%" @input="calcPrices" />
-            </div>
-            <div>
-              <label class="form-label">Final Price / Student</label>
-              <div class="px-3 py-2 bg-green-50 border border-green-200 rounded-lg text-sm font-bold text-green-700">
-                ₹{{ form.price_a || 299 }} / student
-              </div>
+          <div v-if="form.show_a">
+            <label class="form-label">Discount %</label>
+            <InputNumber v-model="form.discount_a" class="w-full" :min="0" :max="100" suffix="%" @input="calcPrices" />
+            <div class="price-pill mt-3">
+              ₹{{ form.price_a || 299 }} <span class="price-pill-unit">/ student</span>
             </div>
           </div>
         </div>
@@ -145,16 +127,11 @@
               <ToggleButton v-model="form.show_b" onLabel="Yes" offLabel="No" size="small" />
             </div>
           </div>
-          <div v-if="form.show_b" class="grid grid-cols-2 gap-3">
-            <div>
-              <label class="form-label">Discount %</label>
-              <InputNumber v-model="form.discount_b" class="w-full" :min="0" :max="100" suffix="%" @input="calcPrices" />
-            </div>
-            <div>
-              <label class="form-label">Final Price / Student</label>
-              <div class="px-3 py-2 bg-yellow-50 border border-yellow-200 rounded-lg text-sm font-bold text-yellow-700">
-                ₹{{ form.price_b || 169 }} / student
-              </div>
+          <div v-if="form.show_b">
+            <label class="form-label">Discount %</label>
+            <InputNumber v-model="form.discount_b" class="w-full" :min="0" :max="100" suffix="%" @input="calcPrices" />
+            <div class="price-pill mt-3">
+              ₹{{ form.price_b || 169 }} <span class="price-pill-unit">/ student</span>
             </div>
           </div>
         </div>
@@ -185,7 +162,7 @@ import {
 } from 'firebase/firestore'
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
-import { useConvertedSchools } from '../composables/useConvertedSchools.js'
+import { useAllSchools } from '../composables/useAllSchools.js'
 import { generateQuotationPDF } from '../utils/api.js'
 import { generateQuotationNumber, calcPrice } from '../utils/quotationPDF.js'
 
@@ -193,15 +170,15 @@ import Button from 'primevue/button'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Dialog from 'primevue/dialog'
-import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
 import ToggleButton from 'primevue/togglebutton'
 import ProgressSpinner from 'primevue/progressspinner'
 import ConfirmDialog from 'primevue/confirmdialog'
+import SchoolSearchSelect from '../components/shared/SchoolSearchSelect.vue'
 
 const confirm = useConfirm()
 const toast = useToast()
-const { convertedSchools, loadConverted } = useConvertedSchools()
+const { allSchools, loadAllSchools } = useAllSchools()
 
 const quotations = ref([])
 const loading    = ref(true)
@@ -210,6 +187,7 @@ const saving     = ref(false)
 const formError  = ref('')
 
 const emptyForm = () => ({
+  school_id:    null,
   school_name:  '',
   student_count: null,
   show_a:       true,
@@ -237,9 +215,10 @@ async function loadQuotations() {
 }
 
 // ── Handlers ──────────────────────────────────────────────────────────────────
-function pickConvertedSchool(s) {
-  form.school_name   = s.name
-  form.student_count = s.student_count || null
+function onSchoolSelect(s) {
+  form.school_id      = s.id || null
+  form.school_name    = s.name
+  form.student_count  = s.student_count || form.student_count
 }
 
 function calcPrices() {
@@ -249,6 +228,7 @@ function calcPrices() {
 
 function openNew() {
   Object.assign(form, {
+    school_id:    null,
     school_name:  '',
     student_count: null,
     show_a:       true,
@@ -279,6 +259,7 @@ async function saveAndDownload() {
     const qNum = generateQuotationNumber(existingNums)
 
     const payload = {
+      school_id:      form.school_id || null,
       school_name:    form.school_name,
       student_count:  form.student_count,
       show_a:         form.show_a,
@@ -344,7 +325,7 @@ function formatDate(ts) {
 }
 
 onMounted(async () => {
-  await Promise.all([loadQuotations(), loadConverted()])
+  await Promise.all([loadQuotations(), loadAllSchools()])
 })
 </script>
 
@@ -357,5 +338,24 @@ onMounted(async () => {
   margin-bottom: 4px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
+}
+
+.price-pill {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  background: linear-gradient(135deg, #22c55e, #16a34a);
+  color: white;
+  font-size: 20px;
+  font-weight: 800;
+  padding: 10px 18px;
+  border-radius: 999px;
+  box-shadow: 0 4px 14px -4px rgba(22, 163, 74, 0.5);
+}
+
+.price-pill-unit {
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0.85;
 }
 </style>
