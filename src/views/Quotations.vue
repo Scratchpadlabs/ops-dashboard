@@ -79,24 +79,11 @@
     <Dialog v-model:visible="dialogVisible" header="New Quotation" modal :style="{ width: '520px' }">
       <div class="space-y-5 pt-2">
 
-        <!-- School name - free text + converted quick-pick -->
+        <!-- School name - searchable dropdown, free text still works -->
         <div>
           <label class="form-label">School Name *</label>
-          <InputText v-model="form.school_name" class="w-full" placeholder="Type school name..." />
-          <div v-if="convertedSchools.length" class="mt-2">
-            <div class="text-xs text-slate-400 mb-1.5">Quick pick — Converted schools:</div>
-            <div class="flex flex-wrap gap-1.5">
-              <button
-                v-for="s in convertedSchools"
-                :key="s.id"
-                @click="pickConvertedSchool(s)"
-                class="px-2.5 py-1 rounded-lg text-xs font-medium border transition-all"
-                :class="form.school_name === s.name
-                  ? 'bg-green-600 text-white border-green-600'
-                  : 'bg-green-50 text-green-700 border-green-200 hover:border-green-400'"
-              >{{ s.name }}</button>
-            </div>
-          </div>
+          <SchoolSearchSelect v-model="form.school_name" :schools="allSchools" @select="onSchoolSelect" />
+          <p class="text-xs text-slate-400 mt-1">Search an existing school or type a new name.</p>
         </div>
 
         <!-- Student count -->
@@ -177,15 +164,15 @@
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
-import { db } from '../firebase/config'
 import { opsCollection, opsDoc } from '../firebase/collections.js'
 import {
   getDocs, addDoc, deleteDoc,
-  doc, orderBy, query, serverTimestamp
+  orderBy, query, serverTimestamp
 } from 'firebase/firestore'
+import { useRoute } from 'vue-router'
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
-import { useConvertedSchools } from '../composables/useConvertedSchools.js'
+import { useAllSchools } from '../composables/useAllSchools.js'
 import { generateQuotationPDF } from '../utils/api.js'
 import { generateQuotationNumber, calcPrice } from '../utils/quotationPDF.js'
 
@@ -197,10 +184,12 @@ import InputNumber from 'primevue/inputnumber'
 import ToggleButton from 'primevue/togglebutton'
 import ProgressSpinner from 'primevue/progressspinner'
 import ConfirmDialog from 'primevue/confirmdialog'
+import SchoolSearchSelect from '../components/shared/SchoolSearchSelect.vue'
 
+const route = useRoute()
 const confirm = useConfirm()
 const toast = useToast()
-const { convertedSchools, loadConverted } = useConvertedSchools()
+const { allSchools, loadAllSchools } = useAllSchools()
 
 const quotations = ref([])
 const loading    = ref(true)
@@ -209,6 +198,7 @@ const saving     = ref(false)
 const formError  = ref('')
 
 const emptyForm = () => ({
+  school_id:    null,
   school_name:  '',
   student_count: null,
   show_a:       true,
@@ -236,7 +226,8 @@ async function loadQuotations() {
 }
 
 // ── Handlers ──────────────────────────────────────────────────────────────────
-function pickConvertedSchool(s) {
+function onSchoolSelect(s) {
+  form.school_id     = s.id || null
   form.school_name   = s.name
   form.student_count = s.student_count || null
 }
@@ -249,6 +240,7 @@ function calcPrices(field, value) {
 
 function openNew() {
   Object.assign(form, {
+    school_id:    null,
     school_name:  '',
     student_count: null,
     show_a:       true,
@@ -279,6 +271,7 @@ async function saveAndDownload() {
     const qNum = generateQuotationNumber(existingNums)
 
     const payload = {
+      school_id:      form.school_id || null,
       school_name:    form.school_name,
       student_count:  form.student_count,
       show_a:         form.show_a,
@@ -340,7 +333,15 @@ function formatDate(ts) {
 }
 
 onMounted(async () => {
-  await Promise.all([loadQuotations(), loadConverted()])
+  await Promise.all([loadQuotations(), loadAllSchools()])
+
+  // Pre-fill from "New Quotation" launched off a school's drawer
+  if (route.query.school_name) {
+    openNew()
+    form.school_id     = route.query.school_id || null
+    form.school_name   = route.query.school_name
+    form.student_count = route.query.student_count ? Number(route.query.student_count) : null
+  }
 })
 </script>
 

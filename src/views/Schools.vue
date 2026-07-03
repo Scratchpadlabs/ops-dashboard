@@ -110,7 +110,7 @@
     </div>
 
     <!-- ── DRAWER ──────────────────────────────────────────────────────────── -->
-    <Drawer v-model:visible="drawerVisible" position="right" :style="{ width: '420px' }">
+    <Drawer v-model:visible="drawerVisible" position="right" :style="{ width: '600px' }">
       <template #header>
         <div>
           <div class="font-semibold text-slate-900 text-base">{{ drawerSchool?.name }}</div>
@@ -118,117 +118,270 @@
         </div>
       </template>
 
-      <div v-if="drawerSchool" class="space-y-6 pt-2">
+      <Tabs v-if="drawerSchool" v-model:value="drawerTab" value="overview">
+        <TabList>
+          <Tab value="overview">Overview</Tab>
+          <Tab value="quotations">Quotations</Tab>
+          <Tab value="agreements">Agreements</Tab>
+          <Tab value="invoices">Invoices</Tab>
+          <Tab value="documents">Documents</Tab>
+        </TabList>
+        <TabPanels>
 
-        <!-- Status tags -->
-        <div>
-          <div class="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Status</div>
-          <div class="flex flex-wrap gap-2">
-            <button
-              v-for="s in allStatuses"
-              :key="s"
-              @click="toggleStatus(s)"
-              class="px-3 py-1.5 rounded-full text-xs font-semibold border-2 transition-all"
-              :class="drawerSchool.statuses?.includes(s)
-                ? statusStyle(s) + ' border-transparent'
-                : 'bg-white text-slate-400 border-slate-200 hover:border-slate-300'"
-            >
-              {{ s }}
-              <i v-if="drawerSchool.statuses?.includes(s)" class="pi pi-check ml-1 text-xs"></i>
-            </button>
-          </div>
-        </div>
+          <!-- ── Overview ────────────────────────────────────────────────── -->
+          <TabPanel value="overview">
+            <div class="space-y-6 pt-4">
 
-        <!-- School details -->
-        <div>
-          <div class="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Details</div>
-          <div class="bg-slate-50 rounded-xl p-3 space-y-1.5 text-sm">
-            <div class="flex gap-2"><span class="text-slate-400 w-24 flex-shrink-0">Contact</span><span class="text-slate-700">{{ drawerSchool.contact_person }}{{ drawerSchool.contact_designation ? ' · ' + drawerSchool.contact_designation : '' }}</span></div>
-            <div class="flex gap-2"><span class="text-slate-400 w-24 flex-shrink-0">Phone</span><span class="text-slate-700">{{ drawerSchool.contact_phone || '—' }}</span></div>
-            <div class="flex gap-2"><span class="text-slate-400 w-24 flex-shrink-0">Email</span><span class="text-slate-700">{{ drawerSchool.contact_email || '—' }}</span></div>
-            <div class="flex gap-2"><span class="text-slate-400 w-24 flex-shrink-0">Students</span><span class="text-slate-700">{{ drawerSchool.student_count }}</span></div>
-            <div class="flex gap-2"><span class="text-slate-400 w-24 flex-shrink-0">Modules</span><span class="text-slate-700">{{ (drawerSchool.modules || []).join(', ') || '—' }}</span></div>
-            <div class="flex gap-2"><span class="text-slate-400 w-24 flex-shrink-0">Address</span><span class="text-slate-700">{{ drawerSchool.address || '—' }}</span></div>
-          </div>
-        </div>
-
-        <!-- Agreements -->
-        <div>
-          <div class="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Agreements</div>
-          <div v-if="schoolAgreements.length === 0" class="text-center py-6 text-slate-300 text-sm">
-            No agreements yet
-          </div>
-          <div v-else class="space-y-2">
-            <div
-              v-for="a in schoolAgreements"
-              :key="a.id"
-              class="bg-slate-50 rounded-lg p-3 flex items-center justify-between"
-            >
+              <!-- Status tags -->
               <div>
-                <div class="text-sm font-medium text-slate-800">{{ a.agreement_number }}</div>
-                <div class="text-xs text-slate-400">
-                  Plan {{ a.installment_plan }} · ₹{{ (a.fee_per_student * a.student_count).toLocaleString('en-IN') }}
+                <div class="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Status</div>
+                <div class="flex flex-wrap gap-2">
+                  <button
+                    v-for="s in allStatuses"
+                    :key="s"
+                    @click="toggleStatus(s)"
+                    class="px-3 py-1.5 rounded-full text-xs font-semibold border-2 transition-all"
+                    :class="drawerSchool.statuses?.includes(s)
+                      ? statusStyle(s) + ' border-transparent'
+                      : 'bg-white text-slate-400 border-slate-200 hover:border-slate-300'"
+                  >
+                    {{ s }}
+                    <i v-if="drawerSchool.statuses?.includes(s)" class="pi pi-check ml-1 text-xs"></i>
+                  </button>
                 </div>
               </div>
-              <div class="flex items-center gap-2">
-                <span
-                  class="px-2 py-0.5 rounded-full text-xs font-semibold"
-                  :class="a.status === 'Signed' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'"
-                >{{ a.status || 'Sent' }}</span>
-                <Button icon="pi pi-download" text rounded size="small" @click="downloadAgreement(a)" />
+
+              <!-- School details -->
+              <div>
+                <div class="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Details</div>
+                <div class="bg-slate-50 rounded-xl p-3 space-y-1.5 text-sm">
+                  <div class="flex gap-2"><span class="text-slate-400 w-24 flex-shrink-0">Contact</span><span class="text-slate-700">{{ drawerSchool.contact_person }}{{ drawerSchool.contact_designation ? ' · ' + drawerSchool.contact_designation : '' }}</span></div>
+                  <div class="flex gap-2"><span class="text-slate-400 w-24 flex-shrink-0">Phone</span><span class="text-slate-700">{{ drawerSchool.contact_phone || '—' }}</span></div>
+                  <div class="flex gap-2"><span class="text-slate-400 w-24 flex-shrink-0">Email</span><span class="text-slate-700">{{ drawerSchool.contact_email || '—' }}</span></div>
+                  <div class="flex gap-2"><span class="text-slate-400 w-24 flex-shrink-0">Students</span><span class="text-slate-700">{{ drawerSchool.student_count }}</span></div>
+                  <div class="flex gap-2"><span class="text-slate-400 w-24 flex-shrink-0">Modules</span><span class="text-slate-700">{{ (drawerSchool.modules || []).join(', ') || '—' }}</span></div>
+                  <div class="flex gap-2"><span class="text-slate-400 w-24 flex-shrink-0">Address</span><span class="text-slate-700">{{ drawerSchool.address || '—' }}</span></div>
+                </div>
               </div>
-            </div>
-          </div>
-        </div>
 
-        <!-- Notes -->
-        <div>
-          <div class="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Notes</div>
+              <!-- Notes -->
+              <div>
+                <div class="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Notes</div>
 
-          <!-- Add note -->
-          <div class="flex gap-2 mb-3">
-            <InputText
-              v-model="newNote"
-              class="flex-1 text-sm"
-              placeholder="Add a note..."
-              @keyup.enter="addNote"
-            />
-            <Button icon="pi pi-plus" size="small" :disabled="!newNote.trim()" @click="addNote" />
-          </div>
+                <!-- Add note -->
+                <div class="flex gap-2 mb-3">
+                  <InputText
+                    v-model="newNote"
+                    class="flex-1 text-sm"
+                    placeholder="Add a note..."
+                    @keyup.enter="addNote"
+                  />
+                  <Button icon="pi pi-plus" size="small" :disabled="!newNote.trim()" @click="addNote" />
+                </div>
 
-          <!-- Notes list -->
-          <div v-if="(drawerSchool.notes || []).length === 0" class="text-center py-6 text-slate-300 text-sm">
-            No notes yet
-          </div>
-          <div v-else class="space-y-2">
-            <div
-              v-for="(note, i) in [...(drawerSchool.notes || [])].reverse()"
-              :key="note.id"
-              class="bg-slate-50 rounded-lg p-3"
-            >
-              <div v-if="editingNoteId !== note.id">
-                <p class="text-sm text-slate-800 leading-relaxed">{{ note.text }}</p>
-                <div class="flex items-center justify-between mt-1.5">
-                  <span class="text-xs text-slate-400">{{ formatDateTime(note.created_at) }}</span>
-                  <div class="flex gap-1">
-                    <Button icon="pi pi-pencil" text rounded size="small" @click="startEditNote(note)" />
-                    <Button icon="pi pi-trash" text rounded size="small" severity="danger" @click="deleteNote(note.id)" />
+                <!-- Notes list -->
+                <div v-if="(drawerSchool.notes || []).length === 0" class="text-center py-6 text-slate-300 text-sm">
+                  No notes yet
+                </div>
+                <div v-else class="space-y-2">
+                  <div
+                    v-for="(note, i) in [...(drawerSchool.notes || [])].reverse()"
+                    :key="note.id"
+                    class="bg-slate-50 rounded-lg p-3"
+                  >
+                    <div v-if="editingNoteId !== note.id">
+                      <p class="text-sm text-slate-800 leading-relaxed">{{ note.text }}</p>
+                      <div class="flex items-center justify-between mt-1.5">
+                        <span class="text-xs text-slate-400">{{ formatDateTime(note.created_at) }}</span>
+                        <div class="flex gap-1">
+                          <Button icon="pi pi-pencil" text rounded size="small" @click="startEditNote(note)" />
+                          <Button icon="pi pi-trash" text rounded size="small" severity="danger" @click="deleteNote(note.id)" />
+                        </div>
+                      </div>
+                    </div>
+                    <div v-else class="space-y-2">
+                      <InputText v-model="editNoteText" class="w-full text-sm" @keyup.enter="saveEditNote(note.id)" />
+                      <div class="flex gap-2 justify-end">
+                        <Button label="Cancel" text size="small" @click="editingNoteId = null" />
+                        <Button label="Save" size="small" @click="saveEditNote(note.id)" />
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
+
+            </div>
+          </TabPanel>
+
+          <!-- ── Quotations ──────────────────────────────────────────────── -->
+          <TabPanel value="quotations">
+            <div class="pt-4">
+              <div class="flex justify-end mb-3">
+                <Button label="New Quotation" icon="pi pi-plus" size="small" @click="newQuotationForSchool" />
+              </div>
+              <div v-if="schoolQuotations.length === 0" class="text-center py-10 text-slate-300 text-sm">
+                No quotations yet
+              </div>
               <div v-else class="space-y-2">
-                <InputText v-model="editNoteText" class="w-full text-sm" @keyup.enter="saveEditNote(note.id)" />
-                <div class="flex gap-2 justify-end">
-                  <Button label="Cancel" text size="small" @click="editingNoteId = null" />
-                  <Button label="Save" size="small" @click="saveEditNote(note.id)" />
+                <div
+                  v-for="q in schoolQuotations"
+                  :key="q.id"
+                  class="bg-slate-50 rounded-lg p-3 flex items-center justify-between"
+                >
+                  <div>
+                    <div class="text-sm font-medium text-slate-800">{{ q.quotation_number }}</div>
+                    <div class="text-xs text-slate-400">{{ formatDate(q.created_at) }}</div>
+                  </div>
+                  <Button icon="pi pi-download" text rounded size="small" @click="downloadQuotation(q)" />
                 </div>
               </div>
             </div>
-          </div>
-        </div>
+          </TabPanel>
 
-      </div>
+          <!-- ── Agreements ──────────────────────────────────────────────── -->
+          <TabPanel value="agreements">
+            <div class="pt-4">
+              <div v-if="schoolAgreements.length === 0" class="text-center py-10 text-slate-300 text-sm">
+                No agreements yet
+              </div>
+              <div v-else class="space-y-2">
+                <div
+                  v-for="a in schoolAgreements"
+                  :key="a.id"
+                  class="bg-slate-50 rounded-lg p-3 flex items-center justify-between"
+                >
+                  <div>
+                    <div class="text-sm font-medium text-slate-800">{{ a.agreement_number }}</div>
+                    <div class="text-xs text-slate-400">
+                      {{ formatDate(a.created_at) }} · Plan {{ a.installment_plan }} · ₹{{ (a.fee_per_student * a.student_count).toLocaleString('en-IN') }}
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <span
+                      class="px-2 py-0.5 rounded-full text-xs font-semibold"
+                      :class="a.status === 'Signed' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'"
+                    >{{ a.status || 'Sent' }}</span>
+                    <Button icon="pi pi-download" text rounded size="small" v-tooltip="'Download PDF'" @click="downloadAgreement(a)" />
+                    <Button
+                      v-if="a.signed_pdf_url"
+                      icon="pi pi-file-check"
+                      text rounded size="small"
+                      severity="success"
+                      v-tooltip="'View Signed PDF'"
+                      @click="viewSignedPdf(a)"
+                    />
+                    <Button
+                      icon="pi pi-upload"
+                      text rounded size="small"
+                      :loading="uploadingAgreementId === a.id"
+                      v-tooltip="'Upload Signed PDF'"
+                      @click="triggerAgreementUpload(a)"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </TabPanel>
+
+          <!-- ── Invoices ────────────────────────────────────────────────── -->
+          <TabPanel value="invoices">
+            <div class="pt-4">
+              <div class="grid grid-cols-3 gap-3 mb-4">
+                <div class="bg-slate-50 rounded-lg p-3">
+                  <div class="text-xs text-slate-400 uppercase tracking-wide mb-1">Invoiced</div>
+                  <div class="text-sm font-bold text-slate-900">{{ formatRupee(invoiceSummary.total) }}</div>
+                </div>
+                <div class="bg-green-50 rounded-lg p-3">
+                  <div class="text-xs text-slate-400 uppercase tracking-wide mb-1">Paid</div>
+                  <div class="text-sm font-bold text-green-700">{{ formatRupee(invoiceSummary.paid) }}</div>
+                </div>
+                <div class="bg-amber-50 rounded-lg p-3">
+                  <div class="text-xs text-slate-400 uppercase tracking-wide mb-1">Outstanding</div>
+                  <div class="text-sm font-bold text-amber-700">{{ formatRupee(invoiceSummary.outstanding) }}</div>
+                </div>
+              </div>
+
+              <div v-if="schoolInvoices.length === 0" class="text-center py-10 text-slate-300 text-sm">
+                No invoices yet
+              </div>
+              <div v-else class="space-y-2">
+                <div
+                  v-for="inv in schoolInvoices"
+                  :key="inv.id"
+                  class="bg-slate-50 rounded-lg p-3 flex items-center justify-between"
+                >
+                  <div>
+                    <div class="text-sm font-medium text-slate-800">{{ inv.invoice_number }}</div>
+                    <div class="text-xs text-slate-400">{{ inv.description }} · ₹{{ (inv.price_per_student * inv.quantity).toLocaleString('en-IN') }}</div>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <span
+                      class="px-2 py-0.5 rounded-full text-xs font-semibold"
+                      :class="inv.status === 'paid' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'"
+                    >{{ inv.status === 'paid' ? 'Paid' : 'Unpaid' }}</span>
+                    <Button
+                      v-if="inv.status !== 'paid'"
+                      icon="pi pi-check"
+                      text rounded size="small"
+                      severity="success"
+                      v-tooltip="'Mark as Paid'"
+                      @click="markInvoicePaid(inv)"
+                    />
+                    <Button icon="pi pi-download" text rounded size="small" v-tooltip="'Download PDF'" @click="downloadInvoice(inv)" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </TabPanel>
+
+          <!-- ── Documents ───────────────────────────────────────────────── -->
+          <TabPanel value="documents">
+            <div class="pt-4">
+              <div class="flex justify-end mb-3">
+                <Button label="Upload Document" icon="pi pi-upload" size="small" :loading="uploadingDoc" @click="triggerDocUpload" />
+              </div>
+              <div v-if="(drawerSchool.documents || []).length === 0" class="text-center py-10 text-slate-300 text-sm">
+                No documents yet
+              </div>
+              <div v-else class="space-y-2">
+                <div
+                  v-for="item in [...(drawerSchool.documents || [])].reverse()"
+                  :key="item.id"
+                  class="bg-slate-50 rounded-lg p-3 flex items-center justify-between"
+                >
+                  <div class="flex items-center gap-2 min-w-0">
+                    <i class="pi pi-file text-slate-400"></i>
+                    <div class="min-w-0">
+                      <div class="text-sm font-medium text-slate-800 truncate">{{ item.name }}</div>
+                      <div class="text-xs text-slate-400">{{ formatDateTime(item.uploaded_at) }}</div>
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-1 flex-shrink-0">
+                    <Button icon="pi pi-download" text rounded size="small" @click="downloadDocument(item)" />
+                    <Button icon="pi pi-trash" text rounded size="small" severity="danger" @click="deleteDocument(item)" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </TabPanel>
+
+        </TabPanels>
+      </Tabs>
     </Drawer>
+
+    <input
+      ref="agreementFileInputEl"
+      type="file"
+      accept="application/pdf"
+      class="hidden"
+      @change="onAgreementFileSelected"
+    />
+    <input
+      ref="docFileInputEl"
+      type="file"
+      class="hidden"
+      @change="onDocFileSelected"
+    />
 
     <!-- Add/Edit Dialog -->
     <Dialog
@@ -290,13 +443,15 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
-import { db } from '../firebase/config'
+import { useRouter } from 'vue-router'
+import { db, storage } from '../firebase/config'
 import { opsCollection, opsDoc } from '../firebase/collections.js'
 import { getDocs, getDoc, addDoc, updateDoc, deleteDoc, doc, orderBy, query, serverTimestamp } from 'firebase/firestore'
+import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage'
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
 import { useCelebration } from '../composables/useCelebration'
-import { generateAgreementFiles } from '../utils/api.js'
+import { generateAgreementFiles, generateQuotationPDF, generateInvoicePDF } from '../utils/api.js'
 
 import Button from 'primevue/button'
 import DataTable from 'primevue/datatable'
@@ -309,17 +464,26 @@ import Textarea from 'primevue/textarea'
 import MultiSelect from 'primevue/multiselect'
 import ProgressSpinner from 'primevue/progressspinner'
 import ConfirmDialog from 'primevue/confirmdialog'
+import Tabs from 'primevue/tabs'
+import TabList from 'primevue/tablist'
+import Tab from 'primevue/tab'
+import TabPanels from 'primevue/tabpanels'
+import TabPanel from 'primevue/tabpanel'
 
+const router = useRouter()
 const confirm = useConfirm()
 const toast = useToast()
 const { celebrate } = useCelebration()
 
 const schools       = ref([])
 const agreements    = ref([])
+const quotations    = ref([])
+const invoices      = ref([])
 const loading       = ref(true)
 const dialogVisible = ref(false)
 const drawerVisible = ref(false)
 const drawerSchool  = ref(null)
+const drawerTab     = ref('overview')
 const editingSchool = ref(null)
 const saving        = ref(false)
 const formError     = ref('')
@@ -327,6 +491,13 @@ const activeFilter  = ref('all')
 const newNote       = ref('')
 const editingNoteId = ref(null)
 const editNoteText  = ref('')
+
+const uploadingAgreementId = ref(null)
+const agreementFileInputEl = ref(null)
+const agreementUploadTarget = ref(null)
+
+const uploadingDoc   = ref(false)
+const docFileInputEl = ref(null)
 
 const allStatuses   = ['Lead', 'Negotiation', 'Converted']
 const moduleOptions = ref(['HPC', 'SEW', 'Co-Scholastic', 'Remarks', 'Parent App'])
@@ -386,10 +557,39 @@ async function loadAgreements() {
   }
 }
 
-const schoolAgreements = computed(() => {
-  if (!drawerSchool.value) return []
+async function loadQuotations() {
+  try {
+    const snap = await getDocs(opsCollection('quotations'))
+    quotations.value = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+  } catch (e) {
+    console.error('Could not load quotations', e)
+  }
+}
+
+async function loadInvoices() {
+  try {
+    const snap = await getDocs(opsCollection('invoices'))
+    invoices.value = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+  } catch (e) {
+    console.error('Could not load invoices', e)
+  }
+}
+
+function belongsToDrawerSchool(record) {
+  if (!drawerSchool.value) return false
+  if (record.school_id && record.school_id === drawerSchool.value.id) return true
   const name = (drawerSchool.value.name || '').trim().toLowerCase()
-  return agreements.value.filter(a => (a.school_name || '').trim().toLowerCase() === name)
+  return (record.school_name || '').trim().toLowerCase() === name
+}
+
+const schoolAgreements = computed(() => agreements.value.filter(belongsToDrawerSchool))
+const schoolQuotations = computed(() => quotations.value.filter(belongsToDrawerSchool))
+const schoolInvoices   = computed(() => invoices.value.filter(belongsToDrawerSchool))
+
+const invoiceSummary = computed(() => {
+  const total = schoolInvoices.value.reduce((s, i) => s + i.price_per_student * i.quantity, 0)
+  const paid  = schoolInvoices.value.filter(i => i.status === 'paid').reduce((s, i) => s + i.price_per_student * i.quantity, 0)
+  return { total, paid, outstanding: total - paid }
 })
 
 async function downloadAgreement(a) {
@@ -401,10 +601,150 @@ async function downloadAgreement(a) {
   }
 }
 
+function viewSignedPdf(a) {
+  if (a.signed_pdf_url) window.open(a.signed_pdf_url, '_blank')
+}
+
+function triggerAgreementUpload(a) {
+  agreementUploadTarget.value = a
+  agreementFileInputEl.value?.click()
+}
+
+async function onAgreementFileSelected(e) {
+  const file = e.target.files?.[0]
+  e.target.value = ''
+  if (!file || !agreementUploadTarget.value) return
+
+  const a = agreementUploadTarget.value
+  uploadingAgreementId.value = a.id
+  try {
+    const path = `agreements/${a.id}/signed_${Date.now()}.pdf`
+    const sRef = storageRef(storage, path)
+    await uploadBytes(sRef, file)
+    const url = await getDownloadURL(sRef)
+
+    await updateDoc(opsDoc('agreements', a.id), { status: 'Signed', signed_pdf_url: url })
+    toast.add({ severity: 'success', summary: 'Signed', detail: `Signed agreement saved for ${a.school_name}`, life: 3000 })
+    await loadAgreements()
+  } catch (err) {
+    console.error(err)
+    toast.add({ severity: 'error', summary: 'Upload failed', detail: err.message || 'Could not upload signed PDF', life: 4000 })
+  } finally {
+    uploadingAgreementId.value = null
+    agreementUploadTarget.value = null
+  }
+}
+
+function newQuotationForSchool() {
+  router.push({
+    name: 'quotations',
+    query: {
+      school_id:     drawerSchool.value.id,
+      school_name:   drawerSchool.value.name,
+      student_count: drawerSchool.value.student_count || undefined,
+    },
+  })
+}
+
+async function downloadQuotation(q) {
+  try {
+    await generateQuotationPDF(q)
+  } catch (e) {
+    console.error(e)
+    toast.add({ severity: 'error', summary: 'Download failed', detail: e.message || 'Could not generate PDF', life: 4000 })
+  }
+}
+
+async function downloadInvoice(inv) {
+  try {
+    await generateInvoicePDF(inv)
+  } catch (e) {
+    console.error(e)
+    toast.add({ severity: 'error', summary: 'Download failed', detail: e.message || 'Could not generate PDF', life: 4000 })
+  }
+}
+
+function markInvoicePaid(invoice) {
+  confirm.require({
+    message: `Mark invoice ${invoice.invoice_number} as paid?`,
+    header: 'Mark as Paid',
+    icon: 'pi pi-check-circle',
+    rejectLabel: 'Cancel',
+    acceptLabel: 'Mark Paid',
+    accept: async () => {
+      try {
+        await updateDoc(opsDoc('invoices', invoice.id), { status: 'paid', paid_on: serverTimestamp() })
+        const amount = formatRupee(invoice.price_per_student * invoice.quantity)
+        toast.add({ severity: 'success', summary: 'Paid!', detail: `${amount} received from ${invoice.school_name}`, life: 3000 })
+        celebrate(`${amount} received from ${invoice.school_name}!`, '💰')
+        await loadInvoices()
+      } catch (e) {
+        toast.add({ severity: 'error', summary: 'Error', detail: 'Could not update invoice', life: 3000 })
+      }
+    }
+  })
+}
+
+// ── Documents ─────────────────────────────────────────────────────────────────
+function triggerDocUpload() {
+  docFileInputEl.value?.click()
+}
+
+async function onDocFileSelected(e) {
+  const file = e.target.files?.[0]
+  e.target.value = ''
+  if (!file || !drawerSchool.value) return
+
+  uploadingDoc.value = true
+  try {
+    const path = `schools/${drawerSchool.value.id}/documents/${Date.now()}_${file.name}`
+    const sRef = storageRef(storage, path)
+    await uploadBytes(sRef, file)
+    const url = await getDownloadURL(sRef)
+
+    const docEntry = {
+      id:          Date.now().toString(),
+      name:        file.name,
+      url,
+      path,
+      uploaded_at: new Date().toISOString(),
+    }
+    const documents = [...(drawerSchool.value.documents || []), docEntry]
+    drawerSchool.value.documents = documents
+    await saveDrawerField('documents', documents)
+    syncSchoolField('documents', documents)
+    toast.add({ severity: 'success', summary: 'Uploaded', detail: `${file.name} added`, life: 2500 })
+  } catch (err) {
+    console.error(err)
+    toast.add({ severity: 'error', summary: 'Upload failed', detail: err.message || 'Could not upload document', life: 4000 })
+  } finally {
+    uploadingDoc.value = false
+  }
+}
+
+function downloadDocument(docEntry) {
+  if (docEntry.url) window.open(docEntry.url, '_blank')
+}
+
+async function deleteDocument(docEntry) {
+  const documents = (drawerSchool.value.documents || []).filter(d => d.id !== docEntry.id)
+  drawerSchool.value.documents = documents
+  await saveDrawerField('documents', documents)
+  syncSchoolField('documents', documents)
+  if (docEntry.path) {
+    try {
+      await deleteObject(storageRef(storage, docEntry.path))
+    } catch (e) {
+      console.error('Could not delete file from storage', e)
+    }
+  }
+}
+
 // ── Drawer ────────────────────────────────────────────────────────────────────
 function openDrawer(school) {
-  drawerSchool.value = { ...school, statuses: school.statuses || [], notes: school.notes || [] }
+  drawerSchool.value = { ...school, statuses: school.statuses || [], notes: school.notes || [], documents: school.documents || [] }
   drawerVisible.value = true
+  drawerTab.value = 'overview'
   newNote.value = ''
   editingNoteId.value = null
 }
@@ -440,7 +780,7 @@ async function addNote() {
   drawerSchool.value.notes = notes
   newNote.value = ''
   await saveDrawerField('notes', notes)
-  syncSchoolNotes(notes)
+  syncSchoolField('notes', notes)
 }
 
 function startEditNote(note) {
@@ -455,14 +795,14 @@ async function saveEditNote(id) {
   drawerSchool.value.notes = notes
   editingNoteId.value = null
   await saveDrawerField('notes', notes)
-  syncSchoolNotes(notes)
+  syncSchoolField('notes', notes)
 }
 
 async function deleteNote(id) {
   const notes = drawerSchool.value.notes.filter(n => n.id !== id)
   drawerSchool.value.notes = notes
   await saveDrawerField('notes', notes)
-  syncSchoolNotes(notes)
+  syncSchoolField('notes', notes)
 }
 
 async function saveDrawerField(field, value) {
@@ -473,9 +813,9 @@ async function saveDrawerField(field, value) {
   }
 }
 
-function syncSchoolNotes(notes) {
+function syncSchoolField(field, value) {
   const idx = schools.value.findIndex(s => s.id === drawerSchool.value.id)
-  if (idx !== -1) schools.value[idx].notes = notes
+  if (idx !== -1) schools.value[idx][field] = value
 }
 
 // ── Add/Edit dialog ───────────────────────────────────────────────────────────
@@ -577,8 +917,13 @@ function formatDateTime(iso) {
     d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
 }
 
+function formatRupee(amount) {
+  if (!amount) return '₹0'
+  return '₹' + Number(amount).toLocaleString('en-IN')
+}
+
 onMounted(async () => {
-  await Promise.all([loadSchools(), loadAgreements(), loadModuleSettings()])
+  await Promise.all([loadSchools(), loadAgreements(), loadQuotations(), loadInvoices(), loadModuleSettings()])
 })
 </script>
 

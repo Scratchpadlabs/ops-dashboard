@@ -4,5 +4,8 @@ service firebase.storage {
     match /agreements/{agreementId}/{fileName} {
       allow read, write: if true;
     }
+    match /schools/{schoolId}/documents/{fileName} {
+      allow read, write: if true;
+    }
   }
 }
