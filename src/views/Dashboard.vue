@@ -213,8 +213,9 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, defineComponent, h } from 'vue'
 import { useRouter } from 'vue-router'
+import { auth } from '../firebase/config'
 import { opsCollection, opsDoc } from '../firebase/collections.js'
-import { getDocs, addDoc, deleteDoc, orderBy, query, serverTimestamp } from 'firebase/firestore'
+import { getDocs, addDoc, deleteDoc, orderBy, query, serverTimestamp, limit } from 'firebase/firestore'
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
 
@@ -351,12 +352,12 @@ async function loadAll() {
   loading.value = true
   try {
     const [sSnap, iSnap, aSnap] = await Promise.all([
-      getDocs(query(opsCollection('schools'),    orderBy('created_at', 'desc'))),
-      getDocs(query(opsCollection('invoices'),   orderBy('created_at', 'desc'))),
-      getDocs(query(opsCollection('agreements'), orderBy('created_at', 'desc'))),
+      getDocs(query(opsCollection('schools'),    orderBy('created_at', 'desc'), limit(500))),
+      getDocs(query(opsCollection('invoices'),   orderBy('created_at', 'desc'), limit(500))),
+      getDocs(query(opsCollection('agreements'), orderBy('created_at', 'desc'), limit(500))),
     ])
     schools.value    = sSnap.docs.map(d => ({ id: d.id, ...d.data() }))
-    invoices.value   = iSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+    invoices.value   = iSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(i => !i.deleted)
     agreements.value = aSnap.docs.map(d => ({ id: d.id, ...d.data() }))
   } catch (e) {
     console.error(e)
@@ -406,7 +407,7 @@ function pipelineColor(pct) {
 async function loadLinks() {
   linksLoading.value = true
   try {
-    const snap = await getDocs(query(opsCollection('links'), orderBy('created_at', 'asc')))
+    const snap = await getDocs(query(opsCollection('links'), orderBy('created_at', 'asc'), limit(500)))
     links.value = snap.docs.map(d => ({ id: d.id, ...d.data() }))
   } catch (e) {
     console.error(e)
@@ -447,6 +448,7 @@ async function saveLink() {
       url:        linkForm.value.url.trim(),
       emoji:      linkForm.value.emoji.trim() || '🔗',
       created_at: serverTimestamp(),
+      created_by: auth.currentUser?.email || 'unknown',
     })
     linkDialogVisible.value = false
     await loadLinks()

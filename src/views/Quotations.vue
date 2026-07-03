@@ -77,7 +77,13 @@
                 text size="small"
                 @click="startConvert(data)"
               />
-              <Button icon="pi pi-download" text rounded size="small" v-tooltip="'Download PDF'" @click="download(data)" />
+              <Button
+                :icon="downloadingId === data.id ? 'pi pi-spin pi-spinner' : 'pi pi-download'"
+                text rounded size="small"
+                :disabled="downloadingId === data.id"
+                v-tooltip="'Download PDF'"
+                @click="download(data)"
+              />
               <Button icon="pi pi-trash" text rounded size="small" severity="danger" @click="confirmDelete(data)" />
             </div>
           </template>
@@ -304,11 +310,11 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
-import { db } from '../firebase/config'
+import { db, auth } from '../firebase/config'
 import { opsCollection, opsDoc } from '../firebase/collections.js'
 import {
   getDocs, getDoc, addDoc, updateDoc, deleteDoc,
-  doc, orderBy, query, serverTimestamp
+  doc, orderBy, query, serverTimestamp, limit
 } from 'firebase/firestore'
 import { useRoute } from 'vue-router'
 import { useConfirm } from 'primevue/useconfirm'
@@ -339,6 +345,7 @@ const agreements = ref([])
 const loading    = ref(true)
 const dialogVisible = ref(false)
 const saving     = ref(false)
+const downloadingId = ref(null)
 const formError  = ref('')
 const settings   = ref({ default_installment_plan: 'A' })
 
@@ -389,7 +396,7 @@ const form = reactive(emptyForm())
 async function loadQuotations() {
   loading.value = true
   try {
-    const q = query(opsCollection('quotations'), orderBy('created_at', 'desc'))
+    const q = query(opsCollection('quotations'), orderBy('created_at', 'desc'), limit(500))
     const snap = await getDocs(q)
     quotations.value = snap.docs.map(d => ({ id: d.id, ...d.data() }))
   } catch (e) {
@@ -474,6 +481,7 @@ async function saveAndDownload() {
       price_b:        form.show_b ? form.price_b : null,
       quotation_number: qNum,
       created_at:     serverTimestamp(),
+      created_by:     auth.currentUser?.email || 'unknown',
     }
 
     await addDoc(opsCollection('quotations'), payload)
@@ -494,8 +502,15 @@ async function saveAndDownload() {
 }
 
 async function download(q) {
-  await generateQuotationPDF(q)
-
+  downloadingId.value = q.id
+  try {
+    await generateQuotationPDF(q)
+  } catch (e) {
+    console.error(e)
+    toast.add({ severity: 'error', summary: 'Download failed', detail: e.message || 'Could not generate PDF', life: 4000 })
+  } finally {
+    downloadingId.value = null
+  }
 }
 
 // ── Convert to Agreement ──────────────────────────────────────────────────────
@@ -541,6 +556,7 @@ async function saveAddSchoolAndContinue() {
       statuses:       ['Converted'],
       notes:          [],
       created_at:     serverTimestamp(),
+      created_by:     auth.currentUser?.email || 'unknown',
     }
     const ref = await addDoc(opsCollection('schools'), payload)
     await loadAllSchools()
@@ -609,6 +625,7 @@ async function saveConvertedAgreement() {
       agreement_number:      aNum,
       status:                'Sent',
       created_at:            serverTimestamp(),
+      created_by:            auth.currentUser?.email || 'unknown',
     }
 
     const agreementRef = await addDoc(opsCollection('agreements'), payload)
@@ -617,6 +634,8 @@ async function saveConvertedAgreement() {
     await updateDoc(opsDoc('quotations', pendingQuotation.value.id), {
       converted_to_agreement_id: agreementRef.id,
       converted: true,
+      updated_at: serverTimestamp(),
+      updated_by: auth.currentUser?.email || 'unknown',
     })
 
     toast.add({ severity: 'success', summary: 'Converted', detail: `Agreement ${aNum} created`, life: 3000 })

@@ -327,10 +327,11 @@
 
 <script setup>
 import { ref, reactive, computed, watch, onMounted } from 'vue'
+import { auth } from '../firebase/config'
 import { opsCollection, opsDoc } from '../firebase/collections.js'
 import {
   getDocs, addDoc, updateDoc, deleteDoc,
-  orderBy, query, serverTimestamp, Timestamp,
+  orderBy, query, serverTimestamp, Timestamp, limit,
 } from 'firebase/firestore'
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
@@ -602,7 +603,7 @@ const smartPrompts = computed(() => {
 async function loadExpenses() {
   loading.value = true
   try {
-    const q = query(opsCollection('expenses'), orderBy('created_at', 'desc'))
+    const q = query(opsCollection('expenses'), orderBy('created_at', 'desc'), limit(500))
     const snap = await getDocs(q)
     expenses.value = snap.docs.map(d => ({ id: d.id, ...d.data() }))
   } catch (e) {
@@ -615,7 +616,7 @@ async function loadExpenses() {
 async function loadInvoices() {
   try {
     const snap = await getDocs(opsCollection('invoices'))
-    invoices.value = snap.docs.map(d => d.data())
+    invoices.value = snap.docs.map(d => d.data()).filter(i => !i.deleted)
   } catch (e) {
     console.error('Could not load invoices', e)
   }
@@ -648,7 +649,11 @@ async function addCustomCategory() {
   if (!name) return
   const emoji = newCategoryEmoji.value || '🗂️'
   try {
-    await addDoc(opsCollection('expense_categories'), { name, emoji, created_at: serverTimestamp() })
+    await addDoc(opsCollection('expense_categories'), {
+      name, emoji,
+      created_at: serverTimestamp(),
+      created_by: auth.currentUser?.email || 'unknown',
+    })
     customCategories.value.push({ name, emoji })
     form.category = name
     form.category_emoji = emoji
@@ -713,10 +718,18 @@ async function saveExpense() {
     }
 
     if (editingId.value) {
-      await updateDoc(opsDoc('expenses', editingId.value), payload)
+      await updateDoc(opsDoc('expenses', editingId.value), {
+        ...payload,
+        updated_at: serverTimestamp(),
+        updated_by: auth.currentUser?.email || 'unknown',
+      })
       toast.add({ severity: 'success', summary: 'Updated', detail: `${payload.name} updated`, life: 2500 })
     } else {
-      await addDoc(opsCollection('expenses'), { ...payload, created_at: serverTimestamp() })
+      await addDoc(opsCollection('expenses'), {
+        ...payload,
+        created_at: serverTimestamp(),
+        created_by: auth.currentUser?.email || 'unknown',
+      })
       toast.add({ severity: 'success', summary: 'Saved!', detail: `${payload.name} added`, life: 2500 })
     }
 

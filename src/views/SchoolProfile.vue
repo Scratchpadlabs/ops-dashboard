@@ -456,9 +456,9 @@
 <script setup>
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { db, storage } from '../firebase/config'
+import { db, storage, auth } from '../firebase/config'
 import { opsCollection, opsDoc } from '../firebase/collections.js'
-import { getDoc, getDocs, setDoc, updateDoc, doc, serverTimestamp } from 'firebase/firestore'
+import { getDoc, getDocs, setDoc, updateDoc, doc, serverTimestamp, query, limit } from 'firebase/firestore'
 import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage'
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
@@ -545,7 +545,11 @@ async function loadModuleSettings() {
 
 async function saveSchoolField(field, value) {
   try {
-    await updateDoc(opsDoc('schools', school.value.id), { [field]: value })
+    await updateDoc(opsDoc('schools', school.value.id), {
+      [field]: value,
+      updated_at: serverTimestamp(),
+      updated_by: auth.currentUser?.email || 'unknown',
+    })
   } catch (e) {
     toast.add({ severity: 'error', summary: 'Error', detail: 'Could not save', life: 3000 })
   }
@@ -758,7 +762,7 @@ const overallProgress = computed(() => {
 // ── Quotations / Agreements / Invoices ──────────────────────────────────────────
 async function loadQuotations() {
   try {
-    const snap = await getDocs(opsCollection('quotations'))
+    const snap = await getDocs(query(opsCollection('quotations'), limit(500)))
     quotations.value = snap.docs.map(d => ({ id: d.id, ...d.data() }))
   } catch (e) {
     console.error('Could not load quotations', e)
@@ -766,7 +770,7 @@ async function loadQuotations() {
 }
 async function loadAgreements() {
   try {
-    const snap = await getDocs(opsCollection('agreements'))
+    const snap = await getDocs(query(opsCollection('agreements'), limit(500)))
     agreements.value = snap.docs.map(d => ({ id: d.id, ...d.data() }))
   } catch (e) {
     console.error('Could not load agreements', e)
@@ -774,8 +778,8 @@ async function loadAgreements() {
 }
 async function loadInvoices() {
   try {
-    const snap = await getDocs(opsCollection('invoices'))
-    invoices.value = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+    const snap = await getDocs(query(opsCollection('invoices'), limit(500)))
+    invoices.value = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(i => !i.deleted)
   } catch (e) {
     console.error('Could not load invoices', e)
   }
@@ -851,7 +855,12 @@ async function onAgreementFileSelected(e) {
     await uploadBytes(sRef, file)
     const url = await getDownloadURL(sRef)
 
-    await updateDoc(opsDoc('agreements', a.id), { status: 'Signed', signed_pdf_url: url })
+    await updateDoc(opsDoc('agreements', a.id), {
+      status: 'Signed',
+      signed_pdf_url: url,
+      updated_at: serverTimestamp(),
+      updated_by: auth.currentUser?.email || 'unknown',
+    })
     toast.add({ severity: 'success', summary: 'Signed', detail: `Signed agreement saved for ${a.school_name}`, life: 3000 })
     await loadAgreements()
   } catch (err) {
@@ -881,7 +890,12 @@ function markInvoicePaid(invoice) {
     acceptLabel: 'Mark Paid',
     accept: async () => {
       try {
-        await updateDoc(opsDoc('invoices', invoice.id), { status: 'paid', paid_on: serverTimestamp() })
+        await updateDoc(opsDoc('invoices', invoice.id), {
+          status: 'paid',
+          paid_on: serverTimestamp(),
+          updated_at: serverTimestamp(),
+          updated_by: auth.currentUser?.email || 'unknown',
+        })
         const amount = formatRupee(invoice.price_per_student * invoice.quantity)
         toast.add({ severity: 'success', summary: 'Paid!', detail: `${amount} received from ${invoice.school_name}`, life: 3000 })
         celebrate(`${amount} received from ${invoice.school_name}!`, '💰')
@@ -936,6 +950,8 @@ async function saveSchoolDetails() {
       contact_phone: form.contact_phone.trim(), contact_email: form.contact_email.trim(),
       modules: form.modules, rm: form.rm || null,
     }
+    payload.updated_at = serverTimestamp()
+    payload.updated_by = auth.currentUser?.email || 'unknown'
     await updateDoc(opsDoc('schools', school.value.id), payload)
     school.value = { ...school.value, ...payload }
     toast.add({ severity: 'success', summary: 'Saved', detail: 'School updated', life: 2500 })

@@ -177,9 +177,9 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { db } from '../firebase/config'
+import { db, auth } from '../firebase/config'
 import { opsCollection, opsDoc } from '../firebase/collections.js'
-import { getDocs, getDoc, addDoc, updateDoc, deleteDoc, doc, orderBy, query, serverTimestamp } from 'firebase/firestore'
+import { getDocs, getDoc, addDoc, updateDoc, deleteDoc, doc, orderBy, query, serverTimestamp, limit } from 'firebase/firestore'
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
 import { useCelebration } from '../composables/useCelebration'
@@ -243,7 +243,7 @@ function rmStyle(rm) {
 async function loadSchools() {
   loading.value = true
   try {
-    const q    = query(opsCollection('schools'), orderBy('created_at', 'desc'))
+    const q    = query(opsCollection('schools'), orderBy('created_at', 'desc'), limit(500))
     const snap = await getDocs(q)
     schools.value = snap.docs.map(d => ({ id: d.id, ...d.data() }))
   } catch (e) {
@@ -319,10 +319,13 @@ async function saveSchool() {
       modules: form.modules, rm: form.rm || null,
     }
     if (editingSchool.value) {
+      payload.updated_at = serverTimestamp()
+      payload.updated_by = auth.currentUser?.email || 'unknown'
       await updateDoc(opsDoc('schools', editingSchool.value.id), payload)
       toast.add({ severity: 'success', summary: 'Saved', detail: 'School updated', life: 2500 })
     } else {
       payload.created_at = serverTimestamp()
+      payload.created_by = auth.currentUser?.email || 'unknown'
       payload.statuses   = ['Lead']
       payload.notes      = []
       await addDoc(opsCollection('schools'), payload)
@@ -338,9 +341,34 @@ async function saveSchool() {
   }
 }
 
-function confirmDelete(school) {
+async function confirmDelete(school) {
+  let quotationsCount = 0, agreementsCount = 0, invoicesCount = 0
+  try {
+    const belongs = (data) => {
+      if (data.school_id && data.school_id === school.id) return true
+      return (data.school_name || '').trim().toLowerCase() === (school.name || '').trim().toLowerCase()
+    }
+    const [qSnap, aSnap, iSnap] = await Promise.all([
+      getDocs(opsCollection('quotations')),
+      getDocs(opsCollection('agreements')),
+      getDocs(opsCollection('invoices')),
+    ])
+    quotationsCount = qSnap.docs.filter(d => belongs(d.data())).length
+    agreementsCount = aSnap.docs.filter(d => belongs(d.data())).length
+    invoicesCount   = iSnap.docs.filter(d => !d.data().deleted && belongs(d.data())).length
+  } catch (e) {
+    console.error('Could not check linked records', e)
+  }
+
+  const totalLinked = quotationsCount + agreementsCount + invoicesCount
+  const message = totalLinked === 0
+    ? `Remove ${school.name}? This cannot be undone.`
+    : `Remove ${school.name}? This school has ${quotationsCount} quotation${quotationsCount !== 1 ? 's' : ''}, `
+      + `${agreementsCount} agreement${agreementsCount !== 1 ? 's' : ''}, and ${invoicesCount} invoice${invoicesCount !== 1 ? 's' : ''} `
+      + `linked to it. Those documents will NOT be deleted but will lose their school link.`
+
   confirm.require({
-    message: `Remove ${school.name}?`,
+    message,
     header: 'Remove School',
     icon: 'pi pi-exclamation-triangle',
     rejectLabel: 'Cancel', acceptLabel: 'Remove', acceptClass: 'p-button-danger',

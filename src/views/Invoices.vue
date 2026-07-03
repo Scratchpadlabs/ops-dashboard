@@ -5,7 +5,7 @@
     <div class="flex items-center justify-between mb-6">
       <div>
         <h2 class="text-lg font-semibold text-slate-900">Invoices</h2>
-        <p class="text-sm text-slate-500 mt-0.5">{{ invoices.length }} total</p>
+        <p class="text-sm text-slate-500 mt-0.5">{{ activeInvoices.length }} total</p>
       </div>
       <Button label="New Invoice" icon="pi pi-plus" @click="openNewInvoice" />
     </div>
@@ -136,8 +136,9 @@
               <template #body="{ data }">
                 <div class="flex gap-1">
                   <Button
-                    icon="pi pi-download"
+                    :icon="downloadingId === data.id ? 'pi pi-spin pi-spinner' : 'pi pi-download'"
                     text rounded size="small"
+                    :disabled="downloadingId === data.id"
                     v-tooltip="'Download PDF'"
                     @click="downloadInvoice(data)"
                   />
@@ -163,6 +164,41 @@
           </DataTable>
         </div>
       </div>
+    </div>
+
+    <!-- Recently Deleted -->
+    <div v-if="deletedInvoices.length" class="mt-6 bg-white rounded-xl border border-slate-200 overflow-hidden">
+      <div class="px-4 py-3 border-b border-slate-100">
+        <h3 class="text-sm font-semibold text-slate-900">Recently Deleted</h3>
+        <p class="text-xs text-slate-400 mt-0.5">Deleted in the last 30 days · restore to bring an invoice back</p>
+      </div>
+      <DataTable :value="deletedInvoices" size="small" stripedRows>
+        <Column field="invoice_number" header="Invoice #" style="width: 130px">
+          <template #body="{ data }">
+            <span class="font-mono text-xs text-slate-500">{{ data.invoice_number }}</span>
+          </template>
+        </Column>
+        <Column field="school_name" header="School">
+          <template #body="{ data }">
+            <span class="text-sm text-slate-600">{{ data.school_name }}</span>
+          </template>
+        </Column>
+        <Column header="Amount">
+          <template #body="{ data }">
+            <span class="text-sm text-slate-500">{{ formatRupee(data.price_per_student * data.quantity) }}</span>
+          </template>
+        </Column>
+        <Column header="Deleted">
+          <template #body="{ data }">
+            <span class="text-xs text-slate-400">{{ formatDate(data.deleted_at) }}</span>
+          </template>
+        </Column>
+        <Column header="" style="width: 100px">
+          <template #body="{ data }">
+            <Button label="Restore" icon="pi pi-refresh" text size="small" @click="restoreInvoice(data)" />
+          </template>
+        </Column>
+      </DataTable>
     </div>
 
     <!-- New Invoice Dialog -->
@@ -279,11 +315,11 @@
 <script setup>
 import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
-import { db } from '../firebase/config'
+import { db, auth } from '../firebase/config'
 import { opsCollection, opsDoc } from '../firebase/collections.js'
 import {
-  getDocs, getDoc, addDoc, updateDoc, deleteDoc,
-  doc, orderBy, query, serverTimestamp, Timestamp
+  getDocs, getDoc, addDoc, updateDoc,
+  doc, orderBy, query, serverTimestamp, Timestamp, limit
 } from 'firebase/firestore'
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
@@ -316,6 +352,7 @@ const agreements = ref([])
 const allSchools = ref([])
 const settings   = ref({ invoice_due_days: 45 })
 const expandedSchools = ref(new Set())
+const downloadingId = ref(null)
 
 const descPresets = ['Digital HPC', 'Printed HPC']
 const installmentTypes = ['Onboarding', 'Installment 2', 'After Delivery', 'Ad-hoc']
@@ -336,9 +373,21 @@ const form = reactive(emptyForm())
 
 // ── Computed ──────────────────────────────────────────────────────────────────
 
-const unpaidInvoices  = computed(() => invoices.value.filter(i => i.status !== 'paid'))
-const paidInvoices    = computed(() => invoices.value.filter(i => i.status === 'paid'))
-const overdueInvoices = computed(() => invoices.value.filter(i => i.status !== 'paid' && isOverdue(i)))
+// Soft-deleted invoices are hidden from every list/stat below, but still live in Firestore.
+const activeInvoices = computed(() => invoices.value.filter(i => !i.deleted))
+
+const deletedInvoices = computed(() => {
+  const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000
+  return invoices.value.filter(i => {
+    if (!i.deleted) return false
+    const ts = i.deleted_at?.toDate ? i.deleted_at.toDate() : (i.deleted_at ? new Date(i.deleted_at) : null)
+    return ts ? ts.getTime() >= cutoff : true
+  })
+})
+
+const unpaidInvoices  = computed(() => activeInvoices.value.filter(i => i.status !== 'paid'))
+const paidInvoices    = computed(() => activeInvoices.value.filter(i => i.status === 'paid'))
+const overdueInvoices = computed(() => activeInvoices.value.filter(i => i.status !== 'paid' && isOverdue(i)))
 
 const totalReceivable = computed(() =>
   unpaidInvoices.value.reduce((s, i) => s + i.price_per_student * i.quantity, 0)
@@ -351,7 +400,7 @@ const totalCollected = computed(() =>
 )
 
 const tabs = computed(() => [
-  { key: 'all',     label: 'All',     count: invoices.value.length },
+  { key: 'all',     label: 'All',     count: activeInvoices.value.length },
   { key: 'unpaid',  label: 'Unpaid',  count: unpaidInvoices.value.length },
   { key: 'overdue', label: 'Overdue', count: overdueInvoices.value.length },
   { key: 'paid',    label: 'Paid',    count: paidInvoices.value.length },
@@ -361,7 +410,7 @@ const tabs = computed(() => [
 
 const schoolGroups = computed(() => {
   const map = new Map()
-  invoices.value.forEach(inv => {
+  activeInvoices.value.forEach(inv => {
     const key = inv.school_name || 'Unknown School'
     if (!map.has(key)) map.set(key, [])
     map.get(key).push(inv)
@@ -422,7 +471,7 @@ function groupBadgeClass(g) {
 async function loadInvoices() {
   loading.value = true
   try {
-    const q = query(opsCollection('invoices'), orderBy('created_at', 'desc'))
+    const q = query(opsCollection('invoices'), orderBy('created_at', 'desc'), limit(500))
     const snap = await getDocs(q)
     invoices.value = snap.docs.map(d => ({ id: d.id, ...d.data() }))
   } catch (e) {
@@ -517,10 +566,38 @@ function validate() {
   return ''
 }
 
+// Checks for an existing active invoice for the same school + payment stage.
+// "Ad-hoc" invoices are expected to repeat, so they're excluded from the check.
+function findDuplicateInvoice() {
+  if (form.installment_type === 'Ad-hoc') return null
+  const name = form.school_name.trim().toLowerCase()
+  return activeInvoices.value.find(i => {
+    const sameSchool = form.school_id ? i.school_id === form.school_id : (i.school_name || '').trim().toLowerCase() === name
+    return sameSchool && i.installment_type === form.installment_type
+  })
+}
+
 async function saveInvoice() {
   formError.value = validate()
   if (formError.value) return
 
+  const duplicate = findDuplicateInvoice()
+  if (duplicate) {
+    confirm.require({
+      message: `An invoice for this installment already exists (${duplicate.invoice_number}). Create another one?`,
+      header: 'Possible Duplicate Invoice',
+      icon: 'pi pi-exclamation-triangle',
+      rejectLabel: 'Cancel',
+      acceptLabel: 'Create Anyway',
+      accept: () => createInvoiceRecord(),
+    })
+    return
+  }
+
+  await createInvoiceRecord()
+}
+
+async function createInvoiceRecord() {
   saving.value = true
   try {
     const now = new Date()
@@ -540,6 +617,7 @@ async function saveInvoice() {
       status:            'unpaid',
       due_date:          Timestamp.fromDate(dueDate),
       created_at:        serverTimestamp(),
+      created_by:        auth.currentUser?.email || 'unknown',
     })
 
     toast.add({ severity: 'success', summary: 'Created', detail: `Invoice ${form.invoice_number} created`, life: 2500 })
@@ -567,6 +645,8 @@ async function markPaid(invoice) {
         await updateDoc(opsDoc('invoices', invoice.id), {
           status: 'paid',
           paid_on: serverTimestamp(),
+          updated_at: serverTimestamp(),
+          updated_by: auth.currentUser?.email || 'unknown',
         })
         const amount = formatRupee(invoice.price_per_student * invoice.quantity)
         toast.add({ severity: 'success', summary: 'Paid!', detail: `${amount} received from ${invoice.school_name}`, life: 3000 })
@@ -583,7 +663,7 @@ async function markPaid(invoice) {
 
 function confirmDelete(invoice) {
   confirm.require({
-    message: `Delete invoice ${invoice.invoice_number}?`,
+    message: `Delete invoice ${invoice.invoice_number}? It will move to Recently Deleted for 30 days before it's just hidden for good.`,
     header: 'Delete Invoice',
     icon: 'pi pi-exclamation-triangle',
     rejectLabel: 'Cancel',
@@ -591,7 +671,12 @@ function confirmDelete(invoice) {
     acceptClass: 'p-button-danger',
     accept: async () => {
       try {
-        await deleteDoc(opsDoc('invoices', invoice.id))
+        await updateDoc(opsDoc('invoices', invoice.id), {
+          deleted: true,
+          deleted_at: serverTimestamp(),
+          updated_at: serverTimestamp(),
+          updated_by: auth.currentUser?.email || 'unknown',
+        })
         toast.add({ severity: 'info', summary: 'Deleted', life: 2000 })
         await loadInvoices()
       } catch (e) {
@@ -601,14 +686,32 @@ function confirmDelete(invoice) {
   })
 }
 
+async function restoreInvoice(invoice) {
+  try {
+    await updateDoc(opsDoc('invoices', invoice.id), {
+      deleted: false,
+      deleted_at: null,
+      updated_at: serverTimestamp(),
+      updated_by: auth.currentUser?.email || 'unknown',
+    })
+    toast.add({ severity: 'success', summary: 'Restored', detail: `Invoice ${invoice.invoice_number} restored`, life: 2500 })
+    await loadInvoices()
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'Could not restore invoice', life: 3000 })
+  }
+}
+
 // ── Download PDF ──────────────────────────────────────────────────────────────
 
 async function downloadInvoice(invoice) {
+  downloadingId.value = invoice.id
   try {
     await generateInvoicePDF(invoice)
   } catch (e) {
     console.error(e)
     toast.add({ severity: 'error', summary: 'Download failed', detail: e.message || 'Could not generate PDF', life: 4000 })
+  } finally {
+    downloadingId.value = null
   }
 }
 

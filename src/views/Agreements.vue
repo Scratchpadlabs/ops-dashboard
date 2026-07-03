@@ -79,7 +79,13 @@
         <Column header="" style="width:130px">
           <template #body="{ data }">
             <div class="flex gap-1">
-              <Button icon="pi pi-download" text rounded size="small" v-tooltip="'Download PDF'" @click="download(data)" />
+              <Button
+                :icon="downloadingId === data.id ? 'pi pi-spin pi-spinner' : 'pi pi-download'"
+                text rounded size="small"
+                :disabled="downloadingId === data.id"
+                v-tooltip="'Download PDF'"
+                @click="download(data)"
+              />
               <Button
                 v-if="data.signed_pdf_url"
                 icon="pi pi-file-check"
@@ -226,11 +232,11 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
-import { db, storage } from '../firebase/config'
+import { db, storage, auth } from '../firebase/config'
 import { opsCollection, opsDoc } from '../firebase/collections.js'
 import {
   getDocs, getDoc, addDoc, updateDoc, deleteDoc,
-  doc, orderBy, query, serverTimestamp
+  doc, orderBy, query, serverTimestamp, limit
 } from 'firebase/firestore'
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage'
 import { useConfirm } from 'primevue/useconfirm'
@@ -262,6 +268,7 @@ const formError  = ref('')
 const fileInputEl  = ref(null)
 const uploadTarget = ref(null)
 const uploadingId  = ref(null)
+const downloadingId = ref(null)
 const settings     = ref({ default_installment_plan: 'A' })
 
 const hpcTypes = [
@@ -302,7 +309,7 @@ async function loadSettings() {
 async function loadAgreements() {
   loading.value = true
   try {
-    const q = query(opsCollection('agreements'), orderBy('created_at', 'desc'))
+    const q = query(opsCollection('agreements'), orderBy('created_at', 'desc'), limit(500))
     const snap = await getDocs(q)
     agreements.value = snap.docs.map(d => ({ id: d.id, ...d.data() }))
   } catch (e) {
@@ -373,6 +380,7 @@ async function saveAndDownload() {
       agreement_number:      aNum,
       status:                'Sent',
       created_at:            serverTimestamp(),
+      created_by:            auth.currentUser?.email || 'unknown',
     }
 
     await addDoc(opsCollection('agreements'), payload)
@@ -392,11 +400,14 @@ async function saveAndDownload() {
 }
 
 async function download(a) {
+  downloadingId.value = a.id
   try {
     await generateAgreementFiles(a)
   } catch (e) {
     console.error(e)
     toast.add({ severity: 'error', summary: 'Download failed', detail: e.message || 'Could not generate files', life: 4000 })
+  } finally {
+    downloadingId.value = null
   }
 }
 
@@ -422,7 +433,12 @@ async function onFileSelected(e) {
     await uploadBytes(sRef, file)
     const url = await getDownloadURL(sRef)
 
-    await updateDoc(opsDoc('agreements', a.id), { status: 'Signed', signed_pdf_url: url })
+    await updateDoc(opsDoc('agreements', a.id), {
+      status: 'Signed',
+      signed_pdf_url: url,
+      updated_at: serverTimestamp(),
+      updated_by: auth.currentUser?.email || 'unknown',
+    })
     toast.add({ severity: 'success', summary: 'Signed', detail: `Signed agreement saved for ${a.school_name}`, life: 3000 })
     await loadAgreements()
   } catch (err) {

@@ -1,11 +1,9 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-    match /agreements/{agreementId}/{fileName} {
-      allow read, write: if true;
-    }
-    match /schools/{schoolId}/documents/{fileName} {
-      allow read, write: if true;
+    // Only authenticated users can read/write
+    match /{allPaths=**} {
+      allow read, write: if request.auth != null;
     }
   }
 }
