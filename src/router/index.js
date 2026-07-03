@@ -3,6 +3,7 @@ import { getAuth } from 'firebase/auth'
 
 import Dashboard from '../views/Dashboard.vue'
 import Schools from '../views/Schools.vue'
+import SchoolProfile from '../views/SchoolProfile.vue'
 import Quotations from '../views/Quotations.vue'
 import Agreements from '../views/Agreements.vue'
 import Invoices from '../views/Invoices.vue'
@@ -14,6 +15,7 @@ const routes = [
   { path: '/login',      component: Login,      name: 'login', meta: { public: true } },
   { path: '/',            component: Dashboard,   name: 'dashboard' },
   { path: '/schools',     component: Schools,     name: 'schools' },
+  { path: '/schools/:id', component: SchoolProfile, name: 'school-profile' },
   { path: '/quotations',  component: Quotations,  name: 'quotations' },
   { path: '/agreements',  component: Agreements,  name: 'agreements' },
   { path: '/invoices',    component: Invoices,    name: 'invoices' },

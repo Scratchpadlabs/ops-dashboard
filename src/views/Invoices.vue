@@ -278,6 +278,7 @@
 
 <script setup>
 import { ref, reactive, computed, watch, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { db } from '../firebase/config'
 import { opsCollection, opsDoc } from '../firebase/collections.js'
 import {
@@ -300,6 +301,7 @@ import ProgressSpinner from 'primevue/progressspinner'
 import ConfirmDialog from 'primevue/confirmdialog'
 import SchoolSearchSelect from '../components/shared/SchoolSearchSelect.vue'
 
+const route = useRoute()
 const confirm = useConfirm()
 const toast = useToast()
 const { celebrate } = useCelebration()
@@ -632,6 +634,16 @@ function formatRupee(amount) {
 
 onMounted(async () => {
   await Promise.all([loadInvoices(), loadLookupData(), loadSettings()])
+
+  // Pre-fill from "New Invoice" launched off a school's profile page
+  if (route.query.school_name) {
+    await openNewInvoice()
+    form.school_id      = route.query.school_id || null
+    form.school_name     = route.query.school_name
+    form.school_address  = route.query.school_address || ''
+    form.school_phone    = route.query.school_phone || ''
+    form.quantity        = route.query.student_count ? Number(route.query.student_count) : null
+  }
 })
 </script>
 

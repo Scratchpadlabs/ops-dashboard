@@ -225,6 +225,7 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { db, storage } from '../firebase/config'
 import { opsCollection, opsDoc } from '../firebase/collections.js'
 import {
@@ -248,6 +249,7 @@ import ProgressSpinner from 'primevue/progressspinner'
 import ConfirmDialog from 'primevue/confirmdialog'
 import SchoolSearchSelect from '../components/shared/SchoolSearchSelect.vue'
 
+const route = useRoute()
 const confirm = useConfirm()
 const toast = useToast()
 const { allSchools, loadAllSchools } = useAllSchools()
@@ -460,6 +462,15 @@ function formatDate(ts) {
 
 onMounted(async () => {
   await Promise.all([loadAgreements(), loadAllSchools(), loadSettings()])
+
+  // Pre-fill from "New Agreement" launched off a school's profile page
+  if (route.query.school_name) {
+    openNew()
+    form.school_id      = route.query.school_id || null
+    form.school_name     = route.query.school_name
+    form.school_address  = route.query.school_address || ''
+    form.student_count   = route.query.student_count ? Number(route.query.student_count) : null
+  }
 })
 </script>
 

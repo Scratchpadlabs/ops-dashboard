@@ -104,6 +104,46 @@
       </div>
     </div>
 
+    <!-- ── DELIVERY PIPELINE ────────────────────────────────────────────── -->
+    <div v-if="pipelineRows.length" class="mt-5 bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+      <div class="px-5 py-4 border-b border-slate-100">
+        <h3 class="font-bold text-slate-900 text-sm">Delivery Pipeline 🚀</h3>
+        <p class="text-xs text-slate-400 mt-0.5">Operations progress across active schools</p>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="text-left text-xs text-slate-400 uppercase tracking-wide border-b border-slate-100">
+              <th class="px-5 py-2.5 font-semibold">School</th>
+              <th class="px-3 py-2.5 font-semibold">Onboarding</th>
+              <th class="px-3 py-2.5 font-semibold">Terms</th>
+              <th class="px-3 py-2.5 font-semibold">Final</th>
+              <th class="px-5 py-2.5 font-semibold text-right">Overall</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="row in pipelineRows"
+              :key="row.schoolId"
+              class="border-b border-slate-50 last:border-0 hover:bg-slate-50 cursor-pointer transition-colors"
+              @click="router.push(`/schools/${row.schoolId}`)"
+            >
+              <td class="px-5 py-3 font-medium text-slate-800">{{ row.schoolName }}</td>
+              <td class="px-3 py-3 text-slate-500">{{ row.onboarding.done }}/{{ row.onboarding.total }}</td>
+              <td class="px-3 py-3 text-slate-500">{{ row.terms.done }}/{{ row.terms.total }}</td>
+              <td class="px-3 py-3 text-slate-500">{{ row.final.done }}/{{ row.final.total }}</td>
+              <td class="px-5 py-3 text-right">
+                <span
+                  class="px-2 py-0.5 rounded-full text-xs font-bold"
+                  :style="{ background: pipelineColor(row.overall).bg, color: pipelineColor(row.overall).text }"
+                >{{ row.overall }}%</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
     <!-- ── INSPIRATION BAND ────────────────────────────────────────────── -->
     <div
       class="mt-5 rounded-2xl overflow-hidden relative"
@@ -172,6 +212,7 @@
 
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, defineComponent, h } from 'vue'
+import { useRouter } from 'vue-router'
 import { opsCollection, opsDoc } from '../firebase/collections.js'
 import { getDocs, addDoc, deleteDoc, orderBy, query, serverTimestamp } from 'firebase/firestore'
 import { useConfirm } from 'primevue/useconfirm'
@@ -203,6 +244,7 @@ const AnimatedNumber = defineComponent({
   }
 })
 
+const router   = useRouter()
 const confirm  = useConfirm()
 const toast    = useToast()
 
@@ -214,6 +256,7 @@ const links        = ref([])
 const schools   = ref([])
 const invoices  = ref([])
 const agreements = ref([])
+const operationsData = ref([])
 
 // ── Stats ──────────────────────────────────────────────────────────────────
 const paidInvoices   = computed(() => invoices.value.filter(i => i.status === 'paid'))
@@ -320,6 +363,44 @@ async function loadAll() {
   } finally {
     loading.value = false
   }
+}
+
+async function loadOperationsData() {
+  try {
+    const snap = await getDocs(opsCollection('school_operations'))
+    operationsData.value = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+  } catch (e) {
+    console.error('Could not load operations data', e)
+  }
+}
+
+function opsProgress(items) {
+  const total = items.length
+  const done = items.filter(i => i.done).length
+  return { done, total }
+}
+
+const pipelineRows = computed(() => {
+  return operationsData.value
+    .map(op => {
+      const school = schools.value.find(s => s.id === op.school_id)
+      if (!school) return null
+      const onboarding = opsProgress(op.onboarding || [])
+      const terms = opsProgress((op.terms || []).flatMap(t => t.items || []))
+      const final = opsProgress(op.final_term || [])
+      const totalDone = onboarding.done + terms.done + final.done
+      const totalAll  = onboarding.total + terms.total + final.total
+      const overall = totalAll ? Math.round(totalDone / totalAll * 100) : 0
+      return { schoolId: school.id, schoolName: school.name, onboarding, terms, final, overall }
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.overall - b.overall)
+})
+
+function pipelineColor(pct) {
+  if (pct >= 80) return { bg: '#f0fdf4', text: '#16a34a' }
+  if (pct >= 50) return { bg: '#fffbeb', text: '#d97706' }
+  return { bg: '#fef2f2', text: '#dc2626' }
 }
 
 async function loadLinks() {
@@ -469,7 +550,7 @@ function timeAgo(date) {
 }
 
 onMounted(() => {
-  Promise.all([loadAll(), loadLinks()])
+  Promise.all([loadAll(), loadLinks(), loadOperationsData()])
   quoteTimer = setInterval(() => {
     quoteIndex.value = (quoteIndex.value + 1) % quotes.length
   }, 8000)
