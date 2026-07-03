@@ -1,0 +1,98 @@
+<template>
+  <div class="min-h-screen flex items-center justify-center" style="background: #0f172a">
+    <div class="w-full max-w-sm">
+      <div class="flex flex-col items-center mb-8">
+        <img src="/logo.png" class="w-40 object-contain mb-6" />
+        <h1 class="text-white text-lg font-semibold">Ops Dashboard</h1>
+        <p class="text-slate-400 text-sm mt-1">Sign in to continue</p>
+      </div>
+
+      <div class="bg-white rounded-2xl p-6 shadow-xl">
+        <form class="space-y-4" @submit.prevent="handleLogin">
+          <div>
+            <label class="form-label">Email</label>
+            <InputText
+              v-model="email"
+              type="email"
+              class="w-full"
+              placeholder="you@ops.clarified.in"
+              autocomplete="username"
+            />
+          </div>
+          <div>
+            <label class="form-label">Password</label>
+            <Password
+              v-model="password"
+              class="w-full"
+              inputClass="w-full"
+              :feedback="false"
+              toggleMask
+              placeholder="Password"
+              autocomplete="current-password"
+            />
+          </div>
+
+          <div v-if="errorMessage" class="text-sm text-red-500 bg-red-50 rounded-lg px-3 py-2">
+            {{ errorMessage }}
+          </div>
+
+          <Button
+            type="submit"
+            label="Sign In"
+            class="w-full justify-center"
+            :loading="signingIn"
+          />
+        </form>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
+import { signInWithEmailAndPassword } from 'firebase/auth'
+import { auth } from '../firebase/config'
+
+import InputText from 'primevue/inputtext'
+import Password from 'primevue/password'
+import Button from 'primevue/button'
+
+const router = useRouter()
+const route = useRoute()
+
+const email = ref('')
+const password = ref('')
+const signingIn = ref(false)
+const errorMessage = ref('')
+
+async function handleLogin() {
+  errorMessage.value = ''
+  if (!email.value.trim() || !password.value) {
+    errorMessage.value = 'Enter your email and password'
+    return
+  }
+
+  signingIn.value = true
+  try {
+    await signInWithEmailAndPassword(auth, email.value.trim(), password.value)
+    router.push(route.query.redirect || '/')
+  } catch (e) {
+    errorMessage.value = 'Incorrect email or password'
+  } finally {
+    signingIn.value = false
+  }
+}
+</script>
+
+<style scoped>
+.form-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  color: #64748b;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+</style>

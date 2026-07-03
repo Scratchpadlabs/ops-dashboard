@@ -63,9 +63,20 @@
           </template>
         </Column>
 
-        <Column header="" style="width:80px">
+        <Column header="" style="width:190px">
           <template #body="{ data }">
-            <div class="flex gap-1">
+            <div class="flex items-center justify-end gap-1">
+              <span
+                v-if="data.converted_to_agreement_id"
+                class="px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700"
+              >Converted</span>
+              <Button
+                v-else
+                label="Convert"
+                icon="pi pi-arrow-right-arrow-left"
+                text size="small"
+                @click="startConvert(data)"
+              />
               <Button icon="pi pi-download" text rounded size="small" v-tooltip="'Download PDF'" @click="download(data)" />
               <Button icon="pi pi-trash" text rounded size="small" severity="danger" @click="confirmDelete(data)" />
             </div>
@@ -74,6 +85,135 @@
 
       </DataTable>
     </div>
+
+    <!-- Step 1: Add School First (if quotation's school doesn't exist yet) -->
+    <Dialog v-model:visible="addSchoolDialogVisible" header="Add School First" modal :style="{ width: '480px' }">
+      <div class="space-y-4 pt-2">
+        <p class="text-sm text-slate-500">
+          This quotation isn't linked to a school record yet. Add one before creating the agreement.
+        </p>
+        <div>
+          <label class="form-label">School Name *</label>
+          <InputText v-model="addSchoolForm.name" class="w-full" />
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="form-label">City *</label>
+            <InputText v-model="addSchoolForm.city" class="w-full" />
+          </div>
+          <div>
+            <label class="form-label">Student Count *</label>
+            <InputNumber v-model="addSchoolForm.student_count" class="w-full" :min="1" />
+          </div>
+        </div>
+        <div>
+          <label class="form-label">Address</label>
+          <InputText v-model="addSchoolForm.address" class="w-full" />
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="form-label">Contact Person *</label>
+            <InputText v-model="addSchoolForm.contact_person" class="w-full" />
+          </div>
+          <div>
+            <label class="form-label">Phone</label>
+            <InputText v-model="addSchoolForm.contact_phone" class="w-full" />
+          </div>
+        </div>
+        <div v-if="addSchoolError" class="text-sm text-red-500 bg-red-50 rounded-lg px-3 py-2">{{ addSchoolError }}</div>
+      </div>
+      <template #footer>
+        <Button label="Cancel" text @click="addSchoolDialogVisible = false" />
+        <Button label="Save & Continue" :loading="addSchoolSaving" @click="saveAddSchoolAndContinue" />
+      </template>
+    </Dialog>
+
+    <!-- Step 2: Convert to Agreement -->
+    <Dialog v-model:visible="convertDialogVisible" header="Convert to Agreement" modal :style="{ width: '540px' }">
+      <div class="space-y-4 pt-2">
+
+        <div class="bg-slate-50 rounded-lg px-4 py-3">
+          <div class="text-sm font-semibold text-slate-800">{{ convertForm.school_name }}</div>
+          <div class="text-xs text-slate-400">{{ convertForm.student_count }} students</div>
+        </div>
+
+        <!-- Option picker, only if quotation had both options -->
+        <div v-if="convertOptionChoices.length > 1">
+          <label class="form-label">Which Option Was Chosen? *</label>
+          <div class="grid grid-cols-2 gap-3">
+            <button
+              v-for="opt in convertOptionChoices"
+              :key="opt.value"
+              @click="chooseConvertOption(opt.value)"
+              class="p-3 rounded-xl border text-left transition-all"
+              :class="convertForm.option_choice === opt.value
+                ? 'border-blue-500 bg-blue-50'
+                : 'border-slate-200 hover:border-slate-300'"
+            >
+              <div class="font-semibold text-sm text-slate-900 mb-1">Option {{ opt.value }}</div>
+              <div class="text-xs text-slate-500">{{ opt.label }}</div>
+              <div class="text-xs font-medium text-blue-700 mt-1">₹{{ opt.price }}/student</div>
+            </button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="form-label">Authorised Signatory *</label>
+            <InputText v-model="convertForm.signatory_name" class="w-full" placeholder="Full name" />
+          </div>
+          <div>
+            <label class="form-label">Designation</label>
+            <InputText v-model="convertForm.signatory_designation" class="w-full" placeholder="e.g. Principal" />
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="form-label">Fee per Student (₹) *</label>
+            <InputNumber v-model="convertForm.fee_per_student" class="w-full" :min="1" />
+          </div>
+          <div>
+            <label class="form-label">No. of Students *</label>
+            <InputNumber v-model="convertForm.student_count" class="w-full" :min="1" />
+          </div>
+        </div>
+
+        <div v-if="convertForm.fee_per_student && convertForm.student_count" class="bg-slate-50 rounded-lg px-4 py-3 flex justify-between items-center">
+          <span class="text-sm text-slate-500">Total Contract Value</span>
+          <span class="text-lg font-bold text-slate-900">₹{{ (convertForm.fee_per_student * convertForm.student_count).toLocaleString('en-IN') }}</span>
+        </div>
+
+        <div>
+          <label class="form-label">Installment Plan *</label>
+          <div class="grid grid-cols-2 gap-3">
+            <button
+              @click="convertForm.installment_plan = 'A'"
+              class="p-3 rounded-xl border text-left transition-all"
+              :class="convertForm.installment_plan === 'A' ? 'border-blue-500 bg-blue-50' : 'border-slate-200 hover:border-slate-300'"
+            >
+              <div class="font-semibold text-sm text-slate-900 mb-1">Plan A</div>
+              <div class="text-xs text-slate-500">50% · 25% · 25%</div>
+            </button>
+            <button
+              @click="convertForm.installment_plan = 'B'"
+              class="p-3 rounded-xl border text-left transition-all"
+              :class="convertForm.installment_plan === 'B' ? 'border-blue-500 bg-blue-50' : 'border-slate-200 hover:border-slate-300'"
+            >
+              <div class="font-semibold text-sm text-slate-900 mb-1">Plan B</div>
+              <div class="text-xs text-slate-500">25% · 25% · 25% · 25%</div>
+            </button>
+          </div>
+        </div>
+
+        <div v-if="convertError" class="text-sm text-red-500 bg-red-50 rounded-lg px-3 py-2">{{ convertError }}</div>
+
+      </div>
+      <template #footer>
+        <Button label="Cancel" text @click="convertDialogVisible = false" />
+        <Button label="Save & Download Agreement" icon="pi pi-download" :loading="convertSaving" @click="saveConvertedAgreement" />
+      </template>
+    </Dialog>
 
     <!-- New Quotation Dialog -->
     <Dialog v-model:visible="dialogVisible" header="New Quotation" modal :style="{ width: '520px' }">
@@ -163,23 +303,26 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
+import { db } from '../firebase/config'
 import { opsCollection, opsDoc } from '../firebase/collections.js'
 import {
-  getDocs, addDoc, deleteDoc,
-  orderBy, query, serverTimestamp
+  getDocs, getDoc, addDoc, updateDoc, deleteDoc,
+  doc, orderBy, query, serverTimestamp
 } from 'firebase/firestore'
 import { useRoute } from 'vue-router'
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
 import { useAllSchools } from '../composables/useAllSchools.js'
-import { generateQuotationPDF } from '../utils/api.js'
+import { generateQuotationPDF, generateAgreementFiles } from '../utils/api.js'
 import { generateQuotationNumber, calcPrice } from '../utils/quotationPDF.js'
+import { generateAgreementNumber } from '../utils/agreementPDF.js'
 
 import Button from 'primevue/button'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Dialog from 'primevue/dialog'
+import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
 import ToggleButton from 'primevue/togglebutton'
 import ProgressSpinner from 'primevue/progressspinner'
@@ -192,10 +335,41 @@ const toast = useToast()
 const { allSchools, loadAllSchools } = useAllSchools()
 
 const quotations = ref([])
+const agreements = ref([])
 const loading    = ref(true)
 const dialogVisible = ref(false)
 const saving     = ref(false)
 const formError  = ref('')
+const settings   = ref({ default_installment_plan: 'A' })
+
+// ── Convert-to-Agreement flow ───────────────────────────────────────────────
+const pendingQuotation      = ref(null)
+const addSchoolDialogVisible = ref(false)
+const addSchoolSaving       = ref(false)
+const addSchoolError        = ref('')
+const addSchoolForm = reactive({
+  name: '', city: '', address: '',
+  contact_person: '', contact_phone: '', student_count: null,
+})
+
+const convertDialogVisible = ref(false)
+const convertSaving        = ref(false)
+const convertError         = ref('')
+const convertForm = reactive({
+  school_id: null, school_name: '', school_address: '',
+  student_count: null, signatory_name: '', signatory_designation: '',
+  hpc_type: 'printed and digital', fee_per_student: null,
+  installment_plan: 'A', option_choice: null,
+})
+
+const convertOptionChoices = computed(() => {
+  const q = pendingQuotation.value
+  if (!q) return []
+  const choices = []
+  if (q.show_a !== false && q.price_a) choices.push({ value: 'A', label: 'Printed + Digital HPC', price: q.price_a })
+  if (q.show_b !== false && q.price_b) choices.push({ value: 'B', label: 'Only Digital HPC', price: q.price_b })
+  return choices
+})
 
 const emptyForm = () => ({
   school_id:    null,
@@ -222,6 +396,24 @@ async function loadQuotations() {
     toast.add({ severity: 'error', summary: 'Error', detail: 'Could not load quotations', life: 3000 })
   } finally {
     loading.value = false
+  }
+}
+
+async function loadAgreements() {
+  try {
+    const snap = await getDocs(opsCollection('agreements'))
+    agreements.value = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+  } catch (e) {
+    console.error('Could not load agreements', e)
+  }
+}
+
+async function loadSettings() {
+  try {
+    const snap = await getDoc(doc(db, 'operations', 'settings'))
+    if (snap.exists()) settings.value = { ...settings.value, ...snap.data() }
+  } catch (e) {
+    console.error('Could not load settings', e)
   }
 }
 
@@ -306,6 +498,139 @@ async function download(q) {
 
 }
 
+// ── Convert to Agreement ──────────────────────────────────────────────────────
+function startConvert(q) {
+  pendingQuotation.value = q
+  const school = allSchools.value.find(s => s.id === q.school_id)
+  if (school) {
+    openConvertDialog(school)
+  } else {
+    openAddSchoolDialog(q)
+  }
+}
+
+function openAddSchoolDialog(q) {
+  Object.assign(addSchoolForm, {
+    name: q.school_name || '',
+    city: '',
+    address: '',
+    contact_person: '',
+    contact_phone: '',
+    student_count: q.student_count || null,
+  })
+  addSchoolError.value = ''
+  addSchoolDialogVisible.value = true
+}
+
+async function saveAddSchoolAndContinue() {
+  if (!addSchoolForm.name.trim())           { addSchoolError.value = 'School name is required'; return }
+  if (!addSchoolForm.city.trim())           { addSchoolError.value = 'City is required'; return }
+  if (!addSchoolForm.contact_person.trim()) { addSchoolError.value = 'Contact person is required'; return }
+  if (!addSchoolForm.student_count)         { addSchoolError.value = 'Student count is required'; return }
+  addSchoolError.value = ''
+
+  addSchoolSaving.value = true
+  try {
+    const payload = {
+      name:           addSchoolForm.name.trim(),
+      city:           addSchoolForm.city.trim(),
+      address:        addSchoolForm.address.trim(),
+      contact_person: addSchoolForm.contact_person.trim(),
+      contact_phone:  addSchoolForm.contact_phone.trim(),
+      student_count:  addSchoolForm.student_count,
+      statuses:       ['Converted'],
+      notes:          [],
+      created_at:     serverTimestamp(),
+    }
+    const ref = await addDoc(opsCollection('schools'), payload)
+    await loadAllSchools()
+
+    addSchoolDialogVisible.value = false
+    openConvertDialog({ id: ref.id, ...payload })
+  } catch (e) {
+    console.error(e)
+    addSchoolError.value = 'Something went wrong. Try again.'
+  } finally {
+    addSchoolSaving.value = false
+  }
+}
+
+function openConvertDialog(school) {
+  const q = pendingQuotation.value
+  const choices = convertOptionChoices.value
+  const option = choices.length === 1 ? choices[0].value : null
+
+  Object.assign(convertForm, {
+    school_id:             school.id,
+    school_name:           school.name || q.school_name,
+    school_address:        school.address || '',
+    student_count:         q.student_count || school.student_count || null,
+    signatory_name:        school.contact_person || '',
+    signatory_designation: school.contact_designation || '',
+    option_choice:         option,
+    hpc_type:              option === 'B' ? 'digital only' : 'printed and digital',
+    fee_per_student:       option === 'B' ? q.price_b : q.price_a,
+    installment_plan:      settings.value.default_installment_plan || 'A',
+  })
+  convertError.value = ''
+  convertDialogVisible.value = true
+}
+
+function chooseConvertOption(opt) {
+  convertForm.option_choice   = opt
+  convertForm.hpc_type        = opt === 'B' ? 'digital only' : 'printed and digital'
+  convertForm.fee_per_student = opt === 'B' ? pendingQuotation.value.price_b : pendingQuotation.value.price_a
+}
+
+async function saveConvertedAgreement() {
+  if (convertOptionChoices.value.length > 1 && !convertForm.option_choice) {
+    convertError.value = 'Select which option the school chose'; return
+  }
+  if (!convertForm.signatory_name.trim())  { convertError.value = 'Signatory name is required'; return }
+  if (!convertForm.fee_per_student)        { convertError.value = 'Fee per student is required'; return }
+  if (!convertForm.student_count)          { convertError.value = 'Student count is required'; return }
+  convertError.value = ''
+
+  convertSaving.value = true
+  try {
+    const existingNums = agreements.value.map(a => a.agreement_number)
+    const aNum = generateAgreementNumber(existingNums)
+
+    const payload = {
+      school_id:             convertForm.school_id,
+      school_name:           convertForm.school_name,
+      school_address:        convertForm.school_address,
+      signatory_name:        convertForm.signatory_name.trim(),
+      signatory_designation: convertForm.signatory_designation.trim(),
+      hpc_type:              convertForm.hpc_type,
+      fee_per_student:       convertForm.fee_per_student,
+      student_count:         convertForm.student_count,
+      installment_plan:      convertForm.installment_plan,
+      agreement_number:      aNum,
+      status:                'Sent',
+      created_at:            serverTimestamp(),
+    }
+
+    const agreementRef = await addDoc(opsCollection('agreements'), payload)
+    await generateAgreementFiles({ ...payload, agreement_number: aNum })
+
+    await updateDoc(opsDoc('quotations', pendingQuotation.value.id), {
+      converted_to_agreement_id: agreementRef.id,
+      converted: true,
+    })
+
+    toast.add({ severity: 'success', summary: 'Converted', detail: `Agreement ${aNum} created`, life: 3000 })
+    convertDialogVisible.value = false
+    pendingQuotation.value = null
+    await Promise.all([loadQuotations(), loadAgreements()])
+  } catch (e) {
+    console.error(e)
+    convertError.value = 'Something went wrong. Try again.'
+  } finally {
+    convertSaving.value = false
+  }
+}
+
 function confirmDelete(q) {
   confirm.require({
     message: `Delete quotation ${q.quotation_number}?`,
@@ -333,7 +658,7 @@ function formatDate(ts) {
 }
 
 onMounted(async () => {
-  await Promise.all([loadQuotations(), loadAllSchools()])
+  await Promise.all([loadQuotations(), loadAllSchools(), loadAgreements(), loadSettings()])
 
   // Pre-fill from "New Quotation" launched off a school's drawer
   if (route.query.school_name) {

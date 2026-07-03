@@ -1,6 +1,8 @@
 <template>
-  <div class="min-h-screen flex" style="background: var(--surface-ground)">
-    
+  <RouterView v-if="route.name === 'login'" />
+
+  <div v-else class="min-h-screen flex" style="background: var(--surface-ground)">
+
     <!-- Sidebar -->
     <aside class="w-56 min-h-screen flex flex-col border-r" style="background: #0f172a; border-color: #1e293b">
       <div class="px-5 py-5 border-b flex items-center" style="border-color: #1e293b">
@@ -60,6 +62,16 @@
         </div>
       </div>
 
+      <div class="px-3 py-3 border-t" style="border-color: #1e293b">
+        <button
+          @click="handleLogout"
+          class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-400 hover:text-white hover:bg-slate-800 transition-all duration-150"
+        >
+          <i class="pi pi-sign-out text-base w-4 text-center"></i>
+          <span>Log Out</span>
+        </button>
+      </div>
+
       <div class="px-5 py-4 border-t" style="border-color: #1e293b">
         <div class="text-xs" style="color: #334155">ClarifiEd · {{ currentYear }}</div>
       </div>
@@ -83,12 +95,20 @@
 
 <script setup>
 import { ref, computed } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
+import { signOut } from 'firebase/auth'
+import { auth } from './firebase/config'
 import Toast from 'primevue/toast'
 import CelebrationOverlay from './components/shared/CelebrationOverlay.vue'
 
 const route = useRoute()
+const router = useRouter()
 const currentYear = new Date().getFullYear()
+
+async function handleLogout() {
+  await signOut(auth)
+  router.push('/login')
+}
 
 // ── Academic year switcher ───────────────────────────────────────────────
 const academicYears = computed(() => {

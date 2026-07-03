@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { getAuth } from 'firebase/auth'
 
 import Dashboard from '../views/Dashboard.vue'
 import Schools from '../views/Schools.vue'
@@ -7,8 +8,10 @@ import Agreements from '../views/Agreements.vue'
 import Invoices from '../views/Invoices.vue'
 import Expenses from '../views/Expenses.vue'
 import Settings from '../views/Settings.vue'
+import Login from '../views/Login.vue'
 
 const routes = [
+  { path: '/login',      component: Login,      name: 'login', meta: { public: true } },
   { path: '/',            component: Dashboard,   name: 'dashboard' },
   { path: '/schools',     component: Schools,     name: 'schools' },
   { path: '/quotations',  component: Quotations,  name: 'quotations' },
@@ -21,4 +24,28 @@ const routes = [
 export const router = createRouter({
   history: createWebHistory(),
   routes,
+})
+
+// Tracks the live auth state; `authReady` resolves once the initial state
+// is known so the very first navigation doesn't race the auth SDK.
+let currentUser = null
+let resolveAuthReady
+const authReady = new Promise((resolve) => { resolveAuthReady = resolve })
+
+getAuth().onAuthStateChanged((user) => {
+  currentUser = user
+  resolveAuthReady()
+})
+
+router.beforeEach(async (to) => {
+  await authReady
+  const user = currentUser
+
+  if (!to.meta.public && !user) {
+    return { name: 'login', query: { redirect: to.fullPath } }
+  }
+  if (to.name === 'login' && user) {
+    return { path: '/' }
+  }
+  return true
 })
