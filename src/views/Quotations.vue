@@ -24,7 +24,7 @@
 
     <!-- Table -->
     <div v-else class="bg-white rounded-xl border border-slate-200 overflow-hidden">
-      <DataTable :value="visibleQuotations" size="small" stripedRows>
+      <DataTable :value="visibleQuotations" size="small" stripedRows :rowClass="rowClass">
 
         <Column field="quotation_number" header="Ref #" style="width:130px">
           <template #body="{ data }">
@@ -403,6 +403,19 @@ const visibleQuotations = computed(() => {
   return quotations.value.filter(q => q.academic_year === activeYear.value)
 })
 
+// Row highlight from a global search result (?highlight=id)
+const highlightedId = ref(route.query.highlight || null)
+function rowClass(data) {
+  return data.id === highlightedId.value ? 'gs-highlight-row' : ''
+}
+// Handles jumping to a result while already on this page (router.push only
+// changes the query, so the component doesn't remount and onMounted won't rerun).
+watch(() => route.query.highlight, (id) => {
+  if (!id) return
+  highlightedId.value = id
+  setTimeout(() => { highlightedId.value = null }, 4000)
+})
+
 // ── Load ──────────────────────────────────────────────────────────────────────
 async function loadQuotations() {
   loading.value = true
@@ -713,6 +726,10 @@ onMounted(async () => {
     form.school_name   = route.query.school_name
     form.student_count = route.query.student_count ? Number(route.query.student_count) : null
   }
+
+  if (highlightedId.value) {
+    setTimeout(() => { highlightedId.value = null }, 4000)
+  }
 })
 
 watch(activeYear, () => { loadQuotations() })
@@ -727,5 +744,14 @@ watch(activeYear, () => { loadQuotations() })
   margin-bottom: 4px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
+}
+
+:deep(.gs-highlight-row) {
+  animation: gs-row-fade 4s ease-out;
+}
+@keyframes gs-row-fade {
+  0%   { background-color: #fef9c3; }
+  70%  { background-color: #fef9c3; }
+  100% { background-color: transparent; }
 }
 </style>

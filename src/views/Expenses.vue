@@ -180,7 +180,7 @@
         <div v-if="filteredExpensesList.length === 0" class="text-center py-16">
           <p class="text-sm text-slate-400">No expenses match the current filters.</p>
         </div>
-        <DataTable v-else :value="filteredExpensesList" size="small" stripedRows>
+        <DataTable v-else :value="filteredExpensesList" size="small" stripedRows :rowClass="rowClass">
           <Column header="Date" style="width:110px">
             <template #body="{ data }">
               <span class="text-xs text-slate-500">{{ formatDate(data.date) }}</span>
@@ -327,6 +327,7 @@
 
 <script setup>
 import { ref, reactive, computed, watch, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { auth } from '../firebase/config'
 import { activeYear, effectiveAcademicYear } from '../composables/useAcademicYear.js'
 import { opsCollection, opsDoc } from '../firebase/collections.js'
@@ -351,8 +352,20 @@ import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import MultiSelect from 'primevue/multiselect'
 
+const route = useRoute()
 const confirm = useConfirm()
 const toast = useToast()
+
+// Row highlight from a global search result (?highlight=id)
+const highlightedId = ref(route.query.highlight || null)
+function rowClass(data) {
+  return data.id === highlightedId.value ? 'gs-highlight-row' : ''
+}
+watch(() => route.query.highlight, (id) => {
+  if (!id) return
+  highlightedId.value = id
+  setTimeout(() => { highlightedId.value = null }, 4000)
+})
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -795,6 +808,10 @@ function formatRupee(amount) {
 
 onMounted(async () => {
   await Promise.all([loadExpenses(), loadInvoices(), loadCategories()])
+
+  if (highlightedId.value) {
+    setTimeout(() => { highlightedId.value = null }, 4000)
+  }
 })
 
 watch(activeYear, () => { loadExpenses() })
@@ -916,5 +933,14 @@ watch(activeYear, () => { loadExpenses() })
 
 .category-summary-table :deep(.p-datatable-tbody > tr) {
   cursor: pointer;
+}
+
+:deep(.gs-highlight-row) {
+  animation: gs-row-fade 4s ease-out;
+}
+@keyframes gs-row-fade {
+  0%   { background-color: #fef9c3; }
+  70%  { background-color: #fef9c3; }
+  100% { background-color: transparent; }
 }
 </style>

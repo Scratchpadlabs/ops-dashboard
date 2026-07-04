@@ -79,8 +79,16 @@
 
     <!-- Main -->
     <div class="flex-1 flex flex-col min-h-screen">
-      <header class="h-14 border-b flex items-center px-6 bg-white" style="border-color: var(--surface-border)">
+      <header class="h-14 border-b flex items-center justify-between px-6 bg-white" style="border-color: var(--surface-border)">
         <h1 class="text-sm font-semibold" style="color: var(--text-primary)">{{ pageTitle }}</h1>
+        <button
+          @click="isSearchOpen = true"
+          class="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm text-slate-400 border border-slate-200 hover:border-slate-300 hover:text-slate-500 transition-colors w-64"
+        >
+          <i class="pi pi-search text-xs"></i>
+          <span class="flex-1 text-left">Search anything...</span>
+          <span class="text-[10px] font-semibold border border-slate-200 rounded px-1.5 py-0.5">⌘K</span>
+        </button>
       </header>
 
       <main class="flex-1 p-6">
@@ -90,23 +98,36 @@
 
     <Toast />
     <CelebrationOverlay />
+    <GlobalSearchModal />
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { signOut } from 'firebase/auth'
 import { auth } from './firebase/config'
 import { opsCollection } from './firebase/collections.js'
 import { getDocs } from 'firebase/firestore'
 import { activeYear, availableYears, computeCurrentAcademicYear } from './composables/useAcademicYear.js'
+import { isSearchOpen } from './composables/useGlobalSearch.js'
 import Toast from 'primevue/toast'
 import CelebrationOverlay from './components/shared/CelebrationOverlay.vue'
+import GlobalSearchModal from './components/shared/GlobalSearchModal.vue'
 
 const route = useRoute()
 const router = useRouter()
 const currentYear = new Date().getFullYear()
+
+// ── Global search (Ctrl/Cmd+K) ─────────────────────────────────────────────
+function onGlobalSearchKeydown(e) {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+    e.preventDefault()
+    isSearchOpen.value = true
+  }
+}
+onMounted(() => window.addEventListener('keydown', onGlobalSearchKeydown))
+onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalSearchKeydown))
 
 async function handleLogout() {
   await signOut(auth)

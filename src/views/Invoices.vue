@@ -78,7 +78,7 @@
         </button>
 
         <div v-if="isExpanded(g.school_name)" class="border-t border-slate-100">
-          <DataTable :value="g.invoices" size="small" stripedRows>
+          <DataTable :value="g.invoices" size="small" stripedRows :rowClass="rowClass">
 
             <Column field="invoice_number" header="Invoice #" style="width: 130px">
               <template #body="{ data }">
@@ -354,6 +354,21 @@ const allSchools = ref([])
 const settings   = ref({ invoice_due_days: 45 })
 const expandedSchools = ref(new Set())
 const downloadingId = ref(null)
+
+// Row highlight from a global search result (?highlight=id)
+const highlightedId = ref(route.query.highlight || null)
+function rowClass(data) {
+  return data.id === highlightedId.value ? 'gs-highlight-row' : ''
+}
+watch(() => route.query.highlight, (id) => {
+  if (!id) return
+  highlightedId.value = id
+  const target = invoices.value.find(i => i.id === id)
+  if (target?.school_name) {
+    expandedSchools.value = new Set(expandedSchools.value).add(target.school_name)
+  }
+  setTimeout(() => { highlightedId.value = null }, 4000)
+})
 
 const descPresets = ['Digital HPC', 'Printed HPC']
 const installmentTypes = ['Onboarding', 'Installment 2', 'After Delivery', 'Ad-hoc']
@@ -754,6 +769,14 @@ onMounted(async () => {
     form.school_phone    = route.query.school_phone || ''
     form.quantity        = route.query.student_count ? Number(route.query.student_count) : null
   }
+
+  if (highlightedId.value) {
+    const target = invoices.value.find(i => i.id === highlightedId.value)
+    if (target?.school_name) {
+      expandedSchools.value = new Set(expandedSchools.value).add(target.school_name)
+    }
+    setTimeout(() => { highlightedId.value = null }, 4000)
+  }
 })
 
 watch(activeYear, () => { loadInvoices() })
@@ -768,5 +791,14 @@ watch(activeYear, () => { loadInvoices() })
   margin-bottom: 4px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
+}
+
+:deep(.gs-highlight-row) {
+  animation: gs-row-fade 4s ease-out;
+}
+@keyframes gs-row-fade {
+  0%   { background-color: #fef9c3; }
+  70%  { background-color: #fef9c3; }
+  100% { background-color: transparent; }
 }
 </style>

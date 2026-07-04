@@ -24,7 +24,7 @@
 
     <!-- Table -->
     <div v-else class="bg-white rounded-xl border border-slate-200 overflow-hidden">
-      <DataTable :value="visibleAgreements" size="small" stripedRows>
+      <DataTable :value="visibleAgreements" size="small" stripedRows :rowClass="rowClass">
 
         <Column field="agreement_number" header="Ref #" style="width:140px">
           <template #body="{ data }">
@@ -304,6 +304,17 @@ const visibleAgreements = computed(() => {
   return agreements.value.filter(a => a.academic_year === activeYear.value)
 })
 
+// Row highlight from a global search result (?highlight=id)
+const highlightedId = ref(route.query.highlight || null)
+function rowClass(data) {
+  return data.id === highlightedId.value ? 'gs-highlight-row' : ''
+}
+watch(() => route.query.highlight, (id) => {
+  if (!id) return
+  highlightedId.value = id
+  setTimeout(() => { highlightedId.value = null }, 4000)
+})
+
 async function loadSettings() {
   try {
     const snap = await getDoc(doc(db, 'operations', 'settings'))
@@ -497,6 +508,10 @@ onMounted(async () => {
     form.school_address  = route.query.school_address || ''
     form.student_count   = route.query.student_count ? Number(route.query.student_count) : null
   }
+
+  if (highlightedId.value) {
+    setTimeout(() => { highlightedId.value = null }, 4000)
+  }
 })
 
 watch(activeYear, () => { loadAgreements() })
@@ -511,5 +526,14 @@ watch(activeYear, () => { loadAgreements() })
   margin-bottom: 4px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
+}
+
+:deep(.gs-highlight-row) {
+  animation: gs-row-fade 4s ease-out;
+}
+@keyframes gs-row-fade {
+  0%   { background-color: #fef9c3; }
+  70%  { background-color: #fef9c3; }
+  100% { background-color: transparent; }
 }
 </style>
