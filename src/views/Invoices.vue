@@ -316,6 +316,7 @@
 import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { db, auth } from '../firebase/config'
+import { activeYear, effectiveAcademicYear } from '../composables/useAcademicYear.js'
 import { opsCollection, opsDoc } from '../firebase/collections.js'
 import {
   getDocs, getDoc, addDoc, updateDoc,
@@ -374,7 +375,11 @@ const form = reactive(emptyForm())
 // ── Computed ──────────────────────────────────────────────────────────────────
 
 // Soft-deleted invoices are hidden from every list/stat below, but still live in Firestore.
-const activeInvoices = computed(() => invoices.value.filter(i => !i.deleted))
+const activeInvoices = computed(() => {
+  const nonDeleted = invoices.value.filter(i => !i.deleted)
+  if (!activeYear.value || activeYear.value === 'All Years') return nonDeleted
+  return nonDeleted.filter(i => i.academic_year === activeYear.value)
+})
 
 const deletedInvoices = computed(() => {
   const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000
@@ -571,9 +576,10 @@ function validate() {
 function findDuplicateInvoice() {
   if (form.installment_type === 'Ad-hoc') return null
   const name = form.school_name.trim().toLowerCase()
-  return activeInvoices.value.find(i => {
+  const year = effectiveAcademicYear()
+  return invoices.value.filter(i => !i.deleted).find(i => {
     const sameSchool = form.school_id ? i.school_id === form.school_id : (i.school_name || '').trim().toLowerCase() === name
-    return sameSchool && i.installment_type === form.installment_type
+    return sameSchool && i.installment_type === form.installment_type && i.academic_year === year
   })
 }
 
@@ -616,6 +622,7 @@ async function createInvoiceRecord() {
       invoice_number:    form.invoice_number,
       status:            'unpaid',
       due_date:          Timestamp.fromDate(dueDate),
+      academic_year:     effectiveAcademicYear(),
       created_at:        serverTimestamp(),
       created_by:        auth.currentUser?.email || 'unknown',
     })
@@ -748,6 +755,8 @@ onMounted(async () => {
     form.quantity        = route.query.student_count ? Number(route.query.student_count) : null
   }
 })
+
+watch(activeYear, () => { loadInvoices() })
 </script>
 
 <style scoped>

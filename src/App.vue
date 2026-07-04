@@ -30,7 +30,7 @@
           @click="yearDropdownOpen = !yearDropdownOpen"
           class="w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold text-slate-300 hover:bg-slate-800 transition-colors"
         >
-          <span>{{ selectedYear === 'all' ? 'All Years' : `AY ${selectedYear}` }}</span>
+          <span>{{ activeYear === 'All Years' ? 'All Years' : `AY ${activeYear}` }}</span>
           <i
             class="pi pi-chevron-down text-[10px] transition-transform duration-150"
             :style="{ transform: yearDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)' }"
@@ -43,21 +43,21 @@
           style="background: #1e293b; border-color: #334155"
         >
           <button
-            v-for="y in academicYears"
-            :key="y"
-            @click="selectYear(y)"
+            @click="selectYear('All Years')"
             class="w-full text-left px-3 py-2 text-xs transition-colors"
-            :class="selectedYear === y ? 'text-white bg-slate-700' : 'text-slate-400 hover:bg-slate-700 hover:text-white'"
-          >
-            AY {{ y }}
-          </button>
-          <button
-            @click="selectYear('all')"
-            class="w-full text-left px-3 py-2 text-xs border-t transition-colors"
-            style="border-color: #334155"
-            :class="selectedYear === 'all' ? 'text-white bg-slate-700' : 'text-slate-400 hover:bg-slate-700 hover:text-white'"
+            :class="activeYear === 'All Years' ? 'text-white bg-slate-700' : 'text-slate-400 hover:bg-slate-700 hover:text-white'"
           >
             All Years
+          </button>
+          <button
+            v-for="y in availableYears"
+            :key="y"
+            @click="selectYear(y)"
+            class="w-full text-left px-3 py-2 text-xs border-t transition-colors"
+            style="border-color: #334155"
+            :class="activeYear === y ? 'text-white bg-slate-700' : 'text-slate-400 hover:bg-slate-700 hover:text-white'"
+          >
+            AY {{ y }}
           </button>
         </div>
       </div>
@@ -94,10 +94,13 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { signOut } from 'firebase/auth'
 import { auth } from './firebase/config'
+import { opsCollection } from './firebase/collections.js'
+import { getDocs } from 'firebase/firestore'
+import { activeYear, availableYears, computeCurrentAcademicYear } from './composables/useAcademicYear.js'
 import Toast from 'primevue/toast'
 import CelebrationOverlay from './components/shared/CelebrationOverlay.vue'
 
@@ -111,24 +114,43 @@ async function handleLogout() {
 }
 
 // ── Academic year switcher ───────────────────────────────────────────────
-const academicYears = computed(() => {
-  const today = new Date()
-  const startYear = today.getMonth() >= 3 ? today.getFullYear() : today.getFullYear() - 1
-  const years = []
-  for (let i = 0; i < 4; i++) {
-    const y = startYear - i
-    years.push(`${y}-${String(y + 1).slice(-2)}`)
-  }
-  return years
-})
-
-const selectedYear = ref(academicYears.value[0])
 const yearDropdownOpen = ref(false)
 
 function selectYear(y) {
-  selectedYear.value = y
+  activeYear.value = y
   yearDropdownOpen.value = false
 }
+
+async function loadAvailableYears() {
+  try {
+    const [qSnap, aSnap, iSnap] = await Promise.all([
+      getDocs(opsCollection('quotations')),
+      getDocs(opsCollection('agreements')),
+      getDocs(opsCollection('invoices')),
+    ])
+    const years = new Set([computeCurrentAcademicYear()])
+    ;[...qSnap.docs, ...aSnap.docs, ...iSnap.docs].forEach(d => {
+      const y = d.data().academic_year
+      if (y) years.add(y)
+    })
+    availableYears.value = Array.from(years).sort().reverse()
+  } catch (e) {
+    console.error('Could not load academic years', e)
+    availableYears.value = [computeCurrentAcademicYear()]
+  }
+}
+
+// Fetches once — either immediately (if we land on a real page already
+// authenticated) or the first time we navigate away from /login after signing in.
+let yearsLoaded = false
+function maybeLoadAvailableYears() {
+  if (yearsLoaded || route.name === 'login') return
+  yearsLoaded = true
+  loadAvailableYears()
+}
+
+onMounted(maybeLoadAvailableYears)
+watch(() => route.name, maybeLoadAvailableYears)
 
 const navItems = [
   { to: '/',            label: 'Dashboard',   icon: 'pi pi-home' },

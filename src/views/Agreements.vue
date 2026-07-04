@@ -5,7 +5,7 @@
     <div class="flex items-center justify-between mb-6">
       <div>
         <h2 class="text-lg font-semibold text-slate-900">Agreements</h2>
-        <p class="text-sm text-slate-500 mt-0.5">{{ agreements.length }} total</p>
+        <p class="text-sm text-slate-500 mt-0.5">{{ visibleAgreements.length }} total</p>
       </div>
       <Button label="New Agreement" icon="pi pi-plus" @click="openNew" />
     </div>
@@ -16,7 +16,7 @@
     </div>
 
     <!-- Empty -->
-    <div v-else-if="agreements.length === 0" class="text-center py-20 bg-white rounded-xl border border-slate-200">
+    <div v-else-if="visibleAgreements.length === 0" class="text-center py-20 bg-white rounded-xl border border-slate-200">
       <i class="pi pi-file-edit text-4xl text-slate-300 mb-3 block"></i>
       <p class="text-slate-500 font-medium">No agreements yet</p>
       <Button label="New Agreement" icon="pi pi-plus" class="mt-4" @click="openNew" />
@@ -24,7 +24,7 @@
 
     <!-- Table -->
     <div v-else class="bg-white rounded-xl border border-slate-200 overflow-hidden">
-      <DataTable :value="agreements" size="small" stripedRows>
+      <DataTable :value="visibleAgreements" size="small" stripedRows>
 
         <Column field="agreement_number" header="Ref #" style="width:140px">
           <template #body="{ data }">
@@ -230,9 +230,10 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { db, storage, auth } from '../firebase/config'
+import { activeYear, effectiveAcademicYear } from '../composables/useAcademicYear.js'
 import { opsCollection, opsDoc } from '../firebase/collections.js'
 import {
   getDocs, getDoc, addDoc, updateDoc, deleteDoc,
@@ -295,6 +296,11 @@ const totalValue = computed(() =>
     ? form.fee_per_student * form.student_count
     : 0
 )
+
+const visibleAgreements = computed(() => {
+  if (!activeYear.value || activeYear.value === 'All Years') return agreements.value
+  return agreements.value.filter(a => a.academic_year === activeYear.value)
+})
 
 async function loadSettings() {
   try {
@@ -379,6 +385,7 @@ async function saveAndDownload() {
       installment_plan:      form.installment_plan,
       agreement_number:      aNum,
       status:                'Sent',
+      academic_year:         effectiveAcademicYear(),
       created_at:            serverTimestamp(),
       created_by:            auth.currentUser?.email || 'unknown',
     }
@@ -488,6 +495,8 @@ onMounted(async () => {
     form.student_count   = route.query.student_count ? Number(route.query.student_count) : null
   }
 })
+
+watch(activeYear, () => { loadAgreements() })
 </script>
 
 <style scoped>

@@ -5,7 +5,7 @@
     <div class="flex items-center justify-between mb-6">
       <div>
         <h2 class="text-lg font-semibold text-slate-900">Quotations</h2>
-        <p class="text-sm text-slate-500 mt-0.5">{{ quotations.length }} total</p>
+        <p class="text-sm text-slate-500 mt-0.5">{{ visibleQuotations.length }} total</p>
       </div>
       <Button label="New Quotation" icon="pi pi-plus" @click="openNew" />
     </div>
@@ -16,7 +16,7 @@
     </div>
 
     <!-- Empty -->
-    <div v-else-if="quotations.length === 0" class="text-center py-20 bg-white rounded-xl border border-slate-200">
+    <div v-else-if="visibleQuotations.length === 0" class="text-center py-20 bg-white rounded-xl border border-slate-200">
       <i class="pi pi-file text-4xl text-slate-300 mb-3 block"></i>
       <p class="text-slate-500 font-medium">No quotations yet</p>
       <Button label="New Quotation" icon="pi pi-plus" class="mt-4" @click="openNew" />
@@ -24,7 +24,7 @@
 
     <!-- Table -->
     <div v-else class="bg-white rounded-xl border border-slate-200 overflow-hidden">
-      <DataTable :value="quotations" size="small" stripedRows>
+      <DataTable :value="visibleQuotations" size="small" stripedRows>
 
         <Column field="quotation_number" header="Ref #" style="width:130px">
           <template #body="{ data }">
@@ -141,6 +141,11 @@
         <div class="bg-slate-50 rounded-lg px-4 py-3">
           <div class="text-sm font-semibold text-slate-800">{{ convertForm.school_name }}</div>
           <div class="text-xs text-slate-400">{{ convertForm.student_count }} students</div>
+        </div>
+
+        <div>
+          <label class="form-label">School Address *</label>
+          <InputText v-model="convertForm.school_address" class="w-full" placeholder="Required for the agreement PDF" />
         </div>
 
         <!-- Option picker, only if quotation had both options -->
@@ -309,8 +314,9 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { db, auth } from '../firebase/config'
+import { activeYear, effectiveAcademicYear } from '../composables/useAcademicYear.js'
 import { opsCollection, opsDoc } from '../firebase/collections.js'
 import {
   getDocs, getDoc, addDoc, updateDoc, deleteDoc,
@@ -363,7 +369,7 @@ const convertDialogVisible = ref(false)
 const convertSaving        = ref(false)
 const convertError         = ref('')
 const convertForm = reactive({
-  school_id: null, school_name: '', school_address: '',
+  school_id: null, school_name: '', school_address: '', school_phone: '',
   student_count: null, signatory_name: '', signatory_designation: '',
   hpc_type: 'printed and digital', fee_per_student: null,
   installment_plan: 'A', option_choice: null,
@@ -391,6 +397,11 @@ const emptyForm = () => ({
 })
 
 const form = reactive(emptyForm())
+
+const visibleQuotations = computed(() => {
+  if (!activeYear.value || activeYear.value === 'All Years') return quotations.value
+  return quotations.value.filter(q => q.academic_year === activeYear.value)
+})
 
 // ── Load ──────────────────────────────────────────────────────────────────────
 async function loadQuotations() {
@@ -480,6 +491,7 @@ async function saveAndDownload() {
       discount_b:     form.show_b ? (form.discount_b || 0) : null,
       price_b:        form.show_b ? form.price_b : null,
       quotation_number: qNum,
+      academic_year:  effectiveAcademicYear(),
       created_at:     serverTimestamp(),
       created_by:     auth.currentUser?.email || 'unknown',
     }
@@ -514,11 +526,11 @@ async function download(q) {
 }
 
 // ── Convert to Agreement ──────────────────────────────────────────────────────
-function startConvert(q) {
+async function startConvert(q) {
   pendingQuotation.value = q
   const school = allSchools.value.find(s => s.id === q.school_id)
   if (school) {
-    openConvertDialog(school)
+    await openConvertDialog(school)
   } else {
     openAddSchoolDialog(q)
   }
@@ -562,7 +574,7 @@ async function saveAddSchoolAndContinue() {
     await loadAllSchools()
 
     addSchoolDialogVisible.value = false
-    openConvertDialog({ id: ref.id, ...payload })
+    await openConvertDialog({ id: ref.id, ...payload })
   } catch (e) {
     console.error(e)
     addSchoolError.value = 'Something went wrong. Try again.'
@@ -571,18 +583,30 @@ async function saveAddSchoolAndContinue() {
   }
 }
 
-function openConvertDialog(school) {
+async function openConvertDialog(school) {
   const q = pendingQuotation.value
+
+  // Re-fetch the school record fresh so we never prefill a stale address
+  // (allSchools may not reflect edits made since the last load).
+  let freshSchool = school
+  try {
+    const snap = await getDoc(opsDoc('schools', school.id))
+    if (snap.exists()) freshSchool = { id: snap.id, ...snap.data() }
+  } catch (e) {
+    console.error('Could not re-fetch school record', e)
+  }
+
   const choices = convertOptionChoices.value
   const option = choices.length === 1 ? choices[0].value : null
 
   Object.assign(convertForm, {
-    school_id:             school.id,
-    school_name:           school.name || q.school_name,
-    school_address:        school.address || '',
-    student_count:         q.student_count || school.student_count || null,
-    signatory_name:        school.contact_person || '',
-    signatory_designation: school.contact_designation || '',
+    school_id:             freshSchool.id,
+    school_name:           freshSchool.name || q.school_name,
+    school_address:        freshSchool.address || '',
+    school_phone:          freshSchool.contact_phone || '',
+    student_count:         q.student_count || freshSchool.student_count || null,
+    signatory_name:        freshSchool.contact_person || '',
+    signatory_designation: freshSchool.contact_designation || '',
     option_choice:         option,
     hpc_type:              option === 'B' ? 'digital only' : 'printed and digital',
     fee_per_student:       option === 'B' ? q.price_b : q.price_a,
@@ -602,6 +626,7 @@ async function saveConvertedAgreement() {
   if (convertOptionChoices.value.length > 1 && !convertForm.option_choice) {
     convertError.value = 'Select which option the school chose'; return
   }
+  if (!convertForm.school_address.trim())  { convertError.value = 'School address is required'; return }
   if (!convertForm.signatory_name.trim())  { convertError.value = 'Signatory name is required'; return }
   if (!convertForm.fee_per_student)        { convertError.value = 'Fee per student is required'; return }
   if (!convertForm.student_count)          { convertError.value = 'Student count is required'; return }
@@ -615,7 +640,8 @@ async function saveConvertedAgreement() {
     const payload = {
       school_id:             convertForm.school_id,
       school_name:           convertForm.school_name,
-      school_address:        convertForm.school_address,
+      school_address:        convertForm.school_address.trim(),
+      school_phone:          convertForm.school_phone,
       signatory_name:        convertForm.signatory_name.trim(),
       signatory_designation: convertForm.signatory_designation.trim(),
       hpc_type:              convertForm.hpc_type,
@@ -624,6 +650,7 @@ async function saveConvertedAgreement() {
       installment_plan:      convertForm.installment_plan,
       agreement_number:      aNum,
       status:                'Sent',
+      academic_year:         effectiveAcademicYear(),
       created_at:            serverTimestamp(),
       created_by:            auth.currentUser?.email || 'unknown',
     }
@@ -687,6 +714,8 @@ onMounted(async () => {
     form.student_count = route.query.student_count ? Number(route.query.student_count) : null
   }
 })
+
+watch(activeYear, () => { loadQuotations() })
 </script>
 
 <style scoped>

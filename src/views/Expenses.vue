@@ -5,7 +5,7 @@
     <div class="flex items-center justify-between mb-6">
       <div>
         <h2 class="text-lg font-semibold text-slate-900">Expenses</h2>
-        <p class="text-sm text-slate-500 mt-0.5">{{ expenses.length }} logged · P&amp;L at a glance</p>
+        <p class="text-sm text-slate-500 mt-0.5">{{ visibleExpenses.length }} logged · P&amp;L at a glance</p>
       </div>
       <Button label="New Expense" icon="pi pi-plus" @click="openNewExpense" />
     </div>
@@ -41,7 +41,7 @@
           <span class="text-xl">💸</span>
         </div>
         <div class="pl-value">{{ formatRupee(displayExpenses) }}</div>
-        <div class="pl-sub">{{ expenses.length }} expense{{ expenses.length !== 1 ? 's' : '' }} logged</div>
+        <div class="pl-sub">{{ visibleExpenses.length }} expense{{ visibleExpenses.length !== 1 ? 's' : '' }} logged</div>
       </div>
 
       <div class="pl-card" :class="netPL >= 0 ? 'pl-net-positive' : 'pl-net-negative'">
@@ -328,6 +328,7 @@
 <script setup>
 import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { auth } from '../firebase/config'
+import { activeYear, effectiveAcademicYear } from '../composables/useAcademicYear.js'
 import { opsCollection, opsDoc } from '../firebase/collections.js'
 import {
   getDocs, addDoc, updateDoc, deleteDoc,
@@ -420,17 +421,27 @@ const allCategories = computed(() => {
   return [...PRESET_CATEGORIES, ...extra]
 })
 
+const visibleExpenses = computed(() => {
+  if (!activeYear.value || activeYear.value === 'All Years') return expenses.value
+  return expenses.value.filter(e => e.academic_year === activeYear.value)
+})
+
+const visibleInvoicesForPL = computed(() => {
+  if (!activeYear.value || activeYear.value === 'All Years') return invoices.value
+  return invoices.value.filter(i => i.academic_year === activeYear.value)
+})
+
 const sortedExpenses = computed(() =>
-  [...expenses.value].sort((a, b) => toDate(b.date) - toDate(a.date))
+  [...visibleExpenses.value].sort((a, b) => toDate(b.date) - toDate(a.date))
 )
 
-const paidInvoices = computed(() => invoices.value.filter(i => i.status === 'paid'))
+const paidInvoices = computed(() => visibleInvoicesForPL.value.filter(i => i.status === 'paid'))
 
 const totalIncome = computed(() =>
   paidInvoices.value.reduce((s, i) => s + (i.price_per_student || 0) * (i.quantity || 0), 0)
 )
 const totalExpenses = computed(() =>
-  expenses.value.reduce((s, e) => s + Number(e.amount || 0), 0)
+  visibleExpenses.value.reduce((s, e) => s + Number(e.amount || 0), 0)
 )
 const netPL = computed(() => totalIncome.value - totalExpenses.value)
 
@@ -469,7 +480,7 @@ const monthlyChartData = computed(() => {
       }
       return sum
     }, 0)
-    const expense = expenses.value.reduce((sum, e) => {
+    const expense = visibleExpenses.value.reduce((sum, e) => {
       const ed = toDate(e.date)
       if (ed && ed.getFullYear() === d.getFullYear() && ed.getMonth() === d.getMonth()) {
         return sum + Number(e.amount || 0)
@@ -495,7 +506,7 @@ function monthTotals(offsetMonths) {
   const now = new Date()
   const target = new Date(now.getFullYear(), now.getMonth() - offsetMonths, 1)
   const totals = {}
-  expenses.value.forEach(e => {
+  visibleExpenses.value.forEach(e => {
     const d = toDate(e.date)
     if (d && d.getFullYear() === target.getFullYear() && d.getMonth() === target.getMonth()) {
       totals[e.category] = (totals[e.category] || 0) + Number(e.amount || 0)
@@ -508,7 +519,7 @@ const categorySummaryTable = computed(() => {
   const thisMonth = monthTotals(0)
   const lastMonth = monthTotals(1)
   const totals = {}
-  expenses.value.forEach(e => {
+  visibleExpenses.value.forEach(e => {
     totals[e.category] = (totals[e.category] || 0) + Number(e.amount || 0)
   })
   const grandTotal = Object.values(totals).reduce((s, v) => s + v, 0) || 1
@@ -727,6 +738,7 @@ async function saveExpense() {
     } else {
       await addDoc(opsCollection('expenses'), {
         ...payload,
+        academic_year: effectiveAcademicYear(),
         created_at: serverTimestamp(),
         created_by: auth.currentUser?.email || 'unknown',
       })
@@ -784,6 +796,8 @@ function formatRupee(amount) {
 onMounted(async () => {
   await Promise.all([loadExpenses(), loadInvoices(), loadCategories()])
 })
+
+watch(activeYear, () => { loadExpenses() })
 </script>
 
 <style scoped>

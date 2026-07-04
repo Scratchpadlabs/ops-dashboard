@@ -108,7 +108,7 @@
     <div v-if="pipelineRows.length" class="mt-5 bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
       <div class="px-5 py-4 border-b border-slate-100">
         <h3 class="font-bold text-slate-900 text-sm">Delivery Pipeline 🚀</h3>
-        <p class="text-xs text-slate-400 mt-0.5">Operations progress across active schools</p>
+        <p class="text-xs text-slate-400 mt-0.5">Operations and data receivable progress across active schools</p>
       </div>
       <div class="overflow-x-auto">
         <table class="w-full text-sm">
@@ -118,7 +118,8 @@
               <th class="px-3 py-2.5 font-semibold">Onboarding</th>
               <th class="px-3 py-2.5 font-semibold">Terms</th>
               <th class="px-3 py-2.5 font-semibold">Final</th>
-              <th class="px-5 py-2.5 font-semibold text-right">Overall</th>
+              <th class="px-3 py-2.5 font-semibold text-right">Operations %</th>
+              <th class="px-5 py-2.5 font-semibold text-right">Data Receivable %</th>
             </tr>
           </thead>
           <tbody>
@@ -132,11 +133,19 @@
               <td class="px-3 py-3 text-slate-500">{{ row.onboarding.done }}/{{ row.onboarding.total }}</td>
               <td class="px-3 py-3 text-slate-500">{{ row.terms.done }}/{{ row.terms.total }}</td>
               <td class="px-3 py-3 text-slate-500">{{ row.final.done }}/{{ row.final.total }}</td>
-              <td class="px-5 py-3 text-right">
+              <td class="px-3 py-3 text-right">
                 <span
                   class="px-2 py-0.5 rounded-full text-xs font-bold"
                   :style="{ background: pipelineColor(row.overall).bg, color: pipelineColor(row.overall).text }"
                 >{{ row.overall }}%</span>
+              </td>
+              <td class="px-5 py-3 text-right">
+                <span
+                  v-if="row.dataReceivablePct !== null"
+                  class="px-2 py-0.5 rounded-full text-xs font-bold"
+                  :style="{ background: pipelineColor(row.dataReceivablePct).bg, color: pipelineColor(row.dataReceivablePct).text }"
+                >{{ row.dataReceivablePct }}%</span>
+                <span v-else class="text-xs text-slate-300">—</span>
               </td>
             </tr>
           </tbody>
@@ -258,6 +267,7 @@ const schools   = ref([])
 const invoices  = ref([])
 const agreements = ref([])
 const operationsData = ref([])
+const dataReceivableData = ref([])
 
 // ── Stats ──────────────────────────────────────────────────────────────────
 const paidInvoices   = computed(() => invoices.value.filter(i => i.status === 'paid'))
@@ -375,10 +385,32 @@ async function loadOperationsData() {
   }
 }
 
+async function loadDataReceivableData() {
+  try {
+    const snap = await getDocs(opsCollection('school_data_receivable'))
+    dataReceivableData.value = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+  } catch (e) {
+    console.error('Could not load data receivable data', e)
+  }
+}
+
 function opsProgress(items) {
   const total = items.length
   const done = items.filter(i => i.done).length
   return { done, total }
+}
+
+function receivablePercent(schoolId) {
+  const dr = dataReceivableData.value.find(d => d.school_id === schoolId)
+  if (!dr || !dr.phases) return null
+  const all = [
+    ...(dr.phases.onboarding || []),
+    ...(dr.phases.term1 || []),
+    ...(dr.phases.term2 || []),
+    ...(dr.phases.final || []),
+  ]
+  if (!all.length) return 0
+  return Math.round(all.filter(i => i.received).length / all.length * 100)
 }
 
 const pipelineRows = computed(() => {
@@ -392,7 +424,8 @@ const pipelineRows = computed(() => {
       const totalDone = onboarding.done + terms.done + final.done
       const totalAll  = onboarding.total + terms.total + final.total
       const overall = totalAll ? Math.round(totalDone / totalAll * 100) : 0
-      return { schoolId: school.id, schoolName: school.name, onboarding, terms, final, overall }
+      const dataReceivablePct = receivablePercent(school.id)
+      return { schoolId: school.id, schoolName: school.name, onboarding, terms, final, overall, dataReceivablePct }
     })
     .filter(Boolean)
     .sort((a, b) => a.overall - b.overall)
@@ -552,7 +585,7 @@ function timeAgo(date) {
 }
 
 onMounted(() => {
-  Promise.all([loadAll(), loadLinks(), loadOperationsData()])
+  Promise.all([loadAll(), loadLinks(), loadOperationsData(), loadDataReceivableData()])
   quoteTimer = setInterval(() => {
     quoteIndex.value = (quoteIndex.value + 1) % quotes.length
   }, 8000)

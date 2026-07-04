@@ -381,12 +381,16 @@
 
         <!-- ── Data Receivable ─────────────────────────────────────────── -->
         <TabPanel value="data">
-          <div class="pt-4">
-            <div class="bg-white rounded-xl border border-slate-200 p-10 text-center">
-              <i class="pi pi-database text-4xl text-slate-300 mb-3 block"></i>
-              <p class="text-slate-500 font-medium">Coming soon</p>
-              <p class="text-slate-400 text-sm mt-1">Track data received from school per phase</p>
+          <div class="pt-4 space-y-5">
+            <div v-if="!dataReceivable" class="flex items-center justify-center py-10">
+              <ProgressSpinner style="width:28px;height:28px" />
             </div>
+            <template v-else>
+              <DataReceivableSectionCard title="Onboarding Data" :items="dataReceivable.phases.onboarding" @change="saveDataReceivable" />
+              <DataReceivableSectionCard title="Term 1 Data" :items="dataReceivable.phases.term1" @change="saveDataReceivable" />
+              <DataReceivableSectionCard title="Term 2 Data" :items="dataReceivable.phases.term2" @change="saveDataReceivable" />
+              <DataReceivableSectionCard title="Final Term Data" :items="dataReceivable.phases.final" @change="saveDataReceivable" />
+            </template>
           </div>
         </TabPanel>
 
@@ -456,6 +460,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { activeYear, effectiveAcademicYear } from '../composables/useAcademicYear.js'
 import { db, storage, auth } from '../firebase/config'
 import { opsCollection, opsDoc } from '../firebase/collections.js'
 import { getDoc, getDocs, setDoc, updateDoc, doc, serverTimestamp, query, limit } from 'firebase/firestore'
@@ -482,6 +487,7 @@ import Tab from 'primevue/tab'
 import TabPanels from 'primevue/tabpanels'
 import TabPanel from 'primevue/tabpanel'
 import OperationSectionCard from '../components/shared/OperationSectionCard.vue'
+import DataReceivableSectionCard from '../components/shared/DataReceivableSectionCard.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -492,6 +498,7 @@ const { celebrate } = useCelebration()
 const loading    = ref(true)
 const school     = ref(null)
 const operations = ref(null)
+const dataReceivable = ref(null)
 const quotations  = ref([])
 const agreements  = ref([])
 const invoices    = ref([])
@@ -582,7 +589,7 @@ const editNoteText  = ref('')
 
 async function addNote() {
   if (!newNote.value.trim()) return
-  const note = { id: Date.now().toString(), text: newNote.value.trim(), created_at: new Date().toISOString() }
+  const note = { id: Date.now().toString(), text: newNote.value.trim(), created_at: new Date().toISOString(), academic_year: effectiveAcademicYear() }
   const notes = [...(school.value.notes || []), note]
   school.value.notes = notes
   newNote.value = ''
@@ -726,6 +733,70 @@ async function saveOperations() {
   }
 }
 
+// ── Data Receivable ──────────────────────────────────────────────────────────
+function defaultReceivableOnboarding() {
+  return [
+    { id: 'academic_calendar', label: 'Academic Calendar',     received: false, date: '', notes: '' },
+    { id: 'student_names',     label: 'Student Names List',    received: false, date: '', notes: '' },
+    { id: 'student_photos',    label: 'Student Photos',        received: false, date: '', notes: '' },
+    { id: 'teacher_list',      label: 'Teacher List',          received: false, date: '', notes: '' },
+    { id: 'school_logo',       label: 'School Logo',           received: false, date: '', notes: '' },
+    { id: 'principal_sign',    label: 'Principal Signature',   received: false, date: '', notes: '' },
+  ]
+}
+function defaultReceivableTerm() {
+  return [
+    { id: 'attendance',     label: 'Attendance Data',      received: false, date: '', notes: '' },
+    { id: 'marks',          label: 'Marks / Grades',       received: false, date: '', notes: '' },
+    { id: 'remarks',        label: 'Teacher Remarks',      received: false, date: '', notes: '' },
+    { id: 'sew_data',       label: 'SEW Assessment Data',  received: false, date: '', notes: '' },
+    { id: 'co_scholastic',  label: 'Co-Scholastic Data',   received: false, date: '', notes: '' },
+  ]
+}
+function defaultReceivableFinal() {
+  return [
+    { id: 'attendance',         label: 'Final Attendance',        received: false, date: '', notes: '' },
+    { id: 'marks',              label: 'Final Marks',             received: false, date: '', notes: '' },
+    { id: 'remarks',            label: 'Final Remarks',           received: false, date: '', notes: '' },
+    { id: 'sew_data',           label: 'Final SEW Data',          received: false, date: '', notes: '' },
+    { id: 'co_scholastic',      label: 'Final Co-Scholastic',     received: false, date: '', notes: '' },
+    { id: 'extra_curricular',   label: 'Extra Curricular Data',   received: false, date: '', notes: '' },
+  ]
+}
+
+async function loadDataReceivable() {
+  try {
+    const ref_ = opsDoc('school_data_receivable', route.params.id)
+    const snap = await getDoc(ref_)
+    if (snap.exists()) {
+      dataReceivable.value = snap.data()
+    } else {
+      const fresh = {
+        school_id: route.params.id,
+        phases: {
+          onboarding: defaultReceivableOnboarding(),
+          term1:      defaultReceivableTerm(),
+          term2:      defaultReceivableTerm(),
+          final:      defaultReceivableFinal(),
+        },
+      }
+      await setDoc(ref_, fresh)
+      dataReceivable.value = fresh
+    }
+  } catch (e) {
+    console.error('Could not load data receivable', e)
+  }
+}
+
+async function saveDataReceivable() {
+  if (!dataReceivable.value) return
+  try {
+    await setDoc(opsDoc('school_data_receivable', route.params.id), dataReceivable.value)
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'Could not save data receivable', life: 3000 })
+  }
+}
+
 async function setNumTerms(n) {
   if (!operations.value || operations.value.num_terms === n) return
   const existing = operations.value.terms || []
@@ -792,9 +863,14 @@ function belongsToSchool(record) {
   return (record.school_name || '').trim().toLowerCase() === name
 }
 
-const schoolQuotations = computed(() => quotations.value.filter(belongsToSchool))
-const schoolAgreements = computed(() => agreements.value.filter(belongsToSchool))
-const schoolInvoices   = computed(() => invoices.value.filter(belongsToSchool))
+function belongsToYear(record) {
+  if (!activeYear.value || activeYear.value === 'All Years') return true
+  return record.academic_year === activeYear.value
+}
+
+const schoolQuotations = computed(() => quotations.value.filter(r => belongsToSchool(r) && belongsToYear(r)))
+const schoolAgreements = computed(() => agreements.value.filter(r => belongsToSchool(r) && belongsToYear(r)))
+const schoolInvoices   = computed(() => invoices.value.filter(r => belongsToSchool(r) && belongsToYear(r)))
 
 const invoiceSummary = computed(() => {
   const total = schoolInvoices.value.reduce((s, i) => s + i.price_per_student * i.quantity, 0)
@@ -987,7 +1063,7 @@ async function loadEverything() {
   try {
     await loadSchool()
     if (school.value) {
-      await Promise.all([loadOperations(), loadQuotations(), loadAgreements(), loadInvoices()])
+      await Promise.all([loadOperations(), loadDataReceivable(), loadQuotations(), loadAgreements(), loadInvoices()])
     }
   } finally {
     loading.value = false
@@ -995,6 +1071,7 @@ async function loadEverything() {
 }
 
 watch(() => route.params.id, loadEverything)
+watch(activeYear, () => { Promise.all([loadQuotations(), loadAgreements(), loadInvoices()]) })
 
 onMounted(async () => {
   await Promise.all([loadEverything(), loadModuleSettings()])
