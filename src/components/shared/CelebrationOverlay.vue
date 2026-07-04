@@ -10,6 +10,7 @@
           <div class="celebrate-emoji">{{ celebrationEmoji }}</div>
           <div class="celebrate-title">Hell yeah!</div>
           <div class="celebrate-msg">{{ celebrationMessage }}</div>
+          <img v-if="celebrationGif" :src="celebrationGif" class="celebrate-gif" alt="" />
         </div>
       </div>
     </Transition>
@@ -20,10 +21,30 @@
 import { ref, watch, onUnmounted } from 'vue'
 import { useCelebration } from '../../composables/useCelebration'
 
-const { isVisible, celebrationMessage, celebrationEmoji } = useCelebration()
+const { isVisible, celebrationMessage, celebrationEmoji, celebrationEventType } = useCelebration()
 const confettiCanvas = ref(null)
 let animFrame = null
 let particles = []
+
+// GIF pools per celebration event — picked randomly within the matching pool.
+const GIF_POOLS = {
+  school: [
+    'https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif',  // Michael Scott happy dance
+    'https://media.giphy.com/media/MJL5ae814FDTW/giphy.gif',      // Michael Scott worm dance
+  ],
+  invoice: [
+    'https://media.giphy.com/media/GfXFVHUzjlbOg/giphy.gif',      // Michael "YES"
+    'https://media.giphy.com/media/l2SpZkQ0XT1XtKus0/giphy.gif',  // Kevin spilling chili
+  ],
+  agreement: [
+    'https://media.giphy.com/media/3o7abB06u9bNzA8lu8/giphy.gif', // Dwight serious nod
+    'https://media.giphy.com/media/l0MYEqEzwMWFCg8rm/giphy.gif',  // Dwight and Michael high five
+  ],
+  default: [
+    'https://media.giphy.com/media/u8ontzUmtHnmuBt5IQ/giphy.gif', // Jim Halpert smirk/look at camera
+  ],
+}
+const celebrationGif = ref('')
 
 const COLORS = ['#2563eb', '#16a34a', '#d97706', '#dc2626', '#7c3aed', '#0891b2', '#db2777']
 
@@ -76,6 +97,8 @@ function drawConfetti() {
 
 watch(isVisible, (val) => {
   if (val) {
+    const pool = GIF_POOLS[celebrationEventType.value] || GIF_POOLS.default
+    celebrationGif.value = pool[Math.floor(Math.random() * pool.length)]
     setTimeout(() => {
       createParticles()
       drawConfetti()
@@ -135,6 +158,14 @@ onUnmounted(() => cancelAnimationFrame(animFrame))
   font-size: 16px;
   color: #64748b;
   font-weight: 500;
+}
+
+.celebrate-gif {
+  display: block;
+  width: 200px;
+  height: auto;
+  border-radius: 12px;
+  margin: 16px auto 0;
 }
 
 @keyframes pop {

@@ -241,6 +241,7 @@ import {
 } from 'firebase/firestore'
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage'
 import { useConfirm } from 'primevue/useconfirm'
+import { useCelebration } from '../composables/useCelebration'
 import { useAllSchools } from '../composables/useAllSchools.js'
 import { useToast } from 'primevue/usetoast'
 import { generateAgreementFiles } from '../utils/api.js'
@@ -258,6 +259,7 @@ import SchoolSearchSelect from '../components/shared/SchoolSearchSelect.vue'
 
 const route = useRoute()
 const confirm = useConfirm()
+const { celebrate } = useCelebration()
 const toast = useToast()
 const { allSchools, loadAllSchools } = useAllSchools()
 
@@ -447,6 +449,7 @@ async function onFileSelected(e) {
       updated_by: auth.currentUser?.email || 'unknown',
     })
     toast.add({ severity: 'success', summary: 'Signed', detail: `Signed agreement saved for ${a.school_name}`, life: 3000 })
+    celebrate(`${a.school_name} signed the agreement!`, '✍️', 'agreement')
     await loadAgreements()
   } catch (err) {
     console.error(err)

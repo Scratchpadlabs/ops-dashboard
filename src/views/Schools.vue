@@ -330,7 +330,7 @@ async function saveSchool() {
       payload.notes      = []
       await addDoc(opsCollection('schools'), payload)
       toast.add({ severity: 'success', summary: 'Added', detail: `${form.name} added`, life: 2500 })
-      celebrate(`${form.name} is now a partner!`, '🏫')
+      celebrate(`${form.name} is now a partner!`, '🏫', 'school')
     }
     dialogVisible.value = false
     await loadSchools()

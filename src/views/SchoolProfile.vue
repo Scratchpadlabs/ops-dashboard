@@ -938,6 +938,7 @@ async function onAgreementFileSelected(e) {
       updated_by: auth.currentUser?.email || 'unknown',
     })
     toast.add({ severity: 'success', summary: 'Signed', detail: `Signed agreement saved for ${a.school_name}`, life: 3000 })
+    celebrate(`${a.school_name} signed the agreement!`, '✍️', 'agreement')
     await loadAgreements()
   } catch (err) {
     console.error(err)
@@ -974,7 +975,7 @@ function markInvoicePaid(invoice) {
         })
         const amount = formatRupee(invoice.price_per_student * invoice.quantity)
         toast.add({ severity: 'success', summary: 'Paid!', detail: `${amount} received from ${invoice.school_name}`, life: 3000 })
-        celebrate(`${amount} received from ${invoice.school_name}!`, '💰')
+        celebrate(`${amount} received from ${invoice.school_name}!`, '💰', 'invoice')
         await loadInvoices()
       } catch (e) {
         toast.add({ severity: 'error', summary: 'Error', detail: 'Could not update invoice', life: 3000 })
