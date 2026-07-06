@@ -7,7 +7,10 @@
         <h2 class="text-lg font-semibold text-slate-900">Expenses</h2>
         <p class="text-sm text-slate-500 mt-0.5">{{ visibleExpenses.length }} logged · P&amp;L at a glance</p>
       </div>
-      <Button label="New Expense" icon="pi pi-plus" @click="openNewExpense" />
+      <div class="flex items-center gap-2">
+        <Button label="Export" icon="pi pi-download" severity="secondary" outlined @click="exportToExcel" />
+        <Button label="New Expense" icon="pi pi-plus" @click="openNewExpense" />
+      </div>
     </div>
 
     <!-- Disclaimer -->
@@ -52,6 +55,41 @@
         <div class="pl-value">{{ formatRupee(Math.abs(displayNet)) }}<span v-if="netPL < 0" class="text-sm font-semibold opacity-80"> deficit</span></div>
         <div class="pl-sub">{{ netPL >= 0 ? "You're in the green" : 'Spending more than earning' }}</div>
       </div>
+    </div>
+
+    <!-- School Profitability -->
+    <div v-if="schoolProfitability.length" class="bg-white rounded-2xl border border-slate-200 overflow-hidden mb-6">
+      <div class="px-5 py-3.5 border-b border-slate-100">
+        <h3 class="text-sm font-semibold text-slate-900">School Profitability</h3>
+        <p class="text-xs text-slate-400 mt-0.5">Schools with both invoiced revenue and linked expenses.</p>
+      </div>
+      <DataTable :value="schoolProfitability" size="small" stripedRows>
+        <Column header="School Name">
+          <template #body="{ data }">
+            <span class="text-sm font-medium text-slate-800">{{ data.school_name }}</span>
+          </template>
+        </Column>
+        <Column header="Revenue">
+          <template #body="{ data }">
+            <span class="text-sm font-semibold text-emerald-600">{{ formatRupee(data.revenue) }}</span>
+          </template>
+        </Column>
+        <Column header="Costs">
+          <template #body="{ data }">
+            <span class="text-sm font-semibold text-rose-600">{{ formatRupee(data.cost) }}</span>
+          </template>
+        </Column>
+        <Column header="Profit">
+          <template #body="{ data }">
+            <span class="text-sm font-bold" :class="data.profit >= 0 ? 'text-slate-900' : 'text-red-600'">{{ formatRupee(data.profit) }}</span>
+          </template>
+        </Column>
+        <Column header="Margin">
+          <template #body="{ data }">
+            <span class="px-2 py-0.5 rounded-full text-xs font-bold" :class="marginClass(data.margin)">{{ data.margin.toFixed(1) }}%</span>
+          </template>
+        </Column>
+      </DataTable>
     </div>
 
     <!-- Monthly bar chart -->
@@ -175,7 +213,42 @@
         </DataTable>
       </div>
 
+      <!-- School-wise summary table -->
+      <div v-if="schoolWiseExpenses.length" class="bg-white rounded-2xl border border-slate-200 overflow-hidden mb-6">
+        <div class="px-5 py-3.5 border-b border-slate-100">
+          <h3 class="text-sm font-semibold text-slate-900">School-wise Expenses</h3>
+          <p class="text-xs text-slate-400 mt-0.5">Click a school to filter the list below.</p>
+        </div>
+        <DataTable
+          :value="schoolWiseExpenses"
+          size="small"
+          stripedRows
+          class="category-summary-table"
+          @row-click="e => onSchoolRowClick(e.data)"
+        >
+          <Column header="School Name">
+            <template #body="{ data }">
+              <span class="text-sm font-medium text-slate-800">{{ data.school_name }}</span>
+            </template>
+          </Column>
+          <Column header="Total Expenses">
+            <template #body="{ data }">
+              <span class="text-sm font-bold text-rose-600">{{ formatRupee(data.total) }}</span>
+            </template>
+          </Column>
+          <Column header="% of Total Expenses">
+            <template #body="{ data }">
+              <span class="text-sm text-slate-500">{{ data.pct.toFixed(1) }}%</span>
+            </template>
+          </Column>
+        </DataTable>
+      </div>
+
       <!-- Expense list -->
+      <div v-if="filterSchoolId" class="flex items-center gap-2 mb-3 text-xs text-violet-700 bg-violet-50 border border-violet-200 rounded-lg px-3 py-2 w-fit">
+        Filtering by <strong>{{ activeSchoolFilterName }}</strong>
+        <button type="button" class="pi pi-times text-[10px] ml-1" @click="filterSchoolId = null"></button>
+      </div>
       <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
         <div v-if="filteredExpensesList.length === 0" class="text-center py-16">
           <p class="text-sm text-slate-400">No expenses match the current filters.</p>
@@ -199,6 +272,36 @@
           <Column header="Amount">
             <template #body="{ data }">
               <span class="text-sm font-bold text-rose-600">{{ formatRupee(data.amount) }}</span>
+            </template>
+          </Column>
+          <Column header="Payee">
+            <template #body="{ data }">
+              <span class="text-sm text-slate-700">{{ data.payee || '—' }}</span>
+            </template>
+          </Column>
+          <Column header="Payment Mode" style="width:130px">
+            <template #body="{ data }">
+              <span v-if="data.payment_mode" class="payment-badge" :class="paymentModeClass(data.payment_mode)">{{ data.payment_mode }}</span>
+              <span v-else class="text-xs text-slate-300">—</span>
+            </template>
+          </Column>
+          <Column header="School">
+            <template #body="{ data }">
+              <span class="text-sm text-slate-600">{{ data.school_name || '—' }}</span>
+            </template>
+          </Column>
+          <Column header="Receipt" style="width:100px">
+            <template #body="{ data }">
+              <a v-if="data.receipt_url" :href="data.receipt_url" target="_blank" class="text-xs text-violet-600 font-semibold">📎 View</a>
+              <Button
+                v-else
+                label="Upload"
+                icon="pi pi-upload"
+                text
+                size="small"
+                :loading="uploadingRowReceiptId === data.id"
+                @click="triggerRowReceiptUpload(data)"
+              />
             </template>
           </Column>
           <Column header="Recurring" style="width:130px">
@@ -283,6 +386,60 @@
           </div>
         </div>
 
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="form-label">Payee / Vendor</label>
+            <InputText v-model="form.payee" class="w-full" placeholder="e.g. Figma Inc" />
+          </div>
+          <div>
+            <label class="form-label">Payment Mode</label>
+            <Select v-model="form.payment_mode" :options="paymentModes" placeholder="Select mode" class="w-full" showClear />
+          </div>
+        </div>
+
+        <div>
+          <label class="form-label">School (optional)</label>
+          <Select
+            v-model="form.school_id"
+            :options="allSchools"
+            optionLabel="name"
+            optionValue="id"
+            filter
+            showClear
+            placeholder="Link to a school, if applicable"
+            class="w-full"
+          >
+            <template #option="{ option }">
+              <div>
+                <div class="text-sm font-medium text-slate-800">{{ option.name }}</div>
+                <div class="text-xs text-slate-400">{{ option.city || '—' }}</div>
+              </div>
+            </template>
+          </Select>
+        </div>
+
+        <div>
+          <label class="form-label">Receipt</label>
+          <div v-if="pendingReceiptFile" class="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2">
+            <span class="text-sm text-slate-700 truncate"><i class="pi pi-file mr-1.5"></i>{{ pendingReceiptFile.name }}</span>
+            <Button icon="pi pi-times" text rounded size="small" severity="danger" v-tooltip="'Remove'" @click="removeReceipt" />
+          </div>
+          <div v-else-if="form.receipt_url" class="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2">
+            <a :href="form.receipt_url" target="_blank" class="text-sm text-violet-600 font-medium truncate"><i class="pi pi-paperclip mr-1.5"></i>View receipt</a>
+            <Button icon="pi pi-times" text rounded size="small" severity="danger" v-tooltip="'Remove'" @click="removeReceipt" />
+          </div>
+          <Button
+            v-else
+            label="Upload Receipt"
+            icon="pi pi-upload"
+            outlined
+            size="small"
+            :loading="uploadingReceipt"
+            @click="triggerReceiptUpload"
+          />
+          <input ref="receiptFileInputEl" type="file" accept="image/*,application/pdf" class="hidden" @change="onReceiptFileSelected" />
+        </div>
+
         <div>
           <label class="form-label">Notes</label>
           <Textarea v-model="form.notes" class="w-full" rows="2" placeholder="Optional context..." />
@@ -321,6 +478,8 @@
       </template>
     </Dialog>
 
+    <input ref="rowReceiptInputEl" type="file" accept="image/*,application/pdf" class="hidden" @change="onRowReceiptFileSelected" />
+
     <ConfirmDialog />
   </div>
 </template>
@@ -328,13 +487,16 @@
 <script setup>
 import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
-import { auth } from '../firebase/config'
+import { auth, storage } from '../firebase/config'
 import { activeYear, effectiveAcademicYear } from '../composables/useAcademicYear.js'
+import { useAllSchools } from '../composables/useAllSchools.js'
 import { opsCollection, opsDoc } from '../firebase/collections.js'
 import {
   getDocs, addDoc, updateDoc, deleteDoc,
   orderBy, query, serverTimestamp, Timestamp, limit,
 } from 'firebase/firestore'
+import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage'
+import * as XLSX from 'xlsx'
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
 
@@ -351,6 +513,7 @@ import ConfirmDialog from 'primevue/confirmdialog'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import MultiSelect from 'primevue/multiselect'
+import Select from 'primevue/select'
 
 const route = useRoute()
 const confirm = useConfirm()
@@ -388,6 +551,7 @@ const categoryEmojiOptions = [
 ]
 
 const frequencies = ['monthly', 'quarterly', 'yearly']
+const paymentModes = ['Cash', 'UPI', 'Bank Transfer', 'Cheque']
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
@@ -395,6 +559,7 @@ const expenses = ref([])
 const invoices = ref([])
 const customCategories = ref([])
 const loading = ref(true)
+const { allSchools, loadAllSchools } = useAllSchools()
 
 const dialogVisible = ref(false)
 const saving = ref(false)
@@ -406,11 +571,23 @@ const newCategoryName = ref('')
 const newCategoryEmoji = ref('')
 const nameSuggestions = ref([])
 
+// Receipt upload
+const receiptFileInputEl = ref(null)
+const pendingReceiptFile = ref(null)
+const originalReceiptPath = ref('')
+const uploadingReceipt = ref(false)
+
+// Row-level receipt upload
+const rowReceiptInputEl = ref(null)
+const rowUploadTargetId = ref(null)
+const uploadingRowReceiptId = ref(null)
+
 // Filters
 const filterCategories = ref([])
 const filterMonth = ref(null)
 const filterFrom = ref(null)
 const filterTo = ref(null)
+const filterSchoolId = ref(null)
 
 const emptyForm = () => ({
   name: '',
@@ -421,6 +598,11 @@ const emptyForm = () => ({
   notes: '',
   recurring: false,
   frequency: 'monthly',
+  payee: '',
+  payment_mode: null,
+  school_id: null,
+  receipt_url: '',
+  receipt_path: '',
 })
 
 const form = reactive(emptyForm())
@@ -548,11 +730,61 @@ const categorySummaryTable = computed(() => {
     .sort((a, b) => b.total - a.total)
 })
 
+// School-wise expense breakdown (only schools with at least one linked expense)
+const schoolWiseExpenses = computed(() => {
+  const totals = {}
+  visibleExpenses.value.forEach(e => {
+    if (!e.school_id) return
+    if (!totals[e.school_id]) totals[e.school_id] = { school_id: e.school_id, school_name: e.school_name || 'Unknown', total: 0 }
+    totals[e.school_id].total += Number(e.amount || 0)
+  })
+  const grandTotal = totalExpenses.value || 1
+  return Object.values(totals)
+    .map(t => ({ ...t, pct: (t.total / grandTotal) * 100 }))
+    .sort((a, b) => b.total - a.total)
+})
+
+const activeSchoolFilterName = computed(() =>
+  schoolWiseExpenses.value.find(s => s.school_id === filterSchoolId.value)?.school_name || ''
+)
+
+function onSchoolRowClick(row) {
+  filterSchoolId.value = filterSchoolId.value === row.school_id ? null : row.school_id
+}
+
+// School profitability — schools with both invoiced revenue and linked expenses
+const schoolProfitability = computed(() => {
+  const bySchool = {}
+  const upsert = (id, name) => {
+    if (!bySchool[id]) bySchool[id] = { school_id: id, school_name: name || 'Unknown', revenue: 0, cost: 0 }
+    return bySchool[id]
+  }
+  paidInvoices.value.forEach(i => {
+    if (!i.school_id) return
+    upsert(i.school_id, i.school_name).revenue += (i.price_per_student || 0) * (i.quantity || 0)
+  })
+  visibleExpenses.value.forEach(e => {
+    if (!e.school_id) return
+    upsert(e.school_id, e.school_name).cost += Number(e.amount || 0)
+  })
+  return Object.values(bySchool)
+    .filter(s => s.revenue > 0 && s.cost > 0)
+    .map(s => ({ ...s, profit: s.revenue - s.cost, margin: (s.revenue - s.cost) / s.revenue * 100 }))
+    .sort((a, b) => b.profit - a.profit)
+})
+
+function marginClass(margin) {
+  if (margin > 50) return 'bg-emerald-100 text-emerald-700'
+  if (margin >= 20) return 'bg-amber-100 text-amber-700'
+  return 'bg-red-100 text-red-700'
+}
+
 // ── Filters ───────────────────────────────────────────────────────────────────
 
 const filteredExpensesList = computed(() => {
   return sortedExpenses.value.filter(e => {
     if (filterCategories.value.length && !filterCategories.value.includes(e.category)) return false
+    if (filterSchoolId.value && e.school_id !== filterSchoolId.value) return false
 
     const d = toDate(e.date)
     if (filterMonth.value && d) {
@@ -573,6 +805,7 @@ function clearFilters() {
   filterMonth.value = null
   filterFrom.value = null
   filterTo.value = null
+  filterSchoolId.value = null
 }
 
 function onCategoryRowClick(row) {
@@ -581,6 +814,37 @@ function onCategoryRowClick(row) {
   } else {
     filterCategories.value = [row.name]
   }
+}
+
+function paymentModeClass(mode) {
+  switch (mode) {
+    case 'Cash':           return 'bg-emerald-100 text-emerald-700'
+    case 'UPI':            return 'bg-blue-100 text-blue-700'
+    case 'Bank Transfer':  return 'bg-purple-100 text-purple-700'
+    case 'Cheque':         return 'bg-amber-100 text-amber-700'
+    default:               return 'bg-slate-100 text-slate-600'
+  }
+}
+
+function exportToExcel() {
+  const rows = filteredExpensesList.value.map(e => ({
+    Date: formatDate(e.date),
+    Category: e.category,
+    Name: e.name,
+    Payee: e.payee || '',
+    Amount: Number(e.amount || 0),
+    'Payment Mode': e.payment_mode || '',
+    School: e.school_name || '',
+    Notes: e.notes || '',
+    Recurring: e.recurring ? (e.frequency || 'yes') : 'No',
+  }))
+  const ws = XLSX.utils.json_to_sheet(rows)
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, 'Expenses')
+  const refDate = filterMonth.value || new Date()
+  const month = refDate.toLocaleDateString('en-US', { month: 'long' })
+  const year = refDate.getFullYear()
+  XLSX.writeFile(wb, `Expenses_${month}_${year}.xlsx`)
 }
 
 // Smart prompts
@@ -693,6 +957,8 @@ async function addCustomCategory() {
 function openNewExpense() {
   editingId.value = null
   Object.assign(form, emptyForm())
+  pendingReceiptFile.value = null
+  originalReceiptPath.value = ''
   formError.value = ''
   addCategoryOpen.value = false
   dialogVisible.value = true
@@ -709,10 +975,75 @@ function openEditExpense(e) {
     notes: e.notes || '',
     recurring: !!e.recurring,
     frequency: e.frequency || 'monthly',
+    payee: e.payee || '',
+    payment_mode: e.payment_mode || null,
+    school_id: e.school_id || null,
+    receipt_url: e.receipt_url || '',
+    receipt_path: e.receipt_path || '',
   })
+  pendingReceiptFile.value = null
+  originalReceiptPath.value = e.receipt_path || ''
   formError.value = ''
   addCategoryOpen.value = false
   dialogVisible.value = true
+}
+
+function triggerReceiptUpload() { receiptFileInputEl.value?.click() }
+
+function onReceiptFileSelected(e) {
+  const file = e.target.files?.[0]
+  e.target.value = ''
+  if (!file) return
+  pendingReceiptFile.value = file
+  form.receipt_url = ''
+}
+
+async function removeReceipt() {
+  pendingReceiptFile.value = null
+  form.receipt_url = ''
+  form.receipt_path = ''
+  if (originalReceiptPath.value) {
+    try { await deleteObject(storageRef(storage, originalReceiptPath.value)) } catch (e) { console.error('Could not remove receipt', e) }
+    originalReceiptPath.value = ''
+  }
+}
+
+async function uploadReceiptFile(expenseId, file, existingPath = '') {
+  const ext = (file.name.split('.').pop() || 'bin').toLowerCase()
+  const path = `expenses/${expenseId}/receipt.${ext}`
+  const sRef = storageRef(storage, path)
+  await uploadBytes(sRef, file)
+  const url = await getDownloadURL(sRef)
+  if (existingPath && existingPath !== path) {
+    try { await deleteObject(storageRef(storage, existingPath)) } catch (e) { console.error('Could not remove old receipt', e) }
+  }
+  await updateDoc(opsDoc('expenses', expenseId), { receipt_url: url, receipt_path: path })
+  return url
+}
+
+function triggerRowReceiptUpload(expense) {
+  rowUploadTargetId.value = expense.id
+  rowReceiptInputEl.value?.click()
+}
+
+async function onRowReceiptFileSelected(e) {
+  const file = e.target.files?.[0]
+  e.target.value = ''
+  const expenseId = rowUploadTargetId.value
+  if (!file || !expenseId) return
+
+  uploadingRowReceiptId.value = expenseId
+  try {
+    await uploadReceiptFile(expenseId, file)
+    toast.add({ severity: 'success', summary: 'Uploaded', detail: 'Receipt attached', life: 2000 })
+    await loadExpenses()
+  } catch (err) {
+    console.error(err)
+    toast.add({ severity: 'error', summary: 'Upload failed', detail: err.message || 'Could not upload receipt', life: 4000 })
+  } finally {
+    uploadingRowReceiptId.value = null
+    rowUploadTargetId.value = null
+  }
 }
 
 function validate() {
@@ -730,6 +1061,7 @@ async function saveExpense() {
 
   saving.value = true
   try {
+    const school = form.school_id ? allSchools.value.find(s => s.id === form.school_id) : null
     const payload = {
       name: form.name.trim(),
       category: form.category,
@@ -739,25 +1071,41 @@ async function saveExpense() {
       notes: form.notes.trim(),
       recurring: !!form.recurring,
       frequency: form.recurring ? form.frequency : null,
+      payee: form.payee.trim(),
+      payment_mode: form.payment_mode || null,
+      school_id: form.school_id || null,
+      school_name: school?.name || '',
+      receipt_url: form.receipt_url || '',
+      receipt_path: form.receipt_path || '',
     }
 
-    if (editingId.value) {
-      await updateDoc(opsDoc('expenses', editingId.value), {
+    let expenseId = editingId.value
+    if (expenseId) {
+      await updateDoc(opsDoc('expenses', expenseId), {
         ...payload,
         updated_at: serverTimestamp(),
         updated_by: auth.currentUser?.email || 'unknown',
       })
-      toast.add({ severity: 'success', summary: 'Updated', detail: `${payload.name} updated`, life: 2500 })
     } else {
-      await addDoc(opsCollection('expenses'), {
+      const docRef = await addDoc(opsCollection('expenses'), {
         ...payload,
         academic_year: effectiveAcademicYear(),
         created_at: serverTimestamp(),
         created_by: auth.currentUser?.email || 'unknown',
       })
-      toast.add({ severity: 'success', summary: 'Saved!', detail: `${payload.name} added`, life: 2500 })
+      expenseId = docRef.id
     }
 
+    if (pendingReceiptFile.value) {
+      uploadingReceipt.value = true
+      try {
+        await uploadReceiptFile(expenseId, pendingReceiptFile.value, originalReceiptPath.value)
+      } finally {
+        uploadingReceipt.value = false
+      }
+    }
+
+    toast.add({ severity: 'success', summary: editingId.value ? 'Updated' : 'Saved!', detail: `${payload.name} ${editingId.value ? 'updated' : 'added'}`, life: 2500 })
     dialogVisible.value = false
     await loadExpenses()
   } catch (e) {
@@ -807,7 +1155,7 @@ function formatRupee(amount) {
 }
 
 onMounted(async () => {
-  await Promise.all([loadExpenses(), loadInvoices(), loadCategories()])
+  await Promise.all([loadExpenses(), loadInvoices(), loadCategories(), loadAllSchools()])
 
   if (highlightedId.value) {
     setTimeout(() => { highlightedId.value = null }, 4000)
@@ -895,6 +1243,17 @@ watch(activeYear, () => { loadExpenses() })
   gap: 5px;
   background: #ede9fe;
   color: #7c3aed;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 3px 8px;
+  border-radius: 999px;
+}
+
+.payment-badge {
+  display: inline-flex;
+  align-items: center;
   font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
