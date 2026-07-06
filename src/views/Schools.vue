@@ -166,7 +166,7 @@
         <div>
           <div class="flex items-center justify-between mb-2">
             <label class="form-label mb-0">Points of Contact</label>
-            <button type="button" class="text-xs text-violet-600 font-semibold" @click="addPoc">+ Add POC</button>
+            <button type="button" class="text-xs text-violet-600 font-semibold" @click="addPoc">+ Add Contact</button>
           </div>
           <p v-if="form.pocs.length === 0" class="text-xs text-slate-400">No contacts added yet — optional.</p>
           <div v-for="(poc, i) in form.pocs" :key="i" class="grid grid-cols-12 gap-2 mb-2">

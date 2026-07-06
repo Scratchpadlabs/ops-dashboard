@@ -108,7 +108,10 @@
 
               <!-- Points of Contact -->
               <div class="bg-white rounded-xl border border-slate-200 p-4">
-                <div class="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Points of Contact</div>
+                <div class="flex items-center justify-between mb-3">
+                  <div class="text-xs font-semibold text-slate-400 uppercase tracking-wide">Points of Contact</div>
+                  <Button icon="pi pi-plus" text rounded size="small" v-tooltip="'Add Contact'" @click="openAddPoc" />
+                </div>
                 <div v-if="(school.pocs || []).length === 0" class="text-center py-6 text-slate-300 text-sm">No contacts added yet</div>
                 <div v-else class="space-y-2">
                   <div
@@ -120,7 +123,11 @@
                       <span class="text-sm font-bold text-slate-900">{{ poc.name }}</span>
                       <span v-if="poc.position" class="px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700">{{ poc.position }}</span>
                     </div>
-                    <a v-if="poc.phone" :href="`tel:${poc.phone}`" class="text-sm text-violet-600 font-medium flex-shrink-0">📞 {{ poc.phone }}</a>
+                    <div class="flex items-center gap-1 flex-shrink-0">
+                      <a v-if="poc.phone" :href="`tel:${poc.phone}`" class="text-sm text-violet-600 font-medium mr-1">📞 {{ poc.phone }}</a>
+                      <Button icon="pi pi-pencil" text rounded size="small" @click="openEditPoc(poc, i)" />
+                      <Button icon="pi pi-trash" text rounded size="small" severity="danger" @click="deletePoc(i)" />
+                    </div>
                   </div>
                 </div>
               </div>
@@ -476,6 +483,29 @@
     </template>
   </Dialog>
 
+  <!-- Add/Edit POC Dialog -->
+  <Dialog v-model:visible="pocDialogVisible" :header="editingPocIndex === null ? 'Add Contact' : 'Edit Contact'" modal :style="{ width: '420px' }">
+    <div class="space-y-4 pt-2">
+      <div>
+        <label class="form-label">Name *</label>
+        <InputText v-model="pocForm.name" class="w-full" />
+      </div>
+      <div>
+        <label class="form-label">Phone</label>
+        <InputText v-model="pocForm.phone" class="w-full" />
+      </div>
+      <div>
+        <label class="form-label">Position / Designation</label>
+        <InputText v-model="pocForm.position" class="w-full" />
+      </div>
+      <div v-if="pocFormError" class="text-sm text-red-500 bg-red-50 rounded-lg px-3 py-2">{{ pocFormError }}</div>
+    </div>
+    <template #footer>
+      <Button label="Cancel" text @click="pocDialogVisible = false" />
+      <Button label="Save" :loading="pocSaving" @click="savePoc" />
+    </template>
+  </Dialog>
+
   <input ref="agreementFileInputEl" type="file" accept="application/pdf" class="hidden" @change="onAgreementFileSelected" />
   <input ref="docFileInputEl" type="file" class="hidden" @change="onDocFileSelected" />
 
@@ -599,6 +629,54 @@ async function toggleStatus(status) {
   }
   school.value = { ...school.value, statuses: newStatuses }
   await saveSchoolField('statuses', newStatuses)
+}
+
+// ── Points of Contact ────────────────────────────────────────────────────────
+const pocDialogVisible = ref(false)
+const pocSaving        = ref(false)
+const pocFormError     = ref('')
+const editingPocIndex   = ref(null)
+const pocForm = reactive({ name: '', phone: '', position: '' })
+
+function openAddPoc() {
+  editingPocIndex.value = null
+  Object.assign(pocForm, { name: '', phone: '', position: '' })
+  pocFormError.value = ''
+  pocDialogVisible.value = true
+}
+
+function openEditPoc(poc, i) {
+  editingPocIndex.value = i
+  Object.assign(pocForm, { name: poc.name || '', phone: poc.phone || '', position: poc.position || '' })
+  pocFormError.value = ''
+  pocDialogVisible.value = true
+}
+
+async function savePoc() {
+  if (!pocForm.name.trim()) { pocFormError.value = 'Name is required'; return }
+  pocSaving.value = true
+  try {
+    const entry = { name: pocForm.name.trim(), phone: pocForm.phone.trim(), position: pocForm.position.trim() }
+    const pocs = [...(school.value.pocs || [])]
+    if (editingPocIndex.value === null) {
+      pocs.push(entry)
+    } else {
+      pocs[editingPocIndex.value] = entry
+    }
+    school.value.pocs = pocs
+    await saveSchoolField('pocs', pocs)
+    pocDialogVisible.value = false
+  } catch (e) {
+    pocFormError.value = 'Something went wrong. Try again.'
+  } finally {
+    pocSaving.value = false
+  }
+}
+
+async function deletePoc(i) {
+  const pocs = (school.value.pocs || []).filter((_, idx) => idx !== i)
+  school.value.pocs = pocs
+  await saveSchoolField('pocs', pocs)
 }
 
 async function changeRm(value) {
