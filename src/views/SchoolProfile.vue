@@ -530,7 +530,7 @@ async function loadSchool() {
   try {
     const snap = await getDoc(opsDoc('schools', route.params.id))
     school.value = snap.exists()
-      ? { id: snap.id, statuses: [], notes: [], documents: [], ...snap.data() }
+      ? { id: snap.id, statuses: ['Converted'], notes: [], documents: [], ...snap.data() }
       : null
   } catch (e) {
     console.error('Could not load school', e)

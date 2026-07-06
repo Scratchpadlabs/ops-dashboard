@@ -326,7 +326,7 @@ async function saveSchool() {
     } else {
       payload.created_at = serverTimestamp()
       payload.created_by = auth.currentUser?.email || 'unknown'
-      payload.statuses   = ['Lead']
+      payload.statuses   = ['Converted']
       payload.notes      = []
       await addDoc(opsCollection('schools'), payload)
       toast.add({ severity: 'success', summary: 'Added', detail: `${form.name} added`, life: 2500 })
