@@ -50,6 +50,12 @@
               <i v-if="school.statuses?.includes(s)" class="pi pi-check ml-1 text-xs"></i>
             </button>
           </div>
+
+          <div class="flex flex-wrap gap-2 mt-3">
+            <Button label="📄 Generate Agreement" size="small" outlined @click="goNewAgreement" />
+            <Button label="🧾 Generate Invoice" size="small" outlined @click="goNewInvoice" />
+            <Button label="📋 Onboarding Doc" size="small" outlined :loading="generatingOnboarding" @click="downloadOnboardingDoc" />
+          </div>
         </div>
 
         <Button icon="pi pi-pencil" label="Edit" text @click="openEditDialog" />
@@ -75,9 +81,9 @@
       <TabList>
         <Tab value="overview">Overview</Tab>
         <Tab value="operations">Operations</Tab>
-        <Tab value="quotations">Quotations</Tab>
-        <Tab value="agreements">Agreements</Tab>
-        <Tab value="invoices">Invoices</Tab>
+        <Tab value="quotations">Quotations ({{ schoolQuotations.length }})</Tab>
+        <Tab value="agreements">Agreements ({{ schoolAgreements.length }})</Tab>
+        <Tab value="invoices">Invoices ({{ schoolInvoices.length }})</Tab>
         <Tab value="data">Data Receivable</Tab>
       </TabList>
       <TabPanels>
@@ -97,6 +103,25 @@
                   <div><span class="text-slate-400">Students</span><div class="text-slate-800 font-medium">{{ school.student_count || '—' }}</div></div>
                   <div><span class="text-slate-400">Modules</span><div class="text-slate-800 font-medium">{{ (school.modules || []).join(', ') || '—' }}</div></div>
                   <div class="col-span-2"><span class="text-slate-400">Address</span><div class="text-slate-800 font-medium">{{ school.address || '—' }}</div></div>
+                </div>
+              </div>
+
+              <!-- Points of Contact -->
+              <div class="bg-white rounded-xl border border-slate-200 p-4">
+                <div class="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Points of Contact</div>
+                <div v-if="(school.pocs || []).length === 0" class="text-center py-6 text-slate-300 text-sm">No contacts added yet</div>
+                <div v-else class="space-y-2">
+                  <div
+                    v-for="(poc, i) in school.pocs"
+                    :key="i"
+                    class="flex items-center justify-between bg-slate-50 rounded-lg p-3"
+                  >
+                    <div class="flex items-center gap-2 min-w-0">
+                      <span class="text-sm font-bold text-slate-900">{{ poc.name }}</span>
+                      <span v-if="poc.position" class="px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700">{{ poc.position }}</span>
+                    </div>
+                    <a v-if="poc.phone" :href="`tel:${poc.phone}`" class="text-sm text-violet-600 font-medium flex-shrink-0">📞 {{ poc.phone }}</a>
+                  </div>
                 </div>
               </div>
 
@@ -145,7 +170,7 @@
             <div>
               <div class="bg-white rounded-xl border border-slate-200 p-4">
                 <div class="flex items-center justify-between mb-3">
-                  <div class="text-xs font-semibold text-slate-400 uppercase tracking-wide">Documents</div>
+                  <div class="text-xs font-semibold text-slate-400 uppercase tracking-wide">Documents ({{ (school.documents || []).length }})</div>
                   <div class="flex gap-1">
                     <Button icon="pi pi-link" text rounded size="small" v-tooltip="'Add Link'" @click="showAddLink = !showAddLink" />
                     <Button icon="pi pi-upload" text rounded size="small" :loading="uploadingDoc" v-tooltip="'Upload File'" @click="triggerDocUpload" />
@@ -468,7 +493,7 @@ import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'fi
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
 import { useCelebration } from '../composables/useCelebration'
-import { generateAgreementFiles, generateQuotationPDF, generateInvoicePDF } from '../utils/api.js'
+import { generateAgreementFiles, generateQuotationPDF, generateInvoicePDF, generateOnboardingPDF } from '../utils/api.js'
 
 import Button from 'primevue/button'
 import DataTable from 'primevue/datatable'
@@ -530,7 +555,7 @@ async function loadSchool() {
   try {
     const snap = await getDoc(opsDoc('schools', route.params.id))
     school.value = snap.exists()
-      ? { id: snap.id, statuses: ['Converted'], notes: [], documents: [], ...snap.data() }
+      ? { id: snap.id, statuses: ['Converted'], notes: [], documents: [], pocs: [], ...snap.data() }
       : null
   } catch (e) {
     console.error('Could not load school', e)
@@ -946,6 +971,22 @@ async function onAgreementFileSelected(e) {
   } finally {
     uploadingAgreementId.value = null
     agreementUploadTarget.value = null
+  }
+}
+
+const generatingOnboarding = ref(false)
+async function downloadOnboardingDoc() {
+  if (!school.value) return
+  generatingOnboarding.value = true
+  try {
+    const year = activeYear.value && activeYear.value !== 'All Years' ? activeYear.value : effectiveAcademicYear()
+    await generateOnboardingPDF(school.value, year)
+    toast.add({ severity: 'success', summary: 'Downloaded', detail: 'Onboarding doc generated', life: 2500 })
+  } catch (e) {
+    console.error(e)
+    toast.add({ severity: 'error', summary: 'Download failed', detail: e.message || 'Could not generate onboarding doc', life: 4000 })
+  } finally {
+    generatingOnboarding.value = false
   }
 }
 

@@ -162,6 +162,21 @@
             <MultiSelect v-model="form.modules" :options="moduleOptions" placeholder="Select modules" class="w-full" />
           </div>
         </div>
+
+        <div>
+          <div class="flex items-center justify-between mb-2">
+            <label class="form-label mb-0">Points of Contact</label>
+            <button type="button" class="text-xs text-violet-600 font-semibold" @click="addPoc">+ Add POC</button>
+          </div>
+          <p v-if="form.pocs.length === 0" class="text-xs text-slate-400">No contacts added yet — optional.</p>
+          <div v-for="(poc, i) in form.pocs" :key="i" class="grid grid-cols-12 gap-2 mb-2">
+            <InputText v-model="poc.name" placeholder="Name" class="col-span-4 text-sm" />
+            <InputText v-model="poc.phone" placeholder="Phone" class="col-span-3 text-sm" />
+            <InputText v-model="poc.position" placeholder="Position" class="col-span-4 text-sm" />
+            <Button icon="pi pi-trash" text rounded size="small" severity="danger" class="col-span-1" @click="removePoc(i)" />
+          </div>
+        </div>
+
         <div v-if="formError" class="text-sm text-red-500 bg-red-50 rounded-lg px-3 py-2">{{ formError }}</div>
       </div>
       <template #footer>
@@ -275,8 +290,16 @@ const emptyForm = () => ({
   name: '', city: '', address: '', student_count: null,
   contact_person: '', contact_designation: '',
   contact_phone: '', contact_email: '', modules: [], rm: null,
+  pocs: [],
 })
 const form = reactive(emptyForm())
+
+function addPoc() {
+  form.pocs.push({ name: '', phone: '', position: '' })
+}
+function removePoc(i) {
+  form.pocs.splice(i, 1)
+}
 
 function openAddDialog() {
   editingSchool.value = null
@@ -293,6 +316,7 @@ function openEditDialog(school) {
     contact_person: school.contact_person || '', contact_designation: school.contact_designation || '',
     contact_phone: school.contact_phone || '', contact_email: school.contact_email || '',
     modules: school.modules || [], rm: school.rm || null,
+    pocs: (school.pocs || []).map(p => ({ ...p })),
   })
   formError.value = ''
   dialogVisible.value = true
@@ -317,6 +341,9 @@ async function saveSchool() {
       contact_person: form.contact_person.trim(), contact_designation: form.contact_designation.trim(),
       contact_phone: form.contact_phone.trim(), contact_email: form.contact_email.trim(),
       modules: form.modules, rm: form.rm || null,
+      pocs: form.pocs
+        .filter(p => p.name.trim() || p.phone.trim() || p.position.trim())
+        .map(p => ({ name: p.name.trim(), phone: p.phone.trim(), position: p.position.trim() })),
     }
     if (editingSchool.value) {
       payload.updated_at = serverTimestamp()

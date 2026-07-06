@@ -5,6 +5,7 @@ const URLS = {
   quotation_sheet2: 'https://asia-south1-clarified-1501.cloudfunctions.net/generate_quotation_sheet2',
   invoice:          'https://asia-south1-clarified-1501.cloudfunctions.net/generate_invoice',
   agreement:        'https://asia-south1-clarified-1501.cloudfunctions.net/generate_agreement',
+  onboarding:       'https://asia-south1-clarified-1501.cloudfunctions.net/generate_onboarding',
 }
 
 async function callCF(url, payload) {
@@ -86,6 +87,19 @@ export async function generateAgreementFiles(a) {
   })
   const blob = await res.blob()
   downloadBlob(blob, `Agreement_${a.school_name}_${a.agreement_number}.pdf`)
+}
+
+// ── Onboarding ────────────────────────────────────────────────────────────────
+export async function generateOnboardingPDF(school, activeYear) {
+  const res = await callCF(URLS.onboarding, {
+    schoolName:    school.name,
+    academicYear:  activeYear || '2026-27',
+    city:          school.city || '',
+    pocName:       school.pocs?.[0]?.name || school.contact_person || '',
+    pocPhone:      school.pocs?.[0]?.phone || school.contact_phone || '',
+  })
+  const blob = await res.blob()
+  downloadBlob(blob, `Onboarding_${school.name}_${activeYear || '2026-27'}.pdf`)
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
