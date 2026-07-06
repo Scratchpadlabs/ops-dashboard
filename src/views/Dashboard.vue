@@ -2,7 +2,7 @@
   <div class="min-h-screen" style="background: var(--surface-ground)">
 
     <!-- ── STAT CARDS ──────────────────────────────────────────────────── -->
-    <div class="grid grid-cols-4 gap-4 mb-6">
+    <div class="grid grid-cols-5 gap-4 mb-6">
       <div
         v-for="stat in stats"
         :key="stat.label"
@@ -276,6 +276,7 @@ const signedAgreements = computed(() => agreements.value.filter(a => a.status ==
 
 const totalCollected  = computed(() => paidInvoices.value.reduce((s, i) => s + (i.price_per_student || 0) * (i.quantity || 0), 0))
 const totalOutstanding = computed(() => unpaidInvoices.value.reduce((s, i) => s + (i.price_per_student || 0) * (i.quantity || 0), 0))
+const totalStudents = computed(() => schools.value.reduce((s, sch) => s + (sch.student_count || 0), 0))
 
 const stats = computed(() => [
   {
@@ -305,6 +306,13 @@ const stats = computed(() => [
     sub: `of ${agreements.value.length} total`,
     bg: '#fdf4ff', border: '#e9d5ff',
     labelColor: '#9333ea', valueColor: '#3b0764', subColor: '#d8b4fe',
+  },
+  {
+    label: 'Total Students', emoji: '🎓',
+    rawValue: totalStudents.value, prefix: '',
+    sub: `across ${schools.value.length} schools`,
+    bg: '#f0fdfa', border: '#99f6e4',
+    labelColor: '#0d9488', valueColor: '#134e4a', subColor: '#5eead4',
   },
 ])
 
