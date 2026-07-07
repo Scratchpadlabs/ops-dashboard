@@ -507,6 +507,16 @@ onMounted(async () => {
     form.school_name     = route.query.school_name
     form.school_address  = route.query.school_address || ''
     form.student_count   = route.query.student_count ? Number(route.query.student_count) : null
+
+    const fullSchool = form.school_id ? allSchools.value.find(s => s.id === form.school_id) : null
+    if (fullSchool) {
+      const poc = (fullSchool.pocs || [])[0]
+      form.signatory_name        = poc?.name || fullSchool.contact_person || ''
+      form.signatory_designation = poc?.position || fullSchool.contact_designation || ''
+      if (fullSchool.price_per_student) form.fee_per_student = fullSchool.price_per_student
+      if (fullSchool.hpc_type)          form.hpc_type = fullSchool.hpc_type
+      if (fullSchool.installment_plan)  form.installment_plan = fullSchool.installment_plan
+    }
   }
 
   if (highlightedId.value) {

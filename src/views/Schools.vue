@@ -177,6 +177,47 @@
           </div>
         </div>
 
+        <div>
+          <label class="form-label mb-2 block">Commercial Details</label>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="form-label">Price per Student (₹)</label>
+              <InputNumber v-model="form.price_per_student" class="w-full" :min="1" />
+            </div>
+            <div>
+              <label class="form-label">HPC Type</label>
+              <Select v-model="form.hpc_type" :options="hpcTypes" optionLabel="label" optionValue="value" placeholder="Select type" class="w-full" showClear />
+            </div>
+          </div>
+          <div class="mt-4">
+            <label class="form-label">Installment Plan</label>
+            <div class="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                @click="form.installment_plan = 'A'"
+                class="p-3 rounded-xl border text-left transition-all"
+                :class="form.installment_plan === 'A' ? 'border-blue-500 bg-blue-50' : 'border-slate-200 hover:border-slate-300'"
+              >
+                <div class="font-semibold text-sm text-slate-900 mb-1">Plan A</div>
+                <div class="text-xs text-slate-500">50% · 25% · 25%</div>
+              </button>
+              <button
+                type="button"
+                @click="form.installment_plan = 'B'"
+                class="p-3 rounded-xl border text-left transition-all"
+                :class="form.installment_plan === 'B' ? 'border-blue-500 bg-blue-50' : 'border-slate-200 hover:border-slate-300'"
+              >
+                <div class="font-semibold text-sm text-slate-900 mb-1">Plan B</div>
+                <div class="text-xs text-slate-500">25% · 25% · 25% · 25%</div>
+              </button>
+            </div>
+          </div>
+          <div class="mt-4">
+            <label class="form-label">Payment Terms Notes</label>
+            <Textarea v-model="form.payment_notes" class="w-full" rows="2" placeholder="Any custom payment terms..." />
+          </div>
+        </div>
+
         <div v-if="formError" class="text-sm text-red-500 bg-red-50 rounded-lg px-3 py-2">{{ formError }}</div>
       </div>
       <template #footer>
@@ -227,6 +268,10 @@ const activeFilter  = ref('all')
 const allStatuses   = ['Lead', 'Negotiation', 'Converted']
 const rmOptions     = ['Angel', 'Siddhesh']
 const moduleOptions = ref(['HPC', 'SEW', 'Co-Scholastic', 'Remarks', 'Parent App'])
+const hpcTypes = [
+  { label: 'Printed + Digital HPC', value: 'printed and digital' },
+  { label: 'Only Digital HPC',      value: 'digital only' },
+]
 
 // ── Filters ───────────────────────────────────────────────────────────────────
 const statusTabs = computed(() => [
@@ -291,6 +336,7 @@ const emptyForm = () => ({
   contact_person: '', contact_designation: '',
   contact_phone: '', contact_email: '', modules: [], rm: null,
   pocs: [],
+  price_per_student: null, hpc_type: null, installment_plan: 'A', payment_notes: '',
 })
 const form = reactive(emptyForm())
 
@@ -317,6 +363,10 @@ function openEditDialog(school) {
     contact_phone: school.contact_phone || '', contact_email: school.contact_email || '',
     modules: school.modules || [], rm: school.rm || null,
     pocs: (school.pocs || []).map(p => ({ ...p })),
+    price_per_student: school.price_per_student || null,
+    hpc_type: school.hpc_type || null,
+    installment_plan: school.installment_plan || 'A',
+    payment_notes: school.payment_notes || '',
   })
   formError.value = ''
   dialogVisible.value = true
@@ -344,6 +394,10 @@ async function saveSchool() {
       pocs: form.pocs
         .filter(p => p.name.trim() || p.phone.trim() || p.position.trim())
         .map(p => ({ name: p.name.trim(), phone: p.phone.trim(), position: p.position.trim() })),
+      price_per_student: form.price_per_student || null,
+      hpc_type: form.hpc_type || null,
+      installment_plan: form.installment_plan || 'A',
+      payment_notes: form.payment_notes.trim(),
     }
     if (editingSchool.value) {
       payload.updated_at = serverTimestamp()

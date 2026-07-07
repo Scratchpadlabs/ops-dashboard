@@ -106,6 +106,17 @@
                 </div>
               </div>
 
+              <!-- Commercial Details -->
+              <div class="bg-white rounded-xl border border-slate-200 p-4">
+                <div class="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Commercial Details</div>
+                <div class="grid grid-cols-2 gap-3 text-sm">
+                  <div><span class="text-slate-400">Price per Student</span><div class="text-slate-800 font-medium">{{ school.price_per_student ? '₹' + Number(school.price_per_student).toLocaleString('en-IN') : '—' }}</div></div>
+                  <div><span class="text-slate-400">HPC Type</span><div class="text-slate-800 font-medium">{{ hpcTypeLabel(school.hpc_type) }}</div></div>
+                  <div><span class="text-slate-400">Installment Plan</span><div class="text-slate-800 font-medium">{{ school.installment_plan ? `Plan ${school.installment_plan} · ${school.installment_plan === 'B' ? '25-25-25-25' : '50-25-25'}` : '—' }}</div></div>
+                  <div class="col-span-2"><span class="text-slate-400">Payment Terms Notes</span><div class="text-slate-800 font-medium">{{ school.payment_notes || '—' }}</div></div>
+                </div>
+              </div>
+
               <!-- Points of Contact -->
               <div class="bg-white rounded-xl border border-slate-200 p-4">
                 <div class="flex items-center justify-between mb-3">
@@ -569,6 +580,11 @@ function statusStyle(s) {
   if (s === 'Negotiation') return 'bg-amber-100 text-amber-700'
   return 'bg-blue-100 text-blue-700'
 }
+function hpcTypeLabel(value) {
+  if (value === 'printed and digital') return 'Printed + Digital HPC'
+  if (value === 'digital only')        return 'Only Digital HPC'
+  return '—'
+}
 function rmStyle(rm) {
   if (rm === 'Angel') return 'bg-purple-100 text-purple-700'
   if (rm === 'Siddhesh') return 'bg-blue-100 text-blue-700'
@@ -985,7 +1001,7 @@ function goNewQuotation() {
   router.push({ name: 'quotations', query: { school_id: school.value.id, school_name: school.value.name, student_count: school.value.student_count || undefined } })
 }
 function goNewAgreement() {
-  router.push({ name: 'agreements', query: { school_id: school.value.id, school_name: school.value.name, school_address: school.value.address || undefined, student_count: school.value.student_count || undefined } })
+  router.push({ name: 'agreements', query: { school_id: school.value.id, school_name: school.value.name, school_address: school.value.address || undefined, school_phone: school.value.contact_phone || undefined, student_count: school.value.student_count || undefined } })
 }
 function goNewInvoice() {
   router.push({ name: 'invoices', query: { school_id: school.value.id, school_name: school.value.name, school_address: school.value.address || undefined, school_phone: school.value.contact_phone || undefined, student_count: school.value.student_count || undefined } })
