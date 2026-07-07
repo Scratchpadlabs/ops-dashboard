@@ -15,21 +15,25 @@ Folder needs: main.py, requirements.txt (no extra assets required)
 
 import io
 import json
+import os
 from datetime import datetime
 
 import functions_framework
 from flask import Request, Response
+from PIL import Image as PILImage
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import cm
 from reportlab.platypus import (
-    HRFlowable, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle,
+    HRFlowable, Image as RLImage, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle,
 )
 
 API_KEY = "9421060748"
 
 COMPANY_NAME = "Scratchpad Labs Pvt Ltd"
+
+LOGO_PATH = os.path.join(os.path.dirname(__file__), "logo.png")
 
 # ── Brand palette ──────────────────────────────────────────────────────────────
 NAVY  = colors.HexColor("#1e3a5f")
@@ -83,6 +87,29 @@ def _today_str():
     return f"{now.day} {now.strftime('%B %Y')}"
 
 
+def _load_logo(height=None, width=None):
+    """Crop the transparent padding off logo.png and return a right-sized Image flowable.
+
+    Pass exactly one of height/width (in points); the other is derived from the
+    logo's aspect ratio.
+    """
+    im = PILImage.open(LOGO_PATH).convert("RGBA")
+    bbox = im.getbbox()
+    if bbox:
+        im = im.crop(bbox)
+    w, h = im.size
+    buf = io.BytesIO()
+    im.save(buf, format="PNG")
+    buf.seek(0)
+    if height is not None:
+        target_h = height
+        target_w = target_h * w / h
+    else:
+        target_w = width
+        target_h = target_w * h / w
+    return RLImage(buf, width=target_w, height=target_h)
+
+
 def _inr(n):
     """Indian-style digit grouping, e.g. 1234567 -> 12,34,567."""
     n = int(round(n))
@@ -102,36 +129,61 @@ def _inr(n):
     return f"-{grouped}" if n < 0 else grouped
 
 
+def _instalment_rows(plan):
+    """(label, percentage) pairs matching the installment plan."""
+    if plan == "B":
+        return [
+            ("Onboarding", 25),
+            ("after Term 1 delivery", 25),
+            ("after Term 2 delivery", 25),
+            ("after final delivery", 25),
+        ]
+    return [
+        ("Onboarding", 50),
+        ("after Term 1 delivery", 25),
+        ("after final delivery", 25),
+    ]
+
+
 def _payment_terms(plan):
     """Percentage-only payment schedule description matching the installment plan."""
-    if plan == "B":
-        return (
-            "the first instalment of 25% payable upon signing of this Agreement, the second "
-            "instalment of 25% payable after Term 1, the third instalment of 25% payable after "
-            "Term 2, and the final instalment of 25% payable after final delivery of the HPC"
-        )
-    return (
-        "the first instalment of 50% payable upon signing of this Agreement, the second "
-        "instalment of 25% payable after Term 1 delivery, and the final instalment of 25% "
-        "payable after final delivery of the HPC"
-    )
+    rows = _instalment_rows(plan)
+    parts = [f"{label} ({pct}%)" for label, pct in rows]
+    if len(parts) > 1:
+        return ", ".join(parts[:-1]) + ", and " + parts[-1]
+    return parts[0]
 
 
 def _instalment_breakdown(total, plan):
     """Rupee-figure instalment breakdown matching the installment plan."""
-    if plan == "B":
-        amt = total * 0.25
-        return (
-            f"Rs. {_inr(amt)}/- (25%) upon signing, Rs. {_inr(amt)}/- (25%) after Term 1, "
-            f"Rs. {_inr(amt)}/- (25%) after Term 2, Rs. {_inr(amt)}/- (25%) after final delivery "
-            f"of the HPC"
-        )
-    amt1 = total * 0.5
-    amt2 = total * 0.25
-    return (
-        f"Rs. {_inr(amt1)}/- (50%) upon signing, Rs. {_inr(amt2)}/- (25%) after Term 1 delivery, "
-        f"Rs. {_inr(amt2)}/- (25%) after final delivery of the HPC"
-    )
+    rows = _instalment_rows(plan)
+    parts = [f"Rs. {_inr(total * pct / 100)}/- - {label} ({pct}%)" for label, pct in rows]
+    return ", ".join(parts)
+
+
+def _instalment_table(total, plan):
+    """Bordered instalment breakdown table matching the installment plan."""
+    rows = _instalment_rows(plan)
+    data = [["Instalment", "%", "Amount"]]
+    for label, pct in rows:
+        amt = total * pct / 100
+        data.append([label[0].upper() + label[1:], f"{pct}%", f"Rs. {_inr(amt)}/-"])
+    t = Table(data, colWidths=[BODY_W * 0.5, BODY_W * 0.15, BODY_W * 0.35])
+    t.setStyle(TableStyle([
+        ("BACKGROUND",     (0, 0), (-1, 0), NAVY),
+        ("TEXTCOLOR",      (0, 0), (-1, 0), WHITE),
+        ("FONTNAME",       (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE",       (0, 0), (-1, -1), 8.3),
+        ("GRID",           (0, 0), (-1, -1), 0.5, LGREY),
+        ("VALIGN",         (0, 0), (-1, -1), "MIDDLE"),
+        ("ALIGN",          (1, 0), (-1, -1), "CENTER"),
+        ("TOPPADDING",     (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING",  (0, 0), (-1, -1), 5),
+        ("LEFTPADDING",    (0, 0), (-1, -1), 8),
+        ("RIGHTPADDING",   (0, 0), (-1, -1), 8),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [WHITE, SLATE]),
+    ]))
+    return t
 
 
 # ── PDF builder ────────────────────────────────────────────────────────────────
@@ -161,7 +213,7 @@ def _build_pdf(data):
     story = []
 
     # ── Header band ───────────────────────────────────────────────────────────
-    logo_cell = Paragraph('<font size="15" color="white"><b>Scratchpad Labs</b></font>', BODY)
+    logo_cell = _load_logo(height=40)
 
     header = Table(
         [[
@@ -175,6 +227,7 @@ def _build_pdf(data):
     )
     header.setStyle(TableStyle([
         ("BACKGROUND",    (0,0), (-1,-1), NAVY),
+        ("BACKGROUND",    (0,0), (0,0),   WHITE),
         ("TOPPADDING",    (0,0), (-1,-1), 14),
         ("BOTTOMPADDING", (0,0), (-1,-1), 14),
         ("LEFTPADDING",   (0,0), (0,-1),  18),
@@ -209,7 +262,8 @@ def _build_pdf(data):
             Paragraph(
                 'Scratchpad Labs Pvt Ltd, a company incorporated under the Companies Act, 2013 '
                 'and having its principal place of business at SCEI, Sus, Pune - 411021, and '
-                'registered office at Karmanghat, Saroornagar, Hyderabad, Telangana - 500079 '
+                'registered office at Karmanghat, Saroornagar, Hyderabad, Telangana - 500079, '
+                'bearing UDYAM Registration Number UDYAM-TS-09-0017913 '
                 '(hereinafter referred to as the &quot;Company,&quot; which expression shall, unless '
                 'repugnant to the context or meaning thereof, include its successors and assigns);',
                 BODY,
@@ -285,7 +339,8 @@ def _build_pdf(data):
         "2.  SCOPE OF SERVICES",
         f'2.1 <b>Service Delivery:</b> Subject to timely receipt of accurate and complete '
         f'Supporting Data from the School, the Company shall generate and deliver the {hpc_type} '
-        f'HPC within six (6) working days. The Company shall customize the HPCs to align with the '
+        f'HPC within the mutually agreed timeline, typically six (6) working days from receipt '
+        f'of complete Supporting Data. The Company shall customize the HPCs to align with the '
         f'specific requirements of the School and shall proactively notify the School of any '
         f'updates or changes.',
         '2.2 <b>Deliverables:</b> One HPC per student as per the selected package. Standard '
@@ -296,23 +351,33 @@ def _build_pdf(data):
         'initiated without such written approval.',
     )
 
-    clause(
-        "3.  COMMERCIAL TERMS",
+    story.append(Paragraph("3.  COMMERCIAL TERMS", CLAUSE_HEAD))
+    story.append(Paragraph(
         f'3.1 <b>Consideration &amp; Payment Terms:</b> The fee per student will be Rs. {_inr(fee)}/- '
         f'(including all taxes). The School shall pay the Company the agreed consideration, with '
-        f'{payment_terms}. All payments shall be due and payable within forty-five (45) working '
-        f'days of invoice and shall be non-refundable unless otherwise agreed. Total contract '
-        f'value based on {student_count} students: Rs. {_inr(total_amount)}/-. Instalment '
-        f'breakdown: {instalment_breakdown}.',
+        f'the following payment schedule: {payment_terms}. All payments shall be due and payable '
+        f'within forty-five (45) working days of invoice and shall be non-refundable unless '
+        f'otherwise agreed. Total contract value based on {student_count} students: '
+        f'Rs. {_inr(total_amount)}/-. Instalment breakdown: {instalment_breakdown}.',
+        SUBCLAUSE,
+    ))
+    story.append(Spacer(1, 4))
+    story.append(_instalment_table(total_amount, plan))
+    story.append(Spacer(1, 8))
+    story.append(Paragraph(
         '3.2 <b>Late or Non-Payment:</b> Failure to make timely payments shall entitle the Company '
         'to suspend services without further notice. As a registered MSME under Udyam, the '
         'Company is entitled to enforce a payment deadline of forty-five (45) days from the date '
         'of invoice in accordance with Section 15 of the MSMED Act, 2006. Any payment not made '
         'within this timeline shall attract compound interest at three times the bank rate '
         'notified by the Reserve Bank of India, as stipulated under Section 16 of the MSMED Act.',
+        SUBCLAUSE,
+    ))
+    story.append(Paragraph(
         '3.3 <b>New Admissions:</b> Students added post-contract shall be invoiced separately '
         'based on the agreed per-student rate.',
-    )
+        SUBCLAUSE,
+    ))
 
     clause(
         "4.  DATA RESPONSIBILITIES",
@@ -327,6 +392,8 @@ def _build_pdf(data):
         '5.1 If errors are made by the Company (such as a mistake in formatting, layout, or data '
         'processing, provided the data submitted was correct), the Company shall bear full '
         'responsibility and reprint affected cards at no additional cost to the School.',
+        '5.2 The Company shall notify the School within forty-eight (48) hours of identifying '
+        'any error in the delivered HPCs, regardless of which Party is responsible.',
         '5.3 If errors in the printed report are due to incorrect, incomplete, or delayed data '
         'submissions by the School, or changes requested after final sample approval, the School '
         'shall be responsible for the cost of reprinting. Such reprints shall be charged at the '
@@ -475,6 +542,17 @@ def _build_pdf(data):
         ("RIGHTPADDING",  (0,0), (-1,-1), 0),
     ]))
     story.append(sig_table)
+
+    # ── Closing logo (bottom of last page) ────────────────────────────────────
+    story.append(Spacer(1, 24))
+    closing_logo = _load_logo(width=80)
+    closing_logo.hAlign = 'CENTER'
+    story.append(closing_logo)
+    story.append(Spacer(1, 4))
+    story.append(Paragraph(
+        'ClarifiEd by Scratchpad Labs Pvt Ltd',
+        _make_style("closing_caption", size=7.5, color=GREY, align=1, space_after=0),
+    ))
 
     # ── Footer on every page ──────────────────────────────────────────────────
     def _footer(canvas_obj, doc_obj):
