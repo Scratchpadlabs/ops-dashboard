@@ -13,12 +13,6 @@
       </div>
     </div>
 
-    <!-- Disclaimer -->
-    <div class="disclaimer-banner mb-5">
-      <i class="pi pi-exclamation-triangle"></i>
-      Expense figures are indicative estimates and may not reflect actual audited financials
-    </div>
-
     <!-- Smart prompts -->
     <div v-if="smartPrompts.length" class="grid gap-2.5 mb-6" :class="smartPrompts.length > 1 ? 'md:grid-cols-2' : ''">
       <div v-for="p in smartPrompts" :key="p.id" class="prompt-card" :class="p.tone">
@@ -28,33 +22,34 @@
     </div>
 
     <!-- P&L cards -->
-    <div class="grid grid-cols-3 gap-4 mb-6">
-      <div class="pl-card pl-income">
-        <div class="flex items-center justify-between mb-2">
-          <span class="pl-label">Total Income</span>
-          <span class="text-xl">💰</span>
+    <div class="grid grid-cols-4 gap-4 mb-5">
+      <div
+        v-for="card in plCards"
+        :key="card.id"
+        class="stat-card-v2"
+        :style="{ '--glow': card.glow }"
+      >
+        <div class="stat-card-inner" :style="{ background: card.gradient }">
+          <img :src="card.gif" class="stat-card-gif" alt="" />
+          <div class="stat-card-content">
+            <div class="flex items-center justify-between mb-2">
+              <span class="stat-card-label">{{ card.label }}</span>
+              <span class="text-2xl">{{ card.emoji }}</span>
+            </div>
+            <div class="stat-card-value">
+              <span v-if="loading">—</span>
+              <span v-else>{{ formatRupee(card.value) }}</span>
+            </div>
+            <div class="stat-card-sub">{{ card.sub }}</div>
+          </div>
         </div>
-        <div class="pl-value">{{ formatRupee(displayIncome) }}</div>
-        <div class="pl-sub">{{ paidInvoices.length }} paid invoice{{ paidInvoices.length !== 1 ? 's' : '' }}</div>
       </div>
+    </div>
 
-      <div class="pl-card pl-expense">
-        <div class="flex items-center justify-between mb-2">
-          <span class="pl-label">Total Expenses</span>
-          <span class="text-xl">💸</span>
-        </div>
-        <div class="pl-value">{{ formatRupee(displayExpenses) }}</div>
-        <div class="pl-sub">{{ visibleExpenses.length }} expense{{ visibleExpenses.length !== 1 ? 's' : '' }} logged</div>
-      </div>
-
-      <div class="pl-card" :class="netPL >= 0 ? 'pl-net-positive' : 'pl-net-negative'">
-        <div class="flex items-center justify-between mb-2">
-          <span class="pl-label">Net P&amp;L</span>
-          <span class="text-xl">{{ netPL >= 0 ? '📈' : '📉' }}</span>
-        </div>
-        <div class="pl-value">{{ formatRupee(Math.abs(displayNet)) }}<span v-if="netPL < 0" class="text-sm font-semibold opacity-80"> deficit</span></div>
-        <div class="pl-sub">{{ netPL >= 0 ? "You're in the green" : 'Spending more than earning' }}</div>
-      </div>
+    <!-- Disclaimer -->
+    <div class="disclaimer-banner mb-6">
+      <span class="text-base">💡</span>
+      Realized = collected · Unrealized = pending · Net P&amp;L = Realized minus Expenses
     </div>
 
     <!-- School Profitability -->
@@ -630,10 +625,14 @@ const sortedExpenses = computed(() =>
   [...visibleExpenses.value].sort((a, b) => toDate(b.date) - toDate(a.date))
 )
 
-const paidInvoices = computed(() => visibleInvoicesForPL.value.filter(i => i.status === 'paid'))
+const paidInvoices   = computed(() => visibleInvoicesForPL.value.filter(i => i.status === 'paid'))
+const unpaidInvoices = computed(() => visibleInvoicesForPL.value.filter(i => i.status !== 'paid'))
 
 const totalIncome = computed(() =>
   paidInvoices.value.reduce((s, i) => s + (i.price_per_student || 0) * (i.quantity || 0), 0)
+)
+const totalOutstanding = computed(() =>
+  unpaidInvoices.value.reduce((s, i) => s + (i.price_per_student || 0) * (i.quantity || 0), 0)
 )
 const totalExpenses = computed(() =>
   visibleExpenses.value.reduce((s, e) => s + Number(e.amount || 0), 0)
@@ -641,9 +640,10 @@ const totalExpenses = computed(() =>
 const netPL = computed(() => totalIncome.value - totalExpenses.value)
 
 // Animated number counters
-const displayIncome = ref(0)
-const displayExpenses = ref(0)
-const displayNet = ref(0)
+const displayRealized   = ref(0)
+const displayUnrealized = ref(0)
+const displayExpenses   = ref(0)
+const displayNet        = ref(0)
 
 function animateTo(displayRef, target, duration = 800) {
   const start = displayRef.value
@@ -658,9 +658,61 @@ function animateTo(displayRef, target, duration = 800) {
   requestAnimationFrame(tick)
 }
 
-watch(totalIncome, v => animateTo(displayIncome, v), { immediate: true })
-watch(totalExpenses, v => animateTo(displayExpenses, v), { immediate: true })
-watch(netPL, v => animateTo(displayNet, v), { immediate: true })
+watch(totalIncome,      v => animateTo(displayRealized, v),   { immediate: true })
+watch(totalOutstanding, v => animateTo(displayUnrealized, v), { immediate: true })
+watch(totalExpenses,    v => animateTo(displayExpenses, v),   { immediate: true })
+watch(netPL,            v => animateTo(displayNet, v),        { immediate: true })
+
+// ── P&L stat cards ──────────────────────────────────────────────────────────
+const plCards = computed(() => {
+  const netPositive = netPL.value >= 0
+  return [
+    {
+      id: 'realized',
+      label: 'Realized Revenue',
+      emoji: '💚',
+      value: displayRealized.value,
+      sub: `${paidInvoices.value.length} payment${paidInvoices.value.length !== 1 ? 's' : ''} collected 🎉`,
+      gradient: 'linear-gradient(135deg, #064e3b, #065f46)',
+      gif: 'https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif',
+      glow: '16, 185, 129',
+    },
+    {
+      id: 'unrealized',
+      label: 'Unrealized Revenue',
+      emoji: '⏳',
+      value: displayUnrealized.value,
+      sub: `${unpaidInvoices.value.length} invoice${unpaidInvoices.value.length !== 1 ? 's' : ''} pending 📋`,
+      gradient: 'linear-gradient(135deg, #78350f, #92400e)',
+      gif: 'https://media.giphy.com/media/3o7abB06u9bNzA8lu8/giphy.gif',
+      glow: '245, 158, 11',
+    },
+    {
+      id: 'expenses',
+      label: 'Total Expenses',
+      emoji: '🔴',
+      value: displayExpenses.value,
+      sub: 'Keep it lean 💸',
+      gradient: 'linear-gradient(135deg, #7f1d1d, #991b1b)',
+      gif: 'https://media.giphy.com/media/l2SpZkQ0XT1XtKus0/giphy.gif',
+      glow: '239, 68, 68',
+    },
+    {
+      id: 'netpl',
+      label: 'Net P&L',
+      emoji: netPositive ? '🚀' : '😬',
+      value: Math.abs(displayNet.value),
+      sub: netPositive ? "We're profitable! 🏆" : 'Time to hustle harder 💪',
+      gradient: netPositive
+        ? 'linear-gradient(135deg, #1e3a8a, #1e40af)'
+        : 'linear-gradient(135deg, #4c1d95, #5b21b6)',
+      gif: netPositive
+        ? 'https://media.giphy.com/media/GfXFVHUzjlbOg/giphy.gif'
+        : 'https://media.giphy.com/media/l2JehQ2GitHGdVG9a/giphy.gif',
+      glow: netPositive ? '59, 130, 246' : '139, 92, 246',
+    },
+  ]
+})
 
 // Monthly chart — last 6 months, income vs expenses
 const monthlyChartData = computed(() => {
@@ -1179,14 +1231,14 @@ watch(activeYear, () => { loadExpenses() })
 .disclaimer-banner {
   display: flex;
   align-items: center;
-  gap: 8px;
-  background: #fefce8;
-  border: 1px solid #fde047;
-  color: #854d0e;
+  gap: 10px;
+  background: linear-gradient(135deg, #0f172a, #1e293b);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #cbd5e1;
   font-size: 12.5px;
   font-weight: 500;
-  padding: 10px 14px;
-  border-radius: 10px;
+  padding: 12px 16px;
+  border-radius: 12px;
 }
 
 .prompt-card {
@@ -1202,34 +1254,88 @@ watch(activeYear, () => { loadExpenses() })
 .prompt-card.warn { background: #fff7ed; border-color: #fed7aa; color: #9a3412; }
 .prompt-card.good { background: #f0fdf4; border-color: #bbf7d0; color: #166534; }
 
-.pl-card {
-  border-radius: 18px;
-  padding: 18px 20px;
-  color: white;
-  box-shadow: 0 8px 24px -8px rgba(0,0,0,0.15);
+/* ── Premium P&L stat cards ──────────────────────────────────────────────── */
+@property --border-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
 }
-.pl-income { background: linear-gradient(135deg, #10b981, #059669); }
-.pl-expense { background: linear-gradient(135deg, #f43f5e, #e11d48); }
-.pl-net-positive { background: linear-gradient(135deg, #6366f1, #8b5cf6, #a855f7); }
-.pl-net-negative { background: linear-gradient(135deg, #f97316, #ea580c); }
 
-.pl-label {
+.stat-card-v2 {
+  position: relative;
+  border-radius: 20px;
+  padding: 2px;
+  background: conic-gradient(
+    from var(--border-angle),
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.9) 8%,
+    rgba(255, 255, 255, 0) 22%
+  );
+  animation: rotate-border 3.5s linear infinite;
+  transition: transform 0.25s ease;
+}
+.stat-card-v2:hover {
+  transform: translateY(-4px);
+}
+.stat-card-v2:hover .stat-card-inner {
+  box-shadow: 0 20px 44px -6px rgba(var(--glow), 0.55), 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+@keyframes rotate-border {
+  to { --border-angle: 360deg; }
+}
+
+.stat-card-inner {
+  position: relative;
+  overflow: hidden;
+  border-radius: 18px;
+  padding: 22px 22px;
+  min-height: 160px;
+  color: white;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  box-shadow: 0 8px 24px -6px rgba(var(--glow), 0.25);
+  animation: pulse-glow 2.6s ease-in-out infinite;
+  transition: box-shadow 0.25s ease;
+}
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 8px 24px -6px rgba(var(--glow), 0.25); }
+  50%      { box-shadow: 0 10px 32px -4px rgba(var(--glow), 0.5); }
+}
+
+.stat-card-gif {
+  position: absolute;
+  bottom: 12px;
+  right: 12px;
+  width: 70px;
+  border-radius: 10px;
+  opacity: 0.85;
+  pointer-events: none;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+}
+
+.stat-card-content {
+  position: relative;
+  z-index: 1;
+}
+
+.stat-card-label {
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   opacity: 0.85;
 }
-.pl-value {
-  font-size: 26px;
+.stat-card-value {
+  font-size: 28px;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
   line-height: 1.15;
 }
-.pl-sub {
+.stat-card-sub {
   font-size: 12px;
-  opacity: 0.8;
-  margin-top: 4px;
+  opacity: 0.85;
+  margin-top: 6px;
 }
 
 .chart-bar {
