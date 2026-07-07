@@ -344,10 +344,21 @@ function onSchoolSelect(s) {
   form.school_name           = s.name
   form.school_address        = s.address || ''
   form.student_count         = s.student_count || null
+
+  const poc = (s.pocs || [])[0]
   if (!form.signatory_name) {
-    form.signatory_name        = s.contact_person || ''
-    form.signatory_designation = s.contact_designation || ''
+    form.signatory_name        = poc?.name || s.contact_person || ''
+    form.signatory_designation = poc?.position || s.contact_designation || ''
   }
+
+  const nameKey = (s.name || '').trim().toLowerCase()
+  const pastAgreement = [...agreements.value]
+    .filter(a => a.school_id === s.id || (a.school_name || '').trim().toLowerCase() === nameKey)
+    .sort((a, b) => (b.created_at?.toDate?.() || 0) - (a.created_at?.toDate?.() || 0))[0]
+
+  form.fee_per_student  = s.price_per_student || pastAgreement?.fee_per_student || form.fee_per_student
+  form.hpc_type         = s.hpc_type || pastAgreement?.hpc_type || form.hpc_type
+  form.installment_plan = s.installment_plan || pastAgreement?.installment_plan || form.installment_plan
 }
 
 function calcTotal() { /* reactive via computed */ }
@@ -509,14 +520,27 @@ onMounted(async () => {
     form.student_count   = route.query.student_count ? Number(route.query.student_count) : null
 
     const fullSchool = form.school_id ? allSchools.value.find(s => s.id === form.school_id) : null
+
+    // Fall back to the school's most recent agreement for anything the school
+    // record itself doesn't have set yet (e.g. commercial details never filled in).
+    const nameKey = (form.school_name || '').trim().toLowerCase()
+    const pastAgreement = [...agreements.value]
+      .filter(a => (form.school_id && a.school_id === form.school_id) ||
+                   (a.school_name || '').trim().toLowerCase() === nameKey)
+      .sort((a, b) => (b.created_at?.toDate?.() || 0) - (a.created_at?.toDate?.() || 0))[0]
+
     if (fullSchool) {
       const poc = (fullSchool.pocs || [])[0]
-      form.signatory_name        = poc?.name || fullSchool.contact_person || ''
-      form.signatory_designation = poc?.position || fullSchool.contact_designation || ''
-      if (fullSchool.price_per_student) form.fee_per_student = fullSchool.price_per_student
-      if (fullSchool.hpc_type)          form.hpc_type = fullSchool.hpc_type
-      if (fullSchool.installment_plan)  form.installment_plan = fullSchool.installment_plan
+      form.signatory_name        = poc?.name || fullSchool.contact_person || pastAgreement?.signatory_name || ''
+      form.signatory_designation = poc?.position || fullSchool.contact_designation || pastAgreement?.signatory_designation || ''
+    } else if (pastAgreement) {
+      form.signatory_name        = pastAgreement.signatory_name || ''
+      form.signatory_designation = pastAgreement.signatory_designation || ''
     }
+
+    form.fee_per_student  = fullSchool?.price_per_student || pastAgreement?.fee_per_student || null
+    form.hpc_type         = fullSchool?.hpc_type || pastAgreement?.hpc_type || form.hpc_type
+    form.installment_plan = fullSchool?.installment_plan || pastAgreement?.installment_plan || form.installment_plan
   }
 
   if (highlightedId.value) {
