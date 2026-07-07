@@ -95,8 +95,16 @@
 
               <!-- Details -->
               <div class="bg-white rounded-xl border border-slate-200 p-4">
-                <div class="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Details</div>
-                <div class="grid grid-cols-2 gap-3 text-sm">
+                <div class="flex items-center justify-between mb-3">
+                  <div class="text-xs font-semibold text-slate-400 uppercase tracking-wide">Details</div>
+                  <Button v-if="!editingDetails" icon="pi pi-pencil" text rounded size="small" v-tooltip="'Edit'" @click="openEditDetails" />
+                  <div v-else class="flex gap-2">
+                    <Button label="Cancel" text size="small" @click="cancelEditDetails" />
+                    <Button label="Save" size="small" :loading="savingDetails" @click="saveDetails" />
+                  </div>
+                </div>
+
+                <div v-if="!editingDetails" class="grid grid-cols-2 gap-3 text-sm">
                   <div><span class="text-slate-400">Contact</span><div class="text-slate-800 font-medium">{{ school.contact_person || '—' }}{{ school.contact_designation ? ' · ' + school.contact_designation : '' }}</div></div>
                   <div><span class="text-slate-400">Phone</span><div class="text-slate-800 font-medium">{{ school.contact_phone || '—' }}</div></div>
                   <div><span class="text-slate-400">Email</span><div class="text-slate-800 font-medium">{{ school.contact_email || '—' }}</div></div>
@@ -104,16 +112,106 @@
                   <div><span class="text-slate-400">Modules</span><div class="text-slate-800 font-medium">{{ (school.modules || []).join(', ') || '—' }}</div></div>
                   <div class="col-span-2"><span class="text-slate-400">Address</span><div class="text-slate-800 font-medium">{{ school.address || '—' }}</div></div>
                 </div>
+
+                <div v-else class="grid grid-cols-2 gap-3">
+                  <div>
+                    <label class="form-label">Contact Person</label>
+                    <InputText v-model="detailsForm.contact_person" class="w-full text-sm" />
+                  </div>
+                  <div>
+                    <label class="form-label">Designation</label>
+                    <InputText v-model="detailsForm.contact_designation" class="w-full text-sm" />
+                  </div>
+                  <div>
+                    <label class="form-label">Phone</label>
+                    <InputText v-model="detailsForm.contact_phone" class="w-full text-sm" />
+                  </div>
+                  <div>
+                    <label class="form-label">Email</label>
+                    <InputText v-model="detailsForm.contact_email" class="w-full text-sm" />
+                  </div>
+                  <div>
+                    <label class="form-label">Students</label>
+                    <InputNumber v-model="detailsForm.student_count" class="w-full" :min="1" />
+                  </div>
+                  <div>
+                    <label class="form-label">Modules</label>
+                    <MultiSelect v-model="detailsForm.modules" :options="moduleOptions" placeholder="Select modules" class="w-full" />
+                  </div>
+                  <div class="col-span-2">
+                    <label class="form-label">Address</label>
+                    <Textarea v-model="detailsForm.address" class="w-full" rows="2" autoResize />
+                  </div>
+                </div>
               </div>
 
               <!-- Commercial Details -->
               <div class="bg-white rounded-xl border border-slate-200 p-4">
-                <div class="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Commercial Details</div>
-                <div class="grid grid-cols-2 gap-3 text-sm">
+                <div class="flex items-center justify-between mb-3">
+                  <div class="text-xs font-semibold text-slate-400 uppercase tracking-wide">Commercial Details</div>
+                  <Button v-if="!editingCommercial" icon="pi pi-pencil" text rounded size="small" v-tooltip="'Edit'" @click="openEditCommercial" />
+                  <div v-else class="flex gap-2">
+                    <Button label="Cancel" text size="small" @click="cancelEditCommercial" />
+                    <Button label="Save" size="small" :loading="savingCommercial" @click="saveCommercial" />
+                  </div>
+                </div>
+
+                <div v-if="!editingCommercial" class="grid grid-cols-2 gap-3 text-sm">
                   <div><span class="text-slate-400">Price per Student</span><div class="text-slate-800 font-medium">{{ school.price_per_student ? '₹' + Number(school.price_per_student).toLocaleString('en-IN') : '—' }}</div></div>
                   <div><span class="text-slate-400">HPC Type</span><div class="text-slate-800 font-medium">{{ hpcTypeLabel(school.hpc_type) }}</div></div>
                   <div><span class="text-slate-400">Installment Plan</span><div class="text-slate-800 font-medium">{{ school.installment_plan ? `Plan ${school.installment_plan} · ${school.installment_plan === 'B' ? '25-25-25-25' : '50-25-25'}` : '—' }}</div></div>
                   <div class="col-span-2"><span class="text-slate-400">Payment Terms Notes</span><div class="text-slate-800 font-medium">{{ school.payment_notes || '—' }}</div></div>
+                </div>
+
+                <div v-else class="space-y-3">
+                  <div class="grid grid-cols-2 gap-3">
+                    <div>
+                      <label class="form-label">Price per Student (₹)</label>
+                      <InputNumber v-model="commercialForm.price_per_student" class="w-full" :min="1" />
+                    </div>
+                    <div>
+                      <label class="form-label">HPC Type</label>
+                      <div class="flex gap-2">
+                        <button
+                          v-for="opt in hpcTypes"
+                          :key="opt.value"
+                          type="button"
+                          @click="commercialForm.hpc_type = opt.value"
+                          class="flex-1 py-2 px-2 rounded-lg text-xs font-medium border transition-all"
+                          :class="commercialForm.hpc_type === opt.value
+                            ? 'bg-slate-900 text-white border-slate-900'
+                            : 'bg-white text-slate-600 border-slate-200 hover:border-slate-400'"
+                        >{{ opt.label }}</button>
+                      </div>
+                    </div>
+                  </div>
+                  <div>
+                    <label class="form-label">Installment Plan</label>
+                    <div class="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        @click="commercialForm.installment_plan = 'A'"
+                        class="p-2.5 rounded-lg border text-left transition-all"
+                        :class="commercialForm.installment_plan === 'A' ? 'border-blue-500 bg-blue-50' : 'border-slate-200 hover:border-slate-300'"
+                      >
+                        <div class="font-semibold text-xs text-slate-900">Plan A</div>
+                        <div class="text-[11px] text-slate-500">50% · 25% · 25%</div>
+                      </button>
+                      <button
+                        type="button"
+                        @click="commercialForm.installment_plan = 'B'"
+                        class="p-2.5 rounded-lg border text-left transition-all"
+                        :class="commercialForm.installment_plan === 'B' ? 'border-blue-500 bg-blue-50' : 'border-slate-200 hover:border-slate-300'"
+                      >
+                        <div class="font-semibold text-xs text-slate-900">Plan B</div>
+                        <div class="text-[11px] text-slate-500">25% · 25% · 25% · 25%</div>
+                      </button>
+                    </div>
+                  </div>
+                  <div>
+                    <label class="form-label">Payment Terms Notes</label>
+                    <Textarea v-model="commercialForm.payment_notes" class="w-full" rows="2" autoResize />
+                  </div>
                 </div>
               </div>
 
@@ -123,21 +221,46 @@
                   <div class="text-xs font-semibold text-slate-400 uppercase tracking-wide">Points of Contact</div>
                   <Button icon="pi pi-plus" text rounded size="small" v-tooltip="'Add Contact'" @click="openAddPoc" />
                 </div>
-                <div v-if="(school.pocs || []).length === 0" class="text-center py-6 text-slate-300 text-sm">No contacts added yet</div>
+                <div v-if="(school.pocs || []).length === 0 && editingPocIndex !== 'new'" class="text-center py-6 text-slate-300 text-sm">No contacts added yet</div>
                 <div v-else class="space-y-2">
                   <div
                     v-for="(poc, i) in school.pocs"
                     :key="i"
-                    class="flex items-center justify-between bg-slate-50 rounded-lg p-3"
+                    class="bg-slate-50 rounded-lg p-3"
                   >
-                    <div class="flex items-center gap-2 min-w-0">
-                      <span class="text-sm font-bold text-slate-900">{{ poc.name }}</span>
-                      <span v-if="poc.position" class="px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700">{{ poc.position }}</span>
+                    <div v-if="editingPocIndex !== i" class="flex items-center justify-between">
+                      <div class="flex items-center gap-2 min-w-0">
+                        <span class="text-sm font-bold text-slate-900">{{ poc.name }}</span>
+                        <span v-if="poc.position" class="px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700">{{ poc.position }}</span>
+                      </div>
+                      <div class="flex items-center gap-1 flex-shrink-0">
+                        <a v-if="poc.phone" :href="`tel:${poc.phone}`" class="text-sm text-violet-600 font-medium mr-1">📞 {{ poc.phone }}</a>
+                        <Button icon="pi pi-pencil" text rounded size="small" @click="openEditPoc(poc, i)" />
+                        <Button icon="pi pi-trash" text rounded size="small" severity="danger" @click="deletePoc(i)" />
+                      </div>
                     </div>
-                    <div class="flex items-center gap-1 flex-shrink-0">
-                      <a v-if="poc.phone" :href="`tel:${poc.phone}`" class="text-sm text-violet-600 font-medium mr-1">📞 {{ poc.phone }}</a>
-                      <Button icon="pi pi-pencil" text rounded size="small" @click="openEditPoc(poc, i)" />
-                      <Button icon="pi pi-trash" text rounded size="small" severity="danger" @click="deletePoc(i)" />
+                    <div v-else class="space-y-2">
+                      <div class="grid grid-cols-3 gap-2">
+                        <InputText v-model="pocForm.name" placeholder="Name" class="text-sm" />
+                        <InputText v-model="pocForm.phone" placeholder="Phone" class="text-sm" />
+                        <InputText v-model="pocForm.position" placeholder="Position" class="text-sm" />
+                      </div>
+                      <div class="flex justify-end gap-2">
+                        <Button label="Cancel" text size="small" @click="cancelPocEdit" />
+                        <Button label="Save" size="small" :loading="savingPoc" @click="savePoc" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div v-if="editingPocIndex === 'new'" class="bg-slate-50 rounded-lg p-3 space-y-2">
+                    <div class="grid grid-cols-3 gap-2">
+                      <InputText v-model="pocForm.name" placeholder="Name" class="text-sm" />
+                      <InputText v-model="pocForm.phone" placeholder="Phone" class="text-sm" />
+                      <InputText v-model="pocForm.position" placeholder="Position" class="text-sm" />
+                    </div>
+                    <div class="flex justify-end gap-2">
+                      <Button label="Cancel" text size="small" @click="cancelPocEdit" />
+                      <Button label="Save" size="small" :loading="savingPoc" @click="savePoc" />
                     </div>
                   </div>
                 </div>
@@ -494,29 +617,6 @@
     </template>
   </Dialog>
 
-  <!-- Add/Edit POC Dialog -->
-  <Dialog v-model:visible="pocDialogVisible" :header="editingPocIndex === null ? 'Add Contact' : 'Edit Contact'" modal :style="{ width: '420px' }">
-    <div class="space-y-4 pt-2">
-      <div>
-        <label class="form-label">Name *</label>
-        <InputText v-model="pocForm.name" class="w-full" />
-      </div>
-      <div>
-        <label class="form-label">Phone</label>
-        <InputText v-model="pocForm.phone" class="w-full" />
-      </div>
-      <div>
-        <label class="form-label">Position / Designation</label>
-        <InputText v-model="pocForm.position" class="w-full" />
-      </div>
-      <div v-if="pocFormError" class="text-sm text-red-500 bg-red-50 rounded-lg px-3 py-2">{{ pocFormError }}</div>
-    </div>
-    <template #footer>
-      <Button label="Cancel" text @click="pocDialogVisible = false" />
-      <Button label="Save" :loading="pocSaving" @click="savePoc" />
-    </template>
-  </Dialog>
-
   <input ref="agreementFileInputEl" type="file" accept="application/pdf" class="hidden" @change="onAgreementFileSelected" />
   <input ref="docFileInputEl" type="file" class="hidden" @change="onDocFileSelected" />
 
@@ -573,6 +673,10 @@ const activeTab   = ref('overview')
 const allStatuses   = ['Lead', 'Negotiation', 'Converted']
 const rmOptions     = ['Angel', 'Siddhesh']
 const moduleOptions = ref(['HPC', 'SEW', 'Co-Scholastic', 'Remarks', 'Parent App'])
+const hpcTypes = [
+  { label: 'Printed + Digital HPC', value: 'printed and digital' },
+  { label: 'Only Digital HPC',      value: 'digital only' },
+]
 
 // ── Style helpers ──────────────────────────────────────────────────────────────
 function statusStyle(s) {
@@ -647,45 +751,138 @@ async function toggleStatus(status) {
   await saveSchoolField('statuses', newStatuses)
 }
 
-// ── Points of Contact ────────────────────────────────────────────────────────
-const pocDialogVisible = ref(false)
-const pocSaving        = ref(false)
-const pocFormError     = ref('')
-const editingPocIndex   = ref(null)
+// ── Details (inline edit) ───────────────────────────────────────────────────
+const editingDetails = ref(false)
+const savingDetails  = ref(false)
+const detailsForm = reactive({
+  contact_person: '', contact_designation: '', contact_phone: '',
+  contact_email: '', student_count: null, modules: [], address: '',
+})
+
+function openEditDetails() {
+  Object.assign(detailsForm, {
+    contact_person:       school.value.contact_person || '',
+    contact_designation:  school.value.contact_designation || '',
+    contact_phone:        school.value.contact_phone || '',
+    contact_email:        school.value.contact_email || '',
+    student_count:        school.value.student_count || null,
+    modules:              school.value.modules || [],
+    address:              school.value.address || '',
+  })
+  editingDetails.value = true
+}
+function cancelEditDetails() {
+  editingDetails.value = false
+}
+async function saveDetails() {
+  savingDetails.value = true
+  try {
+    const payload = {
+      contact_person:       detailsForm.contact_person.trim(),
+      contact_designation:  detailsForm.contact_designation.trim(),
+      contact_phone:        detailsForm.contact_phone.trim(),
+      contact_email:        detailsForm.contact_email.trim(),
+      student_count:        detailsForm.student_count,
+      modules:              detailsForm.modules,
+      address:              detailsForm.address.trim(),
+    }
+    await updateDoc(opsDoc('schools', school.value.id), {
+      ...payload,
+      updated_at: serverTimestamp(),
+      updated_by: auth.currentUser?.email || 'unknown',
+    })
+    school.value = { ...school.value, ...payload }
+    toast.add({ severity: 'success', summary: 'Saved', detail: 'Details updated', life: 2500 })
+    editingDetails.value = false
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'Could not save details', life: 3000 })
+  } finally {
+    savingDetails.value = false
+  }
+}
+
+// ── Commercial Details (inline edit) ────────────────────────────────────────
+const editingCommercial = ref(false)
+const savingCommercial  = ref(false)
+const commercialForm = reactive({ price_per_student: null, hpc_type: null, installment_plan: 'A', payment_notes: '' })
+
+function openEditCommercial() {
+  Object.assign(commercialForm, {
+    price_per_student: school.value.price_per_student || null,
+    hpc_type:           school.value.hpc_type || null,
+    installment_plan:   school.value.installment_plan || 'A',
+    payment_notes:      school.value.payment_notes || '',
+  })
+  editingCommercial.value = true
+}
+function cancelEditCommercial() {
+  editingCommercial.value = false
+}
+async function saveCommercial() {
+  savingCommercial.value = true
+  try {
+    const payload = {
+      price_per_student: commercialForm.price_per_student || null,
+      hpc_type:           commercialForm.hpc_type || null,
+      installment_plan:   commercialForm.installment_plan || 'A',
+      payment_notes:      commercialForm.payment_notes.trim(),
+    }
+    await updateDoc(opsDoc('schools', school.value.id), {
+      ...payload,
+      updated_at: serverTimestamp(),
+      updated_by: auth.currentUser?.email || 'unknown',
+    })
+    school.value = { ...school.value, ...payload }
+    toast.add({ severity: 'success', summary: 'Saved', detail: 'Commercial details updated', life: 2500 })
+    editingCommercial.value = false
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Error', detail: 'Could not save commercial details', life: 3000 })
+  } finally {
+    savingCommercial.value = false
+  }
+}
+
+// ── Points of Contact (inline edit) ─────────────────────────────────────────
+const savingPoc       = ref(false)
+const editingPocIndex = ref(null) // null = not editing, 'new' = adding, number = editing that row
 const pocForm = reactive({ name: '', phone: '', position: '' })
 
 function openAddPoc() {
-  editingPocIndex.value = null
+  editingPocIndex.value = 'new'
   Object.assign(pocForm, { name: '', phone: '', position: '' })
-  pocFormError.value = ''
-  pocDialogVisible.value = true
 }
 
 function openEditPoc(poc, i) {
   editingPocIndex.value = i
   Object.assign(pocForm, { name: poc.name || '', phone: poc.phone || '', position: poc.position || '' })
-  pocFormError.value = ''
-  pocDialogVisible.value = true
+}
+
+function cancelPocEdit() {
+  editingPocIndex.value = null
 }
 
 async function savePoc() {
-  if (!pocForm.name.trim()) { pocFormError.value = 'Name is required'; return }
-  pocSaving.value = true
+  if (!pocForm.name.trim()) {
+    toast.add({ severity: 'warn', summary: 'Name is required', life: 2500 })
+    return
+  }
+  savingPoc.value = true
   try {
     const entry = { name: pocForm.name.trim(), phone: pocForm.phone.trim(), position: pocForm.position.trim() }
     const pocs = [...(school.value.pocs || [])]
-    if (editingPocIndex.value === null) {
+    if (editingPocIndex.value === 'new') {
       pocs.push(entry)
     } else {
       pocs[editingPocIndex.value] = entry
     }
     school.value.pocs = pocs
     await saveSchoolField('pocs', pocs)
-    pocDialogVisible.value = false
+    toast.add({ severity: 'success', summary: 'Saved', detail: 'Contact saved', life: 2000 })
+    editingPocIndex.value = null
   } catch (e) {
-    pocFormError.value = 'Something went wrong. Try again.'
+    toast.add({ severity: 'error', summary: 'Error', detail: 'Could not save contact', life: 3000 })
   } finally {
-    pocSaving.value = false
+    savingPoc.value = false
   }
 }
 
@@ -693,6 +890,7 @@ async function deletePoc(i) {
   const pocs = (school.value.pocs || []).filter((_, idx) => idx !== i)
   school.value.pocs = pocs
   await saveSchoolField('pocs', pocs)
+  toast.add({ severity: 'info', summary: 'Removed', life: 2000 })
 }
 
 async function changeRm(value) {
