@@ -124,8 +124,11 @@
         <!-- School name - searchable dropdown, free text still works -->
         <div>
           <label class="form-label">School Name *</label>
-          <SchoolSearchSelect v-model="form.school_name" :schools="allSchools" @select="onSchoolSelect" />
-          <p class="text-xs text-slate-400 mt-1">Search an existing school or type a new name.</p>
+          <div :class="{ 'ring-2 ring-red-400 rounded-lg': hasIssue('school_name') }">
+            <SchoolSearchSelect v-model="form.school_name" :schools="allSchools" @select="onSchoolSelect" />
+          </div>
+          <p v-if="hasIssue('school_address')" class="text-xs text-red-500 mt-1">{{ issueMessage('school_address') }}</p>
+          <p v-else class="text-xs text-slate-400 mt-1">Search an existing school or type a new name.</p>
         </div>
 
         <!-- Signatory -->
@@ -143,7 +146,7 @@
         <!-- HPC Type -->
         <div>
           <label class="form-label">HPC Type *</label>
-          <div class="flex gap-2">
+          <div class="flex gap-2" :class="{ 'ring-2 ring-amber-400 rounded-lg': hasIssue('hpc_type') }">
             <button
               v-for="opt in hpcTypes"
               :key="opt.value"
@@ -154,17 +157,20 @@
                 : 'bg-white text-slate-600 border-slate-200 hover:border-slate-400'"
             >{{ opt.label }}</button>
           </div>
+          <p v-if="hasIssue('hpc_type')" class="text-xs text-amber-600 mt-1">{{ issueMessage('hpc_type') }}</p>
         </div>
 
         <!-- Fee + Students -->
         <div class="grid grid-cols-2 gap-4">
           <div>
             <label class="form-label">Fee per Student (₹) *</label>
-            <InputNumber v-model="form.fee_per_student" class="w-full" :min="1" @input="calcTotal" />
+            <InputNumber v-model="form.fee_per_student" class="w-full" :class="{ 'ring-2 ring-red-400 rounded-lg': hasIssue('fee_per_student') }" :min="1" @input="calcTotal" />
+            <p v-if="hasIssue('fee_per_student')" class="text-xs text-red-500 mt-1">{{ issueMessage('fee_per_student') }}</p>
           </div>
           <div>
             <label class="form-label">No. of Students *</label>
-            <InputNumber v-model="form.student_count" class="w-full" :min="1" @input="calcTotal" />
+            <InputNumber v-model="form.student_count" class="w-full" :class="{ 'ring-2 ring-amber-400 rounded-lg': hasIssue('student_count') }" :min="1" @input="calcTotal" />
+            <p v-if="hasIssue('student_count')" class="text-xs text-amber-600 mt-1">{{ issueMessage('student_count') }}</p>
           </div>
         </div>
 
@@ -179,7 +185,7 @@
         <!-- Installment Plan -->
         <div>
           <label class="form-label">Installment Plan *</label>
-          <div class="grid grid-cols-2 gap-3">
+          <div class="grid grid-cols-2 gap-3" :class="{ 'ring-2 ring-red-400 rounded-lg': hasIssue('installment_plan') }">
             <button
               @click="form.installment_plan = 'A'"
               class="p-3 rounded-xl border text-left transition-all"
@@ -211,6 +217,7 @@
               </div>
             </button>
           </div>
+          <p v-if="hasIssue('installment_plan')" class="text-xs text-red-500 mt-1">{{ issueMessage('installment_plan') }}</p>
         </div>
 
         <div v-if="formError" class="text-sm text-red-500 bg-red-50 rounded-lg px-3 py-2">
@@ -224,6 +231,14 @@
         <Button label="Save & Download" icon="pi pi-download" :loading="saving" @click="saveAndDownload" />
       </template>
     </Dialog>
+
+    <SanityCheckDialog
+      :visible="sanityDialogVisible"
+      :warnings="pendingWarnings"
+      document-type="agreement"
+      :on-confirm="onSanityConfirm"
+      :on-cancel="onSanityCancel"
+    />
 
     <ConfirmDialog />
   </div>
@@ -243,6 +258,7 @@ import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage
 import { useConfirm } from 'primevue/useconfirm'
 import { useCelebration } from '../composables/useCelebration'
 import { useAllSchools } from '../composables/useAllSchools.js'
+import { useSanityCheck } from '../composables/useSanityCheck.js'
 import { useToast } from 'primevue/usetoast'
 import { generateAgreementFiles } from '../utils/api.js'
 import { generateAgreementNumber } from '../utils/agreementPDF.js'
@@ -256,12 +272,14 @@ import InputNumber from 'primevue/inputnumber'
 import ProgressSpinner from 'primevue/progressspinner'
 import ConfirmDialog from 'primevue/confirmdialog'
 import SchoolSearchSelect from '../components/shared/SchoolSearchSelect.vue'
+import SanityCheckDialog from '../components/shared/SanityCheckDialog.vue'
 
 const route = useRoute()
 const confirm = useConfirm()
 const { celebrate } = useCelebration()
 const toast = useToast()
 const { allSchools, loadAllSchools } = useAllSchools()
+const { checkAgreement } = useSanityCheck()
 
 const agreements = ref([])
 const loading    = ref(true)
@@ -273,6 +291,18 @@ const uploadTarget = ref(null)
 const uploadingId  = ref(null)
 const downloadingId = ref(null)
 const settings     = ref({ default_installment_plan: 'A' })
+
+// ── Sanity check ─────────────────────────────────────────────────────────────
+const sanityDialogVisible = ref(false)
+const pendingWarnings     = ref([])
+const issueFields         = ref(new Set())
+
+function hasIssue(field) {
+  return issueFields.value.has(field)
+}
+function issueMessage(field) {
+  return pendingWarnings.value.find(w => w.field === field)?.msg || ''
+}
 
 const hpcTypes = [
   { label: 'Printed + Digital HPC', value: 'printed and digital' },
@@ -376,6 +406,8 @@ function openNew() {
     installment_plan:      settings.value.default_installment_plan || 'A',
   })
   formError.value = ''
+  issueFields.value = new Set()
+  pendingWarnings.value = []
   dialogVisible.value = true
 }
 
@@ -392,6 +424,17 @@ async function saveAndDownload() {
   formError.value = validate()
   if (formError.value) return
 
+  const warnings = checkAgreement(form)
+  if (warnings.length > 0) {
+    pendingWarnings.value = warnings
+    sanityDialogVisible.value = true
+    return
+  }
+
+  await executeSaveAndDownload()
+}
+
+async function executeSaveAndDownload(bypassedWarnings = 0) {
   saving.value = true
   try {
     const existingNums = agreements.value.map(a => a.agreement_number)
@@ -418,8 +461,10 @@ async function saveAndDownload() {
 
     await generateAgreementFiles({ ...payload, agreement_number: aNum })
 
-
     toast.add({ severity: 'success', summary: 'Done', detail: `Agreement ${aNum} saved & downloaded`, life: 3000 })
+    if (bypassedWarnings > 0) {
+      toast.add({ severity: 'warn', summary: 'Heads up', detail: `Generated with ${bypassedWarnings} unresolved warning${bypassedWarnings !== 1 ? 's' : ''} — please review`, life: 5000 })
+    }
     dialogVisible.value = false
     await loadAgreements()
   } catch (e) {
@@ -428,6 +473,18 @@ async function saveAndDownload() {
   } finally {
     saving.value = false
   }
+}
+
+function onSanityConfirm() {
+  const count = pendingWarnings.value.length
+  sanityDialogVisible.value = false
+  issueFields.value = new Set()
+  executeSaveAndDownload(count)
+}
+
+function onSanityCancel() {
+  issueFields.value = new Set(pendingWarnings.value.filter(w => w.field).map(w => w.field))
+  sanityDialogVisible.value = false
 }
 
 async function download(a) {

@@ -213,19 +213,24 @@
         <!-- School name - searchable dropdown, free text still works -->
         <div>
           <label class="form-label">School Name *</label>
-          <SchoolSearchSelect v-model="form.school_name" :schools="allSchools" @select="onSchoolSelect" />
-          <p class="text-xs text-slate-400 mt-1">Search an existing school or type a new name.</p>
+          <div :class="{ 'ring-2 ring-red-400 rounded-lg': hasIssue('school_name') }">
+            <SchoolSearchSelect v-model="form.school_name" :schools="allSchools" @select="onSchoolSelect" />
+          </div>
+          <p v-if="hasIssue('school_name')" class="text-xs text-red-500 mt-1">{{ issueMessage('school_name') }}</p>
+          <p v-else class="text-xs text-slate-400 mt-1">Search an existing school or type a new name.</p>
         </div>
 
         <!-- School address + phone - auto-filled from agreement/school data when available -->
         <div class="grid grid-cols-2 gap-4">
           <div>
             <label class="form-label">School Address *</label>
-            <InputText v-model="form.school_address" class="w-full" placeholder="Address" />
+            <InputText v-model="form.school_address" class="w-full" :class="{ 'ring-2 ring-amber-400 rounded-lg': hasIssue('school_address') }" placeholder="Address" />
+            <p v-if="hasIssue('school_address')" class="text-xs text-amber-600 mt-1">{{ issueMessage('school_address') }}</p>
           </div>
           <div>
             <label class="form-label">School Phone *</label>
-            <InputText v-model="form.school_phone" class="w-full" placeholder="Phone" />
+            <InputText v-model="form.school_phone" class="w-full" :class="{ 'ring-2 ring-amber-400 rounded-lg': hasIssue('school_phone') }" placeholder="Phone" />
+            <p v-if="hasIssue('school_phone')" class="text-xs text-amber-600 mt-1">{{ issueMessage('school_phone') }}</p>
           </div>
         </div>
 
@@ -259,7 +264,8 @@
                 : 'bg-white text-slate-600 border-slate-200 hover:border-slate-400'"
             >{{ preset }}</button>
           </div>
-          <InputText v-model="form.description" class="w-full" placeholder="e.g. Printed HPC — Payable Amount (50%)" />
+          <InputText v-model="form.description" class="w-full" :class="{ 'ring-2 ring-red-400 rounded-lg': hasIssue('description') }" placeholder="e.g. Printed HPC — Payable Amount (50%)" />
+          <p v-if="hasIssue('description')" class="text-xs text-red-500 mt-1">{{ issueMessage('description') }}</p>
         </div>
 
         <!-- Price per student -->
@@ -269,18 +275,22 @@
             <InputNumber
               v-model="form.price_per_student"
               class="w-full"
+              :class="{ 'ring-2 ring-red-400 rounded-lg': hasIssue('price_per_student') }"
               :min="1"
               @input="recalc"
             />
+            <p v-if="hasIssue('price_per_student')" class="text-xs text-red-500 mt-1">{{ issueMessage('price_per_student') }}</p>
           </div>
           <div>
             <label class="form-label">No. of Students *</label>
             <InputNumber
               v-model="form.quantity"
               class="w-full"
+              :class="{ 'ring-2 ring-amber-400 rounded-lg': hasIssue('quantity') }"
               :min="1"
               @input="recalc"
             />
+            <p v-if="hasIssue('quantity')" class="text-xs text-amber-600 mt-1">{{ issueMessage('quantity') }}</p>
           </div>
         </div>
 
@@ -308,6 +318,14 @@
       </template>
     </Dialog>
 
+    <SanityCheckDialog
+      :visible="sanityDialogVisible"
+      :warnings="pendingWarnings"
+      document-type="invoice"
+      :on-confirm="onSanityConfirm"
+      :on-cancel="onSanityCancel"
+    />
+
     <ConfirmDialog />
   </div>
 </template>
@@ -325,6 +343,7 @@ import {
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
 import { useCelebration } from '../composables/useCelebration'
+import { useSanityCheck } from '../composables/useSanityCheck.js'
 import { generateInvoicePDF } from '../utils/api.js'
 import { generateInvoiceNumber } from '../utils/invoicePDF.js'
 
@@ -337,11 +356,13 @@ import InputNumber from 'primevue/inputnumber'
 import ProgressSpinner from 'primevue/progressspinner'
 import ConfirmDialog from 'primevue/confirmdialog'
 import SchoolSearchSelect from '../components/shared/SchoolSearchSelect.vue'
+import SanityCheckDialog from '../components/shared/SanityCheckDialog.vue'
 
 const route = useRoute()
 const confirm = useConfirm()
 const toast = useToast()
 const { celebrate } = useCelebration()
+const { checkInvoice } = useSanityCheck()
 
 const invoices = ref([])
 const loading  = ref(true)
@@ -354,6 +375,18 @@ const allSchools = ref([])
 const settings   = ref({ invoice_due_days: 45 })
 const expandedSchools = ref(new Set())
 const downloadingId = ref(null)
+
+// ── Sanity check ─────────────────────────────────────────────────────────────
+const sanityDialogVisible = ref(false)
+const pendingWarnings     = ref([])
+const issueFields         = ref(new Set())
+
+function hasIssue(field) {
+  return issueFields.value.has(field)
+}
+function issueMessage(field) {
+  return pendingWarnings.value.find(w => w.field === field)?.msg || ''
+}
 
 // Row highlight from a global search result (?highlight=id)
 const highlightedId = ref(route.query.highlight || null)
@@ -570,6 +603,8 @@ async function openNewInvoice() {
     invoice_number:    '',
   })
   formError.value = ''
+  issueFields.value = new Set()
+  pendingWarnings.value = []
   const existingNums = invoices.value.map(i => i.invoice_number)
   form.invoice_number = generateInvoiceNumber(existingNums)
   dialogVisible.value = true
@@ -602,6 +637,17 @@ async function saveInvoice() {
   formError.value = validate()
   if (formError.value) return
 
+  const warnings = checkInvoice(form)
+  if (warnings.length > 0) {
+    pendingWarnings.value = warnings
+    sanityDialogVisible.value = true
+    return
+  }
+
+  await proceedAfterSanityCheck()
+}
+
+async function proceedAfterSanityCheck(bypassedWarnings = 0) {
   const duplicate = findDuplicateInvoice()
   if (duplicate) {
     confirm.require({
@@ -610,15 +656,27 @@ async function saveInvoice() {
       icon: 'pi pi-exclamation-triangle',
       rejectLabel: 'Cancel',
       acceptLabel: 'Create Anyway',
-      accept: () => createInvoiceRecord(),
+      accept: () => createInvoiceRecord(bypassedWarnings),
     })
     return
   }
 
-  await createInvoiceRecord()
+  await createInvoiceRecord(bypassedWarnings)
 }
 
-async function createInvoiceRecord() {
+function onSanityConfirm() {
+  const count = pendingWarnings.value.length
+  sanityDialogVisible.value = false
+  issueFields.value = new Set()
+  proceedAfterSanityCheck(count)
+}
+
+function onSanityCancel() {
+  issueFields.value = new Set(pendingWarnings.value.filter(w => w.field).map(w => w.field))
+  sanityDialogVisible.value = false
+}
+
+async function createInvoiceRecord(bypassedWarnings = 0) {
   saving.value = true
   try {
     const now = new Date()
@@ -643,6 +701,9 @@ async function createInvoiceRecord() {
     })
 
     toast.add({ severity: 'success', summary: 'Created', detail: `Invoice ${form.invoice_number} created`, life: 2500 })
+    if (bypassedWarnings > 0) {
+      toast.add({ severity: 'warn', summary: 'Heads up', detail: `Generated with ${bypassedWarnings} unresolved warning${bypassedWarnings !== 1 ? 's' : ''} — please review`, life: 5000 })
+    }
     dialogVisible.value = false
     await loadInvoices()
   } catch (e) {

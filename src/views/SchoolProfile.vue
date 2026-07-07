@@ -620,6 +620,14 @@
   <input ref="agreementFileInputEl" type="file" accept="application/pdf" class="hidden" @change="onAgreementFileSelected" />
   <input ref="docFileInputEl" type="file" class="hidden" @change="onDocFileSelected" />
 
+  <SanityCheckDialog
+    :visible="sanityDialogVisible"
+    :warnings="pendingWarnings"
+    document-type="onboarding document"
+    :on-confirm="onOnboardingSanityConfirm"
+    :on-cancel="onOnboardingSanityCancel"
+  />
+
   <ConfirmDialog />
 </template>
 
@@ -634,6 +642,7 @@ import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'fi
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
 import { useCelebration } from '../composables/useCelebration'
+import { useSanityCheck } from '../composables/useSanityCheck.js'
 import { generateAgreementFiles, generateQuotationPDF, generateInvoicePDF, generateOnboardingPDF } from '../utils/api.js'
 
 import Button from 'primevue/button'
@@ -654,12 +663,18 @@ import TabPanels from 'primevue/tabpanels'
 import TabPanel from 'primevue/tabpanel'
 import OperationSectionCard from '../components/shared/OperationSectionCard.vue'
 import DataReceivableSectionCard from '../components/shared/DataReceivableSectionCard.vue'
+import SanityCheckDialog from '../components/shared/SanityCheckDialog.vue'
 
 const route = useRoute()
 const router = useRouter()
 const confirm = useConfirm()
 const toast = useToast()
 const { celebrate } = useCelebration()
+const { checkOnboarding } = useSanityCheck()
+
+// ── Sanity check ─────────────────────────────────────────────────────────────
+const sanityDialogVisible = ref(false)
+const pendingWarnings     = ref([])
 
 const loading    = ref(true)
 const school     = ref(null)
@@ -1267,13 +1282,36 @@ async function onAgreementFileSelected(e) {
 }
 
 const generatingOnboarding = ref(false)
-async function downloadOnboardingDoc() {
+function downloadOnboardingDoc() {
   if (!school.value) return
+  const warnings = checkOnboarding(school.value)
+  if (warnings.length > 0) {
+    pendingWarnings.value = warnings
+    sanityDialogVisible.value = true
+    return
+  }
+  executeDownloadOnboardingDoc()
+}
+
+function onOnboardingSanityConfirm() {
+  const count = pendingWarnings.value.length
+  sanityDialogVisible.value = false
+  executeDownloadOnboardingDoc(count)
+}
+
+function onOnboardingSanityCancel() {
+  sanityDialogVisible.value = false
+}
+
+async function executeDownloadOnboardingDoc(bypassedWarnings = 0) {
   generatingOnboarding.value = true
   try {
     const year = activeYear.value && activeYear.value !== 'All Years' ? activeYear.value : effectiveAcademicYear()
     await generateOnboardingPDF(school.value, year)
     toast.add({ severity: 'success', summary: 'Downloaded', detail: 'Onboarding doc generated', life: 2500 })
+    if (bypassedWarnings > 0) {
+      toast.add({ severity: 'warn', summary: 'Heads up', detail: `Generated with ${bypassedWarnings} unresolved warning${bypassedWarnings !== 1 ? 's' : ''} — please review`, life: 5000 })
+    }
   } catch (e) {
     console.error(e)
     toast.add({ severity: 'error', summary: 'Download failed', detail: e.message || 'Could not generate onboarding doc', life: 4000 })

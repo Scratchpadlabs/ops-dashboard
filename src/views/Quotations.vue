@@ -233,14 +233,18 @@
         <!-- School name - searchable dropdown, free text still works -->
         <div>
           <label class="form-label">School Name *</label>
-          <SchoolSearchSelect v-model="form.school_name" :schools="allSchools" @select="onSchoolSelect" />
-          <p class="text-xs text-slate-400 mt-1">Search an existing school or type a new name.</p>
+          <div :class="{ 'ring-2 ring-red-400 rounded-lg': hasIssue('school_name') }">
+            <SchoolSearchSelect v-model="form.school_name" :schools="allSchools" @select="onSchoolSelect" />
+          </div>
+          <p v-if="hasIssue('school_name')" class="text-xs text-red-500 mt-1">{{ issueMessage('school_name') }}</p>
+          <p v-else class="text-xs text-slate-400 mt-1">Search an existing school or type a new name.</p>
         </div>
 
         <!-- Student count -->
         <div>
           <label class="form-label">Approx. Student Count *</label>
-          <InputNumber v-model="form.student_count" class="w-full" :min="1" />
+          <InputNumber v-model="form.student_count" class="w-full" :class="{ 'ring-2 ring-amber-400 rounded-lg': hasIssue('student_count') }" :min="1" />
+          <p v-if="hasIssue('student_count')" class="text-xs text-amber-600 mt-1">{{ issueMessage('student_count') }}</p>
         </div>
 
         <!-- Option A -->
@@ -309,6 +313,14 @@
       </template>
     </Dialog>
 
+    <SanityCheckDialog
+      :visible="sanityDialogVisible"
+      :warnings="pendingWarnings"
+      document-type="quotation"
+      :on-confirm="onSanityConfirm"
+      :on-cancel="onSanityCancel"
+    />
+
     <ConfirmDialog />
   </div>
 </template>
@@ -326,6 +338,7 @@ import { useRoute } from 'vue-router'
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
 import { useAllSchools } from '../composables/useAllSchools.js'
+import { useSanityCheck } from '../composables/useSanityCheck.js'
 import { generateQuotationPDF, generateAgreementFiles } from '../utils/api.js'
 import { generateQuotationNumber, calcPrice } from '../utils/quotationPDF.js'
 import { generateAgreementNumber } from '../utils/agreementPDF.js'
@@ -340,11 +353,13 @@ import ToggleButton from 'primevue/togglebutton'
 import ProgressSpinner from 'primevue/progressspinner'
 import ConfirmDialog from 'primevue/confirmdialog'
 import SchoolSearchSelect from '../components/shared/SchoolSearchSelect.vue'
+import SanityCheckDialog from '../components/shared/SanityCheckDialog.vue'
 
 const route = useRoute()
 const confirm = useConfirm()
 const toast = useToast()
 const { allSchools, loadAllSchools } = useAllSchools()
+const { checkQuotation } = useSanityCheck()
 
 const quotations = ref([])
 const agreements = ref([])
@@ -354,6 +369,18 @@ const saving     = ref(false)
 const downloadingId = ref(null)
 const formError  = ref('')
 const settings   = ref({ default_installment_plan: 'A' })
+
+// ── Sanity check ─────────────────────────────────────────────────────────────
+const sanityDialogVisible = ref(false)
+const pendingWarnings     = ref([])
+const issueFields         = ref(new Set())
+
+function hasIssue(field) {
+  return issueFields.value.has(field)
+}
+function issueMessage(field) {
+  return pendingWarnings.value.find(w => w.field === field)?.msg || ''
+}
 
 // ── Convert-to-Agreement flow ───────────────────────────────────────────────
 const pendingQuotation      = ref(null)
@@ -474,6 +501,8 @@ function openNew() {
     price_b:      169,
   })
   formError.value = ''
+  issueFields.value = new Set()
+  pendingWarnings.value = []
   dialogVisible.value = true
 }
 
@@ -488,6 +517,17 @@ async function saveAndDownload() {
   formError.value = validate()
   if (formError.value) return
 
+  const warnings = checkQuotation(form)
+  if (warnings.length > 0) {
+    pendingWarnings.value = warnings
+    sanityDialogVisible.value = true
+    return
+  }
+
+  await executeSaveAndDownload()
+}
+
+async function executeSaveAndDownload(bypassedWarnings = 0) {
   saving.value = true
   try {
     const existingNums = quotations.value.map(q => q.quotation_number)
@@ -513,9 +553,11 @@ async function saveAndDownload() {
 
     // Generate and download PDF
     await generateQuotationPDF({ ...payload, quotation_number: qNum })
-    
 
     toast.add({ severity: 'success', summary: 'Done', detail: `Quotation ${qNum} saved & downloaded`, life: 3000 })
+    if (bypassedWarnings > 0) {
+      toast.add({ severity: 'warn', summary: 'Heads up', detail: `Generated with ${bypassedWarnings} unresolved warning${bypassedWarnings !== 1 ? 's' : ''} — please review`, life: 5000 })
+    }
     dialogVisible.value = false
     await loadQuotations()
   } catch (e) {
@@ -524,6 +566,18 @@ async function saveAndDownload() {
   } finally {
     saving.value = false
   }
+}
+
+function onSanityConfirm() {
+  const count = pendingWarnings.value.length
+  sanityDialogVisible.value = false
+  issueFields.value = new Set()
+  executeSaveAndDownload(count)
+}
+
+function onSanityCancel() {
+  issueFields.value = new Set(pendingWarnings.value.filter(w => w.field).map(w => w.field))
+  sanityDialogVisible.value = false
 }
 
 async function download(q) {
