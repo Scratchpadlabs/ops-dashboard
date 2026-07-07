@@ -49,7 +49,7 @@
     <!-- Disclaimer -->
     <div class="disclaimer-banner mb-6">
       <span class="text-base">💡</span>
-      Realized = collected · Unrealized = pending · Net P&amp;L = Realized minus Expenses
+      Total Contract Value = all schools' potential revenue · Collected = paid invoices · Net P&amp;L = Collected minus Expenses
     </div>
 
     <!-- School Profitability -->
@@ -625,14 +625,19 @@ const sortedExpenses = computed(() =>
   [...visibleExpenses.value].sort((a, b) => toDate(b.date) - toDate(a.date))
 )
 
-const paidInvoices   = computed(() => visibleInvoicesForPL.value.filter(i => i.status === 'paid'))
-const unpaidInvoices = computed(() => visibleInvoicesForPL.value.filter(i => i.status !== 'paid'))
+const paidInvoices = computed(() => visibleInvoicesForPL.value.filter(i => i.status === 'paid'))
 
+// Total Contract Value — potential revenue across ALL schools, regardless of payment status
+const totalContractValue = computed(() =>
+  allSchools.value.reduce((s, school) => s + (school.student_count || 0) * (school.price_per_student || 0), 0)
+)
+const totalStudentsAllSchools = computed(() =>
+  allSchools.value.reduce((s, school) => s + (school.student_count || 0), 0)
+)
+
+// Collected — actual cash received (paid invoices only)
 const totalIncome = computed(() =>
   paidInvoices.value.reduce((s, i) => s + (i.price_per_student || 0) * (i.quantity || 0), 0)
-)
-const totalOutstanding = computed(() =>
-  unpaidInvoices.value.reduce((s, i) => s + (i.price_per_student || 0) * (i.quantity || 0), 0)
 )
 const totalExpenses = computed(() =>
   visibleExpenses.value.reduce((s, e) => s + Number(e.amount || 0), 0)
@@ -640,10 +645,10 @@ const totalExpenses = computed(() =>
 const netPL = computed(() => totalIncome.value - totalExpenses.value)
 
 // Animated number counters
-const displayRealized   = ref(0)
-const displayUnrealized = ref(0)
-const displayExpenses   = ref(0)
-const displayNet        = ref(0)
+const displayContractValue = ref(0)
+const displayCollected     = ref(0)
+const displayExpenses      = ref(0)
+const displayNet           = ref(0)
 
 function animateTo(displayRef, target, duration = 800) {
   const start = displayRef.value
@@ -658,31 +663,31 @@ function animateTo(displayRef, target, duration = 800) {
   requestAnimationFrame(tick)
 }
 
-watch(totalIncome,      v => animateTo(displayRealized, v),   { immediate: true })
-watch(totalOutstanding, v => animateTo(displayUnrealized, v), { immediate: true })
-watch(totalExpenses,    v => animateTo(displayExpenses, v),   { immediate: true })
-watch(netPL,            v => animateTo(displayNet, v),        { immediate: true })
+watch(totalContractValue, v => animateTo(displayContractValue, v), { immediate: true })
+watch(totalIncome,        v => animateTo(displayCollected, v),     { immediate: true })
+watch(totalExpenses,      v => animateTo(displayExpenses, v),      { immediate: true })
+watch(netPL,              v => animateTo(displayNet, v),           { immediate: true })
 
 // ── P&L stat cards ──────────────────────────────────────────────────────────
 const plCards = computed(() => {
   const netPositive = netPL.value >= 0
   return [
     {
-      id: 'realized',
-      label: 'Realized Revenue',
-      emoji: '💚',
-      value: displayRealized.value,
-      sub: `${paidInvoices.value.length} payment${paidInvoices.value.length !== 1 ? 's' : ''} collected 🎉`,
+      id: 'contract-value',
+      label: 'Total Contract Value',
+      emoji: '🎯',
+      value: displayContractValue.value,
+      sub: `across ${allSchools.value.length} schools · ${totalStudentsAllSchools.value} students`,
       gradient: 'linear-gradient(135deg, #064e3b, #065f46)',
       gif: 'https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif',
       glow: '16, 185, 129',
     },
     {
-      id: 'unrealized',
-      label: 'Unrealized Revenue',
-      emoji: '⏳',
-      value: displayUnrealized.value,
-      sub: `${unpaidInvoices.value.length} invoice${unpaidInvoices.value.length !== 1 ? 's' : ''} pending 📋`,
+      id: 'collected',
+      label: 'Collected',
+      emoji: '💚',
+      value: displayCollected.value,
+      sub: `${paidInvoices.value.length} payment${paidInvoices.value.length !== 1 ? 's' : ''} collected 🎉`,
       gradient: 'linear-gradient(135deg, #78350f, #92400e)',
       gif: 'https://media.giphy.com/media/3o7abB06u9bNzA8lu8/giphy.gif',
       glow: '245, 158, 11',
