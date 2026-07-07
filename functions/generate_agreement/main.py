@@ -213,7 +213,7 @@ def _build_pdf(data):
     story = []
 
     # ── Header band ───────────────────────────────────────────────────────────
-    logo_cell = _load_logo(height=40)
+    logo_cell = _load_logo(height=32)
 
     header = Table(
         [[
@@ -223,19 +223,21 @@ def _build_pdf(data):
                 'HOLISTIC PROGRESS CARD SERVICES</b></font>',
                 _make_style("hr", size=9, leading=11, color=WHITE, align=2)),
         ]],
-        colWidths=[BODY_W * 0.35, BODY_W * 0.65],
+        colWidths=[BODY_W * 0.32, BODY_W * 0.68],
     )
     header.setStyle(TableStyle([
         ("BACKGROUND",    (0,0), (-1,-1), NAVY),
         ("BACKGROUND",    (0,0), (0,0),   WHITE),
-        ("TOPPADDING",    (0,0), (-1,-1), 14),
-        ("BOTTOMPADDING", (0,0), (-1,-1), 14),
-        ("LEFTPADDING",   (0,0), (0,-1),  18),
-        ("RIGHTPADDING",  (-1,0),(-1,-1), 18),
+        ("TOPPADDING",    (0,0), (-1,-1), 20),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 20),
+        ("LEFTPADDING",   (0,0), (0,-1),  10),
+        ("RIGHTPADDING",  (0,0), (0,-1),  14),
+        ("LEFTPADDING",   (1,0), (1,-1),  4),
+        ("RIGHTPADDING",  (1,0), (1,-1),  10),
         ("VALIGN",        (0,0), (-1,-1), "MIDDLE"),
     ]))
     story.append(header)
-    story.append(Spacer(1, 4))
+    story.append(Spacer(1, 12))
 
     # Ref / date meta strip
     meta = Table(
