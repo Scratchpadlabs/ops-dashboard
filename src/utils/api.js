@@ -94,6 +94,7 @@ export async function generateAgreementFiles(a) {
 export async function generateOnboardingPDF(school, activeYear) {
   const res = await callCF(URLS.onboarding, {
     schoolName:   school.name,
+    city:         school.city || '',
     academicYear: activeYear || '2026-27',
   })
   const blob = await res.blob()
