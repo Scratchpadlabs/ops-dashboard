@@ -138,8 +138,20 @@
                     <InputNumber v-model="detailsForm.student_count" class="w-full" :min="1" />
                   </div>
                   <div>
+                    <label class="form-label">City</label>
+                    <InputText v-model="detailsForm.city" class="w-full text-sm" />
+                  </div>
+                  <div>
+                    <label class="form-label">State</label>
+                    <InputText v-model="detailsForm.state" class="w-full text-sm" />
+                  </div>
+                  <div>
                     <label class="form-label">Modules</label>
                     <MultiSelect v-model="detailsForm.modules" :options="moduleOptions" placeholder="Select modules" class="w-full" />
+                  </div>
+                  <div>
+                    <label class="form-label">Second Language</label>
+                    <InputText v-model="detailsForm.second_language" class="w-full text-sm" placeholder="e.g. Hindi" />
                   </div>
                   <div class="col-span-2">
                     <label class="form-label">Address</label>
@@ -797,7 +809,8 @@ const editingDetails = ref(false)
 const savingDetails  = ref(false)
 const detailsForm = reactive({
   contact_person: '', contact_designation: '', contact_phone: '',
-  contact_email: '', student_count: null, modules: [], address: '',
+  contact_email: '', student_count: null, city: '', state: '',
+  modules: [], second_language: '', address: '',
 })
 
 function openEditDetails() {
@@ -807,7 +820,10 @@ function openEditDetails() {
     contact_phone:        school.value.contact_phone || '',
     contact_email:        school.value.contact_email || '',
     student_count:        school.value.student_count || null,
+    city:                 school.value.city || '',
+    state:                school.value.state || '',
     modules:              school.value.modules || [],
+    second_language:      school.value.second_language || 'Hindi',
     address:              school.value.address || '',
   })
   editingDetails.value = true
@@ -824,7 +840,10 @@ async function saveDetails() {
       contact_phone:        detailsForm.contact_phone.trim(),
       contact_email:        detailsForm.contact_email.trim(),
       student_count:        detailsForm.student_count,
+      city:                 detailsForm.city.trim(),
+      state:                detailsForm.state.trim(),
       modules:              detailsForm.modules,
+      second_language:      detailsForm.second_language.trim() || 'Hindi',
       address:              detailsForm.address.trim(),
     }
     await updateDoc(opsDoc('schools', school.value.id), {
