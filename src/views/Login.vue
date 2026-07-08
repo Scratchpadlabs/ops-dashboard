@@ -10,12 +10,12 @@
       <div class="bg-white rounded-2xl p-6 shadow-xl">
         <form class="space-y-4" @submit.prevent="handleLogin">
           <div>
-            <label class="form-label">Email</label>
+            <label class="form-label">Username</label>
             <InputText
-              v-model="email"
-              type="email"
+              v-model="username"
+              type="text"
               class="w-full"
-              placeholder="you@ops.clarified.in"
+              placeholder="Username"
               autocomplete="username"
             />
           </div>
@@ -61,24 +61,35 @@ import Button from 'primevue/button'
 const router = useRouter()
 const route = useRoute()
 
-const email = ref('')
+const USERNAME_MAP = {
+  sid: 'sid@ops.clarified.in',
+  angel: 'angel@ops.clarified.in',
+}
+
+const username = ref('')
 const password = ref('')
 const signingIn = ref(false)
 const errorMessage = ref('')
 
 async function handleLogin() {
   errorMessage.value = ''
-  if (!email.value.trim() || !password.value) {
-    errorMessage.value = 'Enter your email and password'
+  if (!username.value.trim() || !password.value) {
+    errorMessage.value = 'Enter your username and password'
+    return
+  }
+
+  const email = USERNAME_MAP[username.value.trim()]
+  if (!email) {
+    errorMessage.value = 'Invalid username'
     return
   }
 
   signingIn.value = true
   try {
-    await signInWithEmailAndPassword(auth, email.value.trim(), password.value)
+    await signInWithEmailAndPassword(auth, email, password.value)
     router.push(route.query.redirect || '/')
   } catch (e) {
-    errorMessage.value = 'Incorrect email or password'
+    errorMessage.value = 'Invalid username or password'
   } finally {
     signingIn.value = false
   }
