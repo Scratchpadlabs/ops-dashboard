@@ -43,13 +43,13 @@
 
         <Column field="fee_per_student" header="Fee / Student">
           <template #body="{ data }">
-            <span class="text-sm font-semibold text-slate-900">₹{{ data.fee_per_student }}/-</span>
+            <span class="text-sm font-semibold text-slate-900">₹{{ formatPrice(data.fee_per_student) }}/-</span>
           </template>
         </Column>
 
         <Column header="Total Value">
           <template #body="{ data }">
-            <span class="text-sm text-slate-700">₹{{ (data.fee_per_student * data.student_count).toLocaleString('en-IN') }}</span>
+            <span class="text-sm text-slate-700">₹{{ formatPrice(data.fee_per_student * data.student_count) }}</span>
           </template>
         </Column>
 
@@ -164,7 +164,7 @@
         <div class="grid grid-cols-2 gap-4">
           <div>
             <label class="form-label">Fee per Student (₹) *</label>
-            <InputNumber v-model="form.fee_per_student" class="w-full" :class="{ 'ring-2 ring-red-400 rounded-lg': hasIssue('fee_per_student') }" :min="1" @input="calcTotal" />
+            <InputNumber v-model="form.fee_per_student" class="w-full" :class="{ 'ring-2 ring-red-400 rounded-lg': hasIssue('fee_per_student') }" :min="1" :minFractionDigits="0" :maxFractionDigits="2" @input="calcTotal" />
             <p v-if="hasIssue('fee_per_student')" class="text-xs text-red-500 mt-1">{{ issueMessage('fee_per_student') }}</p>
           </div>
           <div>
@@ -178,7 +178,7 @@
         <div v-if="form.fee_per_student && form.student_count" class="bg-slate-50 rounded-lg px-4 py-3">
           <div class="flex justify-between items-center mb-2">
             <span class="text-sm text-slate-500">Total Contract Value</span>
-            <span class="text-lg font-bold text-slate-900">₹{{ totalValue.toLocaleString('en-IN') }}</span>
+            <span class="text-lg font-bold text-slate-900">₹{{ formatPrice(totalValue) }}</span>
           </div>
         </div>
 
@@ -197,7 +197,7 @@
               <div class="text-xs text-slate-500">50% · 25% · 25%</div>
               <div v-if="form.fee_per_student && form.student_count" class="mt-2 space-y-0.5">
                 <div v-for="(pct, i) in [50,25,25]" :key="i" class="text-xs font-medium text-blue-700">
-                  Inst. {{ i+1 }}: ₹{{ Math.round(totalValue * pct / 100).toLocaleString('en-IN') }}
+                  Inst. {{ i+1 }}: ₹{{ formatPrice(Math.round(totalValue * pct / 100)) }}
                 </div>
               </div>
             </button>
@@ -212,7 +212,7 @@
               <div class="text-xs text-slate-500">25% · 25% · 25% · 25%</div>
               <div v-if="form.fee_per_student && form.student_count" class="mt-2 space-y-0.5">
                 <div v-for="(pct, i) in [25,25,25,25]" :key="i" class="text-xs font-medium text-blue-700">
-                  Inst. {{ i+1 }}: ₹{{ Math.round(totalValue * pct / 100).toLocaleString('en-IN') }}
+                  Inst. {{ i+1 }}: ₹{{ formatPrice(Math.round(totalValue * pct / 100)) }}
                 </div>
               </div>
             </button>
@@ -563,6 +563,11 @@ function formatDate(ts) {
   if (!ts) return '—'
   const d = ts.toDate ? ts.toDate() : new Date(ts)
   return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+function formatPrice(n) {
+  if (n == null) return '0'
+  return Number(n).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
 }
 
 onMounted(async () => {

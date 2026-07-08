@@ -2,7 +2,9 @@
   <div class="min-h-screen flex items-center justify-center" style="background: #0f172a">
     <div class="w-full max-w-sm">
       <div class="flex flex-col items-center mb-8">
-        <img src="/logo.png" class="w-40 object-contain mb-6" />
+        <div class="bg-white rounded-2xl px-8 py-4 flex items-center justify-center mb-6 shadow-sm">
+          <img src="/logo.png" class="w-40 object-contain" />
+        </div>
         <h1 class="text-white text-lg font-semibold">Ops Dashboard</h1>
         <p class="text-slate-400 text-sm mt-1">Sign in to continue</p>
       </div>

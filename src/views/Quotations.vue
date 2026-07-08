@@ -48,10 +48,10 @@
           <template #body="{ data }">
             <div class="flex gap-1">
               <span v-if="data.show_a !== false" class="px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
-                A: ₹{{ data.price_a }}/student
+                A: ₹{{ formatPrice(data.price_a) }}/student
               </span>
               <span v-if="data.show_b !== false" class="px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">
-                B: ₹{{ data.price_b }}/student
+                B: ₹{{ formatPrice(data.price_b) }}/student
               </span>
             </div>
           </template>
@@ -163,7 +163,7 @@
             >
               <div class="font-semibold text-sm text-slate-900 mb-1">Option {{ opt.value }}</div>
               <div class="text-xs text-slate-500">{{ opt.label }}</div>
-              <div class="text-xs font-medium text-blue-700 mt-1">₹{{ opt.price }}/student</div>
+              <div class="text-xs font-medium text-blue-700 mt-1">₹{{ formatPrice(opt.price) }}/student</div>
             </button>
           </div>
         </div>
@@ -182,7 +182,7 @@
         <div class="grid grid-cols-2 gap-4">
           <div>
             <label class="form-label">Fee per Student (₹) *</label>
-            <InputNumber v-model="convertForm.fee_per_student" class="w-full" :min="1" />
+            <InputNumber v-model="convertForm.fee_per_student" class="w-full" :min="1" :minFractionDigits="0" :maxFractionDigits="2" />
           </div>
           <div>
             <label class="form-label">No. of Students *</label>
@@ -192,7 +192,7 @@
 
         <div v-if="convertForm.fee_per_student && convertForm.student_count" class="bg-slate-50 rounded-lg px-4 py-3 flex justify-between items-center">
           <span class="text-sm text-slate-500">Total Contract Value</span>
-          <span class="text-lg font-bold text-slate-900">₹{{ (convertForm.fee_per_student * convertForm.student_count).toLocaleString('en-IN') }}</span>
+          <span class="text-lg font-bold text-slate-900">₹{{ formatPrice(convertForm.fee_per_student * convertForm.student_count) }}</span>
         </div>
 
         <div>
@@ -263,12 +263,12 @@
           <div v-if="form.show_a" class="grid grid-cols-2 gap-3">
             <div>
               <label class="form-label">Discount %</label>
-              <InputNumber v-model="form.discount_a" class="w-full" :min="0" :max="100" suffix="%" @input="e => calcPrices('discount_a', e.value)" />
+              <InputNumber v-model="form.discount_a" class="w-full" :min="0" :max="100" :minFractionDigits="0" :maxFractionDigits="2" suffix="%" @input="e => calcPrices('discount_a', e.value)" />
             </div>
             <div>
               <label class="form-label">Final Price / Student</label>
               <div class="px-3 py-2 bg-green-50 border border-green-200 rounded-lg text-sm font-bold text-green-700">
-                ₹{{ form.price_a || 299 }} / student
+                ₹{{ formatPrice(form.price_a || 299) }} / student
               </div>
             </div>
           </div>
@@ -290,12 +290,12 @@
           <div v-if="form.show_b" class="grid grid-cols-2 gap-3">
             <div>
               <label class="form-label">Discount %</label>
-              <InputNumber v-model="form.discount_b" class="w-full" :min="0" :max="100" suffix="%" @input="e => calcPrices('discount_b', e.value)" />
+              <InputNumber v-model="form.discount_b" class="w-full" :min="0" :max="100" :minFractionDigits="0" :maxFractionDigits="2" suffix="%" @input="e => calcPrices('discount_b', e.value)" />
             </div>
             <div>
               <label class="form-label">Final Price / Student</label>
               <div class="px-3 py-2 bg-yellow-50 border border-yellow-200 rounded-lg text-sm font-bold text-yellow-700">
-                ₹{{ form.price_b || 169 }} / student
+                ₹{{ formatPrice(form.price_b || 169) }} / student
               </div>
             </div>
           </div>
@@ -768,6 +768,11 @@ function formatDate(ts) {
   if (!ts) return '—'
   const d = ts.toDate ? ts.toDate() : new Date(ts)
   return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+function formatPrice(n) {
+  if (n == null) return '0'
+  return Number(n).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
 }
 
 onMounted(async () => {

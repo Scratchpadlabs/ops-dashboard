@@ -6,7 +6,9 @@
     <!-- Sidebar -->
     <aside class="w-56 min-h-screen flex flex-col border-r" style="background: #0f172a; border-color: #1e293b">
       <div class="px-5 py-5 border-b flex items-center" style="border-color: #1e293b">
-        <img src="/logo.png" class="w-32 object-contain" />
+        <div class="bg-white rounded-xl p-2 mx-3 my-3 flex items-center justify-center">
+          <img src="/logo.png" class="w-28 object-contain" />
+        </div>
       </div>
 
       <nav class="flex-1 px-3 py-4 space-y-1">

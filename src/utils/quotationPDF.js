@@ -249,7 +249,7 @@ export function generateQuotationPDF(q) {
 // ─── Price calculator ─────────────────────────────────────────────────────────
 export function calcPrice(mrp, discountPct) {
   if (!discountPct) return mrp
-  return Math.round(mrp * (1 - discountPct / 100))
+  return Math.round(mrp * (1 - discountPct / 100) * 100) / 100
 }
 
 // ─── Quotation number generator ───────────────────────────────────────────────

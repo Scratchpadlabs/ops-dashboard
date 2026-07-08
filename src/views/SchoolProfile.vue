@@ -54,7 +54,7 @@
           <div class="flex flex-wrap gap-2 mt-3">
             <Button label="📄 Generate Agreement" size="small" outlined @click="goNewAgreement" />
             <Button label="🧾 Generate Invoice" size="small" outlined @click="goNewInvoice" />
-            <Button label="📋 Onboarding Doc" size="small" outlined :loading="generatingOnboarding" @click="downloadOnboardingDoc" />
+            <Button label="📋 School Setup Guide" size="small" outlined :loading="generatingOnboarding" @click="downloadOnboardingDoc" />
           </div>
         </div>
 
@@ -109,7 +109,10 @@
                   <div><span class="text-slate-400">Phone</span><div class="text-slate-800 font-medium">{{ school.contact_phone || '—' }}</div></div>
                   <div><span class="text-slate-400">Email</span><div class="text-slate-800 font-medium">{{ school.contact_email || '—' }}</div></div>
                   <div><span class="text-slate-400">Students</span><div class="text-slate-800 font-medium">{{ school.student_count || '—' }}</div></div>
+                  <div><span class="text-slate-400">City</span><div class="text-slate-800 font-medium">{{ school.city || '—' }}</div></div>
+                  <div><span class="text-slate-400">State</span><div class="text-slate-800 font-medium">{{ school.state || '—' }}</div></div>
                   <div><span class="text-slate-400">Modules</span><div class="text-slate-800 font-medium">{{ (school.modules || []).join(', ') || '—' }}</div></div>
+                  <div><span class="text-slate-400">Second Language</span><div class="text-slate-800 font-medium">{{ school.second_language || 'Hindi' }}</div></div>
                   <div class="col-span-2"><span class="text-slate-400">Address</span><div class="text-slate-800 font-medium">{{ school.address || '—' }}</div></div>
                 </div>
 
@@ -157,7 +160,7 @@
                 </div>
 
                 <div v-if="!editingCommercial" class="grid grid-cols-2 gap-3 text-sm">
-                  <div><span class="text-slate-400">Price per Student</span><div class="text-slate-800 font-medium">{{ school.price_per_student ? '₹' + Number(school.price_per_student).toLocaleString('en-IN') : '—' }}</div></div>
+                  <div><span class="text-slate-400">Price per Student</span><div class="text-slate-800 font-medium">{{ school.price_per_student ? '₹' + formatPrice(school.price_per_student) : '—' }}</div></div>
                   <div><span class="text-slate-400">HPC Type</span><div class="text-slate-800 font-medium">{{ hpcTypeLabel(school.hpc_type) }}</div></div>
                   <div><span class="text-slate-400">Installment Plan</span><div class="text-slate-800 font-medium">{{ school.installment_plan ? `Plan ${school.installment_plan} · ${school.installment_plan === 'B' ? '25-25-25-25' : '50-25-25'}` : '—' }}</div></div>
                   <div class="col-span-2"><span class="text-slate-400">Payment Terms Notes</span><div class="text-slate-800 font-medium">{{ school.payment_notes || '—' }}</div></div>
@@ -167,7 +170,7 @@
                   <div class="grid grid-cols-2 gap-3">
                     <div>
                       <label class="form-label">Price per Student (₹)</label>
-                      <InputNumber v-model="commercialForm.price_per_student" class="w-full" :min="1" />
+                      <InputNumber v-model="commercialForm.price_per_student" class="w-full" :min="1" :minFractionDigits="0" :maxFractionDigits="2" />
                     </div>
                     <div>
                       <label class="form-label">HPC Type</label>
@@ -318,6 +321,29 @@
                   </div>
                 </div>
 
+                <div
+                  @dragover.prevent="onDocDragOver"
+                  @dragleave.prevent="onDocDragLeave"
+                  @drop.prevent="onDocDrop"
+                  @click="triggerDocUpload"
+                  class="mb-3 border-2 border-dashed rounded-lg py-4 px-3 text-center text-xs cursor-pointer transition-colors"
+                  :class="isDraggingDoc ? 'border-blue-400 bg-blue-50 text-blue-600' : 'border-slate-200 text-slate-400 hover:border-slate-300'"
+                >
+                  <i class="pi pi-cloud-upload text-lg mb-1 block"></i>
+                  Drag &amp; drop files here or click to browse
+                </div>
+
+                <div v-if="uploadQueue.length" class="space-y-1.5 mb-3">
+                  <div v-for="item in uploadQueue" :key="item.id" class="flex items-center gap-2 text-xs bg-slate-50 rounded-lg px-2.5 py-1.5">
+                    <i
+                      :class="item.status === 'uploading' ? 'pi pi-spin pi-spinner text-blue-500'
+                        : item.status === 'done' ? 'pi pi-check text-green-500'
+                        : 'pi pi-times text-red-500'"
+                    ></i>
+                    <span class="flex-1 truncate text-slate-600">{{ item.name }}</span>
+                  </div>
+                </div>
+
                 <div v-if="showAddLink" class="flex flex-col gap-2 mb-3 bg-slate-50 rounded-lg p-3">
                   <InputText v-model="linkForm.name" placeholder="Link name" class="text-sm" />
                   <InputText v-model="linkForm.url" placeholder="https://..." class="text-sm" />
@@ -362,7 +388,7 @@
               </div>
               <div class="flex gap-2">
                 <button
-                  v-for="n in [1, 2, 4]"
+                  v-for="n in [1, 2, 3, 4]"
                   :key="n"
                   @click="setNumTerms(n)"
                   class="w-10 h-10 rounded-lg text-sm font-semibold border transition-all"
@@ -451,7 +477,7 @@
                   <template #body="{ data }"><span class="text-xs text-slate-500">{{ formatDate(data.created_at) }}</span></template>
                 </Column>
                 <Column header="Fee/Student">
-                  <template #body="{ data }"><span class="text-sm font-semibold text-slate-900">₹{{ data.fee_per_student }}/-</span></template>
+                  <template #body="{ data }"><span class="text-sm font-semibold text-slate-900">₹{{ formatPrice(data.fee_per_student) }}/-</span></template>
                 </Column>
                 <Column header="Plan">
                   <template #body="{ data }"><span class="px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700">Plan {{ data.installment_plan }}</span></template>
@@ -618,12 +644,12 @@
   </Dialog>
 
   <input ref="agreementFileInputEl" type="file" accept="application/pdf" class="hidden" @change="onAgreementFileSelected" />
-  <input ref="docFileInputEl" type="file" class="hidden" @change="onDocFileSelected" />
+  <input ref="docFileInputEl" type="file" multiple class="hidden" @change="onDocFileSelected" />
 
   <SanityCheckDialog
     :visible="sanityDialogVisible"
     :warnings="pendingWarnings"
-    document-type="onboarding document"
+    document-type="school setup guide"
     :on-confirm="onOnboardingSanityConfirm"
     :on-cancel="onOnboardingSanityCancel"
   />
@@ -948,32 +974,63 @@ const uploadingDoc   = ref(false)
 const docFileInputEl = ref(null)
 const showAddLink    = ref(false)
 const linkForm       = reactive({ name: '', url: '' })
+const isDraggingDoc  = ref(false)
+const uploadQueue    = ref([]) // [{ id, name, status: 'uploading' | 'done' | 'error' }]
 
 function triggerDocUpload() { docFileInputEl.value?.click() }
 
+function onDocDragOver()  { isDraggingDoc.value = true }
+function onDocDragLeave() { isDraggingDoc.value = false }
+
+async function onDocDrop(e) {
+  isDraggingDoc.value = false
+  const files = Array.from(e.dataTransfer?.files || [])
+  if (files.length) await uploadDocumentFiles(files)
+}
+
 async function onDocFileSelected(e) {
-  const file = e.target.files?.[0]
+  const files = Array.from(e.target.files || [])
   e.target.value = ''
-  if (!file || !school.value) return
+  if (files.length) await uploadDocumentFiles(files)
+}
 
+async function uploadDocumentFiles(files) {
+  if (!school.value) return
   uploadingDoc.value = true
-  try {
-    const path = `schools/${school.value.id}/documents/${Date.now()}_${file.name}`
-    const sRef = storageRef(storage, path)
-    await uploadBytes(sRef, file)
-    const url = await getDownloadURL(sRef)
 
-    const docEntry = { id: Date.now().toString(), name: file.name, url, path, type: 'file', uploaded_at: new Date().toISOString() }
-    const documents = [...(school.value.documents || []), docEntry]
-    school.value.documents = documents
-    await saveSchoolField('documents', documents)
-    toast.add({ severity: 'success', summary: 'Uploaded', detail: `${file.name} added`, life: 2500 })
-  } catch (err) {
-    console.error(err)
-    toast.add({ severity: 'error', summary: 'Upload failed', detail: err.message || 'Could not upload document', life: 4000 })
-  } finally {
-    uploadingDoc.value = false
+  const queueItems = files.map((f, i) => ({ id: `${Date.now()}_${i}_${f.name}`, name: f.name, status: 'uploading' }))
+  uploadQueue.value.push(...queueItems)
+
+  let successCount = 0
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i]
+    const queueItem = queueItems[i]
+    try {
+      const path = `schools/${school.value.id}/documents/${Date.now()}_${file.name}`
+      const sRef = storageRef(storage, path)
+      await uploadBytes(sRef, file)
+      const url = await getDownloadURL(sRef)
+
+      const docEntry = { id: `${Date.now()}_${i}`, name: file.name, url, path, type: 'file', uploaded_at: new Date().toISOString() }
+      const documents = [...(school.value.documents || []), docEntry]
+      school.value.documents = documents
+      await saveSchoolField('documents', documents)
+      queueItem.status = 'done'
+      successCount++
+    } catch (err) {
+      console.error(err)
+      queueItem.status = 'error'
+      toast.add({ severity: 'error', summary: 'Upload failed', detail: err.message || `Could not upload ${file.name}`, life: 4000 })
+    }
   }
+
+  if (successCount) {
+    toast.add({ severity: 'success', summary: 'Uploaded', detail: `${successCount} file${successCount !== 1 ? 's' : ''} added`, life: 2500 })
+  }
+  uploadingDoc.value = false
+  setTimeout(() => {
+    uploadQueue.value = uploadQueue.value.filter(q => !queueItems.includes(q))
+  }, 3000)
 }
 
 async function addLink() {
@@ -1144,6 +1201,7 @@ async function setNumTerms(n) {
 const termsGridClass = computed(() => {
   const n = operations.value?.num_terms || 2
   if (n === 1) return 'grid-cols-1'
+  if (n === 3) return 'grid-cols-3'
   if (n === 4) return 'grid-cols-2 lg:grid-cols-4'
   return 'grid-cols-2'
 })
@@ -1217,7 +1275,13 @@ function goNewAgreement() {
   router.push({ name: 'agreements', query: { school_id: school.value.id, school_name: school.value.name, school_address: school.value.address || undefined, school_phone: school.value.contact_phone || undefined, student_count: school.value.student_count || undefined } })
 }
 function goNewInvoice() {
-  router.push({ name: 'invoices', query: { school_id: school.value.id, school_name: school.value.name, school_address: school.value.address || undefined, school_phone: school.value.contact_phone || undefined, student_count: school.value.student_count || undefined } })
+  router.push({ name: 'invoices', query: {
+    school_id: school.value.id, school_name: school.value.name,
+    school_address: school.value.address || undefined, school_phone: school.value.contact_phone || undefined,
+    student_count: school.value.student_count || undefined,
+    price_per_student: school.value.price_per_student || undefined,
+    installment_plan: school.value.installment_plan || undefined,
+  } })
 }
 
 async function downloadQuotation(q) {
@@ -1425,7 +1489,11 @@ function formatDateTime(iso) {
 }
 function formatRupee(amount) {
   if (!amount) return '₹0'
-  return '₹' + Number(amount).toLocaleString('en-IN')
+  return '₹' + formatPrice(amount)
+}
+function formatPrice(n) {
+  if (n == null) return '0'
+  return Number(n).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
 }
 
 // ── Load everything ──────────────────────────────────────────────────────────────

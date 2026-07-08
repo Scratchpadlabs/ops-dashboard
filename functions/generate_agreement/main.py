@@ -360,7 +360,11 @@ def _build_pdf(data):
         f'the following payment schedule: {payment_terms}. All payments shall be due and payable '
         f'within forty-five (45) working days of invoice and shall be non-refundable unless '
         f'otherwise agreed. Total contract value based on {student_count} students: '
-        f'Rs. {_inr(total_amount)}/-. Instalment breakdown: {instalment_breakdown}.',
+        f'Rs. {_inr(total_amount)}/-. Instalment breakdown: {instalment_breakdown}. '
+        f'Please note that the total contract value stated above is based on {student_count} '
+        f'students as indicated at the time of signing. The actual payable amount may vary '
+        f'proportionally if the student count increases or decreases during the academic year, '
+        f'and shall be invoiced accordingly at the agreed per-student rate of Rs. {_inr(fee)}/-.',
         SUBCLAUSE,
     ))
     story.append(Spacer(1, 4))

@@ -26,6 +26,34 @@
       </button>
     </div>
 
+    <!-- Additional filters -->
+    <div class="flex flex-wrap items-center gap-2 mb-4">
+      <select v-model="cityFilter" class="px-3 py-1.5 rounded-lg text-sm border border-slate-200 text-slate-600 bg-white">
+        <option value="">All Cities</option>
+        <option v-for="c in distinctCities" :key="c" :value="c">{{ c }}</option>
+      </select>
+      <select v-model="stateFilter" class="px-3 py-1.5 rounded-lg text-sm border border-slate-200 text-slate-600 bg-white">
+        <option value="">All States</option>
+        <option v-for="s in distinctStates" :key="s" :value="s">{{ s }}</option>
+      </select>
+      <div class="flex gap-1">
+        <button
+          v-for="range in studentCountRanges"
+          :key="range.key"
+          @click="studentCountFilter = range.key"
+          class="px-3 py-1.5 rounded-lg text-sm font-medium transition-all"
+          :class="studentCountFilter === range.key
+            ? 'bg-slate-900 text-white'
+            : 'bg-white border border-slate-200 text-slate-600 hover:border-slate-300'"
+        >{{ range.label }}</button>
+      </div>
+      <button
+        v-if="cityFilter || stateFilter || studentCountFilter !== 'All'"
+        @click="clearFilters"
+        class="px-3 py-1.5 rounded-lg text-sm font-medium text-slate-500 hover:text-slate-800 transition-colors"
+      >Clear Filters</button>
+    </div>
+
     <!-- Loading -->
     <div v-if="loading" class="flex items-center justify-center py-20">
       <ProgressSpinner style="width:32px;height:32px" />
@@ -130,6 +158,10 @@
             <InputText v-model="form.city" class="w-full" placeholder="e.g. Pune" />
           </div>
           <div>
+            <label class="form-label">State</label>
+            <InputText v-model="form.state" class="w-full" placeholder="e.g. Maharashtra" />
+          </div>
+          <div>
             <label class="form-label">Student Count *</label>
             <InputNumber v-model="form.student_count" class="w-full" :min="1" />
           </div>
@@ -161,6 +193,22 @@
             <label class="form-label">Modules</label>
             <MultiSelect v-model="form.modules" :options="moduleOptions" placeholder="Select modules" class="w-full" />
           </div>
+          <div class="col-span-2">
+            <label class="form-label">Second Language</label>
+            <InputText v-model="form.second_language" class="w-full" placeholder="e.g. Hindi" />
+            <div class="flex flex-wrap gap-1.5 mt-2">
+              <button
+                v-for="lang in secondLanguageOptions"
+                :key="lang"
+                type="button"
+                @click="form.second_language = lang"
+                class="px-2.5 py-1 rounded-full text-xs font-medium border transition-all"
+                :class="form.second_language === lang
+                  ? 'bg-slate-900 text-white border-slate-900'
+                  : 'bg-white text-slate-600 border-slate-200 hover:border-slate-400'"
+              >{{ lang }}</button>
+            </div>
+          </div>
         </div>
 
         <div>
@@ -182,7 +230,7 @@
           <div class="grid grid-cols-2 gap-4">
             <div>
               <label class="form-label">Price per Student (₹)</label>
-              <InputNumber v-model="form.price_per_student" class="w-full" :min="1" />
+              <InputNumber v-model="form.price_per_student" class="w-full" :min="1" :minFractionDigits="0" :maxFractionDigits="2" />
             </div>
             <div>
               <label class="form-label">HPC Type</label>
@@ -264,6 +312,9 @@ const editingSchool = ref(null)
 const saving        = ref(false)
 const formError     = ref('')
 const activeFilter  = ref('all')
+const cityFilter    = ref('')
+const stateFilter   = ref('')
+const studentCountFilter = ref('All')
 
 const allStatuses   = ['Lead', 'Negotiation', 'Converted']
 const rmOptions     = ['Angel', 'Siddhesh']
@@ -271,6 +322,14 @@ const moduleOptions = ref(['HPC', 'SEW', 'Co-Scholastic', 'Remarks', 'Parent App
 const hpcTypes = [
   { label: 'Printed + Digital HPC', value: 'printed and digital' },
   { label: 'Only Digital HPC',      value: 'digital only' },
+]
+const secondLanguageOptions = ['Hindi', 'Marathi', 'Sanskrit', 'Urdu', 'Telugu', 'Kannada', 'Tamil', 'Bengali', 'Gujarati']
+const studentCountRanges = [
+  { key: 'All',        label: 'All' },
+  { key: 'under200',   label: '< 200' },
+  { key: '200to500',   label: '200-500' },
+  { key: '500to1000',  label: '500-1000' },
+  { key: 'over1000',   label: '1000+' },
 ]
 
 // ── Filters ───────────────────────────────────────────────────────────────────
@@ -281,10 +340,38 @@ const statusTabs = computed(() => [
   { key: 'Converted',   label: 'Converted',   count: schools.value.filter(s => s.statuses?.includes('Converted')).length },
 ])
 
+const distinctCities = computed(() =>
+  [...new Set(schools.value.map(s => s.city).filter(Boolean))].sort()
+)
+const distinctStates = computed(() =>
+  [...new Set(schools.value.map(s => s.state).filter(Boolean))].sort()
+)
+
+function matchesStudentCountRange(count) {
+  if (studentCountFilter.value === 'All') return true
+  const n = count || 0
+  if (studentCountFilter.value === 'under200')  return n < 200
+  if (studentCountFilter.value === '200to500')  return n >= 200 && n <= 500
+  if (studentCountFilter.value === '500to1000') return n >= 500 && n <= 1000
+  if (studentCountFilter.value === 'over1000')  return n > 1000
+  return true
+}
+
 const filteredSchools = computed(() => {
-  if (activeFilter.value === 'all') return schools.value
-  return schools.value.filter(s => s.statuses?.includes(activeFilter.value))
+  return schools.value.filter(s => {
+    if (activeFilter.value !== 'all' && !s.statuses?.includes(activeFilter.value)) return false
+    if (cityFilter.value && s.city !== cityFilter.value) return false
+    if (stateFilter.value && s.state !== stateFilter.value) return false
+    if (!matchesStudentCountRange(s.student_count)) return false
+    return true
+  })
 })
+
+function clearFilters() {
+  cityFilter.value = ''
+  stateFilter.value = ''
+  studentCountFilter.value = 'All'
+}
 
 // ── Style helpers ──────────────────────────────────────────────────────────────
 function statusStyle(s) {
@@ -332,9 +419,10 @@ function openProfile(school) {
 
 // ── Add/Edit dialog ───────────────────────────────────────────────────────────
 const emptyForm = () => ({
-  name: '', city: '', address: '', student_count: null,
+  name: '', city: '', state: '', address: '', student_count: null,
   contact_person: '', contact_designation: '',
   contact_phone: '', contact_email: '', modules: [], rm: null,
+  second_language: 'Hindi',
   pocs: [],
   price_per_student: null, hpc_type: null, installment_plan: 'A', payment_notes: '',
 })
@@ -357,11 +445,12 @@ function openAddDialog() {
 function openEditDialog(school) {
   editingSchool.value = school
   Object.assign(form, {
-    name: school.name || '', city: school.city || '',
+    name: school.name || '', city: school.city || '', state: school.state || '',
     address: school.address || '', student_count: school.student_count || null,
     contact_person: school.contact_person || '', contact_designation: school.contact_designation || '',
     contact_phone: school.contact_phone || '', contact_email: school.contact_email || '',
     modules: school.modules || [], rm: school.rm || null,
+    second_language: school.second_language || 'Hindi',
     pocs: (school.pocs || []).map(p => ({ ...p })),
     price_per_student: school.price_per_student || null,
     hpc_type: school.hpc_type || null,
@@ -386,11 +475,12 @@ async function saveSchool() {
   saving.value = true
   try {
     const payload = {
-      name: form.name.trim(), city: form.city.trim(),
+      name: form.name.trim(), city: form.city.trim(), state: form.state.trim(),
       address: form.address.trim(), student_count: form.student_count,
       contact_person: form.contact_person.trim(), contact_designation: form.contact_designation.trim(),
       contact_phone: form.contact_phone.trim(), contact_email: form.contact_email.trim(),
       modules: form.modules, rm: form.rm || null,
+      second_language: form.second_language.trim() || 'Hindi',
       pocs: form.pocs
         .filter(p => p.name.trim() || p.phone.trim() || p.position.trim())
         .map(p => ({ name: p.name.trim(), phone: p.phone.trim(), position: p.position.trim() })),

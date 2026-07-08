@@ -277,6 +277,8 @@
               class="w-full"
               :class="{ 'ring-2 ring-red-400 rounded-lg': hasIssue('price_per_student') }"
               :min="1"
+              :minFractionDigits="0"
+              :maxFractionDigits="2"
               @input="recalc"
             />
             <p v-if="hasIssue('price_per_student')" class="text-xs text-red-500 mt-1">{{ issueMessage('price_per_student') }}</p>
@@ -558,12 +560,38 @@ async function loadSettings() {
 
 // ── Form helpers ──────────────────────────────────────────────────────────────
 
-function onSchoolSelect(s) {
+async function onSchoolSelect(s) {
   form.school_id       = s.id || null
   form.school_name     = s.name
   form.school_address  = s.address || ''
   form.school_phone    = s.contact_phone || ''
   form.quantity        = s.student_count || null
+
+  if (form.school_id) {
+    await applySchoolPricing(form.school_id)
+  } else {
+    applySchoolPricingFromRecord(s)
+  }
+}
+
+// Pre-fills price/payment-stage/description from a school's commercial details.
+// Never overwrites a value the user already entered.
+function applySchoolPricingFromRecord(s) {
+  if (!s) return
+  if (s.price_per_student && !form.price_per_student) form.price_per_student = s.price_per_student
+  if (s.installment_plan && !form.installment_type) form.installment_type = 'Onboarding'
+  if (s.hpc_type && !form.description) {
+    form.description = s.hpc_type === 'digital only' ? 'Digital HPC' : 'Printed HPC'
+  }
+}
+
+async function applySchoolPricing(schoolId) {
+  try {
+    const snap = await getDoc(opsDoc('schools', schoolId))
+    if (snap.exists()) applySchoolPricingFromRecord({ id: snap.id, ...snap.data() })
+  } catch (e) {
+    console.error('Could not fetch school pricing', e)
+  }
 }
 
 // Auto-fills address/phone for a free-typed school name — prefers the
@@ -815,7 +843,7 @@ function formatDate(ts) {
 
 function formatRupee(amount) {
   if (!amount) return '₹0'
-  return '₹' + Number(amount).toLocaleString('en-IN')
+  return '₹' + Number(amount).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
 }
 
 onMounted(async () => {
@@ -829,6 +857,12 @@ onMounted(async () => {
     form.school_address  = route.query.school_address || ''
     form.school_phone    = route.query.school_phone || ''
     form.quantity        = route.query.student_count ? Number(route.query.student_count) : null
+    if (route.query.price_per_student) form.price_per_student = Number(route.query.price_per_student)
+    if (route.query.installment_plan)  form.installment_type  = 'Onboarding'
+
+    if (form.school_id) {
+      await applySchoolPricing(form.school_id)
+    }
   }
 
   if (highlightedId.value) {
