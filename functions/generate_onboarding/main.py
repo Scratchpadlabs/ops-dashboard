@@ -1,9 +1,8 @@
 """
 ClarifiEd School Setup Guide Generator — Cloud Function
-Fills the setup guide Word template with school name and AY, returns PDF.
-Only Para 0 changes — everything else stays exactly as designed.
+Fills Word template, converts to PDF via Google Drive API (perfect rendering).
 
-Deploy as Cloud Run (needs LibreOffice):
+Deploy as Cloud Run:
   gcloud run deploy generate-onboarding \
     --source . --region asia-south1 \
     --allow-unauthenticated --project clarified-1501 \
@@ -13,14 +12,14 @@ Deploy as Cloud Run (needs LibreOffice):
 import io
 import os
 import json
-import subprocess
-import tempfile
+import time
 
 import functions_framework
 from flask import Request, Response
 from docx import Document
-from docx.shared import Pt
-from copy import deepcopy
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseUpload, MediaIoBaseDownload
+from google.oauth2 import service_account
 
 API_KEY = "9421060748"
 _DIR    = os.path.dirname(os.path.abspath(__file__))
@@ -31,31 +30,36 @@ CORS_HEADERS = {
     "Access-Control-Allow-Headers": "Content-Type, X-Api-Key",
 }
 
-TEMPLATE_PATH = os.path.join(_DIR, "onboarding_template.docx")
+TEMPLATE_PATH    = os.path.join(_DIR, "onboarding_template.docx")
+SERVICE_ACCT_KEY = os.environ.get("SERVICE_ACCOUNT_PATH", os.path.join(_DIR, "service_account.json"))
+SCOPES           = ["https://www.googleapis.com/auth/drive"]
+# Shared Drive folder the service account uploads/converts through — a service
+# account has no personal Drive quota, so this must live in a Shared Drive.
+DRIVE_FOLDER_ID  = os.environ.get("DRIVE_FOLDER_ID", "0APtW14t1fIM9Uk9PVA")
 
-# The exact text in Para 0 of the template
-TEMPLATE_SCHOOL = "The Keystone Ankuram School, Pune"
-TEMPLATE_AY     = "A.Y 2026-27"
+# Template school name to replace
+TEMPLATE_SCHOOL = "The Keystone Ankuram School, Pune [A.Y 2026-27]"
+
+
+def _get_drive_service():
+    creds = service_account.Credentials.from_service_account_file(
+        SERVICE_ACCT_KEY, scopes=SCOPES
+    )
+    return build("drive", "v3", credentials=creds)
 
 
 def _fill_template(school_name: str, city: str, academic_year: str) -> bytes:
     doc = Document(TEMPLATE_PATH)
 
+    # Para 0: school name + AY
     para0 = doc.paragraphs[0]
-    full  = para0.text  # e.g. "The Keystone Ankuram School, Pune [A.Y 2026-27]"
-
-    # Build new header text matching template format exactly
-    # Template format: "{School Name}, {City} [A.Y YYYY-YY]"
     if city and city.strip():
         new_header = f"{school_name}, {city} [A.Y {academic_year}]"
     else:
         new_header = f"{school_name} [A.Y {academic_year}]"
 
-    # Replace text in Para 0 while preserving run formatting (bold, size)
     if para0.runs:
-        # Put all text in first run, preserving its formatting
         para0.runs[0].text = new_header
-        # Clear remaining runs
         for run in para0.runs[1:]:
             run.text = ""
 
@@ -65,25 +69,51 @@ def _fill_template(school_name: str, city: str, academic_year: str) -> bytes:
     return buf.read()
 
 
-def _docx_to_pdf(docx_bytes: bytes) -> bytes:
-    with tempfile.TemporaryDirectory() as tmpdir:
-        docx_path = os.path.join(tmpdir, "setup_guide.docx")
-        pdf_path  = os.path.join(tmpdir, "setup_guide.pdf")
+def _docx_to_pdf_via_drive(docx_bytes: bytes, filename: str) -> bytes:
+    service = _get_drive_service()
 
-        with open(docx_path, "wb") as f:
-            f.write(docx_bytes)
+    # 1. Upload docx to Drive (into a Shared Drive — service accounts have no
+    # personal Drive storage of their own to upload into)
+    file_metadata = {
+        "name": filename,
+        "mimeType": "application/vnd.google-apps.document",  # convert to Google Doc on upload
+        "parents": [DRIVE_FOLDER_ID],
+    }
+    media = MediaIoBaseUpload(
+        io.BytesIO(docx_bytes),
+        mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        resumable=False,
+    )
+    uploaded = service.files().create(
+        body=file_metadata,
+        media_body=media,
+        fields="id",
+        supportsAllDrives=True,
+    ).execute()
 
-        result = subprocess.run(
-            ["libreoffice", "--headless", "--convert-to", "pdf",
-             "--outdir", tmpdir, docx_path],
-            capture_output=True, text=True, timeout=60
+    file_id = uploaded.get("id")
+
+    try:
+        # 2. Export as PDF
+        request = service.files().export_media(
+            fileId=file_id,
+            mimeType="application/pdf"
         )
+        pdf_buf = io.BytesIO()
+        downloader = MediaIoBaseDownload(pdf_buf, request)
+        done = False
+        while not done:
+            _, done = downloader.next_chunk()
 
-        if result.returncode != 0 or not os.path.exists(pdf_path):
-            raise RuntimeError(f"LibreOffice failed: {result.stderr}")
+        pdf_buf.seek(0)
+        return pdf_buf.read()
 
-        with open(pdf_path, "rb") as f:
-            return f.read()
+    finally:
+        # 3. Delete temp file from Drive
+        try:
+            service.files().delete(fileId=file_id, supportsAllDrives=True).execute()
+        except Exception:
+            pass
 
 
 @functions_framework.http
@@ -105,7 +135,9 @@ def generate_onboarding(request: Request):
 
     try:
         docx_bytes = _fill_template(school_name, city, academic_year)
-        pdf_bytes  = _docx_to_pdf(docx_bytes)
+        safe       = "".join(ch for ch in school_name if ch not in '\\/:*?"<>|')
+        filename   = f"Setup_Guide_{safe}_{academic_year}.docx"
+        pdf_bytes  = _docx_to_pdf_via_drive(docx_bytes, filename)
     except Exception as e:
         return Response(
             json.dumps({"error": str(e)}), 500,
@@ -113,14 +145,13 @@ def generate_onboarding(request: Request):
             headers=CORS_HEADERS
         )
 
-    safe     = "".join(ch for ch in school_name if ch not in '\\/:*?"<>|')
-    filename = f"Setup_Guide_{safe}_{academic_year}.pdf"
+    pdf_filename = f"Setup_Guide_{safe}_{academic_year}.pdf"
 
     return Response(
         pdf_bytes, 200,
         mimetype="application/pdf",
         headers={
             **CORS_HEADERS,
-            "Content-Disposition": f'inline; filename="{filename}"',
+            "Content-Disposition": f'inline; filename="{pdf_filename}"',
         },
     )
