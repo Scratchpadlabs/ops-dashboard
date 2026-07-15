@@ -40,6 +40,10 @@ const GIF_POOLS = {
     'https://media.giphy.com/media/3o7abB06u9bNzA8lu8/giphy.gif', // Dwight serious nod
     'https://media.giphy.com/media/l0MYEqEzwMWFCg8rm/giphy.gif',  // Dwight and Michael high five
   ],
+  task: [
+    'https://media.giphy.com/media/GfXFVHUzjlbOg/giphy.gif',      // Michael "YES"
+    'https://media.giphy.com/media/u8ontzUmtHnmuBt5IQ/giphy.gif', // Jim Halpert smirk/look at camera
+  ],
   default: [
     'https://media.giphy.com/media/u8ontzUmtHnmuBt5IQ/giphy.gif', // Jim Halpert smirk/look at camera
   ],

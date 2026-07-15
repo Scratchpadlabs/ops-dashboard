@@ -104,6 +104,43 @@
       </div>
     </div>
 
+    <!-- ── MY TASKS ─────────────────────────────────────────────────────── -->
+    <div class="mt-5 bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+      <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+        <div>
+          <h3 class="font-bold text-slate-900 text-sm">My Tasks 📌</h3>
+          <p class="text-xs text-slate-400 mt-0.5">Assigned to you</p>
+        </div>
+        <RouterLink to="/tasks" class="text-xs font-semibold text-blue-600 hover:text-blue-700">View all →</RouterLink>
+      </div>
+
+      <div v-if="overdueMyTasksCount > 0" class="px-5 py-2 bg-red-50 border-b border-red-100 text-xs font-semibold text-red-600 flex items-center gap-1.5">
+        <i class="pi pi-exclamation-circle"></i>{{ overdueMyTasksCount }} overdue task{{ overdueMyTasksCount === 1 ? '' : 's' }} need attention
+      </div>
+
+      <div v-if="tasksLoading" class="flex items-center justify-center py-10">
+        <ProgressSpinner style="width:24px;height:24px" />
+      </div>
+      <div v-else-if="myTasksPreview.length === 0" class="flex flex-col items-center justify-center py-10 text-center px-6">
+        <div class="text-3xl mb-2">🏖️</div>
+        <p class="text-slate-400 text-xs font-medium">All clear, nothing on your plate 🏖️</p>
+      </div>
+      <div v-else class="divide-y divide-slate-50">
+        <RouterLink
+          v-for="t in myTasksPreview" :key="t.id" to="/tasks"
+          class="px-5 py-2.5 flex items-center gap-3 hover:bg-slate-50 transition-colors no-underline"
+        >
+          <span class="w-2 h-2 rounded-full flex-shrink-0" :class="priorityDotClass(t.priority)"></span>
+          <span class="flex-1 min-w-0 text-sm text-slate-800 font-medium truncate">{{ t.title }}</span>
+          <span
+            v-if="t.due_date"
+            class="text-xs font-medium flex-shrink-0"
+            :class="isTaskOverdue(t) ? 'text-red-500 font-bold' : 'text-slate-400'"
+          >{{ formatTaskDue(t.due_date) }}</span>
+        </RouterLink>
+      </div>
+    </div>
+
     <!-- ── DELIVERY PIPELINE ────────────────────────────────────────────── -->
     <div v-if="pipelineRows.length" class="mt-5 bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
       <div class="px-5 py-4 border-b border-slate-100">
@@ -227,6 +264,7 @@ import { opsCollection, opsDoc } from '../firebase/collections.js'
 import { getDocs, addDoc, deleteDoc, orderBy, query, serverTimestamp, limit } from 'firebase/firestore'
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
+import { useTasks, priorityDotClass, isTaskOverdue, sortTasksForWidget, displayNameFromEmail } from '../composables/useTasks.js'
 
 import Button from 'primevue/button'
 import Dialog from 'primevue/dialog'
@@ -364,6 +402,18 @@ const recentWins = computed(() => {
     .sort((a, b) => b.sortTs - a.sortTs)
     .slice(0, 12)
 })
+
+// ── My Tasks widget ─────────────────────────────────────────────────────────
+const { tasks: myTasksData, tasksLoading, loadTasks: loadMyTasks } = useTasks()
+const currentUserName = computed(() => displayNameFromEmail(auth.currentUser?.email))
+const myOpenTasks = computed(() => myTasksData.value.filter(t => t.status !== 'done' && t.assignee === currentUserName.value))
+const myTasksPreview = computed(() => sortTasksForWidget(myOpenTasks.value).slice(0, 6))
+const overdueMyTasksCount = computed(() => myOpenTasks.value.filter(isTaskOverdue).length)
+
+function formatTaskDue(dateStr) {
+  if (!dateStr) return ''
+  return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+}
 
 // ── Load ────────────────────────────────────────────────────────────────────
 async function loadAll() {
@@ -593,7 +643,7 @@ function timeAgo(date) {
 }
 
 onMounted(() => {
-  Promise.all([loadAll(), loadLinks(), loadOperationsData(), loadDataReceivableData()])
+  Promise.all([loadAll(), loadLinks(), loadOperationsData(), loadDataReceivableData(), loadMyTasks()])
   quoteTimer = setInterval(() => {
     quoteIndex.value = (quoteIndex.value + 1) % quotes.length
   }, 8000)

@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { getAuth } from 'firebase/auth'
 
 import Dashboard from '../views/Dashboard.vue'
+import Tasks from '../views/Tasks.vue'
 import Schools from '../views/Schools.vue'
 import SchoolProfile from '../views/SchoolProfile.vue'
 import Quotations from '../views/Quotations.vue'
@@ -14,6 +15,7 @@ import Login from '../views/Login.vue'
 const routes = [
   { path: '/login',      component: Login,      name: 'login', meta: { public: true } },
   { path: '/',            component: Dashboard,   name: 'dashboard' },
+  { path: '/tasks',       component: Tasks,       name: 'tasks' },
   { path: '/schools',     component: Schools,     name: 'schools' },
   { path: '/schools/:id', component: SchoolProfile, name: 'school-profile' },
   { path: '/quotations',  component: Quotations,  name: 'quotations' },

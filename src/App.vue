@@ -177,6 +177,7 @@ watch(() => route.name, maybeLoadAvailableYears)
 
 const navItems = [
   { to: '/',            label: 'Dashboard',   icon: 'pi pi-home' },
+  { to: '/tasks',       label: 'Tasks',       icon: 'pi pi-check-square' },
   { to: '/schools',     label: 'Schools',     icon: 'pi pi-building' },
   { to: '/quotations',  label: 'Quotations',  icon: 'pi pi-file' },
   { to: '/agreements',  label: 'Agreements',  icon: 'pi pi-file-edit' },
@@ -187,6 +188,7 @@ const navItems = [
 
 const pageTitles = {
   'dashboard':  'Dashboard',
+  'tasks':      'Tasks',
   'schools':    'Schools',
   'quotations': 'Quotations',
   'agreements': 'Agreements',

@@ -324,6 +324,35 @@
 
             <!-- Documents -->
             <div>
+              <!-- Tasks -->
+              <div class="bg-white rounded-xl border border-slate-200 p-4 mb-5">
+                <div class="flex items-center justify-between mb-3">
+                  <div class="text-xs font-semibold text-slate-400 uppercase tracking-wide">Tasks ({{ schoolOpenTasks.length }})</div>
+                  <Button label="+ Task" text size="small" @click="openNewSchoolTask" />
+                </div>
+                <div v-if="schoolOpenTasks.length === 0" class="text-center py-6 text-slate-300 text-sm">No open tasks</div>
+                <div v-else class="space-y-2">
+                  <div
+                    v-for="t in schoolOpenTasks" :key="t.id"
+                    class="bg-slate-50 rounded-lg p-2.5 cursor-pointer hover:bg-slate-100 transition-colors"
+                    @click="openEditSchoolTask(t)"
+                  >
+                    <div class="flex items-center gap-2 mb-1">
+                      <span class="w-1.5 h-1.5 rounded-full flex-shrink-0" :class="priorityDotClass(t.priority)"></span>
+                      <span class="text-sm font-medium text-slate-800 truncate">{{ t.title }}</span>
+                    </div>
+                    <div class="flex items-center justify-between text-xs text-slate-400 ml-3.5">
+                      <span v-if="t.assignee" class="flex items-center gap-1">
+                        <span class="w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold text-white" :class="assigneeChipClass(t.assignee)">{{ t.assignee[0] }}</span>
+                        {{ t.assignee }}
+                      </span>
+                      <span v-else>Unassigned</span>
+                      <span v-if="t.due_date" :class="isTaskOverdue(t) ? 'text-red-500 font-semibold' : ''">{{ formatTaskDue(t.due_date) }}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <div class="bg-white rounded-xl border border-slate-200 p-4">
                 <div class="flex items-center justify-between mb-3">
                   <div class="text-xs font-semibold text-slate-400 uppercase tracking-wide">Documents ({{ (school.documents || []).length }})</div>
@@ -666,6 +695,16 @@
     :on-cancel="onOnboardingSanityCancel"
   />
 
+  <TaskDialog
+    v-model:visible="taskDialogVisible"
+    :task="editingSchoolTask"
+    :existing-tags="allTaskTags"
+    :all-schools="allSchoolsForTasks"
+    :preset-school="school ? { id: school.id, name: school.name } : null"
+    @saved="loadSchoolTasks"
+    @deleted="loadSchoolTasks"
+  />
+
   <ConfirmDialog />
 </template>
 
@@ -681,6 +720,11 @@ import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
 import { useCelebration } from '../composables/useCelebration'
 import { useSanityCheck } from '../composables/useSanityCheck.js'
+import { useAllSchools } from '../composables/useAllSchools.js'
+import {
+  useTasks, priorityDotClass, assigneeChipClass, isTaskOverdue,
+} from '../composables/useTasks.js'
+import TaskDialog from '../components/tasks/TaskDialog.vue'
 import { generateAgreementFiles, generateQuotationPDF, generateInvoicePDF, generateOnboardingPDF } from '../utils/api.js'
 
 import Button from 'primevue/button'
@@ -1281,6 +1325,34 @@ const schoolQuotations = computed(() => quotations.value.filter(r => belongsToSc
 const schoolAgreements = computed(() => agreements.value.filter(r => belongsToSchool(r) && belongsToYear(r)))
 const schoolInvoices   = computed(() => invoices.value.filter(r => belongsToSchool(r) && belongsToYear(r)))
 
+// ── Tasks ─────────────────────────────────────────────────────────────────
+const { tasks: allSchoolTaskData, loadTasks: loadSchoolTasks } = useTasks()
+const { allSchools: allSchoolsForTasks, loadAllSchools: loadAllSchoolsForTasks } = useAllSchools()
+const taskDialogVisible = ref(false)
+const editingSchoolTask = ref(null)
+
+const schoolOpenTasks = computed(() =>
+  allSchoolTaskData.value.filter(t => school.value && t.school_id === school.value.id && t.status !== 'done')
+)
+const allTaskTags = computed(() => {
+  const set = new Set()
+  allSchoolTaskData.value.forEach(t => (t.tags || []).forEach(tag => set.add(tag)))
+  return Array.from(set).sort()
+})
+
+function openNewSchoolTask() {
+  editingSchoolTask.value = null
+  taskDialogVisible.value = true
+}
+function openEditSchoolTask(t) {
+  editingSchoolTask.value = t
+  taskDialogVisible.value = true
+}
+function formatTaskDue(dateStr) {
+  if (!dateStr) return ''
+  return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+}
+
 const invoiceSummary = computed(() => {
   const total = schoolInvoices.value.reduce((s, i) => s + i.price_per_student * i.quantity, 0)
   const paid  = schoolInvoices.value.filter(i => i.status === 'paid').reduce((s, i) => s + i.price_per_student * i.quantity, 0)
@@ -1533,7 +1605,7 @@ watch(() => route.params.id, loadEverything)
 watch(activeYear, () => { Promise.all([loadQuotations(), loadAgreements(), loadInvoices()]) })
 
 onMounted(async () => {
-  await Promise.all([loadEverything(), loadModuleSettings()])
+  await Promise.all([loadEverything(), loadModuleSettings(), loadSchoolTasks(), loadAllSchoolsForTasks()])
 })
 </script>
 
