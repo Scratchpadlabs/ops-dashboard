@@ -132,6 +132,7 @@
         >
           <span class="w-2 h-2 rounded-full flex-shrink-0" :class="priorityDotClass(t.priority)"></span>
           <span class="flex-1 min-w-0 text-sm text-slate-800 font-medium truncate">{{ t.title }}</span>
+          <span v-if="!t.assignee" class="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-500 flex-shrink-0">Unassigned</span>
           <span
             v-if="t.due_date"
             class="text-xs font-medium flex-shrink-0"
@@ -406,7 +407,7 @@ const recentWins = computed(() => {
 // ── My Tasks widget ─────────────────────────────────────────────────────────
 const { tasks: myTasksData, tasksLoading, loadTasks: loadMyTasks } = useTasks()
 const currentUserName = computed(() => displayNameFromEmail(auth.currentUser?.email))
-const myOpenTasks = computed(() => myTasksData.value.filter(t => t.status !== 'done' && t.assignee === currentUserName.value))
+const myOpenTasks = computed(() => myTasksData.value.filter(t => t.status !== 'done' && (!t.assignee || t.assignee === currentUserName.value)))
 const myTasksPreview = computed(() => sortTasksForWidget(myOpenTasks.value).slice(0, 6))
 const overdueMyTasksCount = computed(() => myOpenTasks.value.filter(isTaskOverdue).length)
 

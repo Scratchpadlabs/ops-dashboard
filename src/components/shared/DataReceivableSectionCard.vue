@@ -10,7 +10,7 @@
     <div>
       <div v-for="item in items" :key="item.id" class="py-2 border-b border-slate-100 last:border-0">
         <div class="flex items-center gap-2.5">
-          <Checkbox :binary="true" v-model="item.received" @change="$emit('change')" />
+          <Checkbox :binary="true" v-model="item.received" @change="onReceivedToggle(item)" />
           <span class="flex-1 text-sm text-slate-800">{{ item.label }}</span>
           <i v-if="item.received" class="pi pi-check-circle text-green-500 text-sm"></i>
           <span v-else class="w-2 h-2 rounded-full bg-amber-400 flex-shrink-0"></span>
@@ -63,6 +63,14 @@ watch(() => props.items, syncDateModels, { deep: true })
 
 function onDateChange(item, date) {
   item.date = date ? date.toISOString() : ''
+  emit('change')
+}
+
+function onReceivedToggle(item) {
+  if (item.received && !item.date) {
+    item.date = new Date().toISOString()
+    dateModels[item.id] = new Date(item.date)
+  }
   emit('change')
 }
 
