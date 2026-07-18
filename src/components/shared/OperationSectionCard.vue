@@ -10,8 +10,16 @@
     <div>
       <div v-for="item in items" :key="item.id" class="py-2 border-b border-slate-100 last:border-0">
         <div class="flex items-center gap-2.5">
-          <Checkbox :binary="true" v-model="item.done" @change="onDoneToggle(item)" />
+          <Checkbox :binary="true" v-model="item.done" :disabled="item.type === 'select'" @change="onDoneToggle(item)" />
           <span class="flex-1 text-sm" :class="item.done ? 'line-through text-slate-400' : 'text-slate-800'">{{ item.label }}</span>
+          <Select
+            v-if="item.type === 'select'"
+            :modelValue="item.value || null"
+            :options="item.options"
+            placeholder="Select..."
+            class="w-40"
+            @update:modelValue="v => onSelectChange(item, v)"
+          />
           <i v-if="item.done" class="pi pi-check-circle text-green-500 text-sm"></i>
           <button @click="toggleComment(item.id)" class="text-slate-300 hover:text-slate-500 flex-shrink-0">
             <i class="pi pi-comment text-xs"></i>
@@ -46,6 +54,7 @@ import { ref, computed, reactive, watch } from 'vue'
 import Checkbox from 'primevue/checkbox'
 import InputText from 'primevue/inputtext'
 import DatePicker from 'primevue/datepicker'
+import Select from 'primevue/select'
 
 const props = defineProps({
   title: { type: String, required: true },
@@ -73,6 +82,16 @@ function onDoneToggle(item) {
 
 function onDateChange(item, date) {
   item.date = date ? date.toISOString() : ''
+  emit('change')
+}
+
+function onSelectChange(item, value) {
+  item.value = value || ''
+  item.done = !!item.value
+  if (item.done && !item.date) {
+    item.date = new Date().toISOString()
+    dateModels[item.id] = new Date(item.date)
+  }
   emit('change')
 }
 

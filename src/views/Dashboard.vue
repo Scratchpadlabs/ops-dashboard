@@ -153,8 +153,8 @@
           <thead>
             <tr class="text-left text-xs text-slate-400 uppercase tracking-wide border-b border-slate-100">
               <th class="px-5 py-2.5 font-semibold">School</th>
-              <th class="px-3 py-2.5 font-semibold">Onboarding</th>
-              <th class="px-3 py-2.5 font-semibold">Terms</th>
+              <th class="px-3 py-2.5 font-semibold">Onboarding + Setup</th>
+              <th class="px-3 py-2.5 font-semibold">Digital Print</th>
               <th class="px-3 py-2.5 font-semibold">Final</th>
               <th class="px-3 py-2.5 font-semibold text-right">Operations %</th>
               <th class="px-5 py-2.5 font-semibold text-right">Data Receivable %</th>
@@ -462,11 +462,14 @@ function opsProgress(items) {
 function receivablePercent(schoolId) {
   const dr = dataReceivableData.value.find(d => d.school_id === schoolId)
   if (!dr || !dr.phases) return null
+  const termItems = dr.phases.terms
+    ? dr.phases.terms.flatMap(t => t.items || [])
+    : [...(dr.phases.term1 || []), ...(dr.phases.term2 || [])]
   const all = [
     ...(dr.phases.onboarding || []),
-    ...(dr.phases.term1 || []),
-    ...(dr.phases.term2 || []),
+    ...termItems,
     ...(dr.phases.final || []),
+    ...(dr.grading_scale ? [dr.grading_scale] : []),
   ]
   if (!all.length) return 0
   return Math.round(all.filter(i => i.received).length / all.length * 100)
@@ -477,7 +480,7 @@ const pipelineRows = computed(() => {
     .map(op => {
       const school = schools.value.find(s => s.id === op.school_id)
       if (!school) return null
-      const onboarding = opsProgress(op.onboarding || [])
+      const onboarding = opsProgress(op.phase1 ? [...op.phase1, ...(op.phase2 || [])] : (op.onboarding || []))
       const terms = opsProgress((op.terms || []).flatMap(t => t.items || []))
       const final = opsProgress(op.final_term || [])
       const totalDone = onboarding.done + terms.done + final.done

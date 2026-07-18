@@ -422,39 +422,42 @@
         <!-- ── Operations ──────────────────────────────────────────────── -->
         <TabPanel value="operations">
           <div class="pt-4 space-y-5">
-            <div class="bg-white rounded-xl border border-slate-200 p-4 flex items-center justify-between">
-              <div>
-                <div class="text-sm font-semibold text-slate-800">Number of Terms</div>
-                <div class="text-xs text-slate-400">Changes how many term sections are tracked</div>
-              </div>
-              <div class="flex gap-2">
-                <button
-                  v-for="n in [1, 2, 3, 4]"
-                  :key="n"
-                  @click="setNumTerms(n)"
-                  class="w-10 h-10 rounded-lg text-sm font-semibold border transition-all"
-                  :class="operations?.num_terms === n
-                    ? 'bg-slate-900 text-white border-slate-900'
-                    : 'bg-white text-slate-600 border-slate-200 hover:border-slate-400'"
-                >{{ n }}</button>
-              </div>
-            </div>
-
             <div v-if="!operations" class="flex items-center justify-center py-10">
               <ProgressSpinner style="width:28px;height:28px" />
             </div>
 
             <template v-else>
-              <OperationSectionCard title="Onboarding" :items="operations.onboarding" @change="saveOperations" />
+              <OperationSectionCard title="Phase 1 · Onboarding" :items="operations.phase1" @change="saveOperations" />
+
+              <OperationSectionCard title="Phase 2 · Setup" :items="operations.phase2" @change="saveOperations" />
 
               <div>
-                <div class="text-sm font-bold text-slate-900 mb-3">Term Progress</div>
+                <div class="flex items-center justify-between mb-3">
+                  <div>
+                    <div class="text-sm font-bold text-slate-900">Phase 3 · Digital Print</div>
+                    <div class="text-xs text-slate-400">Terms / assessments the school wants digital HPC for</div>
+                  </div>
+                  <div class="flex gap-2">
+                    <button
+                      v-for="n in [1, 2, 3, 4]"
+                      :key="n"
+                      @click="setNumTerms(n)"
+                      class="w-9 h-9 rounded-lg text-sm font-semibold border transition-all"
+                      :class="operations.num_terms === n
+                        ? 'bg-slate-900 text-white border-slate-900'
+                        : 'bg-white text-slate-600 border-slate-200 hover:border-slate-400'"
+                    >{{ n }}</button>
+                  </div>
+                </div>
                 <div class="grid gap-4" :class="termsGridClass">
-                  <OperationSectionCard
+                  <DigitalPrintTermCard
                     v-for="t in operations.terms"
                     :key="t.term_number"
-                    :title="`Term ${t.term_number}`"
-                    :items="t.items"
+                    :term="t"
+                    :udise="operations.udise_number"
+                    :affiliation="operations.affiliation_number"
+                    @update:udise="v => { operations.udise_number = v }"
+                    @update:affiliation="v => { operations.affiliation_number = v }"
                     @change="saveOperations"
                   />
                 </div>
@@ -620,8 +623,14 @@
             </div>
             <template v-else>
               <DataReceivableSectionCard title="Onboarding Data" :items="dataReceivable.phases.onboarding" @change="saveDataReceivable" />
-              <DataReceivableSectionCard title="Term 1 Data" :items="dataReceivable.phases.term1" @change="saveDataReceivable" />
-              <DataReceivableSectionCard title="Term 2 Data" :items="dataReceivable.phases.term2" @change="saveDataReceivable" />
+              <DataReceivableSectionCard
+                v-for="t in dataReceivable.phases.terms"
+                :key="t.term_number"
+                :title="receivableTermTitle(t.term_number)"
+                :items="t.items"
+                :grading="dataReceivable.grading_scale"
+                @change="saveDataReceivable"
+              />
               <DataReceivableSectionCard title="Final Term Data" :items="dataReceivable.phases.final" @change="saveDataReceivable" />
             </template>
           </div>
@@ -744,6 +753,7 @@ import Tab from 'primevue/tab'
 import TabPanels from 'primevue/tabpanels'
 import TabPanel from 'primevue/tabpanel'
 import OperationSectionCard from '../components/shared/OperationSectionCard.vue'
+import DigitalPrintTermCard from '../components/shared/DigitalPrintTermCard.vue'
 import DataReceivableSectionCard from '../components/shared/DataReceivableSectionCard.vue'
 import SanityCheckDialog from '../components/shared/SanityCheckDialog.vue'
 
@@ -1121,53 +1131,142 @@ async function deleteDocument(docEntry) {
 }
 
 // ── Operations ──────────────────────────────────────────────────────────────────
-function defaultOnboarding() {
+function defaultPhase1() {
   return [
-    { id: 'onboarding_doc',     label: 'Onboarding Doc Sent',      done: false, comment: '' },
-    { id: 'data_entry',         label: 'Data Entry Mode Set',      done: false, comment: '' },
-    { id: 'workshop',           label: 'Workshop Done',            done: false, comment: '' },
-    { id: 'teacher_ids',        label: 'Teacher ID Distribution',  done: false, comment: '' },
-    { id: 'student_ids',        label: 'Student ID Distribution',  done: false, comment: '' },
-    { id: 'hpc_calendar',       label: 'HPC Calendar Sent',        done: false, comment: '' },
-    { id: 'onboarding_parcel',  label: 'Onboarding Parcel Sent',   done: false, comment: '' },
+    { id: 'whatsapp_group',  label: 'Create WhatsApp Group',                    done: false, comment: '', date: '' },
+    { id: 'onboarding_doc',  label: 'Onboarding Doc Sent',                      done: false, comment: '', date: '' },
+    { id: 'data_entry',      label: 'Data Entry Mode',                          done: false, comment: '', date: '', type: 'select', options: ['Smartsheets', 'LMS'], value: '' },
+    { id: 'academic_call',   label: 'Academic Structure & Calculation Call',    done: false, comment: '', date: '' },
   ]
 }
-function defaultTermItems(n) {
+function defaultPhase2() {
   return [
-    { id: 'inclusion',              label: `T${n} Inclusion`,               done: false, comment: '' },
-    { id: 'design_draft_sent',      label: 'HPC Design Draft Sent',         done: false, comment: '' },
-    { id: 'design_draft_approved',  label: 'HPC Design Draft Approved',     done: false, comment: '' },
-    { id: 'hpc_published',          label: 'HPC Published',                 done: false, comment: '' },
+    { id: 'app_creation',         label: 'App Creation',                     done: false, comment: '', date: '' },
+    { id: 'workshop_scheduling',  label: 'Workshop Scheduling',              done: false, comment: '', date: '' },
+    { id: 'teacher_ids',          label: 'Teacher ID Distribution',          done: false, comment: '', date: '' },
+    { id: 'student_ids',          label: 'Student ID Distribution',          done: false, comment: '', date: '' },
+    { id: 'hpc_calendar',         label: 'HPC Calendar Sent',                done: false, comment: '', date: '' },
+    { id: 'workshop_done',        label: 'Workshop Done',                    done: false, comment: '', date: '' },
+    { id: 'student_pamphlets',    label: "Students' Pamphlets Generated",    done: false, comment: '', date: '' },
+    { id: 'teacher_certificates', label: "Teachers' Certificates Generated", done: false, comment: '', date: '' },
+    { id: 'onboarding_parcel',    label: 'Onboarding Parcel Sent',           done: false, comment: '', date: '' },
+  ]
+}
+function defaultTermItems() {
+  return [
+    { id: 'inclusion',              label: 'HPW Inclusion',           done: false, comment: '', date: '' },
+    { id: 'design_draft_creation',  label: 'Design Draft Creation',   done: false, comment: '', date: '' },
+    { id: 'design_draft_sent',      label: 'Design Draft Sent',       done: false, comment: '', date: '' },
+    { id: 'design_draft_approved',  label: 'Design Draft Approved',   done: false, comment: '', date: '' },
+    { id: 'result_published',       label: 'Result Published',        done: false, comment: '', date: '' },
   ]
 }
 function defaultTerms(n) {
-  return Array.from({ length: n }, (_, i) => ({ term_number: i + 1, items: defaultTermItems(i + 1) }))
+  return Array.from({ length: n }, (_, i) => ({
+    term_number: i + 1,
+    name: `Term ${i + 1}`,
+    exam_start: '',
+    exam_end: '',
+    items: defaultTermItems(),
+  }))
 }
 function defaultFinalTerm() {
   return [
-    { id: 'design_meeting',         label: 'Design Meeting Set',              done: false, comment: '' },
-    { id: 'design_draft_sent',      label: 'Final Design Draft Sent',         done: false, comment: '' },
-    { id: 'design_draft_approved',  label: 'Final Design Draft Approved',     done: false, comment: '' },
-    { id: 'final_hpc_sent',         label: 'Final HPC Sent',                  done: false, comment: '' },
-    { id: 'final_hpc_received',     label: 'Final HPC Received by School',    done: false, comment: '' },
-    { id: 'master_folder',          label: 'Master Folder (Digital)',         done: false, comment: '' },
+    { id: 'design_meeting',         label: 'Design Meeting Set',              done: false, comment: '', date: '' },
+    { id: 'design_draft_sent',      label: 'Final Design Draft Sent',         done: false, comment: '', date: '' },
+    { id: 'design_draft_approved',  label: 'Final Design Draft Approved',     done: false, comment: '', date: '' },
+    { id: 'final_hpc_sent',         label: 'Final HPC Sent',                  done: false, comment: '', date: '' },
+    { id: 'final_hpc_received',     label: 'Final HPC Received by School',    done: false, comment: '', date: '' },
+    { id: 'master_folder',          label: 'Master Folder (Digital)',         done: false, comment: '', date: '' },
   ]
 }
+function freshOperations() {
+  return {
+    school_id:          route.params.id,
+    num_terms:          2,
+    udise_number:       '',
+    affiliation_number: '',
+    phase1:             defaultPhase1(),
+    phase2:             defaultPhase2(),
+    terms:              defaultTerms(2),
+    final_term:         defaultFinalTerm(),
+  }
+}
+
+// Carry done/comment/date from a legacy item into a new default item.
+function carryOver(newItem, oldItem) {
+  if (!oldItem) return newItem
+  return { ...newItem, done: !!oldItem.done, comment: oldItem.comment || '', date: oldItem.date || '' }
+}
+
+// Migrate a legacy operations doc (onboarding/terms/final_term) to the phased structure.
+function migrateOperations(old) {
+  const oldOnboarding = old.onboarding || []
+  const findOld = id => oldOnboarding.find(i => i.id === id)
+
+  const fresh = freshOperations()
+  fresh.num_terms = old.num_terms || 2
+
+  fresh.phase1 = fresh.phase1.map(item => {
+    if (item.id === 'onboarding_doc') return carryOver(item, findOld('onboarding_doc'))
+    if (item.id === 'data_entry')     return carryOver(item, findOld('data_entry'))
+    return item
+  })
+  fresh.phase2 = fresh.phase2.map(item => {
+    if (item.id === 'workshop_done')     return carryOver(item, findOld('workshop'))
+    if (item.id === 'teacher_ids')       return carryOver(item, findOld('teacher_ids'))
+    if (item.id === 'student_ids')       return carryOver(item, findOld('student_ids'))
+    if (item.id === 'hpc_calendar')      return carryOver(item, findOld('hpc_calendar'))
+    if (item.id === 'onboarding_parcel') return carryOver(item, findOld('onboarding_parcel'))
+    return item
+  })
+
+  const OLD_TERM_ID_MAP = {
+    inclusion:             'inclusion',
+    design_draft_creation: null,
+    design_draft_sent:     'design_draft_sent',
+    design_draft_approved: 'design_draft_approved',
+    result_published:      'hpc_published',
+  }
+  fresh.terms = Array.from({ length: fresh.num_terms }, (_, i) => {
+    const termNum = i + 1
+    const oldTerm = (old.terms || []).find(t => t.term_number === termNum)
+    const base = { term_number: termNum, name: `Term ${termNum}`, exam_start: '', exam_end: '', items: defaultTermItems() }
+    if (!oldTerm) return base
+    base.items = base.items.map(item => {
+      const oldId = OLD_TERM_ID_MAP[item.id]
+      return oldId ? carryOver(item, (oldTerm.items || []).find(i => i.id === oldId)) : item
+    })
+    return base
+  })
+
+  if (Array.isArray(old.final_term) && old.final_term.length) {
+    fresh.final_term = fresh.final_term.map(item =>
+      carryOver(item, old.final_term.find(i => i.id === item.id))
+    )
+  }
+  return fresh
+}
+
 
 async function loadOperations() {
   try {
     const ref_ = opsDoc('school_operations', route.params.id)
     const snap = await getDoc(ref_)
     if (snap.exists()) {
-      operations.value = snap.data()
-    } else {
-      const fresh = {
-        school_id:  route.params.id,
-        num_terms:  2,
-        onboarding: defaultOnboarding(),
-        terms:      defaultTerms(2),
-        final_term: defaultFinalTerm(),
+      const data = snap.data()
+      if (data.phase1) {
+        // Fix label on docs migrated before the HPW correction.
+        ;(data.terms || []).forEach(t => (t.items || []).forEach(i => { if (i.id === 'inclusion') i.label = 'HPW Inclusion' }))
+        operations.value = data
+      } else {
+        // Legacy structure — migrate once and persist.
+        const migrated = migrateOperations(data)
+        await setDoc(ref_, migrated)
+        operations.value = migrated
       }
+    } else {
+      const fresh = freshOperations()
       await setDoc(ref_, fresh)
       operations.value = fresh
     }
@@ -1188,21 +1287,28 @@ async function saveOperations() {
 // ── Data Receivable ──────────────────────────────────────────────────────────
 function defaultReceivableOnboarding() {
   return [
-    { id: 'academic_calendar', label: 'Academic Calendar',     received: false, date: '', notes: '' },
-    { id: 'student_names',     label: 'Student Names List',    received: false, date: '', notes: '' },
-    { id: 'student_photos',    label: 'Student Photos',        received: false, date: '', notes: '' },
-    { id: 'teacher_list',      label: 'Teacher List',          received: false, date: '', notes: '' },
-    { id: 'school_logo',       label: 'School Logo',           received: false, date: '', notes: '' },
-    { id: 'principal_sign',    label: 'Principal Signature',   received: false, date: '', notes: '' },
+    { id: 'assessment_pattern',      label: 'Assessment Pattern',                        received: false, date: '', notes: '' },
+    { id: 'subject_details',         label: 'Class-wise Subject Details',                received: false, date: '', notes: '' },
+    { id: 'co_scholastic_subjects',  label: 'Class-wise Co-scholastic Subject Details',  received: false, date: '', notes: '' },
+    { id: 'teacher_info',            label: 'Teacher Information',                       received: false, date: '', notes: '' },
+    { id: 'student_info',            label: 'Student Information',                       received: false, date: '', notes: '' },
+    { id: 'prev_report_sample',      label: 'Previous Report Card Sample',               received: false, date: '', notes: '' },
+    { id: 'school_logo_hd',          label: 'School Logo in HD',                         received: false, date: '', notes: '' },
+    { id: 'academic_structure',      label: 'Academic Structure & Calculation',          received: false, date: '', notes: '' },
   ]
 }
-function defaultReceivableTerm() {
+function defaultReceivableTermItems() {
   return [
-    { id: 'attendance',     label: 'Attendance Data',      received: false, date: '', notes: '' },
-    { id: 'marks',          label: 'Marks / Grades',       received: false, date: '', notes: '' },
-    { id: 'remarks',        label: 'Teacher Remarks',      received: false, date: '', notes: '' },
-    { id: 'sew_data',       label: 'SEW Assessment Data',  received: false, date: '', notes: '' },
-    { id: 'co_scholastic',  label: 'Co-Scholastic Data',   received: false, date: '', notes: '' },
+    { id: 'students_photos',      label: "Students' Photos",                    received: false, date: '', notes: '' },
+    { id: 'student_general_info', label: 'Student General Info',                received: false, date: '', notes: '' },
+    { id: 'attendance',           label: 'Attendance',                          received: false, date: '', notes: '' },
+    { id: 'academic_marks',       label: 'Academic Marks',                      received: false, date: '', notes: '' },
+    { id: 'co_scholastic_marks',  label: 'Co-scholastic Marks',                 received: false, date: '', notes: '' },
+    { id: 'remarks',              label: 'Remarks',                             received: false, date: '', notes: '' },
+    { id: 'principal_sign',       label: 'Principal Digital Signature',         received: false, date: '', notes: '' },
+    { id: 'class_teacher_signs',  label: "Class Teachers' Digital Signatures",  received: false, date: '', notes: '' },
+    { id: 'school_seal',          label: "School's Official Seal / Stamp",      received: false, date: '', notes: '' },
+    { id: 'hpc_inclusion',        label: 'HPW',                                 received: false, date: '', notes: '' },
   ]
 }
 function defaultReceivableFinal() {
@@ -1215,25 +1321,101 @@ function defaultReceivableFinal() {
     { id: 'extra_curricular',   label: 'Extra Curricular Data',   received: false, date: '', notes: '' },
   ]
 }
+function freshReceivable() {
+  return {
+    school_id: route.params.id,
+    grading_scale: { received: false, date: '', notes: '' },
+    phases: {
+      onboarding: defaultReceivableOnboarding(),
+      terms: [],
+      final: defaultReceivableFinal(),
+    },
+  }
+}
+
+// Carry received/date/notes from a legacy item into a new default item.
+function carryReceivable(newItem, oldItem) {
+  if (!oldItem) return newItem
+  return { ...newItem, received: !!oldItem.received, date: oldItem.date || '', notes: oldItem.notes || '' }
+}
+
+// Migrate a legacy receivable doc (phases.term1/term2, old onboarding items).
+function migrateReceivable(old) {
+  const fresh = freshReceivable()
+  const oldOnb = old.phases?.onboarding || []
+  const findOnb = id => oldOnb.find(i => i.id === id)
+
+  const ONB_MAP = { teacher_info: 'teacher_list', student_info: 'student_names', school_logo_hd: 'school_logo' }
+  fresh.phases.onboarding = fresh.phases.onboarding.map(item =>
+    ONB_MAP[item.id] ? carryReceivable(item, findOnb(ONB_MAP[item.id])) : item
+  )
+
+  const TERM_MAP = { attendance: 'attendance', academic_marks: 'marks', remarks: 'remarks', co_scholastic_marks: 'co_scholastic' }
+  const oldTermLists = [old.phases?.term1 || [], old.phases?.term2 || []]
+  fresh.phases.terms = oldTermLists
+    .map((oldItems, i) => {
+      if (!oldItems.length) return null
+      const items = defaultReceivableTermItems().map(item => {
+        if (TERM_MAP[item.id]) return carryReceivable(item, oldItems.find(x => x.id === TERM_MAP[item.id]))
+        // Old onboarding tracked photos/signature once — carry into Term 1 only.
+        if (i === 0 && item.id === 'students_photos') return carryReceivable(item, findOnb('student_photos'))
+        if (i === 0 && item.id === 'principal_sign')  return carryReceivable(item, findOnb('principal_sign'))
+        return item
+      })
+      return { term_number: i + 1, items }
+    })
+    .filter(Boolean)
+
+  if (Array.isArray(old.phases?.final) && old.phases.final.length) {
+    fresh.phases.final = fresh.phases.final.map(item =>
+      carryReceivable(item, old.phases.final.find(i => i.id === item.id))
+    )
+  }
+  return fresh
+}
+
+// Keep receivable term sections in lockstep with the Operations term count.
+// Existing sections keep their state; extra sections beyond the count are dropped.
+function syncReceivableTerms() {
+  if (!dataReceivable.value || !operations.value) return false
+  const n = operations.value.num_terms || 2
+  const existing = dataReceivable.value.phases.terms || []
+  const synced = Array.from({ length: n }, (_, i) =>
+    existing.find(t => t.term_number === i + 1) || { term_number: i + 1, items: defaultReceivableTermItems() }
+  )
+  const changed = synced.length !== existing.length || synced.some((t, i) => t !== existing[i])
+  dataReceivable.value.phases.terms = synced
+  return changed
+}
+
+// Term titles mirror the (renamable) names set in the Digital Print phase.
+function receivableTermTitle(termNumber) {
+  const opTerm = operations.value?.terms?.find(t => t.term_number === termNumber)
+  return `${opTerm?.name || `Term ${termNumber}`} Data`
+}
 
 async function loadDataReceivable() {
   try {
     const ref_ = opsDoc('school_data_receivable', route.params.id)
     const snap = await getDoc(ref_)
     if (snap.exists()) {
-      dataReceivable.value = snap.data()
-    } else {
-      const fresh = {
-        school_id: route.params.id,
-        phases: {
-          onboarding: defaultReceivableOnboarding(),
-          term1:      defaultReceivableTerm(),
-          term2:      defaultReceivableTerm(),
-          final:      defaultReceivableFinal(),
-        },
+      const data = snap.data()
+      if (data.phases?.terms) {
+        // Fix label on docs migrated before the HPW correction.
+        data.phases.terms.forEach(t => (t.items || []).forEach(i => { if (i.id === 'hpc_inclusion') i.label = 'HPW' }))
+        dataReceivable.value = data
+        if (syncReceivableTerms()) await saveDataReceivable()
+      } else {
+        // Legacy structure — migrate once and persist.
+        const migrated = migrateReceivable(data)
+        dataReceivable.value = migrated
+        syncReceivableTerms()
+        await setDoc(ref_, dataReceivable.value)
       }
-      await setDoc(ref_, fresh)
-      dataReceivable.value = fresh
+    } else {
+      dataReceivable.value = freshReceivable()
+      syncReceivableTerms()
+      await setDoc(ref_, dataReceivable.value)
     }
   } catch (e) {
     console.error('Could not load data receivable', e)
@@ -1254,11 +1436,18 @@ async function setNumTerms(n) {
   const existing = operations.value.terms || []
   const newTerms = Array.from({ length: n }, (_, i) => {
     const termNum = i + 1
-    return existing.find(t => t.term_number === termNum) || { term_number: termNum, items: defaultTermItems(termNum) }
+    return existing.find(t => t.term_number === termNum) || {
+      term_number: termNum,
+      name: `Term ${termNum}`,
+      exam_start: '',
+      exam_end: '',
+      items: defaultTermItems(),
+    }
   })
   operations.value.num_terms = n
   operations.value.terms = newTerms
   await saveOperations()
+  if (syncReceivableTerms()) await saveDataReceivable()
 }
 
 const termsGridClass = computed(() => {
@@ -1271,10 +1460,12 @@ const termsGridClass = computed(() => {
 
 const allOperationItems = computed(() => {
   if (!operations.value) return []
+  const op = operations.value
   return [
-    ...(operations.value.onboarding || []),
-    ...((operations.value.terms || []).flatMap(t => t.items || [])),
-    ...(operations.value.final_term || []),
+    ...(op.phase1 || op.onboarding || []),
+    ...(op.phase2 || []),
+    ...((op.terms || []).flatMap(t => t.items || [])),
+    ...(op.final_term || []),
   ]
 })
 const overallProgress = computed(() => {
@@ -1594,7 +1785,8 @@ async function loadEverything() {
   try {
     await loadSchool()
     if (school.value) {
-      await Promise.all([loadOperations(), loadDataReceivable(), loadQuotations(), loadAgreements(), loadInvoices()])
+      await loadOperations()
+      await Promise.all([loadDataReceivable(), loadQuotations(), loadAgreements(), loadInvoices()])
     }
   } finally {
     loading.value = false
