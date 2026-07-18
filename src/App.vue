@@ -228,7 +228,7 @@ onMounted(maybeLoadAvailableYears)
 watch(() => route.name, maybeLoadAvailableYears)
 
 const navItems = [
-  { to: '/',            label: 'Dashboard',   icon: 'pi pi-home' },
+  { to: '/',            label: 'Home',        icon: 'pi pi-home' },
   { to: '/tasks',       label: 'Tasks',       icon: 'pi pi-check-square' },
   { to: '/schools',     label: 'Schools',     icon: 'pi pi-building' },
   { to: '/quotations',  label: 'Quotations',  icon: 'pi pi-file' },
@@ -239,7 +239,7 @@ const navItems = [
 ]
 
 const pageTitles = {
-  'dashboard':  'Dashboard',
+  'home':       'Home',
   'tasks':      'Tasks',
   'schools':    'Schools',
   'quotations': 'Quotations',
@@ -249,7 +249,7 @@ const pageTitles = {
   'settings':   'Settings',
 }
 
-const pageTitle = computed(() => pageTitles[route.name] || 'Dashboard')
+const pageTitle = computed(() => pageTitles[route.name] || 'Home')
 
 const isActive = (path) => {
   if (path === '/') return route.path === '/'

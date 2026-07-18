@@ -2,7 +2,7 @@
   <div class="min-h-screen" style="background: var(--surface-ground)">
 
     <!-- ── STAT CARDS ──────────────────────────────────────────────────── -->
-    <div class="grid grid-cols-5 gap-4 mb-6">
+    <div class="grid grid-cols-4 gap-4 mb-6">
       <div
         v-for="stat in stats"
         :key="stat.label"
@@ -21,11 +21,11 @@
       </div>
     </div>
 
-    <!-- ── QUICK LINKS + RECENT WINS ──────────────────────────────────── -->
-    <div class="grid grid-cols-5 gap-5">
+    <!-- ── QUICK LINKS + TASKS + RECENT WINS ───────────────────────────── -->
+    <div class="grid grid-cols-3 gap-5">
 
-      <!-- Quick Links — 3 cols -->
-      <div class="col-span-3 bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+      <!-- Quick Links -->
+      <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden flex flex-col">
         <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
           <div>
             <h3 class="font-bold text-slate-900 text-sm">Quick Links</h3>
@@ -42,17 +42,17 @@
           <Button label="Add your first link" size="small" class="mt-4" @click="openAddLink" />
         </div>
 
-        <!-- Links grid -->
-        <div v-else class="p-4 grid grid-cols-2 gap-3">
+        <!-- Links list -->
+        <div v-else class="divide-y divide-slate-50 overflow-y-auto" style="max-height: 380px">
           <a
             v-for="link in links"
             :key="link.id"
             :href="link.url"
             target="_blank"
             rel="noopener"
-            class="group flex items-center gap-3 p-3 rounded-xl border border-slate-100 hover:border-blue-200 hover:bg-blue-50 transition-all duration-150 cursor-pointer no-underline"
+            class="group flex items-center gap-3 px-5 py-2.5 hover:bg-slate-50 transition-colors cursor-pointer no-underline"
           >
-            <div class="w-9 h-9 rounded-xl flex items-center justify-center text-lg flex-shrink-0" style="background: #f1f5f9">
+            <div class="w-8 h-8 rounded-lg flex items-center justify-center text-base flex-shrink-0" style="background: #f1f5f9">
               {{ link.emoji || '🔗' }}
             </div>
             <div class="flex-1 min-w-0">
@@ -61,7 +61,7 @@
             </div>
             <button
               @click.prevent="deleteLink(link)"
-              class="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-red-400 transition-all p-1 rounded"
+              class="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-red-400 transition-all p-1 rounded flex-shrink-0"
             >
               <i class="pi pi-times text-xs"></i>
             </button>
@@ -69,8 +69,50 @@
         </div>
       </div>
 
-      <!-- Recent Wins — 2 cols -->
-      <div class="col-span-2 bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+      <!-- My Tasks -->
+      <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden flex flex-col">
+        <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+          <div>
+            <h3 class="font-bold text-slate-900 text-sm">My Tasks 📌</h3>
+            <p class="text-xs text-slate-400 mt-0.5">Assigned to you</p>
+          </div>
+          <RouterLink to="/tasks" class="text-xs font-semibold text-blue-600 hover:text-blue-700">View all →</RouterLink>
+        </div>
+
+        <div v-if="overdueMyTasksCount > 0" class="px-5 py-2 bg-red-50 border-b border-red-100 text-xs font-semibold text-red-600 flex items-center gap-1.5">
+          <i class="pi pi-exclamation-circle"></i>{{ overdueMyTasksCount }} overdue task{{ overdueMyTasksCount === 1 ? '' : 's' }} need attention
+        </div>
+
+        <div v-if="tasksLoading" class="flex items-center justify-center py-10">
+          <ProgressSpinner style="width:24px;height:24px" />
+        </div>
+        <div v-else-if="myTasksPreview.length === 0" class="flex flex-col items-center justify-center py-14 text-center px-6">
+          <div class="text-3xl mb-2">🏖️</div>
+          <p class="text-slate-400 text-xs font-medium">All clear, nothing on your plate 🏖️</p>
+        </div>
+        <div v-else class="divide-y divide-slate-50 overflow-y-auto" style="max-height: 380px">
+          <RouterLink
+            v-for="t in myTasksPreview" :key="t.id" to="/tasks"
+            class="px-5 py-2.5 flex flex-col gap-1 hover:bg-slate-50 transition-colors no-underline"
+          >
+            <div class="flex items-center gap-2">
+              <span class="w-2 h-2 rounded-full flex-shrink-0" :class="priorityDotClass(t.priority)"></span>
+              <span class="flex-1 min-w-0 text-sm text-slate-800 font-medium truncate">{{ t.title }}</span>
+            </div>
+            <div class="flex items-center gap-1.5 ml-4">
+              <span v-if="!t.assignee" class="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-500 flex-shrink-0">Unassigned</span>
+              <span
+                v-if="t.due_date"
+                class="text-xs font-medium flex-shrink-0"
+                :class="isTaskOverdue(t) ? 'text-red-500 font-bold' : 'text-slate-400'"
+              >{{ formatTaskDue(t.due_date) }}</span>
+            </div>
+          </RouterLink>
+        </div>
+      </div>
+
+      <!-- Recent Wins -->
+      <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden flex flex-col">
         <div class="px-5 py-4 border-b border-slate-100">
           <h3 class="font-bold text-slate-900 text-sm">Recent Wins</h3>
           <p class="text-xs text-slate-400 mt-0.5">Latest activity</p>
@@ -101,44 +143,6 @@
             </div>
           </div>
         </div>
-      </div>
-    </div>
-
-    <!-- ── MY TASKS ─────────────────────────────────────────────────────── -->
-    <div class="mt-5 bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-      <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
-        <div>
-          <h3 class="font-bold text-slate-900 text-sm">My Tasks 📌</h3>
-          <p class="text-xs text-slate-400 mt-0.5">Assigned to you</p>
-        </div>
-        <RouterLink to="/tasks" class="text-xs font-semibold text-blue-600 hover:text-blue-700">View all →</RouterLink>
-      </div>
-
-      <div v-if="overdueMyTasksCount > 0" class="px-5 py-2 bg-red-50 border-b border-red-100 text-xs font-semibold text-red-600 flex items-center gap-1.5">
-        <i class="pi pi-exclamation-circle"></i>{{ overdueMyTasksCount }} overdue task{{ overdueMyTasksCount === 1 ? '' : 's' }} need attention
-      </div>
-
-      <div v-if="tasksLoading" class="flex items-center justify-center py-10">
-        <ProgressSpinner style="width:24px;height:24px" />
-      </div>
-      <div v-else-if="myTasksPreview.length === 0" class="flex flex-col items-center justify-center py-10 text-center px-6">
-        <div class="text-3xl mb-2">🏖️</div>
-        <p class="text-slate-400 text-xs font-medium">All clear, nothing on your plate 🏖️</p>
-      </div>
-      <div v-else class="divide-y divide-slate-50">
-        <RouterLink
-          v-for="t in myTasksPreview" :key="t.id" to="/tasks"
-          class="px-5 py-2.5 flex items-center gap-3 hover:bg-slate-50 transition-colors no-underline"
-        >
-          <span class="w-2 h-2 rounded-full flex-shrink-0" :class="priorityDotClass(t.priority)"></span>
-          <span class="flex-1 min-w-0 text-sm text-slate-800 font-medium truncate">{{ t.title }}</span>
-          <span v-if="!t.assignee" class="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-500 flex-shrink-0">Unassigned</span>
-          <span
-            v-if="t.due_date"
-            class="text-xs font-medium flex-shrink-0"
-            :class="isTaskOverdue(t) ? 'text-red-500 font-bold' : 'text-slate-400'"
-          >{{ formatTaskDue(t.due_date) }}</span>
-        </RouterLink>
       </div>
     </div>
 
@@ -338,13 +342,6 @@ const stats = computed(() => [
     sub: `${unpaidInvoices.value.length} pending`,
     bg: '#fffbeb', border: '#fde68a',
     labelColor: '#d97706', valueColor: '#78350f', subColor: '#fcd34d',
-  },
-  {
-    label: 'Agreements Signed', emoji: '✍️',
-    rawValue: signedAgreements.value.length, prefix: '',
-    sub: `of ${agreements.value.length} total`,
-    bg: '#fdf4ff', border: '#e9d5ff',
-    labelColor: '#9333ea', valueColor: '#3b0764', subColor: '#d8b4fe',
   },
   {
     label: 'Total Students', emoji: '🎓',
