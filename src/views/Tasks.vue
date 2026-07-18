@@ -13,6 +13,11 @@
           class="px-3 py-1.5 rounded-md text-sm font-medium transition-all flex items-center"
           :class="viewMode === 'list' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'"
         ><i class="pi pi-list mr-1.5 text-xs"></i>List</button>
+        <button
+          @click="viewMode = 'calendar'"
+          class="px-3 py-1.5 rounded-md text-sm font-medium transition-all flex items-center"
+          :class="viewMode === 'calendar' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'"
+        ><i class="pi pi-calendar mr-1.5 text-xs"></i>Calendar</button>
       </div>
       <Button label="New Task" icon="pi pi-plus" @click="openCreate" />
     </div>
@@ -79,7 +84,7 @@
       </div>
 
       <!-- ── LIST ───────────────────────────────────────────────────────── -->
-      <div v-else>
+      <div v-else-if="viewMode === 'list'">
         <div class="flex flex-wrap items-center gap-2 mb-4 bg-white rounded-xl border border-slate-200 p-3">
           <Select v-model="filters.status" :options="STATUSES" optionLabel="label" optionValue="value" placeholder="Status" showClear class="w-40" />
           <Select v-model="filters.priority" :options="PRIORITIES" optionLabel="label" optionValue="value" placeholder="Priority" showClear class="w-40" />
@@ -145,6 +150,46 @@
           </table>
         </div>
       </div>
+
+      <!-- ── CALENDAR ───────────────────────────────────────────────────── -->
+      <div v-else>
+        <div class="flex items-center justify-between mb-4 bg-white rounded-xl border border-slate-200 p-3">
+          <div class="flex items-center gap-2">
+            <Button icon="pi pi-chevron-left" text rounded size="small" @click="prevMonth" />
+            <span class="text-sm font-bold text-slate-800 w-36 text-center">{{ calendarMonthLabel }}</span>
+            <Button icon="pi pi-chevron-right" text rounded size="small" @click="nextMonth" />
+          </div>
+          <Button label="Today" size="small" text @click="goToToday" />
+        </div>
+
+        <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+          <div class="grid grid-cols-7 border-b border-slate-100">
+            <div v-for="d in weekDayLabels" :key="d" class="px-2 py-2 text-center text-xs font-semibold text-slate-400 uppercase">{{ d }}</div>
+          </div>
+          <div class="grid grid-cols-7">
+            <div
+              v-for="cell in calendarCells" :key="cell.key"
+              class="border-b border-r border-slate-100 p-1.5 flex flex-col"
+              style="min-height: 108px"
+              :class="!cell.inMonth ? 'bg-slate-50/60' : ''"
+            >
+              <span
+                class="text-xs font-semibold w-5 h-5 flex items-center justify-center rounded-full mb-1"
+                :class="cell.isToday ? 'bg-blue-600 text-white' : cell.inMonth ? 'text-slate-500' : 'text-slate-300'"
+              >{{ cell.day }}</span>
+              <div class="flex-1 space-y-1 overflow-hidden">
+                <div
+                  v-for="t in cell.tasks.slice(0, 3)" :key="t.id"
+                  @click="openEdit(t)"
+                  class="px-1.5 py-0.5 rounded text-[10px] font-medium truncate cursor-pointer"
+                  :class="isTaskOverdue(t) ? 'bg-red-50 text-red-600' : priorityBadgeClass(t.priority)"
+                >{{ t.title }}</div>
+                <div v-if="cell.tasks.length > 3" class="text-[10px] text-slate-400 pl-1">+{{ cell.tasks.length - 3 }} more</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </template>
 
     <TaskDialog
@@ -171,7 +216,7 @@ import { useAllSchools } from '../composables/useAllSchools.js'
 import {
   useTasks, STATUSES, PRIORITIES, ASSIGNEES,
   priorityDotClass, priorityBadgeClass, priorityLabel, priorityRank,
-  statusBadgeClass, statusLabel, assigneeChipClass, isTaskOverdue,
+  statusBadgeClass, statusLabel, assigneeChipClass, isTaskOverdue, sortTasksForWidget,
 } from '../composables/useTasks.js'
 import TaskDialog from '../components/tasks/TaskDialog.vue'
 
@@ -311,6 +356,70 @@ function formatDue(dateStr) {
   if (!dateStr) return ''
   return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
 }
+
+// ── Calendar view ────────────────────────────────────────────────────────
+const weekDayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+const calendarMonth = ref(new Date(new Date().getFullYear(), new Date().getMonth(), 1))
+
+function ymd(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+function prevMonth() {
+  calendarMonth.value = new Date(calendarMonth.value.getFullYear(), calendarMonth.value.getMonth() - 1, 1)
+}
+function nextMonth() {
+  calendarMonth.value = new Date(calendarMonth.value.getFullYear(), calendarMonth.value.getMonth() + 1, 1)
+}
+function goToToday() {
+  const now = new Date()
+  calendarMonth.value = new Date(now.getFullYear(), now.getMonth(), 1)
+}
+
+const calendarMonthLabel = computed(() => calendarMonth.value.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' }))
+
+const tasksByDueDate = computed(() => {
+  const map = {}
+  tasks.value.forEach(t => {
+    if (!t.due_date) return
+    if (!map[t.due_date]) map[t.due_date] = []
+    map[t.due_date].push(t)
+  })
+  return map
+})
+
+const calendarCells = computed(() => {
+  const year = calendarMonth.value.getFullYear()
+  const month = calendarMonth.value.getMonth()
+  const todayKey = ymd(new Date())
+  const buildCell = (date, inMonth) => {
+    const key = ymd(date)
+    return {
+      key, inMonth, isToday: key === todayKey,
+      day: date.getDate(),
+      tasks: sortTasksForWidget(tasksByDueDate.value[key] || []),
+    }
+  }
+
+  const firstOfMonth = new Date(year, month, 1)
+  const daysInMonth = new Date(year, month + 1, 0).getDate()
+  const daysInPrevMonth = new Date(year, month, 0).getDate()
+  const leadingCount = firstOfMonth.getDay()
+
+  const cells = []
+  for (let i = leadingCount - 1; i >= 0; i--) {
+    cells.push(buildCell(new Date(year, month - 1, daysInPrevMonth - i), false))
+  }
+  for (let day = 1; day <= daysInMonth; day++) {
+    cells.push(buildCell(new Date(year, month, day), true))
+  }
+  let trailingDay = 1
+  while (cells.length % 7 !== 0) {
+    cells.push(buildCell(new Date(year, month + 1, trailingDay), false))
+    trailingDay++
+  }
+  return cells
+})
 
 onMounted(() => {
   Promise.all([loadTasks(), loadAllSchools()])
