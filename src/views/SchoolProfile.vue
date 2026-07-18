@@ -81,10 +81,10 @@
       <TabList>
         <Tab value="overview">Overview</Tab>
         <Tab value="operations">Operations</Tab>
+        <Tab value="data">Data Receivable</Tab>
         <Tab value="quotations">Quotations ({{ schoolQuotations.length }})</Tab>
         <Tab value="agreements">Agreements ({{ schoolAgreements.length }})</Tab>
         <Tab value="invoices">Invoices ({{ schoolInvoices.length }})</Tab>
-        <Tab value="data">Data Receivable</Tab>
       </TabList>
       <TabPanels>
 
