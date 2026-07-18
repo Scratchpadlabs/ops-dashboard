@@ -83,14 +83,28 @@
     <div class="flex-1 flex flex-col min-h-screen">
       <header class="h-14 border-b flex items-center justify-between px-6 bg-white" style="border-color: var(--surface-border)">
         <h1 class="text-sm font-semibold" style="color: var(--text-primary)">{{ pageTitle }}</h1>
-        <button
-          @click="isSearchOpen = true"
-          class="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm text-slate-400 border border-slate-200 hover:border-slate-300 hover:text-slate-500 transition-colors w-64"
-        >
-          <i class="pi pi-search text-xs"></i>
-          <span class="flex-1 text-left">Search anything...</span>
-          <span class="text-[10px] font-semibold border border-slate-200 rounded px-1.5 py-0.5">⌘K</span>
-        </button>
+        <div class="flex items-center gap-3">
+          <button
+            @click="isSearchOpen = true"
+            class="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm text-slate-400 border border-slate-200 hover:border-slate-300 hover:text-slate-500 transition-colors w-64"
+          >
+            <i class="pi pi-search text-xs"></i>
+            <span class="flex-1 text-left">Search anything...</span>
+            <span class="text-[10px] font-semibold border border-slate-200 rounded px-1.5 py-0.5">⌘K</span>
+          </button>
+
+          <button
+            v-if="notificationsSupported"
+            v-tooltip.bottom="notificationButtonTooltip"
+            @click="onNotificationBellClick"
+            class="w-8 h-8 rounded-lg flex items-center justify-center border transition-colors"
+            :class="notificationsActive
+              ? 'text-blue-600 border-blue-200 bg-blue-50 hover:bg-blue-100'
+              : 'text-slate-400 border-slate-200 hover:border-slate-300 hover:text-slate-500'"
+          >
+            <i :class="notificationsActive ? 'pi pi-bell' : 'pi pi-bell-slash'" class="text-sm"></i>
+          </button>
+        </div>
       </header>
 
       <main class="flex-1 p-6">
@@ -113,13 +127,51 @@ import { opsCollection } from './firebase/collections.js'
 import { getDocs } from 'firebase/firestore'
 import { activeYear, availableYears, computeCurrentAcademicYear } from './composables/useAcademicYear.js'
 import { isSearchOpen } from './composables/useGlobalSearch.js'
+import {
+  notificationsSupported, notificationPermission, notificationsEnabled,
+  requestTaskNotificationPermission, disableTaskNotifications,
+  startTaskNotificationPolling, stopTaskNotificationPolling,
+} from './composables/useTaskNotifications.js'
+import { useToast } from 'primevue/usetoast'
 import Toast from 'primevue/toast'
 import CelebrationOverlay from './components/shared/CelebrationOverlay.vue'
 import GlobalSearchModal from './components/shared/GlobalSearchModal.vue'
 
 const route = useRoute()
 const router = useRouter()
+const toast = useToast()
 const currentYear = new Date().getFullYear()
+
+// ── Task due/overdue notifications ──────────────────────────────────────────
+const notificationsActive = computed(() => notificationsEnabled.value && notificationPermission.value === 'granted')
+const notificationButtonTooltip = computed(() => {
+  if (notificationPermission.value === 'denied') return 'Blocked — allow notifications for this site in your browser settings'
+  return notificationsActive.value ? 'Task notifications on — click to mute' : 'Get notified when tasks are pending or due'
+})
+
+async function onNotificationBellClick() {
+  if (notificationPermission.value === 'denied') {
+    toast.add({ severity: 'warn', summary: 'Notifications blocked', detail: 'Allow notifications for this site in your browser settings, then reload.', life: 4000 })
+    return
+  }
+  if (notificationsActive.value) {
+    disableTaskNotifications()
+    stopTaskNotificationPolling()
+    return
+  }
+  const result = await requestTaskNotificationPermission()
+  if (result === 'granted') {
+    startTaskNotificationPolling()
+    toast.add({ severity: 'success', summary: 'Notifications enabled', detail: "We'll notify you when tasks are pending or due", life: 3000 })
+  } else if (result === 'denied') {
+    toast.add({ severity: 'warn', summary: 'Notifications blocked', life: 3000 })
+  }
+}
+
+onMounted(() => {
+  if (notificationsEnabled.value && notificationPermission.value === 'granted') startTaskNotificationPolling()
+})
+onBeforeUnmount(stopTaskNotificationPolling)
 
 // ── Global search (Ctrl/Cmd+K) ─────────────────────────────────────────────
 function onGlobalSearchKeydown(e) {
