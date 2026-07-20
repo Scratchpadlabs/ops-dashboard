@@ -198,10 +198,11 @@ def _build_pdf(data):
     agr_num       = (data.get("agreementNumber") or "").strip()
 
     academic_year = _academic_year()
+    ay_start      = academic_year[:4]
+    ay_end        = str(int(ay_start) + 1)
     today         = _today_str()
     payment_terms = _payment_terms(plan)
     total_amount  = fee * student_count
-    instalment_breakdown = _instalment_breakdown(total_amount, plan)
 
     buf = io.BytesIO()
     doc = SimpleDocTemplate(
@@ -333,64 +334,109 @@ def _build_pdf(data):
         'videos, academic rubric surveys, QR-linked digital reports, and other relevant elements '
         'as per NEP.',
         '1.2 <b>Supporting Data:</b> All academic and non-academic inputs, materials, or data '
-        'supplied by the School for the purpose of generating the HPC.',
+        'supplied by the School for the purpose of generating the HPC, including without '
+        'limitation student names and spellings, marks and grades, attendance records, '
+        'photographs, videos, rubric responses, and teacher remarks.',
         '1.3 <b>Effective Date:</b> The date of execution of this Agreement by both Parties.',
+        f'1.4 <b>Academic Year:</b> The academic year {academic_year} as followed by the School, '
+        f'commencing June {ay_start} and concluding April {ay_end}, unless otherwise notified in '
+        f'writing.',
+        '1.5 <b>Deliverables:</b> The printed and digital HPCs and associated components forming '
+        'part of the package selected by the School under Clause 2.2.',
+        '1.6 <b>Working Days:</b> Monday to Saturday, excluding public holidays notified in '
+        'Maharashtra.',
+        '1.7 <b>Final Approval:</b> The School Principal\'s written approval (including approval '
+        'conveyed by email) of the sample HPC under Clause 2.3.',
+        '1.8 <b>Material Breach:</b> A breach of a substantive obligation under this Agreement '
+        'which is not remedied within fifteen (15) days of written notice specifying the breach.',
+        '1.9 <b>Force Majeure Event:</b> Any event beyond the reasonable control of the affected '
+        'Party, including acts of God, natural disasters, epidemics, governmental action, war, '
+        'civil disturbance, utility or telecommunications failure, or failure of third-party '
+        'cloud infrastructure providers.',
     )
 
     clause(
         "2.  SCOPE OF SERVICES",
         f'2.1 <b>Service Delivery:</b> Subject to timely receipt of accurate and complete '
         f'Supporting Data from the School, the Company shall generate and deliver the {hpc_type} '
-        f'HPC within the mutually agreed timeline, typically six (6) working days from receipt '
-        f'of complete Supporting Data. The Company shall customize the HPCs to align with the '
-        f'specific requirements of the School and shall proactively notify the School of any '
-        f'updates or changes.',
+        f'HPC within six (6) working days from receipt of complete and validated Supporting '
+        f'Data, unless otherwise agreed in writing. The Company shall customise the HPCs to '
+        f'align with the specific requirements of the School and shall notify the School of any '
+        f'material updates or changes.',
         '2.2 <b>Deliverables:</b> One HPC per student as per the selected package. Standard '
-        'package includes: &quot;All About Me&quot; videos, SEW reports, academic rubrics, '
+        'package includes: &quot;All About Me&quot; videos, SEW reports, academic rubrics, and '
         'QR-linked digital access.',
         '2.3 <b>Sample Approval:</b> Prior to mass printing, a sample copy shall be submitted to '
         'the School\'s Principal for written approval via email. No mass printing shall be '
-        'initiated without such written approval.',
+        'initiated without such written approval. The delivery timeline under Clause 2.1 shall '
+        'stand paused from the date the sample is submitted until Final Approval is received, '
+        'and all subsequent delivery dates shall extend accordingly.',
+        '2.4 <b>Data Submission Timelines:</b> The School shall submit Supporting Data in '
+        'accordance with the data submission schedule mutually agreed at onboarding. Where the '
+        'School delays submission of Supporting Data, approvals, or payments, all delivery '
+        'timelines under this Agreement shall automatically extend by at least the period of '
+        'such delay, without liability to the Company.',
+        '2.5 <b>Acceptance:</b> Deliverables shall be deemed accepted if no written objections '
+        'are received by the Company within seven (7) working days of delivery. This does not '
+        'affect the Company\'s reprint obligations under Clause 5.1 for errors attributable to '
+        'the Company.',
+        '2.6 <b>Change Requests and Revisions:</b> One revision cycle per term is included prior '
+        'to Final Approval. Changes requested after Final Approval, structural or design '
+        'changes, additional report formats, or new features are outside the included scope and '
+        'shall be chargeable at rates mutually agreed in writing before the work is undertaken.',
     )
 
     story.append(Paragraph("3.  COMMERCIAL TERMS", CLAUSE_HEAD))
     story.append(Paragraph(
         f'3.1 <b>Consideration &amp; Payment Terms:</b> The fee per student will be Rs. {_inr(fee)}/- '
-        f'(including all taxes). The School shall pay the Company the agreed consideration, with '
-        f'the following payment schedule: {payment_terms}. All payments shall be due and payable '
-        f'within forty-five (45) working days of invoice and shall be non-refundable unless '
-        f'otherwise agreed. Total contract value based on {student_count} students: '
-        f'Rs. {_inr(total_amount)}/-. Instalment breakdown: {instalment_breakdown}. '
-        f'Please note that the total contract value stated above is based on {student_count} '
-        f'students as indicated at the time of signing. The actual payable amount may vary '
-        f'proportionally if the student count increases or decreases during the academic year, '
-        f'and shall be invoiced accordingly at the agreed per-student rate of Rs. {_inr(fee)}/-.',
+        f'(inclusive of taxes at rates prevailing on the Effective Date; any subsequent change '
+        f'in applicable tax rates shall be to the School\'s account). The School shall pay the '
+        f'Company the agreed consideration, with the following payment schedule: {payment_terms}. '
+        f'All payments shall be due and payable within forty-five (45) days of invoice and shall '
+        f'be non-refundable unless otherwise agreed. Total contract value based on '
+        f'{student_count} students: Rs. {_inr(total_amount)}/-.',
         SUBCLAUSE,
     ))
     story.append(Spacer(1, 4))
     story.append(_instalment_table(total_amount, plan))
     story.append(Spacer(1, 8))
     story.append(Paragraph(
-        '3.2 <b>Late or Non-Payment:</b> Failure to make timely payments shall entitle the Company '
-        'to suspend services without further notice. As a registered MSME under Udyam, the '
-        'Company is entitled to enforce a payment deadline of forty-five (45) days from the date '
-        'of invoice in accordance with Section 15 of the MSMED Act, 2006. Any payment not made '
-        'within this timeline shall attract compound interest at three times the bank rate '
-        'notified by the Reserve Bank of India, as stipulated under Section 16 of the MSMED Act.',
+        f'3.2 <b>Student Count Adjustment:</b> The total contract value stated above is based on '
+        f'{student_count} students as indicated at the time of signing. The actual payable '
+        f'amount shall vary proportionally at the agreed per-student rate of Rs. {_inr(fee)}/-. '
+        f'The student count shall be reconciled prior to each term\'s delivery, and any students '
+        f'added shall be invoiced with the immediately following instalment.',
         SUBCLAUSE,
     ))
     story.append(Paragraph(
-        '3.3 <b>New Admissions:</b> Students added post-contract shall be invoiced separately '
+        '3.3 <b>Late or Non-Payment:</b> Failure to make timely payments shall entitle the Company '
+        'to suspend services without further notice, and the Company shall not be liable for any '
+        'delay in Deliverables caused by such suspension or by the School\'s payment default. As '
+        'a registered MSME under Udyam, the Company is entitled to enforce a payment deadline of '
+        'forty-five (45) days from the date of invoice in accordance with Section 15 of the '
+        'MSMED Act, 2006. Any payment not made within this timeline shall attract compound '
+        'interest at three times the bank rate notified by the Reserve Bank of India, as '
+        'stipulated under Section 16 of the MSMED Act.',
+        SUBCLAUSE,
+    ))
+    story.append(Paragraph(
+        '3.4 <b>New Admissions:</b> Students added post-contract shall be invoiced separately '
         'based on the agreed per-student rate.',
         SUBCLAUSE,
     ))
 
     clause(
         "4.  DATA RESPONSIBILITIES",
-        '4.1 The School warrants that all data provided shall be true, complete, and duly '
-        'verified by its internal team.',
-        '4.2 The Company shall not be liable for errors or delays resulting from incorrect, '
+        '4.1 The School warrants that all Supporting Data provided shall be true, complete, and '
+        'duly verified by its internal team prior to submission, including the accuracy of '
+        'student name spellings, marks, attendance, photographs, videos, and rubric responses.',
+        '4.2 The Company shall be entitled to rely on Supporting Data as submitted and shall not '
+        'be required to independently verify its accuracy or completeness.',
+        '4.3 The Company shall not be liable for errors or delays resulting from incorrect, '
         'incomplete, or inconsistent data supplied by the School.',
+        '4.4 The School warrants that it has obtained all consents and permissions required '
+        'under applicable law for the collection and sharing of student and parent data '
+        '(including photographs and videos) with the Company for the purposes of this Agreement.',
     )
 
     clause(
@@ -398,21 +444,26 @@ def _build_pdf(data):
         '5.1 If errors are made by the Company (such as a mistake in formatting, layout, or data '
         'processing, provided the data submitted was correct), the Company shall bear full '
         'responsibility and reprint affected cards at no additional cost to the School.',
-        '5.2 The Company shall notify the School within forty-eight (48) hours of identifying '
-        'any error in the delivered HPCs, regardless of which Party is responsible.',
+        '5.2 Each Party shall notify the other promptly upon discovering any error in the '
+        'delivered HPCs, regardless of which Party is responsible.',
         '5.3 If errors in the printed report are due to incorrect, incomplete, or delayed data '
-        'submissions by the School, or changes requested after final sample approval, the School '
-        'shall be responsible for the cost of reprinting. Such reprints shall be charged at the '
-        'rate of Rs. 100 per copy minimum.',
-        '5.4 All correction requests must be submitted in writing within thirty (30) calendar '
-        'days from the date of delivery of the HPCs.',
+        'submissions by the School, or changes requested after Final Approval, the School shall '
+        'be responsible for the cost of reprinting. Such reprints shall be charged at the rate '
+        'of Rs. 100 per copy minimum.',
+        '5.4 The School shall inspect the delivered HPCs and submit all correction requests in '
+        'writing within seven (7) working days from the date of delivery. Correction requests '
+        'received thereafter may be accommodated at the Company\'s discretion and shall be '
+        'chargeable.',
     )
 
     clause(
         "6.  POST-DELIVERY SUPPORT",
-        '6.1 The Company shall offer full technical support for QR access, downloading, and basic '
-        'troubleshooting through a dedicated helpline and Relationship Manager for thirty (30) '
-        'days post-delivery.',
+        '6.1 The Company shall provide technical support through a dedicated helpline and '
+        'Relationship Manager for thirty (30) days post-delivery. Included support covers: QR '
+        'access issues, password resets, download issues, and basic troubleshooting of digital '
+        'access. Included support does not cover: redesigns, structural changes, new features, '
+        'additional report formats, or data re-processing arising from revised Supporting Data, '
+        'which shall be chargeable if undertaken.',
         '6.2 In the event of renewal, such support shall be automatically extended to cover the '
         'academic year.',
         '6.3 No structural modifications to the HPC shall be permitted post-printing; only '
@@ -420,90 +471,155 @@ def _build_pdf(data):
     )
 
     clause(
-        "7.  INTELLECTUAL PROPERTY & NON-COMPETE",
+        "7.  INTELLECTUAL PROPERTY",
         '7.1 The Company retains exclusive intellectual property rights in all proprietary '
-        'tools, formats, designs, methodologies, and systems under applicable provisions of the '
-        'Copyright Act, 1957.',
-        '7.2 The School shall not replicate, reverse-engineer, adapt, disclose, or share the '
-        'Company\'s formats, designs, or systems with any third party, including any LMS or ERP '
-        'platform.',
-        '7.3 The Company has filed patents protecting multiple components of its system. Any '
-        'unauthorised commercial use, adaptation, or duplication without prior written consent '
-        'shall be deemed infringement and subject to legal recourse including injunctive relief '
-        'and damages.',
+        'tools, formats, designs, methodologies, software, and systems under applicable '
+        'provisions of the Copyright Act, 1957. Nothing in this Agreement transfers ownership '
+        'of any such intellectual property to the School.',
+        '7.2 The School shall not replicate, reverse-engineer, adapt, or commercially exploit '
+        'the Company\'s formats, designs, or systems, and shall not disclose them to any third '
+        'party, except to the School\'s authorised service providers (including LMS or ERP '
+        'vendors) solely to the extent necessary for integration, subject to confidentiality '
+        'obligations no less protective than those in this Agreement.',
+        '7.3 The Company has filed patent applications in respect of components of its system. '
+        'Any unauthorised commercial use, adaptation, or duplication of the Company\'s '
+        'proprietary materials without prior written consent shall be deemed infringement and '
+        'subject to legal recourse including injunctive relief and damages.',
     )
 
     clause(
         "8.  CONFIDENTIALITY & DATA SECURITY",
         '8.1 Each Party shall maintain the confidentiality of all proprietary or student-related '
         'information obtained under this Agreement and shall not disclose such information to '
-        'third parties without written consent.',
-        '8.2 The student data and parent data are strictly confidential and shall remain the sole '
-        'property of the School. Under no circumstances shall any student or parent data be used '
-        'for commercial purposes.',
-        '8.3 The Company shall employ industry-standard safeguards and comply with the '
-        'Information Technology Act, 2000 in protecting School-provided data.',
+        'third parties without written consent, except as required by law.',
+        '8.2 Student data and parent data are strictly confidential and shall remain the sole '
+        'property of the School. Under no circumstances shall any student or parent data be '
+        'used by the Company for commercial purposes unrelated to the Services.',
+        '8.3 The Company shall employ commercially reasonable, industry-standard safeguards and '
+        'shall comply with applicable data protection laws in force in India, including the '
+        'Information Technology Act, 2000 and the Digital Personal Data Protection Act, 2023, '
+        'in protecting School-provided data.',
         '8.4 All digital materials, including HPCs and associated files, shall be stored on the '
-        'Company\'s secure cloud platform. The soft copies of the HPCs shall be accessible to the '
-        'School and parents for a lifetime.',
-        '8.5 The Company shall retain digital copies for the duration of the Agreement and its '
-        'renewals.',
-        '8.6 Upon termination or non-renewal, digital ownership shall irrevocably transfer to the '
-        'School.',
-        '8.7 The Company may, upon written request and agreed facility fees, retain such data on '
-        'its cloud and application storage post-termination.',
+        'Company\'s secure cloud platform. Digital HPCs shall remain accessible to the School '
+        'and parents for a minimum period of five (5) years from the date of delivery, and '
+        'thereafter for so long as the School maintains an active subscription or renewal with '
+        'the Company.',
+        '8.5 Upon termination or non-renewal, the Company shall, on written request, provide the '
+        'School with copies of the student data and generated HPC files (in PDF or other '
+        'standard format). All underlying software, templates, designs, and systems remain the '
+        'exclusive property of the Company and are not transferred.',
+        '8.6 The Company may, upon written request and payment of agreed facility fees, continue '
+        'to host such data on its cloud and application storage post-termination.',
     )
 
     clause(
-        "9.  TERM, TERMINATION & EFFECT",
-        f'9.1 This Agreement shall be valid and effective for the Academic Year {academic_year}.',
-        '9.2 Either Party may terminate this Agreement by providing thirty (30) days\' written '
-        'notice.',
-        '9.3 Termination shall not affect accrued rights and obligations. Clauses relating to '
-        'confidentiality, IP, data handling, and dispute resolution shall survive termination.',
+        "9.  WARRANTIES & DISCLAIMER",
+        '9.1 The Company warrants that the Services shall be performed in a professional and '
+        'workmanlike manner. Except as expressly stated in this Agreement, the Services and '
+        'Deliverables are provided &quot;as is&quot; and the Company disclaims all other '
+        'warranties, express or implied.',
+        '9.2 The Company shall use commercially reasonable efforts to maintain availability of '
+        'digital HPCs but does not guarantee uninterrupted or error-free access, including where '
+        'interruptions arise from third-party cloud infrastructure providers. The Company '
+        'maintains reasonable backup practices for hosted data.',
     )
 
     clause(
-        "10. PUBLICITY",
-        '10.1 The School authorises the Company to use its name and logo in marketing materials, '
-        'social media, and case studies solely for showcasing HPC implementation success. '
-        'Similarly, the school may also use the Company\'s logo if required.',
-        '10.2 The Company shall not publish any student-specific or academic content without '
+        "10. LIMITATION OF LIABILITY",
+        '10.1 The total aggregate liability of the Company under or in connection with this '
+        'Agreement, whether in contract, tort, or otherwise, shall not exceed the total fees '
+        'actually paid by the School to the Company under this Agreement.',
+        '10.2 Neither Party shall be liable to the other for any indirect, incidental, '
+        'consequential, or special damages, or for loss of profits, reputation, or data, '
+        'arising out of or in connection with this Agreement.',
+        '10.3 Nothing in this Clause limits liability for fraud, wilful misconduct, or any '
+        'liability that cannot be limited under applicable law.',
+    )
+
+    clause(
+        "11. INDEMNITY",
+        '11.1 The School shall indemnify and hold harmless the Company against all claims, '
+        'losses, and expenses arising from: (a) third-party intellectual property claims in '
+        'respect of content supplied by the School; (b) incorrect, incomplete, or unauthorised '
+        'student or parent data supplied by the School; (c) claims by parents, students, or '
+        'authorities arising from the School\'s failure to obtain required consents; and '
+        '(d) the School\'s breach of applicable law.',
+    )
+
+    clause(
+        "12. TERM, TERMINATION & EFFECT",
+        f'12.1 <b>Term:</b> This Agreement shall be valid and effective for the Academic Year '
+        f'{academic_year}.',
+        '12.2 <b>Termination for Convenience:</b> Either Party may terminate this Agreement by '
+        'providing thirty (30) days\' written notice. In the event of such termination by the '
+        'School, the School shall pay the Company for all work completed and costs incurred up '
+        'to the effective date of termination, including printing and processing already '
+        'undertaken, and instalments already invoiced shall remain payable.',
+        '12.3 <b>Termination for Breach:</b> Either Party may terminate this Agreement with '
+        'immediate effect by written notice in the event of a Material Breach by the other '
+        'Party, or if the other Party becomes insolvent or subject to insolvency proceedings.',
+        '12.4 <b>Effect of Termination:</b> Termination shall not affect accrued rights and '
+        'obligations, including the School\'s obligation to pay for Services rendered up to '
+        'termination.',
+        '12.5 <b>Survival:</b> Clauses relating to intellectual property (Clause 7), '
+        'confidentiality and data security (Clause 8), limitation of liability (Clause 10), '
+        'indemnity (Clause 11), payment obligations, and dispute resolution (Clause 14) shall '
+        'survive termination or expiry of this Agreement.',
+    )
+
+    clause(
+        "13. PUBLICITY",
+        '13.1 The Company may, with the prior written consent of the School (which may be '
+        'conveyed by email and shall not be unreasonably withheld), use the School\'s name and '
+        'logo in marketing materials, social media, and case studies solely for showcasing HPC '
+        'implementation. The School may likewise use the Company\'s name and logo to describe '
+        'its use of the Services.',
+        '13.2 The Company shall not publish any student-specific or academic content without '
         'prior written approval.',
     )
 
     clause(
-        "11. LEGAL & DISPUTE RESOLUTION",
-        '11.1 This Agreement shall be governed and construed in accordance with the laws of '
+        "14. LEGAL & DISPUTE RESOLUTION",
+        '14.1 This Agreement shall be governed and construed in accordance with the laws of '
         'India.',
-        '11.2 Subject to Clause 11.3, the Parties agree to submit to the exclusive jurisdiction '
-        'of competent courts in Pune, Maharashtra or such other mutually agreed forum.',
-        '11.3 Any dispute, controversy, or claim arising out of or in connection with this '
+        '14.2 Any dispute, controversy, or claim arising out of or in connection with this '
         'Agreement, which cannot be resolved amicably within thirty (30) days of written notice '
         'by either Party, shall be referred to and finally resolved by arbitration in accordance '
         'with the Arbitration and Conciliation Act, 1996. The arbitration shall be conducted by a '
         'sole arbitrator mutually appointed by the Parties. The seat and venue of arbitration '
         'shall be Pune, Maharashtra. The language of arbitration shall be English. The arbitral '
         'award shall be final and binding on both Parties.',
+        '14.3 The courts at Pune, Maharashtra shall have exclusive jurisdiction solely for '
+        'interim or injunctive relief in aid of arbitration and for enforcement of the arbitral '
+        'award.',
     )
 
     clause(
-        "12. MISCELLANEOUS",
-        '12.1 <b>Force Majeure:</b> Neither Party shall be liable for delays or non-performance '
-        'arising from causes beyond reasonable control.',
-        '12.2 <b>Entire Agreement:</b> This Agreement constitutes the entire agreement between '
+        "15. MISCELLANEOUS",
+        '15.1 <b>Force Majeure:</b> Neither Party shall be liable for delays or non-performance '
+        'arising from a Force Majeure Event, provided the affected Party notifies the other '
+        'promptly and resumes performance as soon as reasonably practicable.',
+        '15.2 <b>Relationship of Parties:</b> The Parties are independent contractors. Nothing '
+        'in this Agreement creates any partnership, joint venture, agency, or employment '
+        'relationship between the Parties.',
+        '15.3 <b>Assignment:</b> Neither Party may assign this Agreement without the prior '
+        'written consent of the other, except that the Company may assign it to a successor in '
+        'interest of its business.',
+        '15.4 <b>Entire Agreement:</b> This Agreement constitutes the entire agreement between '
         'the Parties and supersedes all prior oral and written discussions.',
-        '12.3 <b>Amendment:</b> No modification shall be effective unless in writing and signed '
+        '15.5 <b>Amendment:</b> No modification shall be effective unless in writing and signed '
         'by authorised representatives of both Parties.',
-        '12.4 <b>No Waiver:</b> No delay or failure to exercise any right under this Agreement '
+        '15.6 <b>No Waiver:</b> No delay or failure to exercise any right under this Agreement '
         'shall constitute a waiver thereof.',
-        '12.5 <b>Notices:</b> All formal notices shall be sent via registered post or electronic '
+        '15.7 <b>Notices:</b> All formal notices shall be sent via registered post or electronic '
         'mail to the addresses first stated herein.',
-        '12.6 <b>Severability:</b> If any provision is held invalid, the remainder of the '
+        '15.8 <b>Electronic Execution:</b> This Agreement may be executed in counterparts and by '
+        'electronic signature or scanned copies, each of which shall be deemed an original.',
+        '15.9 <b>Severability:</b> If any provision is held invalid, the remainder of the '
         'Agreement shall continue in full force.',
-        '12.7 <b>Binding Effect:</b> This Agreement shall be binding upon and inure to the '
-        'benefit of the Parties and their respective successors and assigns.',
-        '12.8 <b>Attribution:</b> The Holistic Progress Card (HPC) used under this Agreement is '
+        '15.10 <b>Binding Effect:</b> This Agreement shall be binding upon and inure to the '
+        'benefit of the Parties and their respective successors and permitted assigns.',
+        '15.11 <b>Attribution:</b> The Holistic Progress Card (HPC) used under this Agreement is '
         'an adapted version of the HPC developed by PARAKH, NCERT. All copyrights, trademarks, '
         'and other intellectual property rights remain the sole property of the respective '
         'original owners.',
