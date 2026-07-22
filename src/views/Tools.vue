@@ -19,14 +19,20 @@
     >
       <iframe v-if="tab.url" :src="tab.url" :title="tab.label" class="w-full h-full border-0"></iframe>
       <div v-else class="w-full h-full overflow-auto p-4">
-        <ParcelCoverTool v-if="tab.key === 'parcel-cover'" />
+        <!-- If an in-app tool fails to render, show why instead of a blank panel. -->
+        <div v-if="toolError" class="max-w-2xl">
+          <div class="text-sm font-semibold text-red-600 mb-2">This tool failed to load</div>
+          <pre class="text-xs bg-red-50 border border-red-200 rounded-lg p-3 whitespace-pre-wrap text-red-800">{{ toolError }}</pre>
+          <p class="text-xs text-slate-400 mt-2">Send this message to whoever is fixing it.</p>
+        </div>
+        <ParcelCoverTool v-else-if="tab.key === 'parcel-cover'" />
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onErrorCaptured } from 'vue'
 import ParcelCoverTool from '../components/tools/ParcelCoverTool.vue'
 
 const TABS = [
@@ -35,4 +41,11 @@ const TABS = [
 ]
 
 const activeTab = ref(TABS[0].key)
+const toolError = ref('')
+
+onErrorCaptured((err, _instance, info) => {
+  toolError.value = `${err?.message || err}\n\nWhere: ${info}\n\n${(err?.stack || '').split('\n').slice(0, 4).join('\n')}`
+  console.error('Tool render failed:', err)
+  return false   // stop it propagating and blanking the page
+})
 </script>
