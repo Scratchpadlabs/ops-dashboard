@@ -17,16 +17,21 @@
       class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden"
       style="height: calc(100vh - 180px)"
     >
-      <iframe :src="tab.url" :title="tab.label" class="w-full h-full border-0"></iframe>
+      <iframe v-if="tab.url" :src="tab.url" :title="tab.label" class="w-full h-full border-0"></iframe>
+      <div v-else class="w-full h-full overflow-auto p-4">
+        <ParcelCoverTool v-if="tab.key === 'parcel-cover'" />
+      </div>
     </div>
   </div>
 </template>
 
 <script setup>
 import { ref } from 'vue'
+import ParcelCoverTool from '../components/tools/ParcelCoverTool.vue'
 
 const TABS = [
   { key: 'register', label: 'Register', icon: 'pi pi-user-plus', url: 'https://clarified-register.web.app/' },
+  { key: 'parcel-cover', label: 'Parcel Cover', icon: 'pi pi-send' },
 ]
 
 const activeTab = ref(TABS[0].key)
