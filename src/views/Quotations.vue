@@ -772,7 +772,7 @@ function formatDate(ts) {
 
 function formatPrice(n) {
   if (n == null) return '0'
-  return Number(n).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
+  return Math.floor(Number(n)).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
 }
 
 onMounted(async () => {

@@ -55,7 +55,7 @@ MRP_DIGITAL = 169
 
 FIELDS_S1 = {
     "date":            dict(x=232,  y=362,  size=11, bold=False, align="left"),
-    "schoolName":      dict(x=700,  y=510,  size=11, bold=False, align="left"),
+    "schoolName":      dict(x=700,  y=510,  size=11, bold=False, semibold=True, align="left"),
     "printedDiscount": dict(cx=885, y=1050, size=13, bold=False, align="center"),
     "printedPrice":    dict(cx=1240,y=1050, size=13, bold=True,  align="center", pill="#A9E6A0"),
     "digitalDiscount": dict(cx=885, y=1300, size=13, bold=False, align="center"),
@@ -79,10 +79,15 @@ def _draw_field_s1(c, field, text):
         c.roundRect(cx - w / 2, y - 6, w, h, 6, fill=1, stroke=0)
     c.setFillColorRGB(0, 0, 0)
     c.setFont(font, f["size"])
+    mode = None
+    if f.get("semibold"):
+        c.setStrokeColorRGB(0, 0, 0)
+        c.setLineWidth(0.25)
+        mode = 2
     if f["align"] == "center":
-        c.drawCentredString(_to_x_s1(f["cx"]), y, text)
+        c.drawCentredString(_to_x_s1(f["cx"]), y, text, mode=mode)
     else:
-        c.drawString(_to_x_s1(f["x"]), y, text)
+        c.drawString(_to_x_s1(f["x"]), y, text, mode=mode)
 
 
 def _build_pdf_s1(data, out):
@@ -120,9 +125,9 @@ def generate_quotation(request: Request):
         "date":            data.get("date") or "",
         "studentCount":    data.get("studentCount") or "",
         "printedDiscount": int(printed_discount),
-        "printedPrice":    round(MRP_PRINTED * (1 - printed_discount / 100)),
+        "printedPrice":    int(MRP_PRINTED * (1 - printed_discount / 100)),
         "digitalDiscount": int(digital_discount),
-        "digitalPrice":    round(MRP_DIGITAL * (1 - digital_discount / 100)),
+        "digitalPrice":    int(MRP_DIGITAL * (1 - digital_discount / 100)),
     }
 
     buf = io.BytesIO()
@@ -152,7 +157,7 @@ ITEM_OPTIONS = {
 
 FIELDS_S2 = {
     "date":         dict(x=232,  y=365,  size=11, bold=False, align="left"),
-    "schoolName":   dict(x=695,  y=600,  size=11, bold=False, align="left"),
+    "schoolName":   dict(x=695,  y=600,  size=11, bold=False, semibold=True, align="left"),
     "itemLine1":    dict(x=85,   y=965,  size=15, bold=False, align="left"),
     "itemLine2":    dict(x=85,   y=1023, size=15, bold=False, align="left"),
     "mrp":          dict(cx=510, y=993,  size=13, bold=False, align="center"),
@@ -177,16 +182,21 @@ def _draw_field_s2(c, field, text, pill=None):
         c.roundRect(cx - w / 2, y - 6, w, h, 6, fill=1, stroke=0)
     c.setFillColorRGB(0, 0, 0)
     c.setFont(font, f["size"])
+    mode = None
+    if f.get("semibold"):
+        c.setStrokeColorRGB(0, 0, 0)
+        c.setLineWidth(0.25)
+        mode = 2
     if f["align"] == "center":
-        c.drawCentredString(_to_x_s2(f["cx"]), y, text)
+        c.drawCentredString(_to_x_s2(f["cx"]), y, text, mode=mode)
     else:
-        c.drawString(_to_x_s2(f["x"]), y, text)
+        c.drawString(_to_x_s2(f["x"]), y, text, mode=mode)
 
 
 def _build_pdf_s2(data, out):
     opt      = ITEM_OPTIONS[data["item"]]
     discount = data["discount"]
-    price    = round(opt["mrp"] * (1 - discount / 100))
+    price    = int(opt["mrp"] * (1 - discount / 100))
     c        = canvas.Canvas(out, pagesize=A4)
     c.drawImage(BG_PATH_S2, 0, 0, width=PAGE_W, height=PAGE_H)
     _draw_field_s2(c, "date",         data["date"])
