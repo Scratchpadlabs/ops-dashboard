@@ -66,6 +66,7 @@ const route = useRoute()
 const USERNAME_MAP = {
   sid: 'sid@ops.clarified.in',
   angel: 'angel@ops.clarified.in',
+  ruchika: 'ruchika@ops.clarified.in',
 }
 
 const username = ref('')
@@ -80,7 +81,7 @@ async function handleLogin() {
     return
   }
 
-  const email = USERNAME_MAP[username.value.trim()]
+  const email = USERNAME_MAP[username.value.trim().toLowerCase()]
   if (!email) {
     errorMessage.value = 'Invalid username'
     return

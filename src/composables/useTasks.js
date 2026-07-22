@@ -16,9 +16,9 @@ export const PRIORITIES = [
   { value: 'low', label: 'Low' },
 ]
 
-export const ASSIGNEES = ['Sid', 'Angel']
+export const ASSIGNEES = ['Sid', 'Angel', 'Ruchika']
 
-const DISPLAY_NAMES = { sid: 'Sid', angel: 'Angel' }
+const DISPLAY_NAMES = { sid: 'Sid', angel: 'Angel', ruchika: 'Ruchika' }
 
 export function displayNameFromEmail(email) {
   const prefix = (email || '').split('@')[0].toLowerCase()
@@ -76,6 +76,7 @@ export function isTaskOverdue(task) {
 export function assigneeChipClass(assignee) {
   if (assignee === 'Sid') return 'bg-purple-500'
   if (assignee === 'Angel') return 'bg-blue-500'
+  if (assignee === 'Ruchika') return 'bg-emerald-500'
   return 'bg-slate-300'
 }
 
