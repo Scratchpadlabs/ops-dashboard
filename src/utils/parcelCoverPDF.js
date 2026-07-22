@@ -1,5 +1,3 @@
-import jsPDF from 'jspdf'
-
 // ─── Geometry ─────────────────────────────────────────────────────────────────
 // The artwork is 1640 x 924 px. The PDF page matches that aspect ratio exactly
 // so the label prints without letterboxing — print at 100% / actual size (not
@@ -20,9 +18,44 @@ const FONT_PT  = (FONT_PX * PX_TO_MM) / 0.352778
 
 export const TEMPLATE_URL = '/parcel_cover_template.png'
 
+// ─── Text measuring ───────────────────────────────────────────────────────────
+// Measured with canvas, NOT jsPDF: this runs during render, so it must never
+// pull in the PDF library or throw. Falls back to a width estimate if canvas
+// is unavailable for any reason.
+let ctx = null
+function measure(text) {
+  if (ctx === null) {
+    try {
+      ctx = document.createElement('canvas').getContext('2d')
+      if (ctx) ctx.font = `${FONT_PX}px Helvetica, Arial, sans-serif`
+    } catch {
+      ctx = false
+    }
+  }
+  if (!ctx) return text.length * FONT_PX * 0.5   // rough average glyph width
+  return ctx.measureText(text).width
+}
+
+function wrap(text, maxWidth) {
+  const words = text.split(/\s+/).filter(Boolean)
+  const lines = []
+  let line = ''
+  words.forEach(word => {
+    const candidate = line ? `${line} ${word}` : word
+    if (line && measure(candidate) > maxWidth) {
+      lines.push(line)
+      line = word
+    } else {
+      line = candidate
+    }
+  })
+  if (line) lines.push(line)
+  return lines
+}
+
 /**
  * Build the list of rendered lines. Used by BOTH the on-screen preview and the
- * PDF so what you see is exactly what prints.
+ * PDF, so what you see is exactly what prints.
  * @returns {{text: string, bold: boolean}[]}
  */
 export function layoutLines(d) {
@@ -33,12 +66,7 @@ export function layoutLines(d) {
   }
 
   if (d.address?.trim()) {
-    // A throwaway doc gives us jsPDF's own wrapping, so preview and print agree.
-    const measure = new jsPDF({ unit: 'mm', format: [PAGE_W, PAGE_H] })
-    measure.setFont('helvetica', 'normal')
-    measure.setFontSize(FONT_PT)
-    measure
-      .splitTextToSize(d.address.trim().replace(/\s*\n\s*/g, ' '), MAX_TEXT_W_PX * PX_TO_MM)
+    wrap(d.address.trim().replace(/\s+/g, ' '), MAX_TEXT_W_PX)
       .forEach(text => lines.push({ text, bold: false }))
   }
 
@@ -62,11 +90,12 @@ async function loadTemplate() {
 }
 
 /**
- * Build the parcel cover PDF.
+ * Build the parcel cover PDF. jsPDF is imported lazily so it never loads (or
+ * fails) while the page is just rendering the form and preview.
  * @param {{receiverName?:string, address?:string, pincode?:string, phone?:string, altPhone?:string}} d
- * @returns {Promise<jsPDF>}
  */
 export async function buildParcelCoverPDF(d) {
+  const { jsPDF } = await import('jspdf')
   const doc = new jsPDF({ unit: 'mm', format: [PAGE_W, PAGE_H], orientation: 'landscape' })
 
   doc.addImage(await loadTemplate(), 'PNG', 0, 0, PAGE_W, PAGE_H)
@@ -74,6 +103,8 @@ export async function buildParcelCoverPDF(d) {
   doc.setTextColor(45, 45, 45)
   doc.setFontSize(FONT_PT)
 
+  // Lines are pre-wrapped above, so the PDF never re-wraps and can't disagree
+  // with the preview.
   layoutLines(d).forEach((line, i) => {
     doc.setFont('helvetica', line.bold ? 'bold' : 'normal')
     doc.text(line.text, LEFT_X_PX * PX_TO_MM, (FIRST_BASE_Y_PX + i * LINE_GAP_PX) * PX_TO_MM)
