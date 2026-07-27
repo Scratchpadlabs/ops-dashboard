@@ -6,25 +6,32 @@ import Tasks from '../views/Tasks.vue'
 import Tools from '../views/Tools.vue'
 import Schools from '../views/Schools.vue'
 import SchoolProfile from '../views/SchoolProfile.vue'
+import SchoolSetup from '../views/SchoolSetup.vue'
+import Import from '../views/Import.vue'
+import ImportReview from '../views/ImportReview.vue'
 import Quotations from '../views/Quotations.vue'
 import Agreements from '../views/Agreements.vue'
 import Invoices from '../views/Invoices.vue'
 import Expenses from '../views/Expenses.vue'
 import Settings from '../views/Settings.vue'
 import Login from '../views/Login.vue'
+import { isOpsAdmin } from '../config/opsAdmins.js'
 
 const routes = [
-  { path: '/login',      component: Login,      name: 'login', meta: { public: true } },
-  { path: '/',            component: Home,        name: 'home' },
-  { path: '/tasks',       component: Tasks,       name: 'tasks' },
-  { path: '/tools',       component: Tools,       name: 'tools' },
-  { path: '/schools',     component: Schools,     name: 'schools' },
-  { path: '/schools/:id', component: SchoolProfile, name: 'school-profile' },
-  { path: '/quotations',  component: Quotations,  name: 'quotations' },
-  { path: '/agreements',  component: Agreements,  name: 'agreements' },
-  { path: '/invoices',    component: Invoices,    name: 'invoices' },
-  { path: '/expenses',    component: Expenses,    name: 'expenses' },
-  { path: '/settings',    component: Settings,    name: 'settings' },
+  { path: '/login',        component: Login,        name: 'login', meta: { public: true } },
+  { path: '/',              component: Home,          name: 'home' },
+  { path: '/tasks',         component: Tasks,         name: 'tasks' },
+  { path: '/tools',         component: Tools,         name: 'tools' },
+  { path: '/schools',       component: Schools,       name: 'schools' },
+  { path: '/schools/:id',   component: SchoolProfile, name: 'school-profile' },
+  { path: '/school-setup',  component: SchoolSetup,   name: 'school-setup', meta: { opsAdminOnly: true } },
+  { path: '/import',        component: Import,        name: 'import', meta: { opsAdminOnly: true } },
+  { path: '/import/:jobId', component: ImportReview,  name: 'import-review', meta: { opsAdminOnly: true } },
+  { path: '/quotations',    component: Quotations,    name: 'quotations' },
+  { path: '/agreements',    component: Agreements,    name: 'agreements' },
+  { path: '/invoices',      component: Invoices,      name: 'invoices' },
+  { path: '/expenses',      component: Expenses,      name: 'expenses' },
+  { path: '/settings',      component: Settings,      name: 'settings' },
 ]
 
 export const router = createRouter({
@@ -52,6 +59,9 @@ router.beforeEach(async (to) => {
   }
   if (to.name === 'login' && user) {
     return { path: '/' }
+  }
+  if (to.meta.opsAdminOnly && !isOpsAdmin(user?.email)) {
+    return { name: 'home' }
   }
   return true
 })

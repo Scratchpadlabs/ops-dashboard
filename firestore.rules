@@ -16,6 +16,58 @@ service cloud.firestore {
       allow read, write: if isAuthenticated();
     }
 
+    // School Setup: root-level per-school config, admin-write / any-authenticated-read.
+    // PROPOSED ONLY — this file is known to be stale relative to what's actually live
+    // for the teacher app's root `schools/**` tree (students, staffs, sheet entries,
+    // etc. are already read/written there in production by rules not reflected here).
+    // Reconcile against the real deployed rules before applying any of this.
+    function isOpsAdmin() {
+      return isAuthenticated() &&
+        request.auth.token.email in ['sid@ops.clarified.in', 'angel@ops.clarified.in'];
+    }
+    match /schools/{schoolId} {
+      allow read: if isAuthenticated();
+      allow write: if isOpsAdmin();
+    }
+    match /schools/{schoolId}/{collection}/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isOpsAdmin() &&
+        collection in ['terms', 'grading_scales', 'subjects', 'classes', 'assessments',
+                        'co_scholastic_activities', 'remark_categories', 'months',
+                        'staffs', 'config',
+                        // 'students' added for the Import feature's commit step
+                        // (ops-admin only, same as every other School Setup write) —
+                        // this collection is otherwise owned by the teacher app, so
+                        // verify against the real deployed rules before applying,
+                        // per the stale-rules warning above.
+                        'students'];
+    }
+    // Sheets Status (Phase 5) only toggles isFrozen / deletes empty stray docs
+    // on existing smart_sheet_entries — never creates sheets (teacher app
+    // find-or-creates those). Scoped separately since this collection is
+    // otherwise owned by the teacher app, not School Setup config data.
+    match /schools/{schoolId}/smart_sheet_entries/{docId} {
+      allow read: if isAuthenticated();
+      allow update, delete: if isOpsAdmin();
+    }
+
+    // Config Templates (Phase 6): top-level, not under any school, ops-tooling
+    // only — not consumed by the teacher app, so read is admin-only too.
+    match /config_templates/{templateId} {
+      allow read, write: if isOpsAdmin();
+    }
+
+    // Import staging (School Material Import): top-level, not under any
+    // school (a job can only belong to one school, recorded in school_id on
+    // the doc itself). Nothing here is live data — commitImport is a
+    // separate client-side write into schools/**, gated by isOpsAdmin above.
+    match /staging_imports/{jobId} {
+      allow read, write: if isOpsAdmin();
+      match /rows/{rowId} {
+        allow read, write: if isOpsAdmin();
+      }
+    }
+
     // Deny everything else
     match /{document=**} {
       allow read, write: if false;

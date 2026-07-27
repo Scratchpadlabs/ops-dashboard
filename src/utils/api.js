@@ -6,6 +6,8 @@ const URLS = {
   invoice:          'https://asia-south1-clarified-1501.cloudfunctions.net/generate_invoice',
   agreement:        'https://asia-south1-clarified-1501.cloudfunctions.net/generate_agreement',
   onboarding:       'https://generate-onboarding-q2w4pdi2ha-el.a.run.app',
+  // TODO: update after first deploy (see functions/DEPLOY.md → process_import)
+  processImport:    'https://asia-south1-clarified-1501.cloudfunctions.net/process_import',
 }
 
 async function callCF(url, payload) {
@@ -99,6 +101,15 @@ export async function generateOnboardingPDF(school, activeYear) {
   })
   const blob = await res.blob()
   downloadBlob(blob, `Onboarding_${school.name}_${activeYear || '2026-27'}.pdf`)
+}
+
+// ── Import extraction ─────────────────────────────────────────────────────────
+// Unlike the PDF-generating functions above, this returns JSON (row/flag
+// counts), not a blob — the actual staged rows land in Firestore directly
+// from the Cloud Function, so there's nothing here to download.
+export async function startProcessImport({ schoolId, jobId, entity, files }) {
+  const res = await callCF(URLS.processImport, { schoolId, jobId, entity, files })
+  return res.json()
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

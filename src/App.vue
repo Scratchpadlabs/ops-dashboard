@@ -121,9 +121,10 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { signOut } from 'firebase/auth'
+import { signOut, onAuthStateChanged } from 'firebase/auth'
 import { auth } from './firebase/config'
 import { opsCollection } from './firebase/collections.js'
+import { isOpsAdmin } from './config/opsAdmins.js'
 import { getDocs } from 'firebase/firestore'
 import { activeYear, availableYears, computeCurrentAcademicYear } from './composables/useAcademicYear.js'
 import { isSearchOpen } from './composables/useGlobalSearch.js'
@@ -227,11 +228,16 @@ function maybeLoadAvailableYears() {
 onMounted(maybeLoadAvailableYears)
 watch(() => route.name, maybeLoadAvailableYears)
 
-const navItems = [
+const currentUserEmail = ref(auth.currentUser?.email || null)
+onAuthStateChanged(auth, (user) => { currentUserEmail.value = user?.email || null })
+
+const baseNavItems = [
   { to: '/',            label: 'Home',        icon: 'pi pi-home' },
   { to: '/tasks',       label: 'Tasks',       icon: 'pi pi-check-square' },
   { to: '/tools',       label: 'Tools',       icon: 'pi pi-wrench' },
   { to: '/schools',     label: 'Schools',     icon: 'pi pi-building' },
+  { to: '/school-setup', label: 'School Setup', icon: 'pi pi-shield' },
+  { to: '/import',      label: 'Import',      icon: 'pi pi-cloud-upload' },
   { to: '/quotations',  label: 'Quotations',  icon: 'pi pi-file' },
   { to: '/agreements',  label: 'Agreements',  icon: 'pi pi-file-edit' },
   { to: '/invoices',    label: 'Invoices',    icon: 'pi pi-receipt' },
@@ -239,16 +245,24 @@ const navItems = [
   { to: '/settings',    label: 'Settings',    icon: 'pi pi-cog' },
 ]
 
+const ADMIN_ONLY_NAV_PATHS = ['/school-setup', '/import']
+const navItems = computed(() =>
+  baseNavItems.filter(item => !ADMIN_ONLY_NAV_PATHS.includes(item.to) || isOpsAdmin(currentUserEmail.value))
+)
+
 const pageTitles = {
-  'home':       'Home',
-  'tasks':      'Tasks',
-  'tools':      'Tools',
-  'schools':    'Schools',
-  'quotations': 'Quotations',
-  'agreements': 'Agreements',
-  'invoices':   'Invoices',
-  'expenses':   'Expenses',
-  'settings':   'Settings',
+  'home':         'Home',
+  'tasks':        'Tasks',
+  'tools':        'Tools',
+  'schools':      'Schools',
+  'school-setup': 'School Setup',
+  'import':       'Import',
+  'import-review':'Review Import',
+  'quotations':   'Quotations',
+  'agreements':   'Agreements',
+  'invoices':     'Invoices',
+  'expenses':     'Expenses',
+  'settings':     'Settings',
 }
 
 const pageTitle = computed(() => pageTitles[route.name] || 'Home')

@@ -1,0 +1,405 @@
+/**
+ * School Material Import — client-side glue between Firebase Storage,
+ * the process_import Cloud Function, and the staging_imports Firestore tree.
+ *
+ * commitImport is deliberately NOT a Cloud Function (see functions/
+ * generate_import/main.py's module docstring for why) — it's chunked
+ * Firestore batch writes, same pattern as SubjectsTab.vue's
+ * classifyImportRow/runImport.
+ */
+import {
+  doc, getDoc, getDocs, setDoc, updateDoc, onSnapshot, query, orderBy, limit,
+  writeBatch, serverTimestamp,
+} from 'firebase/firestore'
+import { ref as storageRef, uploadBytes } from 'firebase/storage'
+import { db, storage, auth } from '../firebase/config'
+import {
+  stagingImportsCollection, stagingImportDoc, stagingImportRowsCollection,
+  schoolCollection, schoolDoc,
+} from '../firebase/schoolCollections.js'
+import { startProcessImport } from '../utils/api.js'
+
+// ── Grade normalization — mirrors functions/generate_import/main.py's
+// normalize_grade/normalize_section exactly, since the review UI needs the
+// same "does this row's class-section exist" answer the Cloud Function used
+// when it raised the flag. ──────────────────────────────────────────────────
+const ROMAN_TO_NUM = { I: 1, II: 2, III: 3, IV: 4, V: 5, VI: 6, VII: 7, VIII: 8, IX: 9, X: 10, XI: 11, XII: 12 }
+
+export function normalizeGrade(g) {
+  const s = (g || '').trim()
+  if (!s) return ''
+  const upper = s.toUpperCase()
+  if (['NURSERY', 'LKG', 'UKG'].includes(upper)) return upper
+  if (ROMAN_TO_NUM[upper]) return String(ROMAN_TO_NUM[upper])
+  if (/^\d+$/.test(s)) return String(parseInt(s, 10))
+  return upper
+}
+export function normalizeSection(s) {
+  return (s || '').trim().toUpperCase()
+}
+
+function slugPart(s) {
+  return (s || '').trim().replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_|_$/g, '')
+}
+
+// ── Upload + kick off extraction ────────────────────────────────────────────
+export async function uploadAndProcess(schoolId, entity, files, onProgress) {
+  const jobRef = doc(stagingImportsCollection())
+  const jobId = jobRef.id
+  const uploaded = []
+
+  for (const file of files) {
+    onProgress?.({ stage: 'uploading', file: file.name })
+    const path = `imports/${schoolId}/${jobId}/${file.name}`
+    await uploadBytes(storageRef(storage, path), file)
+    uploaded.push({ path, name: file.name })
+  }
+
+  await setDoc(jobRef, {
+    school_id: schoolId, entity,
+    source_files: uploaded.map(f => f.path),
+    status: 'processing',
+    created_by: auth.currentUser?.email || 'unknown',
+    created_at: serverTimestamp(),
+  })
+
+  onProgress?.({ stage: 'extracting' })
+  try {
+    await startProcessImport({ schoolId, jobId, entity, files: uploaded })
+  } catch (e) {
+    // The Cloud Function updates its own job doc to 'failed' on any error it
+    // catches — but if the request itself never reached it (network drop,
+    // cold-start timeout), the job would otherwise sit at 'processing'
+    // forever. Belt-and-braces: mark it failed here too.
+    await setDoc(jobRef, { status: 'failed', error: e.message || String(e) }, { merge: true }).catch(() => {})
+    throw e
+  }
+  return jobId
+}
+
+// ── Live listeners ───────────────────────────────────────────────────────────
+export function listenJobs(schoolIdOrNull, cb) {
+  return onSnapshot(query(stagingImportsCollection(), orderBy('created_at', 'desc'), limit(50)), (snap) => {
+    const jobs = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+    cb(schoolIdOrNull ? jobs.filter(j => j.school_id === schoolIdOrNull) : jobs)
+  })
+}
+
+export function listenJob(jobId, cb) {
+  return onSnapshot(stagingImportDoc(jobId), (snap) => cb(snap.exists() ? { id: snap.id, ...snap.data() } : null))
+}
+
+export function listenRows(jobId, cb) {
+  return onSnapshot(stagingImportRowsCollection(jobId), (snap) => {
+    const rows = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+    rows.sort((a, b) => parseInt(a.id, 10) - parseInt(b.id, 10))
+    cb(rows)
+  })
+}
+
+// ── Row edits ────────────────────────────────────────────────────────────────
+export async function updateRowData(jobId, rowId, data) {
+  await updateDoc(doc(db, 'staging_imports', jobId, 'rows', rowId), { data, edited: true })
+}
+export async function setRowExcluded(jobId, rowId, excluded) {
+  await updateDoc(doc(db, 'staging_imports', jobId, 'rows', rowId), { excluded })
+}
+
+// ── School config lookups (shared by the commit planner) ───────────────────
+async function loadClassLookup(schoolId) {
+  const snap = await getDocs(schoolCollection(schoolId, 'classes'))
+  const classLookup = new Map()
+  const subjectsByClass = new Map()
+  snap.docs.forEach(d => {
+    const c = { id: d.id, ...d.data() }
+    classLookup.set(`${normalizeGrade(c.clazz)}|${normalizeSection(c.section)}`, c.id)
+    subjectsByClass.set(c.id, (c.subjects || []).map(s => s.subjectId).filter(Boolean))
+  })
+  return { classLookup, subjectsByClass }
+}
+
+async function loadSubjectLookup(schoolId) {
+  const snap = await getDocs(schoolCollection(schoolId, 'subjects'))
+  const subjectLookup = new Map() // `${normGrade}|${normName}` -> subjectId
+  snap.docs.forEach(d => {
+    const grade = d.id.includes('_') ? d.id.split('_')[0] : ''
+    const name = (d.data().name || '').trim().toLowerCase()
+    subjectLookup.set(`${normalizeGrade(grade)}|${name}`, d.id)
+  })
+  return subjectLookup
+}
+
+async function loadStaffLookup(schoolId) {
+  const snap = await getDocs(schoolCollection(schoolId, 'staffs'))
+  const byEmail = new Map()
+  const byName = new Map()
+  const all = []
+  snap.docs.forEach(d => {
+    const s = { id: d.id, ...d.data() }
+    all.push(s)
+    if (s.email) byEmail.set(s.email.trim().toLowerCase(), s)
+    if (s.name) byName.set(s.name.trim().toLowerCase(), s)
+  })
+  return { byEmail, byName, all }
+}
+
+// ── Commit planning — classify each staged row as CREATE / UPDATE_CHANGED /
+// UPDATE_UNCHANGED / ERROR, mirroring CsvImportDialog's classifyRow pattern,
+// so the confirm dialog can show accurate new/changed/unchanged counts
+// before anything is written. ───────────────────────────────────────────────
+export async function buildCommitPlan(job, rows, options = {}) {
+  const schoolId = job.school_id
+  const included = rows.filter(r => !r.excluded)
+
+  if (job.entity === 'students') return buildStudentsPlan(schoolId, included)
+  if (job.entity === 'teachers') return buildTeachersPlan(schoolId, included)
+  if (job.entity === 'subjects') return buildSubjectsPlan(schoolId, included)
+  if (job.entity === 'assessments') return buildAssessmentsPlan(schoolId, included, options.termId)
+  throw new Error(`Unknown entity: ${job.entity}`)
+}
+
+function fieldsEqual(a, b, keys) {
+  return keys.every(k => (a?.[k] ?? '') === (b?.[k] ?? ''))
+}
+
+async function buildStudentsPlan(schoolId, rows) {
+  const { classLookup } = await loadClassLookup(schoolId)
+  // One fetch for the whole existing roster instead of a getDoc per row —
+  // matters at the 1000+ row scale imports are sized for.
+  const existingSnap = await getDocs(schoolCollection(schoolId, 'students'))
+  const existingById = new Map(existingSnap.docs.map(d => [d.id, d.data()]))
+  const usedIds = new Map() // dedupe doc ids within this batch
+  const items = []
+
+  for (const row of rows) {
+    const d = row.data
+    const classId = classLookup.get(`${normalizeGrade(d.grade)}|${normalizeSection(d.section)}`)
+    if (!classId) {
+      items.push({ row, status: 'ERROR', reason: 'Class-section not configured for this school — fix and re-stage, or add the section in School Setup first.' })
+      continue
+    }
+    const base = slugPart(d.roll_no) || slugPart(d.student_name) || 'student'
+    let docId = `${classId}_${base}`
+    const dupeCount = (usedIds.get(docId) || 0) + 1
+    usedIds.set(docId, dupeCount)
+    if (dupeCount > 1) docId = `${docId}_${dupeCount}`
+
+    const payload = {
+      name: d.student_name || '', gender: d.gender || '', dob: d.dob || '',
+      srNo: d.sr_no || '', motherName: d.mother_name || '', fatherName: d.father_name || '',
+      contactNumber: d.contact || '', rollNo: d.roll_no || '', currentClassId: classId,
+    }
+    const existing = existingById.get(docId)
+    if (!existing) {
+      items.push({ row, status: 'CREATE', docId, payload })
+    } else {
+      const same = fieldsEqual(existing, payload, Object.keys(payload))
+      items.push({ row, status: same ? 'UPDATE_UNCHANGED' : 'UPDATE_CHANGED', docId, payload })
+    }
+  }
+  return summarize('students', items)
+}
+
+async function buildTeachersPlan(schoolId, rows) {
+  const { classLookup } = await loadClassLookup(schoolId)
+  const subjectLookup = await loadSubjectLookup(schoolId)
+  const { byEmail, byName } = await loadStaffLookup(schoolId)
+  const items = []
+  const pendingNewStaff = new Map() // name/email key -> synthetic staff record, so repeat rows for a not-yet-created teacher resolve to the same one
+
+  for (const row of rows) {
+    const d = row.data
+    const classId = classLookup.get(`${normalizeGrade(d.grade)}|${normalizeSection(d.section)}`)
+    const subject = (d.subject || '').replace(/\?$/, '').trim()
+    if (!d.teacher_name?.trim()) {
+      items.push({ row, status: 'ERROR', reason: 'Missing teacher name' })
+      continue
+    }
+    if (!classId) {
+      items.push({ row, status: 'ERROR', reason: 'Class-section not configured for this school.' })
+      continue
+    }
+    const subjectId = subject ? subjectLookup.get(`${normalizeGrade(d.grade)}|${subject.toLowerCase()}`) : null
+    if (subject && !subjectId) {
+      items.push({ row, status: 'ERROR', reason: `Subject "${subject}" not found in this school's Subjects list.` })
+      continue
+    }
+
+    const emailKey = (d.email || '').trim().toLowerCase()
+    const nameKey = (d.teacher_name || '').trim().toLowerCase()
+    let staff = (emailKey && byEmail.get(emailKey)) || byName.get(nameKey)
+    let isNewStaff = false
+    if (!staff) {
+      const pendingKey = emailKey || nameKey
+      staff = pendingNewStaff.get(pendingKey)
+      if (!staff) {
+        staff = {
+          id: slugPart(d.teacher_name) || `teacher_${pendingNewStaff.size + 1}`,
+          name: d.teacher_name.trim(), email: d.email || '', type: 'teacher',
+          assignments: {}, classIds: [], needsAuthCreation: true, authUid: null,
+        }
+        pendingNewStaff.set(pendingKey, staff)
+      }
+      isNewStaff = true
+    }
+
+    items.push({
+      row, status: isNewStaff ? 'CREATE' : (subjectId ? 'UPDATE_CHANGED' : 'UPDATE_UNCHANGED'),
+      staffId: staff.id, staffIsNew: isNewStaff, classId, subjectId, classTeacherOf: d.class_teacher_of || '',
+      staffBase: staff,
+    })
+  }
+
+  // Re-derive real UPDATE_CHANGED / UPDATE_UNCHANGED for existing staff by
+  // checking whether (classId, subjectId) is already in their assignments.
+  for (const item of items) {
+    if (item.status === 'ERROR' || item.staffIsNew) continue
+    const existing = item.staffBase.assignments?.[item.classId] || []
+    item.status = item.subjectId && existing.includes(item.subjectId) ? 'UPDATE_UNCHANGED' : 'UPDATE_CHANGED'
+  }
+
+  return summarize('teachers', items)
+}
+
+async function buildSubjectsPlan(schoolId, rows) {
+  const snap = await getDocs(schoolCollection(schoolId, 'subjects'))
+  const existingById = new Map(snap.docs.map(d => [d.id, d.data()]))
+  const items = []
+  for (const row of rows) {
+    const d = row.data
+    const grade = (d.grade_band || d.stream || '').trim()
+    const name = (d.subject || '').trim()
+    if (!name) { items.push({ row, status: 'ERROR', reason: 'Missing subject name' }); continue }
+    const docId = `${slugPart(grade) || 'UNSPECIFIED'}_${slugPart(name)}`
+    const payload = { name, area: d.area || '' }
+    const existing = existingById.get(docId)
+    if (!existing) items.push({ row, status: 'CREATE', docId, payload })
+    else items.push({ row, status: fieldsEqual(existing, payload, ['name', 'area']) ? 'UPDATE_UNCHANGED' : 'UPDATE_CHANGED', docId, payload })
+  }
+  return summarize('subjects', items)
+}
+
+// Assessments are the one entity where extract.py's schema (exam blueprint:
+// syllabus coverage, instructional days, activity weighting...) doesn't map
+// cleanly onto AssessmentsTab's live schema (name/termId/subjectId/order/
+// entryType/maxMarks/gradingScaleId) — assessments there are scoped to a
+// Term the import can't know about. `termId` must be supplied by the review
+// screen (a Select, same as AssessmentsTab requires) before committing;
+// the richer extracted fields are preserved as extra doc fields for now.
+async function buildAssessmentsPlan(schoolId, rows, termId) {
+  const subjectLookup = await loadSubjectLookup(schoolId)
+  const items = []
+  for (const row of rows) {
+    const d = row.data
+    const name = (d.assessment || '').trim()
+    if (!name) { items.push({ row, status: 'ERROR', reason: 'Missing assessment name' }); continue }
+    if (!termId) { items.push({ row, status: 'ERROR', reason: 'Select a Term to commit assessments into.' }); continue }
+    const grade = (d.grade_band || d.stream || '').trim()
+    const subjectId = subjectLookup.get(`${normalizeGrade(grade)}|${name.toLowerCase()}`) || null
+    // No reliable per-row subject match for exam-blueprint rows (they're
+    // usually grade/stream-wide, not per-subject) — flag for manual subject
+    // pick rather than guessing.
+    if (!subjectId) { items.push({ row, status: 'ERROR', reason: 'Could not resolve a subject for this assessment row — commit skipped, add manually in Assessments tab.' }); continue }
+    const maxWritten = parseFloat(String(d.max_written || '').replace(/[^\d.]/g, ''))
+    const docId = `${subjectId}_${termId}_${slugPart(name)}`
+    const payload = {
+      name, termId, subjectId, order: 1, entryType: 'marks',
+      maxMarks: Number.isFinite(maxWritten) ? maxWritten : null, gradingScaleId: null,
+      dateStart: d.date_start || '', dateEnd: d.date_end || '',
+      instructionalDays: d.instructional_days || '', syllabusCovered: d.syllabus_covered || '',
+      examSyllabus: d.exam_syllabus || '', maxWrittenRaw: d.max_written || '',
+      activityWeight: d.activity_weight || '', total: d.total || '', duration: d.duration || '',
+    }
+    items.push({ row, status: 'CREATE', docId, payload })
+  }
+  return summarize('assessments', items)
+}
+
+function summarize(entity, items) {
+  const summary = {
+    total: items.length,
+    create: items.filter(i => i.status === 'CREATE').length,
+    changed: items.filter(i => i.status === 'UPDATE_CHANGED').length,
+    unchanged: items.filter(i => i.status === 'UPDATE_UNCHANGED').length,
+    errors: items.filter(i => i.status === 'ERROR').length,
+  }
+  return { entity, items, summary }
+}
+
+// ── Commit — writes the plan into schools/{schoolId}/... via chunked
+// batches, honoring the overwrite-existing gate on changed records. ────────
+export async function commitImport(job, plan, { overwriteExisting } = {}) {
+  const schoolId = job.school_id
+  const writable = plan.items.filter(i =>
+    i.status === 'CREATE' || (i.status === 'UPDATE_CHANGED' && overwriteExisting))
+  const who = auth.currentUser?.email || 'unknown'
+
+  if (plan.entity === 'students' || plan.entity === 'subjects') {
+    const collectionName = plan.entity
+    for (let i = 0; i < writable.length; i += 450) {
+      const batch = writeBatch(db)
+      writable.slice(i, i + 450).forEach(item => {
+        const payload = { ...item.payload, updated_at: serverTimestamp(), updated_by: who }
+        if (item.status === 'CREATE') { payload.created_at = serverTimestamp(); payload.created_by = who }
+        batch.set(schoolDoc(schoolId, collectionName, item.docId), payload, { merge: true })
+      })
+      await batch.commit()
+    }
+  } else if (plan.entity === 'assessments') {
+    for (let i = 0; i < writable.length; i += 450) {
+      const batch = writeBatch(db)
+      writable.slice(i, i + 450).forEach(item => {
+        batch.set(schoolDoc(schoolId, 'assessments', item.docId), {
+          ...item.payload, updated_at: serverTimestamp(), updated_by: who,
+          created_at: serverTimestamp(), created_by: who,
+        }, { merge: true })
+      })
+      await batch.commit()
+    }
+  } else if (plan.entity === 'teachers') {
+    // Group by staff so each teacher gets exactly one write with a merged
+    // assignments map — never overwrite another subject's assignment for
+    // the same class, and never drop a second teacher on the same
+    // (subject, grade, section): that's staffs/{idA} and staffs/{idB} each
+    // separately gaining the same classId+subjectId in their own doc.
+    const byStaff = new Map()
+    for (const item of writable) {
+      if (!byStaff.has(item.staffId)) byStaff.set(item.staffId, { base: item.staffBase, staffIsNew: item.staffIsNew, adds: [] })
+      byStaff.get(item.staffId).adds.push(item)
+    }
+    for (const [staffId, group] of byStaff) {
+      let assignments = {}
+      let classIds = []
+      if (!group.staffIsNew) {
+        const snap = await getDoc(schoolDoc(schoolId, 'staffs', staffId))
+        if (snap.exists()) { assignments = { ...(snap.data().assignments || {}) }; classIds = [...(snap.data().classIds || [])] }
+      }
+      const classIdSet = new Set(classIds)
+      for (const item of group.adds) {
+        if (!item.subjectId) continue
+        const existing = new Set(assignments[item.classId] || [])
+        existing.add(item.subjectId)
+        assignments[item.classId] = Array.from(existing)
+        classIdSet.add(item.classId)
+      }
+      const payload = {
+        assignments, classIds: Array.from(classIdSet),
+        updated_at: serverTimestamp(), updated_by: who,
+      }
+      if (group.staffIsNew) {
+        Object.assign(payload, {
+          id: staffId, name: group.base.name, email: group.base.email, type: 'teacher',
+          needsAuthCreation: true, authUid: null,
+          created_at: serverTimestamp(), created_by: who,
+        })
+      }
+      await setDoc(schoolDoc(schoolId, 'staffs', staffId), payload, { merge: true })
+    }
+  }
+
+  await setDoc(stagingImportDoc(job.id), {
+    status: 'committed', committed_at: serverTimestamp(), committed_by: who,
+  }, { merge: true })
+
+  return { written: writable.length, skipped: plan.items.length - writable.length }
+}
