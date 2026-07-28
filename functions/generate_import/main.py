@@ -73,7 +73,10 @@ from firebase_functions import https_fn, options
 # handler is too late — on a cold start with a real (non-empty) ID token,
 # verification crashes with "The default Firebase app does not exist" before
 # our code, including our own req.auth check, ever executes.
-firebase_admin.initialize_app()
+# storageBucket must be explicit — unlike some Admin SDKs, initialize_app()
+# doesn't infer it, and storage.bucket() then fails with "Storage bucket
+# name not specified" (matches src/firebase/config.js's storageBucket).
+firebase_admin.initialize_app(options={"storageBucket": "clarified-1501.appspot.com"})
 
 # No hardcoded default here — call_anthropic/call_openai_compatible each pick
 # their own provider-appropriate default when MODEL isn't set (see extract_file
@@ -455,11 +458,17 @@ def process_import(req: https_fn.CallableRequest):
             https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
             "Missing schoolId, jobId, valid entity, or files")
 
-    db = firestore.client()
-    bucket = storage.bucket()
-    job_ref = db.collection("staging_imports").document(job_id)
-
+    # Everything below is inside the try — including client/bucket/job_ref
+    # construction, which used to sit outside it and could throw an
+    # exception the on_call framework catches on its own and redacts to a
+    # bare INTERNAL error with no message. job_ref may still be None in the
+    # except block if that construction itself is what failed.
+    job_ref = None
     try:
+        db = firestore.client()
+        bucket = storage.bucket()
+        job_ref = db.collection("staging_imports").document(job_id)
+
         job_ref.set({
             "school_id": school_id, "entity": entity,
             "source_files": [f["path"] for f in files],
@@ -510,7 +519,8 @@ def process_import(req: https_fn.CallableRequest):
     except https_fn.HttpsError:
         raise
     except Exception as e:
-        job_ref.set({"status": "failed", "error": str(e)}, merge=True)
+        if job_ref is not None:
+            job_ref.set({"status": "failed", "error": str(e)}, merge=True)
         raise https_fn.HttpsError(https_fn.FunctionsErrorCode.INTERNAL, str(e))
 
 
@@ -540,14 +550,18 @@ def commit_import(req: https_fn.CallableRequest):
             https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
             "Missing schoolId, jobId, or valid entity")
 
-    db = firestore.client()
-    school_ref = db.collection("schools").document(school_id)
-    job_ref = db.collection("staging_imports").document(job_id)
-
-    writable = [it for it in items if it.get("status") == "CREATE"
-                or (it.get("status") == "UPDATE_CHANGED" and overwrite_existing)]
-
+    # Everything below is inside the try — including client/ref construction,
+    # which used to sit outside it and could throw an exception the on_call
+    # framework catches on its own and redacts to a bare INTERNAL error with
+    # no message (see process_import's identical fix above).
     try:
+        db = firestore.client()
+        school_ref = db.collection("schools").document(school_id)
+        job_ref = db.collection("staging_imports").document(job_id)
+
+        writable = [it for it in items if it.get("status") == "CREATE"
+                    or (it.get("status") == "UPDATE_CHANGED" and overwrite_existing)]
+
         if entity in ("students", "subjects"):
             _commit_simple(db, school_ref.collection(entity), writable, email)
         elif entity == "assessments":
