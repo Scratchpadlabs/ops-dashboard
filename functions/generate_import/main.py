@@ -66,6 +66,15 @@ import firebase_admin
 from firebase_admin import firestore, storage
 from firebase_functions import https_fn, options
 
+# Must run at module load, not lazily inside a handler: the on_call framework
+# verifies the caller's Firebase Auth ID token BEFORE our function body ever
+# runs, and that verification itself needs the Admin SDK already initialized
+# to decode the token. A lazy _ensure_firebase() called from inside the
+# handler is too late — on a cold start with a real (non-empty) ID token,
+# verification crashes with "The default Firebase app does not exist" before
+# our code, including our own req.auth check, ever executes.
+firebase_admin.initialize_app()
+
 # No hardcoded default here — call_anthropic/call_openai_compatible each pick
 # their own provider-appropriate default when MODEL isn't set (see extract_file
 # for the provider switch: OpenAI when OPENAI_API_KEY is set, else Anthropic).
@@ -422,13 +431,6 @@ def load_school_config(db, school_id, entity):
     return class_lookup, subjects_by_class, subject_names_by_grade, core_subjects_by_grade
 
 # ------------------------------------------------------------------ main ----
-_app_initialized = False
-def _ensure_firebase():
-    global _app_initialized
-    if not _app_initialized:
-        firebase_admin.initialize_app()
-        _app_initialized = True
-
 @https_fn.on_call(
     region="asia-south1",
     memory=options.MemoryOption.GB_1,
@@ -453,7 +455,6 @@ def process_import(req: https_fn.CallableRequest):
             https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
             "Missing schoolId, jobId, valid entity, or files")
 
-    _ensure_firebase()
     db = firestore.client()
     bucket = storage.bucket()
     job_ref = db.collection("staging_imports").document(job_id)
@@ -539,7 +540,6 @@ def commit_import(req: https_fn.CallableRequest):
             https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
             "Missing schoolId, jobId, or valid entity")
 
-    _ensure_firebase()
     db = firestore.client()
     school_ref = db.collection("schools").document(school_id)
     job_ref = db.collection("staging_imports").document(job_id)
