@@ -124,7 +124,10 @@ import { draftPendingLetter, generatePendingLetterPDF } from '../../utils/api.js
 const props = defineProps({
   visible: { type: Boolean, default: false },
   school: { type: Object, required: true },
-  operations: { type: Object, default: null },
+  // Pre-grouped pending items from SchoolProfile.vue's Data Receivable
+  // checklist (data pending FROM the school) — [{title, items: [{id, label,
+  // notes, date}]}]. NEVER Operations (ClarifiEd's own internal task list).
+  pendingGroups: { type: Array, default: () => [] },
 })
 const emit = defineEmits(['update:visible', 'generated'])
 const toast = useToast()
@@ -142,33 +145,29 @@ const DEFAULT_CLOSING =
   "We'd be grateful if these could be shared with us at the earliest so we can stay on track with the delivery " +
   "timeline. Please don't hesitate to reach out if you have any questions — thank you for your continued support and partnership."
 
-// ── Scope: pending items grouped by phase, sourced from the Operations tab
-// (Phase 1 Onboarding / Phase 2 Setup / Phase 3 Digital Print incl. UDISE +
-// Affiliation / per-term groups / Final Term) — a deep-cloned, ephemeral
-// working copy so dialog edits never touch the live operations doc. ────────
-function buildGroups(ops) {
-  if (!ops) return []
-  const groups = []
-  const pushGroup = (title, items) => {
-    const pending = (items || [])
-      .filter(i => !i.done)
-      .map(i => ({ id: i.id, label: i.label, checked: true, comment: i.comment || '' }))
-    if (pending.length) groups.push({ title, items: pending })
-  }
+// ── Scope: a working copy of the pre-grouped pending items SchoolProfile.vue
+// passed in — so dialog edits (checked/comment) never touch the live
+// dataReceivable doc. Comment prefills from the item's existing Notes field;
+// if there's no note but a date was recorded, offer "pending since <date>"
+// instead (task requirement — editing this comment here never writes back
+// to the checklist's Notes). ────────────────────────────────────────────────
+function formatShortDate(iso) {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })
+}
 
-  pushGroup('Phase 1 · Onboarding', ops.phase1)
-  pushGroup('Phase 2 · Setup', ops.phase2)
-
-  const phase3Pseudo = []
-  if (!(ops.udise_number || '').trim()) phase3Pseudo.push({ id: 'udise', label: 'UDISE Number', checked: true, comment: '' })
-  if (!(ops.affiliation_number || '').trim()) phase3Pseudo.push({ id: 'affiliation', label: 'Affiliation Number', checked: true, comment: '' })
-  if (phase3Pseudo.length) groups.push({ title: 'Phase 3 · Digital Print', items: phase3Pseudo })
-
-  for (const t of ops.terms || []) {
-    pushGroup(t.name || `Term ${t.term_number}`, t.items)
-  }
-  pushGroup('Final Term', ops.final_term)
-  return groups
+function buildGroups(pendingGroups) {
+  return (pendingGroups || [])
+    .map(g => ({
+      title: g.title,
+      items: (g.items || []).map(i => ({
+        id: i.id, label: i.label, checked: true,
+        comment: i.notes || (i.date ? `pending since ${formatShortDate(i.date)}` : ''),
+      })),
+    }))
+    .filter(g => g.items.length)
 }
 
 // No draft persistence in v2 — closing the dialog discards everything below
@@ -189,7 +188,7 @@ const draftError = ref('')
 
 watch(() => props.visible, (v) => {
   if (!v) return
-  groups.value = buildGroups(props.operations)
+  groups.value = buildGroups(props.pendingGroups)
   activeTab.value = '0'
   intro.value = ''
   closing.value = ''

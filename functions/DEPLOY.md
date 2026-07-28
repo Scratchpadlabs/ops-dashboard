@@ -2,11 +2,12 @@
 
 ## generate_pending_letter (v2: compose dialog, draft/render modes)
 
-PDF per school listing outstanding pending items from the Operations tab
-(Phase 1 Onboarding / Phase 2 Setup / Phase 3 Digital Print incl. UDISE +
-Affiliation / per-term / Final Term — SchoolProfile.vue's "Generate Pending
-Letter" button opens PendingLetterDialog.vue: select scope -> draft ->
-edit -> generate). Same pattern as generate_invoice/generate_agreement —
+PDF per school listing outstanding pending items from the Data Receivable
+checklist (data pending FROM the school — Onboarding Data / per-term /
+Final Term Data / Grading Scale — NEVER the Operations tab, which is
+ClarifiEd's own internal task list). SchoolProfile.vue's "Generate Pending
+Letter" button (Data Receivable tab) opens PendingLetterDialog.vue: select
+scope -> draft -> edit -> generate. Same pattern as generate_invoice/generate_agreement —
 raw fetch + X-Api-Key, no Firestore/Storage access in the function itself
 (the frontend logs each generation to `operations/ops/pending_letters`
 client-side after a successful download).

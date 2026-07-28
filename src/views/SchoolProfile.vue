@@ -427,14 +427,6 @@
             </div>
 
             <template v-else>
-              <div class="flex justify-end">
-                <Button
-                  label="Generate Pending Letter"
-                  icon="pi pi-file-pdf"
-                  size="small"
-                  @click="pendingLetterVisible = true"
-                />
-              </div>
               <OperationSectionCard title="Phase 1 · Onboarding" :items="operations.phase1" @change="saveOperations" />
 
               <OperationSectionCard title="Phase 2 · Setup" :items="operations.phase2" @change="saveOperations" />
@@ -630,6 +622,16 @@
               <ProgressSpinner style="width:28px;height:28px" />
             </div>
             <template v-else>
+              <div class="flex justify-end">
+                <Button
+                  label="Generate Pending Letter"
+                  icon="pi pi-file-pdf"
+                  size="small"
+                  :disabled="!pendingLetterGroups.length"
+                  v-tooltip="!pendingLetterGroups.length ? 'Nothing pending — every item is checked off' : ''"
+                  @click="pendingLetterVisible = true"
+                />
+              </div>
               <DataReceivableSectionCard title="Onboarding Data" :items="dataReceivable.phases.onboarding" @change="saveDataReceivable" />
               <DataReceivableSectionCard
                 v-for="t in dataReceivable.phases.terms"
@@ -725,7 +727,7 @@
   <PendingLetterDialog
     v-model:visible="pendingLetterVisible"
     :school="school"
-    :operations="operations"
+    :pending-groups="pendingLetterGroups"
   />
 
   <ConfirmDialog />
@@ -1446,10 +1448,36 @@ async function saveDataReceivable() {
   }
 }
 
-// ── Pending Items letter — v2 compose dialog (PendingLetterDialog.vue) reads
-// `operations` itself and handles the whole draft/edit/generate/log flow;
-// this view only needs to own the dialog's visibility. ─────────────────────
+// ── Pending Items letter — v2 compose dialog (PendingLetterDialog.vue) ─────
+// Sources pending items from the Data Receivable checklist (data pending
+// FROM the school) — NEVER from Operations (ClarifiEd's own internal task
+// list, e.g. WhatsApp group / app creation) per explicit correction. Built
+// here (not inside the dialog) since this view already has both
+// dataReceivable and receivableTermTitle() for matching section names.
 const pendingLetterVisible = ref(false)
+const pendingLetterGroups = computed(() => {
+  if (!dataReceivable.value) return []
+  const groups = []
+  const pushGroup = (title, items) => {
+    const pending = (items || [])
+      .filter(i => !i.received)
+      .map(i => ({ id: i.id, label: i.label, notes: i.notes || '', date: i.date || '' }))
+    if (pending.length) groups.push({ title, items: pending })
+  }
+  pushGroup('Onboarding Data', dataReceivable.value.phases.onboarding)
+  for (const t of dataReceivable.value.phases.terms || []) {
+    pushGroup(receivableTermTitle(t.term_number), t.items)
+  }
+  pushGroup('Final Term Data', dataReceivable.value.phases.final)
+  const grading = dataReceivable.value.grading_scale
+  if (grading && !grading.received) {
+    groups.push({
+      title: 'Grading Scale',
+      items: [{ id: 'grading_scale', label: 'Grading Scale', notes: grading.notes || '', date: grading.date || '' }],
+    })
+  }
+  return groups
+})
 
 async function setNumTerms(n) {
   if (!operations.value || operations.value.num_terms === n) return
