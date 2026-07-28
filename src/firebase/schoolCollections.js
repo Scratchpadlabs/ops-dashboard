@@ -23,3 +23,8 @@ export const configTemplateDoc = (id) => doc(db, 'config_templates', id)
 export const stagingImportsCollection = () => collection(db, 'staging_imports')
 export const stagingImportDoc = (jobId) => doc(db, 'staging_imports', jobId)
 export const stagingImportRowsCollection = (jobId) => collection(db, 'staging_imports', jobId, 'rows')
+
+// Global alias map (NOT scoped to any school) the cleaning stage learns over
+// time — see functions/generate_import/main.py's load_import_aliases.
+export const importAliasesCollection = () => collection(db, 'import_aliases')
+export const importAliasDoc = (id) => doc(db, 'import_aliases', id)

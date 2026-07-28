@@ -12,14 +12,14 @@
  * before writing.
  */
 import {
-  doc, getDocs, setDoc, updateDoc, onSnapshot, query, orderBy, limit,
+  doc, getDocs, setDoc, updateDoc, writeBatch, onSnapshot, query, orderBy, limit,
   serverTimestamp,
 } from 'firebase/firestore'
 import { ref as storageRef, uploadBytes } from 'firebase/storage'
 import { db, storage, auth } from '../firebase/config'
 import {
   stagingImportsCollection, stagingImportDoc, stagingImportRowsCollection,
-  schoolCollection,
+  schoolCollection, importAliasDoc,
 } from '../firebase/schoolCollections.js'
 import { startProcessImport, commitImportRemote } from '../utils/api.js'
 
@@ -44,6 +44,14 @@ export function normalizeSection(s) {
 
 function slugPart(s) {
   return (s || '').trim().replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_|_$/g, '')
+}
+
+// Comparison key only, never a display value — mirrors functions/
+// generate_import/main.py's canonicalize() exactly (lowercase, strip
+// spaces/hyphens/dots), so a suggestion/alias resolved here and one applied
+// server-side on the next import agree on what counts as "the same value".
+export function canonicalize(s) {
+  return (s || '').trim().toLowerCase().replace(/[\s\-.]+/g, '')
 }
 
 // ── Upload + kick off extraction ────────────────────────────────────────────
@@ -133,6 +141,97 @@ async function loadSubjectLookup(schoolId) {
   return subjectLookup
 }
 
+// ── Resolver dropdown options — for ImportReview.vue's per-field suggestion/
+// unknown-value resolver, so Sid can pick the correct configured value
+// directly instead of only accepting a fuzzy match. ─────────────────────────
+export async function loadSectionsByGrade(schoolId) {
+  const snap = await getDocs(schoolCollection(schoolId, 'classes'))
+  const byGrade = new Map() // grade -> [display section, ...]
+  snap.docs.forEach(d => {
+    const c = d.data()
+    const grade = normalizeGrade(c.clazz)
+    const section = (c.section || '').trim()
+    if (!section) return
+    if (!byGrade.has(grade)) byGrade.set(grade, [])
+    if (!byGrade.get(grade).includes(section)) byGrade.get(grade).push(section)
+  })
+  return byGrade
+}
+
+export async function loadSubjectsByGrade(schoolId) {
+  const snap = await getDocs(schoolCollection(schoolId, 'subjects'))
+  const byGrade = new Map() // grade -> [display subject name, ...]
+  snap.docs.forEach(d => {
+    const s = d.data()
+    const grade = normalizeGrade(d.id.includes('_') ? d.id.split('_')[0] : '')
+    const name = (s.name || '').trim()
+    if (!name) return
+    if (!byGrade.has(grade)) byGrade.set(grade, [])
+    if (!byGrade.get(grade).includes(name)) byGrade.get(grade).push(name)
+  })
+  return byGrade
+}
+
+// ── Suggestion / manual-mapping resolution ──────────────────────────────────
+// Applies a chosen value (either the fuzzy suggestion or a manually-picked
+// one — task explicitly treats both the same: "accepts a suggestion or
+// manually maps a value") to one row: updates data[field], drops the
+// suggestion and any flags for that field (they're resolved now), and writes
+// the mapping to the global import_aliases collection so every future
+// import — any school — auto-applies it via the Cloud Function's alias map.
+export async function resolveFieldValue(jobId, row, field, chosenValue, aliasType) {
+  const original = (row.suggestions || []).find(s => s.field === field)?.original
+    ?? row.data[field]
+  const newData = { ...row.data, [field]: chosenValue }
+  const newSuggestions = (row.suggestions || []).filter(s => s.field !== field)
+  const newFlags = (row.flags || []).filter(f => f.field !== field)
+
+  await updateDoc(doc(db, 'staging_imports', jobId, 'rows', row.id), {
+    data: newData, suggestions: newSuggestions, flags: newFlags, edited: true,
+  })
+
+  const canon = canonicalize(original)
+  if (canon) {
+    await setDoc(importAliasDoc(`${aliasType}_${canon}`), {
+      type: aliasType, from: canon, to: chosenValue,
+      updated_at: serverTimestamp(), updated_by: auth.currentUser?.email || 'unknown',
+    }, { merge: true })
+  }
+}
+
+// Batch version — "Accept-all-identical": every OTHER row in this job with
+// the exact same pending suggestion/value for this field gets the same fix,
+// in one set of batched writes. The alias itself only needs writing once.
+export async function resolveFieldValueForAllMatching(jobId, rows, field, originalValue, chosenValue, aliasType) {
+  const canon = canonicalize(originalValue)
+  const matches = rows.filter(r => {
+    const sugg = (r.suggestions || []).find(s => s.field === field)
+    if (sugg) return canonicalize(sugg.original) === canon
+    return canonicalize(r.data[field]) === canon && (r.flags || []).some(f => f.field === field)
+  })
+
+  for (let i = 0; i < matches.length; i += 450) {
+    const batch = writeBatch(db)
+    matches.slice(i, i + 450).forEach(r => {
+      const newData = { ...r.data, [field]: chosenValue }
+      const newSuggestions = (r.suggestions || []).filter(s => s.field !== field)
+      const newFlags = (r.flags || []).filter(f => f.field !== field)
+      batch.update(doc(db, 'staging_imports', jobId, 'rows', r.id), {
+        data: newData, suggestions: newSuggestions, flags: newFlags, edited: true,
+      })
+    })
+    await batch.commit()
+  }
+
+  if (canon) {
+    await setDoc(importAliasDoc(`${aliasType}_${canon}`), {
+      type: aliasType, from: canon, to: chosenValue,
+      updated_at: serverTimestamp(), updated_by: auth.currentUser?.email || 'unknown',
+    }, { merge: true })
+  }
+  return matches.length
+}
+
 async function loadStaffLookup(schoolId) {
   const snap = await getDocs(schoolCollection(schoolId, 'staffs'))
   const byEmail = new Map()
@@ -177,6 +276,10 @@ async function buildStudentsPlan(schoolId, rows) {
 
   for (const row of rows) {
     const d = row.data
+    if ((row.suggestions || []).length) {
+      items.push({ row, status: 'SUGGESTION_PENDING', reason: 'Resolve suggested fixes before committing' })
+      continue
+    }
     const classId = classLookup.get(`${normalizeGrade(d.grade)}|${normalizeSection(d.section)}`)
     if (!classId) {
       items.push({ row, status: 'ERROR', reason: 'Class-section not configured for this school — fix and re-stage, or add the section in School Setup first.' })
@@ -213,6 +316,10 @@ async function buildTeachersPlan(schoolId, rows) {
 
   for (const row of rows) {
     const d = row.data
+    if ((row.suggestions || []).length) {
+      items.push({ row, status: 'SUGGESTION_PENDING', reason: 'Resolve suggested fixes before committing' })
+      continue
+    }
     const classId = classLookup.get(`${normalizeGrade(d.grade)}|${normalizeSection(d.section)}`)
     const subject = (d.subject || '').replace(/\?$/, '').trim()
     if (!d.teacher_name?.trim()) {
@@ -271,6 +378,10 @@ async function buildSubjectsPlan(schoolId, rows) {
   const items = []
   for (const row of rows) {
     const d = row.data
+    if ((row.suggestions || []).length) {
+      items.push({ row, status: 'SUGGESTION_PENDING', reason: 'Resolve suggested fixes before committing' })
+      continue
+    }
     const grade = (d.grade_band || d.stream || '').trim()
     const name = (d.subject || '').trim()
     if (!name) { items.push({ row, status: 'ERROR', reason: 'Missing subject name' }); continue }
@@ -295,6 +406,10 @@ async function buildAssessmentsPlan(schoolId, rows, termId) {
   const items = []
   for (const row of rows) {
     const d = row.data
+    if ((row.suggestions || []).length) {
+      items.push({ row, status: 'SUGGESTION_PENDING', reason: 'Resolve suggested fixes before committing' })
+      continue
+    }
     const name = (d.assessment || '').trim()
     if (!name) { items.push({ row, status: 'ERROR', reason: 'Missing assessment name' }); continue }
     if (!termId) { items.push({ row, status: 'ERROR', reason: 'Select a Term to commit assessments into.' }); continue }
@@ -320,11 +435,20 @@ async function buildAssessmentsPlan(schoolId, rows, termId) {
 }
 
 function summarize(entity, items) {
+  // autoFixed isn't its own status — a row can be CREATE/CHANGED/UNCHANGED
+  // *and* carry auto-fixes; it's counted separately so the confirm dialog can
+  // show "N committing, of which M were auto-fixed" rather than hiding that
+  // the data was touched. suggestionsPending and errors are real, mutually
+  // exclusive statuses that both block commit but for different reasons —
+  // task requires distinguishing them, not collapsing both into "errors".
+  const committable = i => i.status === 'CREATE' || i.status === 'UPDATE_CHANGED' || i.status === 'UPDATE_UNCHANGED'
   const summary = {
     total: items.length,
     create: items.filter(i => i.status === 'CREATE').length,
     changed: items.filter(i => i.status === 'UPDATE_CHANGED').length,
     unchanged: items.filter(i => i.status === 'UPDATE_UNCHANGED').length,
+    autoFixed: items.filter(i => committable(i) && (i.row?.fixes || []).length > 0).length,
+    suggestionsPending: items.filter(i => i.status === 'SUGGESTION_PENDING').length,
     errors: items.filter(i => i.status === 'ERROR').length,
   }
   return { entity, items, summary }
@@ -334,9 +458,11 @@ function summarize(entity, items) {
 // the actual writes into schools/{schoolId}/... server-side (re-verifying
 // req.auth + the ops-admin allowlist there) honoring the overwrite-existing
 // gate on changed records. Trimmed to just what the callable needs to write;
-// `row`/`reason`/error items aren't sent since they carry nothing writable. ─
+// `row`/`reason`/error/pending-suggestion items aren't sent since they carry
+// nothing writable (a pending suggestion means the row isn't resolved yet —
+// never commit its unresolved original value). ─────────────────────────────
 export async function commitImport(job, plan, { overwriteExisting } = {}) {
-  const nonError = plan.items.filter(i => i.status !== 'ERROR')
+  const nonError = plan.items.filter(i => i.status !== 'ERROR' && i.status !== 'SUGGESTION_PENDING')
 
   const items = plan.entity === 'teachers'
     ? nonError.map(i => ({

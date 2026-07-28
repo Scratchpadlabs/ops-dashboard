@@ -68,6 +68,14 @@ service cloud.firestore {
       }
     }
 
+    // Import alias map: global (NOT scoped to any school) subject/class name
+    // mappings the cleaning stage learns over time — see functions/
+    // generate_import/main.py's load_import_aliases and useImport.js's
+    // resolveFieldValue. Same ops-admin gate as the rest of Import.
+    match /import_aliases/{aliasId} {
+      allow read, write: if isOpsAdmin();
+    }
+
     // Deny everything else
     match /{document=**} {
       allow read, write: if false;

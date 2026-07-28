@@ -43,11 +43,14 @@
         <div class="flex items-center gap-6 flex-wrap">
           <div><span class="text-lg font-bold text-slate-900">{{ rows.length }}</span> <span class="text-xs text-slate-400">rows</span></div>
           <div><span class="text-lg font-bold" :class="flaggedCount ? 'text-amber-600' : 'text-slate-900'">{{ flaggedCount }}</span> <span class="text-xs text-slate-400">flagged</span></div>
+          <div><span class="text-lg font-bold" :class="autoFixedCount ? 'text-blue-600' : 'text-slate-900'">{{ autoFixedCount }}</span> <span class="text-xs text-slate-400">auto-fixed</span></div>
+          <div><span class="text-lg font-bold" :class="suggestionsPendingCount ? 'text-amber-600' : 'text-slate-900'">{{ suggestionsPendingCount }}</span> <span class="text-xs text-slate-400">suggestions pending</span></div>
           <div><span class="text-lg font-bold text-slate-900">{{ excludedCount }}</span> <span class="text-xs text-slate-400">excluded</span></div>
           <div v-if="job.entity === 'students'" class="flex-1 flex flex-wrap gap-1.5">
             <span v-for="(count, cls) in perClassCounts" :key="cls" class="px-2 py-0.5 rounded-full text-xs bg-slate-100 text-slate-600">{{ cls }}: {{ count }}</span>
           </div>
           <div class="ml-auto flex gap-2">
+            <Button label="Download error report" icon="pi pi-download" size="small" outlined :disabled="!flaggedCount" @click="downloadErrorReport" />
             <Button label="Source Files" icon="pi pi-file" size="small" outlined @click="sourceFilesVisible = true" />
           </div>
         </div>
@@ -79,7 +82,24 @@
               <Checkbox :modelValue="!data._excluded" binary @update:modelValue="v => onToggleExclude(data, v)" />
             </template>
           </Column>
-          <Column v-for="col in columns" :key="col" :field="col" :header="colLabel(col)">
+          <Column v-for="col in columns" :key="col" :field="col" :header="colLabel(col)" style="min-width:130px">
+            <template #body="{ data, field }">
+              <ImportFieldResolver
+                v-if="isResolverField(field) && (fieldFlag(data, field) || fieldSuggestion(data, field))"
+                :model-value="data[field]"
+                :flag="fieldFlag(data, field)"
+                :suggestion="fieldSuggestion(data, field)"
+                :options="resolverOptions(data, field)"
+                :match-count="pendingMatchCount(data, field)"
+                @resolve="v => onResolve(data, field, v)"
+                @resolve-all="v => onResolveAll(data, field, v)"
+              />
+              <div v-else class="flex items-center gap-1">
+                <span class="truncate">{{ data[field] }}</span>
+                <i v-if="fieldFix(data, field)" class="pi pi-check-circle text-blue-500 text-xs flex-shrink-0"
+                  v-tooltip="fixTooltip(data, field)"></i>
+              </div>
+            </template>
             <template #editor="{ data, field }"><InputText v-model="data[field]" class="w-full" size="small" /></template>
           </Column>
           <Column header="" style="width:40px">
@@ -88,7 +108,10 @@
           <template #expansion="{ data }">
             <div class="px-4 py-2 bg-slate-50 text-xs text-slate-600">
               <div v-if="!(data._flags || []).length" class="text-slate-400">No flags</div>
-              <div v-for="(f, i) in data._flags" :key="i" class="flex items-center gap-1.5 py-0.5"><i class="pi pi-exclamation-triangle text-amber-500 text-xs"></i>{{ f }}</div>
+              <div v-for="(f, i) in data._flags" :key="i" class="flex items-center gap-1.5 py-0.5">
+                <i class="pi pi-exclamation-triangle text-amber-500 text-xs"></i>
+                <span v-if="f.field" class="font-semibold">{{ colLabel(f.field) }}:</span>{{ f.message }}
+              </div>
             </div>
           </template>
         </DataTable>
@@ -139,8 +162,12 @@
           <div class="bg-green-50 text-green-700 rounded-lg px-3 py-2">{{ plan.summary.create }} new</div>
           <div class="bg-amber-50 text-amber-700 rounded-lg px-3 py-2">{{ plan.summary.changed }} changed</div>
           <div class="bg-slate-50 text-slate-500 rounded-lg px-3 py-2">{{ plan.summary.unchanged }} unchanged</div>
-          <div class="bg-red-50 text-red-600 rounded-lg px-3 py-2">{{ plan.summary.errors }} skipped (errors)</div>
+          <div class="bg-blue-50 text-blue-700 rounded-lg px-3 py-2">{{ plan.summary.autoFixed }} auto-fixed</div>
         </div>
+        <div v-if="plan.summary.suggestionsPending" class="bg-amber-50 text-amber-700 rounded-lg px-3 py-2 text-sm">
+          <i class="pi pi-exclamation-triangle mr-1"></i>{{ plan.summary.suggestionsPending }} row(s) have a pending suggestion — resolve them in the table above before committing (they'll be skipped otherwise).
+        </div>
+        <div v-if="plan.summary.errors" class="bg-red-50 text-red-600 rounded-lg px-3 py-2 text-sm">{{ plan.summary.errors }} skipped (errors)</div>
         <div v-if="plan.summary.changed" class="flex items-center gap-2 pt-1">
           <Checkbox v-model="overwriteExisting" binary inputId="overwrite" />
           <label for="overwrite" class="text-sm text-slate-600">Overwrite the {{ plan.summary.changed }} changed record(s) with the imported values</label>
@@ -161,6 +188,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { getDocs, getDoc, query, orderBy } from 'firebase/firestore'
 import { ref as storageRef, getDownloadURL } from 'firebase/storage'
 import { useToast } from 'primevue/usetoast'
+import Papa from 'papaparse'
 
 import Password from 'primevue/password'
 import Button from 'primevue/button'
@@ -175,7 +203,12 @@ import ProgressSpinner from 'primevue/progressspinner'
 import { useStepUpAuth } from '../composables/useStepUpAuth.js'
 import { storage } from '../firebase/config'
 import { rootSchoolDoc, schoolCollection } from '../firebase/schoolCollections.js'
-import { listenJob, listenRows, updateRowData, setRowExcluded, buildCommitPlan, commitImport } from '../composables/useImport.js'
+import {
+  listenJob, listenRows, updateRowData, setRowExcluded, buildCommitPlan, commitImport,
+  normalizeGrade, canonicalize, resolveFieldValue, resolveFieldValueForAllMatching,
+  loadSectionsByGrade, loadSubjectsByGrade,
+} from '../composables/useImport.js'
+import ImportFieldResolver from '../components/shared/ImportFieldResolver.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -219,14 +252,26 @@ const COLUMNS = {
 const LABELS = { roll_no: 'Roll No', student_name: 'Name', dob: 'DOB', sr_no: 'Sr No', mother_name: 'Mother', father_name: 'Father', teacher_name: 'Teacher', class_teacher_of: 'Class Teacher Of', grade_band: 'Grade Band', date_start: 'Start', date_end: 'End', instructional_days: 'Inst. Days', syllabus_covered: 'Syllabus Covered', exam_syllabus: 'Exam Syllabus', max_written: 'Max Written', activity_weight: 'Activity Wt', total: 'Total', duration: 'Duration' }
 function colLabel(c) { return LABELS[c] || c.charAt(0).toUpperCase() + c.slice(1) }
 
+// Only section (students, teachers) and subject (teachers) go through
+// canonicalize/alias/fuzzy matching server-side — see functions/
+// generate_import/main.py's clean_students_rows/clean_teachers_rows. Every
+// other field only ever gets a plain auto-fix (name/email/grade), never a
+// suggestion, so only these two need the resolver dropdown.
+function isResolverField(field) { return field === 'section' || field === 'subject' }
+
 const job = ref(null)
 const rows = ref([])
 const schoolName = ref('')
 let unsubJob = null, unsubRows = null
 
 const columns = computed(() => COLUMNS[job.value?.entity] || [])
-const tableRows = computed(() => rows.value.map(r => ({ _id: r.id, _flags: r.flags || [], _excluded: !!r.excluded, ...r.data })))
+const tableRows = computed(() => rows.value.map(r => ({
+  _id: r.id, _flags: r.flags || [], _fixes: r.fixes || [], _suggestions: r.suggestions || [],
+  _excluded: !!r.excluded, ...r.data,
+})))
 const flaggedCount = computed(() => rows.value.filter(r => (r.flags || []).length).length)
+const autoFixedCount = computed(() => rows.value.filter(r => (r.fixes || []).length).length)
+const suggestionsPendingCount = computed(() => rows.value.filter(r => (r.suggestions || []).length).length)
 const excludedCount = computed(() => rows.value.filter(r => r.excluded).length)
 const expandedRows = ref({})
 const editingCell = ref(false)
@@ -243,6 +288,64 @@ const perClassCounts = computed(() => {
 
 function rowClass(data) {
   return (data._flags || []).length ? 'bg-amber-50/60' : ''
+}
+
+// ── Fixes / flags / suggestions per field ───────────────────────────────────
+function fieldFix(data, field) { return (data._fixes || []).find(f => f.field === field) }
+function fieldFlag(data, field) { return (data._flags || []).find(f => f.field === field) }
+function fieldSuggestion(data, field) { return (data._suggestions || []).find(s => s.field === field) }
+function fixTooltip(data, field) {
+  const f = fieldFix(data, field)
+  return f ? `${f.original || '(empty)'} → ${f.fixed}` : ''
+}
+
+const sectionsByGrade = ref(new Map())
+const subjectsByGrade = ref(new Map())
+async function loadResolverOptions() {
+  if (!job.value?.school_id) return
+  sectionsByGrade.value = await loadSectionsByGrade(job.value.school_id)
+  if (job.value.entity === 'teachers') subjectsByGrade.value = await loadSubjectsByGrade(job.value.school_id)
+}
+function resolverOptions(data, field) {
+  const grade = normalizeGrade(data.grade)
+  if (field === 'section') return sectionsByGrade.value.get(grade) || []
+  if (field === 'subject') return subjectsByGrade.value.get(grade) || []
+  return []
+}
+
+// Count of OTHER rows (excluding this one) with the identical unresolved
+// value for this field — surfaced as "Apply to N other rows" in the resolver.
+function pendingMatchCount(data, field) {
+  const raw = fieldSuggestion(data, field)?.original ?? data[field]
+  const canon = canonicalize(raw)
+  if (!canon) return 0
+  return rows.value.filter(r => {
+    if (r.id === data._id) return false
+    const sugg = (r.suggestions || []).find(s => s.field === field)
+    if (sugg) return canonicalize(sugg.original) === canon
+    return canonicalize(r.data[field]) === canon && (r.flags || []).some(f => f.field === field)
+  }).length
+}
+function aliasTypeFor(field) { return field === 'section' ? 'class' : 'subject' }
+
+async function onResolve(data, field, value) {
+  const raw = rows.value.find(r => r.id === data._id)
+  if (!raw) return
+  try {
+    await resolveFieldValue(jobId.value, raw, field, value, aliasTypeFor(field))
+    toast.add({ severity: 'success', summary: 'Resolved', life: 2000 })
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Could not resolve', detail: e.message, life: 4000 })
+  }
+}
+async function onResolveAll(data, field, value) {
+  const raw = fieldSuggestion(data, field)?.original ?? data[field]
+  try {
+    const n = await resolveFieldValueForAllMatching(jobId.value, rows.value, field, raw, value, aliasTypeFor(field))
+    toast.add({ severity: 'success', summary: 'Resolved', detail: `Applied to ${n} row(s)`, life: 2500 })
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Could not resolve', detail: e.message, life: 4000 })
+  }
 }
 
 async function onCellEditComplete(event) {
@@ -274,6 +377,39 @@ function statusClass(status) {
 function formatTs(ts) {
   if (!ts?.toDate) return ''
   return ts.toDate().toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+}
+
+// ── Error report CSV — one row per flag, so the same staged row can appear
+// more than once if it has multiple problems. Sent back to the school to fix
+// at source when a fix/suggestion isn't available in-app. ──────────────────
+const ID_FIELD_BY_ENTITY = { students: 'student_name', teachers: 'teacher_name', subjects: 'subject', assessments: 'assessment' }
+function downloadErrorReport() {
+  const idField = ID_FIELD_BY_ENTITY[job.value?.entity] || ''
+  const csvRows = []
+  rows.value.forEach(r => {
+    (r.flags || []).forEach(f => {
+      const sugg = (r.suggestions || []).find(s => s.field === f.field)
+      csvRows.push({
+        row: r.id,
+        [idField || 'identifier']: r.data[idField] || '',
+        field: f.field || '',
+        problem: f.message,
+        suggestion: sugg ? sugg.suggested : '',
+      })
+    })
+  })
+  if (!csvRows.length) {
+    toast.add({ severity: 'info', summary: 'Nothing to export', detail: 'No flagged rows in this job', life: 2500 })
+    return
+  }
+  const csv = Papa.unparse(csvRows)
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `import-errors-${(job.value?.school_id || 'school')}-${jobId.value}.csv`
+  a.click()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
 // ── Source file viewer ─────────────────────────────────────────────────────
@@ -338,12 +474,14 @@ async function confirmCommit() {
 
 onMounted(() => {
   unsubJob = listenJob(jobId.value, async (j) => {
+    const isFirstLoad = !job.value
     job.value = j
     if (j?.school_id && !schoolName.value) {
       const snap = await getDoc(rootSchoolDoc(j.school_id))
       schoolName.value = snap.exists() ? (snap.data().name || j.school_id) : j.school_id
     }
     await loadTerms()
+    if (isFirstLoad) await loadResolverOptions()
   })
   unsubRows = listenRows(jobId.value, (list) => { rows.value = list })
 })
