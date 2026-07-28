@@ -8,10 +8,14 @@ pattern as generate_invoice / generate_agreement (raw fetch + X-Api-Key,
 not a Firebase callable — no Firestore/Storage access needed here).
 
 GUARDRAIL: the pending items list is rendered verbatim from the request
-payload by _build_pdf — the Anthropic call in _draft_paragraphs only ever
-produces the intro/closing prose and never sees or touches the item list.
-If that call fails or returns something unusable, _draft_paragraphs falls
-back to DEFAULT_INTRO/DEFAULT_CLOSING so the button always works.
+payload by _build_pdf — the LLM call in _draft_paragraphs only ever produces
+the intro/closing prose and never sees or touches the item list. If that
+call fails, or neither provider's key is configured, _draft_paragraphs
+falls back to DEFAULT_INTRO/DEFAULT_CLOSING so the button always works.
+
+Provider: OpenAI if OPENAI_API_KEY is set (the active provider — same
+switch as functions/generate_import/main.py's extract_file), else Anthropic
+if ANTHROPIC_API_KEY is set instead, else the fallback prose above.
 
 Deploy:
   gcloud functions deploy generate_pending_letter \
@@ -19,7 +23,8 @@ Deploy:
     --source . --entry-point generate_pending_letter \
     --trigger-http --allow-unauthenticated \
     --memory 256MB --timeout 60s --max-instances 3 --project clarified-1501 \
-    --set-secrets ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest
+    --set-secrets OPENAI_API_KEY=OPENAI_API_KEY:latest \
+    --set-env-vars MODEL=gpt-4o-mini
 
 Folder needs: main.py, requirements.txt, logo.png (copied from
 functions/generate_agreement/logo.png — same ClarifiEd letterhead mark).
@@ -44,7 +49,9 @@ from reportlab.platypus import (
 )
 
 API_KEY = "9421060748"
-MODEL = os.environ.get("MODEL", "claude-sonnet-4-6")
+# No hardcoded default — _call_openai/_call_anthropic each pick their own
+# provider-appropriate default when MODEL isn't set.
+MODEL = os.environ.get("MODEL")
 LOGO_PATH = os.path.join(os.path.dirname(__file__), "logo.png")
 
 CORS_HEADERS = {
@@ -131,22 +138,16 @@ DEFAULT_CLOSING = (
 )
 
 
-def _draft_paragraphs(school_name, contact_name):
-    """Calls Anthropic for just the intro/closing prose. Never sees the item
-    list, never returns anything that gets rendered as the item list — see
-    _build_pdf, which renders `items` from the request payload directly."""
-    fallback = (DEFAULT_INTRO.format(school_name=school_name), DEFAULT_CLOSING)
-
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
-    if not api_key:
-        return fallback
-
-    prompt = (
+def _build_prompt(school_name, contact_name):
+    return (
         "You are drafting a short, warm, professional letter from ClarifiEd (a school "
         f"report-card platform) to {school_name}, a partner school"
         + (f", addressed to {contact_name}" if contact_name else "")
         + ". The letter separately lists data/items still pending from the school — you do "
-        "not see that list and must not reference specific item names or counts. Write "
+        "not see that list and must not reference specific item names or counts. A salutation "
+        "('Dear ...') is already rendered separately above your intro, and a sign-off "
+        "('Warm regards, Team ClarifiEd') is already rendered separately below your closing — "
+        "do NOT include a greeting or sign-off yourself, start straight into the body text. Write "
         "exactly two short paragraphs:\n"
         "1. intro — a courteous opening (2-3 sentences) introducing that a few items are "
         "still pending from their end.\n"
@@ -154,18 +155,54 @@ def _draft_paragraphs(school_name, contact_name):
         "thank-you.\n"
         "Vary tone/phrasing naturally so it doesn't read like a rigid template, but stay "
         "professional and warm. Return ONLY a JSON object with exactly these two keys: "
-        '"intro", "closing" (plain text values, no markdown, no extra keys).'
+        '"intro", "closing" (plain text values, no markdown, no extra keys, no greeting/sign-off text).'
     )
+
+
+def _call_anthropic(prompt):
+    r = requests.post(
+        "https://api.anthropic.com/v1/messages",
+        headers={"x-api-key": os.environ["ANTHROPIC_API_KEY"], "anthropic-version": "2023-06-01"},
+        json={"model": MODEL or "claude-sonnet-4-6", "max_tokens": 600,
+              "messages": [{"role": "user", "content": prompt}]},
+        timeout=30,
+    )
+    r.raise_for_status()
+    return "".join(b.get("text", "") for b in r.json()["content"])
+
+
+def _call_openai(prompt):
+    # Defaults to the real OpenAI API; override OPENAI_BASE_URL to point at a
+    # self-hosted OpenAI-compatible endpoint instead.
+    base_url = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
+    r = requests.post(
+        base_url.rstrip("/") + "/chat/completions",
+        headers={"Authorization": "Bearer " + os.environ.get("OPENAI_API_KEY", "x")},
+        json={"model": MODEL or "gpt-4o-mini", "max_tokens": 600,
+              "messages": [{"role": "user", "content": prompt}]},
+        timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()["choices"][0]["message"]["content"]
+
+
+def _draft_paragraphs(school_name, contact_name):
+    """Calls whichever LLM provider is configured for just the intro/closing
+    prose. Never sees the item list, never returns anything that gets
+    rendered as the item list — see _build_pdf, which renders `items` from
+    the request payload directly."""
+    fallback = (DEFAULT_INTRO.format(school_name=school_name), DEFAULT_CLOSING)
+
+    if os.environ.get("OPENAI_API_KEY"):
+        call = _call_openai
+    elif os.environ.get("ANTHROPIC_API_KEY"):
+        call = _call_anthropic
+    else:
+        return fallback
+
+    prompt = _build_prompt(school_name, contact_name)
     try:
-        r = requests.post(
-            "https://api.anthropic.com/v1/messages",
-            headers={"x-api-key": api_key, "anthropic-version": "2023-06-01"},
-            json={"model": MODEL, "max_tokens": 600,
-                  "messages": [{"role": "user", "content": prompt}]},
-            timeout=30,
-        )
-        r.raise_for_status()
-        text = "".join(b.get("text", "") for b in r.json()["content"])
+        text = call(prompt)
         text = re.sub(r"^```(json)?|```$", "", text.strip(), flags=re.M).strip()
         parsed = json.loads(text)
         intro = str(parsed.get("intro") or "").strip()

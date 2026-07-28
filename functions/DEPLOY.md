@@ -7,11 +7,12 @@ One-click PDF per school listing outstanding Data Receivable checklist items
 Same pattern as generate_invoice/generate_agreement — raw fetch + X-Api-Key,
 returns a PDF blob directly, no Firestore/Storage access in the function
 itself (the frontend logs each generation to `operations/ops/pending_letters`
-client-side after a successful download). Uses the Anthropic API (shares the
-`ANTHROPIC_API_KEY` secret with process_import) to draft ONLY the intro/
-closing prose; the pending items list itself is always rendered verbatim
-from the request payload — see main.py's module docstring for the guardrail
-and its fallback if the LLM call fails.
+client-side after a successful download). Uses OpenAI (shares the
+`OPENAI_API_KEY` secret with process_import; Anthropic still works as a
+fallback provider if `ANTHROPIC_API_KEY` is bound instead — see main.py) to
+draft ONLY the intro/closing prose; the pending items list itself is always
+rendered verbatim from the request payload — see main.py's module docstring
+for the guardrail and its fallback if the LLM call fails.
 
 ### Files needed in the folder:
 - main.py ✅
@@ -27,11 +28,12 @@ gcloud functions deploy generate_pending_letter \
   --source . --entry-point generate_pending_letter \
   --trigger-http --allow-unauthenticated --project clarified-1501 \
   --memory 256MB --timeout 60s --max-instances 3 \
-  --set-secrets ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest
+  --set-secrets OPENAI_API_KEY=OPENAI_API_KEY:latest \
+  --set-env-vars MODEL=gpt-4o-mini
 ```
-Reuses the same `ANTHROPIC_API_KEY` Secret Manager secret as process_import
-— see that section below for how to create it if it doesn't exist yet. If
-the secret is missing or the Anthropic call fails for any other reason, the
+Reuses the same `OPENAI_API_KEY` Secret Manager secret as process_import —
+see that section below for how to create it if it doesn't exist yet. If the
+secret is missing or the OpenAI call fails for any other reason, the
 function still returns a PDF with a fixed default intro/closing (by design,
 not a bug) — it never blocks the button.
 
@@ -50,8 +52,12 @@ main.py's module docstring for why. The frontend invokes them with
 (`src/firebase/config.js`) — the region must match this deploy or the client
 targets us-central1 and every call fails as what looks like a CORS error.
 
-- `process_import`: parses uploaded xlsx/docx/pdf/image files via the
-  Anthropic API and writes rows straight into `staging_imports/{jobId}/rows`.
+- `process_import`: parses uploaded xlsx/docx/pdf/image files via OpenAI
+  (Anthropic as a fallback provider — see main.py's extract_file) and writes
+  rows straight into `staging_imports/{jobId}/rows`. **.pdf uploads need the
+  Anthropic path** — OpenAI's Chat Completions API has no raw-PDF content
+  block, so with `OPENAI_API_KEY` set, .pdf extraction raises a clear error
+  instead of silently mishandling the file (see call_openai_compatible).
 - `commit_import`: takes the plan `useImport.js`'s `buildCommitPlan` already
   built client-side (plain Firestore reads, unchanged) and performs the
   actual writes into `schools/{schoolId}/...`.
@@ -80,7 +86,11 @@ gcloud functions deploy process_import \
   --source . --entry-point process_import \
   --trigger-http --allow-unauthenticated --project clarified-1501 \
   --memory 1024MB --timeout 540s --max-instances 3 \
-  --set-secrets ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest
+  --set-secrets OPENAI_API_KEY=OPENAI_API_KEY:latest \
+  --set-env-vars MODEL=gpt-4o
+# (bind ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest instead — and drop the
+# MODEL override, or set it to a Claude model — to extract from .pdf
+# uploads, which the OpenAI path can't handle; see call_openai_compatible)
 
 gcloud functions deploy commit_import \
   --gen2 --runtime python312 --region asia-south1 \
@@ -98,12 +108,14 @@ hand. `--allow-unauthenticated` is still required even though these are
 callables: it only lets the request reach the function at the IAM layer, the
 function itself then checks `req.auth` + the allowlist before doing anything.
 
-`ANTHROPIC_API_KEY` must be a Secret Manager secret named `ANTHROPIC_API_KEY` —
+`OPENAI_API_KEY` must be a Secret Manager secret named `OPENAI_API_KEY` —
 per golden rule 4, it never lives in the Vue app, Firestore, or the repo.
 Create it once with:
 ```
-printf '%s' 'sk-ant-...' | gcloud secrets create ANTHROPIC_API_KEY --data-file=- --project clarified-1501
+printf '%s' 'sk-...' | gcloud secrets create OPENAI_API_KEY --data-file=- --project clarified-1501
 ```
+(Same for `ANTHROPIC_API_KEY` if you bind that instead, e.g. for .pdf
+extraction — `printf '%s' 'sk-ant-...' | gcloud secrets create ANTHROPIC_API_KEY --data-file=- --project clarified-1501`.)
 
 ---
 

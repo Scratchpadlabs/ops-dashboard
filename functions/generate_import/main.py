@@ -33,7 +33,11 @@ come from these gcloud flags and must be kept in sync with the decorator:
     --source . --entry-point process_import \
     --trigger-http --allow-unauthenticated \
     --memory 1024MB --timeout 540s --max-instances 3 --project clarified-1501 \
-    --set-secrets ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest
+    --set-secrets OPENAI_API_KEY=OPENAI_API_KEY:latest \
+    --set-env-vars MODEL=gpt-4o
+  # (bind ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest instead — and drop the
+  # MODEL override, or set it to a Claude model — to extract from .pdf
+  # uploads, which the OpenAI path can't handle; see call_openai_compatible)
 
   gcloud functions deploy commit_import \
     --gen2 --runtime python312 --region asia-south1 \
@@ -62,7 +66,10 @@ import firebase_admin
 from firebase_admin import firestore, storage
 from firebase_functions import https_fn, options
 
-MODEL = os.environ.get("MODEL", "claude-sonnet-4-6")
+# No hardcoded default here — call_anthropic/call_openai_compatible each pick
+# their own provider-appropriate default when MODEL isn't set (see extract_file
+# for the provider switch: OpenAI when OPENAI_API_KEY is set, else Anthropic).
+MODEL = os.environ.get("MODEL")
 
 # Mirrors src/config/opsAdmins.js — keep in sync. Server-side is the
 # authoritative check; the frontend's isOpsAdmin() is only a UI gate.
@@ -188,7 +195,7 @@ def call_anthropic(blocks, prompt):
         "https://api.anthropic.com/v1/messages",
         headers={"x-api-key": os.environ["ANTHROPIC_API_KEY"],
                  "anthropic-version": "2023-06-01"},
-        json={"model": MODEL, "max_tokens": 16000,
+        json={"model": MODEL or "claude-sonnet-4-6", "max_tokens": 16000,
               "messages": [{"role": "user",
                             "content": blocks + [{"type": "text", "text": prompt}]}]},
         timeout=300)
@@ -196,6 +203,8 @@ def call_anthropic(blocks, prompt):
     return "".join(b.get("text", "") for b in r.json()["content"])
 
 def call_openai_compatible(blocks, prompt):
+    # Defaults to the real OpenAI API; override OPENAI_BASE_URL to point at a
+    # self-hosted OpenAI-compatible endpoint instead.
     content = []
     for b in blocks:
         if b["type"] == "text":
@@ -204,12 +213,16 @@ def call_openai_compatible(blocks, prompt):
             url = f'data:{b["source"]["media_type"]};base64,{b["source"]["data"]}'
             content.append({"type": "image_url", "image_url": {"url": url}})
         else:
-            raise RuntimeError("PDF input needs the Anthropic path (or rasterize pages to PNG first).")
+            # OpenAI's Chat Completions API has no raw-PDF content block (unlike
+            # Anthropic's Messages API) — .pdf uploads aren't extractable on this
+            # path without rasterizing pages to images first.
+            raise RuntimeError("PDF input isn't supported via the OpenAI extraction path (rasterize pages to PNG first, or set ANTHROPIC_API_KEY instead).")
     content.append({"type": "text", "text": prompt})
+    base_url = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
     r = requests.post(
-        os.environ["OPENAI_BASE_URL"].rstrip("/") + "/chat/completions",
+        base_url.rstrip("/") + "/chat/completions",
         headers={"Authorization": "Bearer " + os.environ.get("OPENAI_API_KEY", "x")},
-        json={"model": os.environ.get("MODEL", "qwen2.5-vl-72b-instruct"),
+        json={"model": MODEL or "gpt-4o",
               "messages": [{"role": "user", "content": content}],
               "max_tokens": 16000},
         timeout=300)
@@ -219,7 +232,7 @@ def call_openai_compatible(blocks, prompt):
 def extract_file(entity, filename, raw):
     blocks = content_blocks(filename, raw)
     prompt = build_prompt(entity)
-    raw_text = (call_openai_compatible if os.environ.get("OPENAI_BASE_URL")
+    raw_text = (call_openai_compatible if os.environ.get("OPENAI_API_KEY")
                 else call_anthropic)(blocks, prompt)
     raw_text = re.sub(r"^```(json)?|```$", "", raw_text.strip(), flags=re.M).strip()
     rows = json.loads(raw_text)
@@ -421,7 +434,10 @@ def _ensure_firebase():
     memory=options.MemoryOption.GB_1,
     timeout_sec=540,
     max_instances=3,
-    secrets=["ANTHROPIC_API_KEY"],
+    # OPENAI_API_KEY is the active provider (see extract_file's provider
+    # switch above); ANTHROPIC_API_KEY still works if bound instead — e.g.
+    # for .pdf uploads, which the OpenAI path can't extract from directly.
+    secrets=["OPENAI_API_KEY"],
 )
 def process_import(req: https_fn.CallableRequest):
     _require_ops_admin(req)
