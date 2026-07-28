@@ -9,6 +9,7 @@ const URLS = {
   invoice:          'https://asia-south1-clarified-1501.cloudfunctions.net/generate_invoice',
   agreement:        'https://asia-south1-clarified-1501.cloudfunctions.net/generate_agreement',
   onboarding:       'https://generate-onboarding-q2w4pdi2ha-el.a.run.app',
+  pendingLetter:    'https://asia-south1-clarified-1501.cloudfunctions.net/generate_pending_letter',
 }
 
 async function callCF(url, payload) {
@@ -123,6 +124,24 @@ export async function startProcessImport({ schoolId, jobId, entity, files }) {
 export async function commitImportRemote({ schoolId, jobId, entity, items, overwriteExisting }) {
   const res = await commitImportCallable({ schoolId, jobId, entity, items, overwriteExisting })
   return res.data
+}
+
+// ── Pending Items letter ────────────────────────────────────────────────────
+// Same raw-fetch + blob pattern as invoice/agreement, not a callable — the
+// function is stateless (no Firestore/Storage access) and only ever returns
+// a PDF. The item list is rendered verbatim server-side from `items`; the
+// LLM there only drafts the intro/closing prose (see functions/
+// generate_pending_letter/main.py's module docstring).
+export async function generatePendingLetterPDF({ schoolName, contactName, contactDesignation, items, date }) {
+  const res = await callCF(URLS.pendingLetter, { schoolName, contactName, contactDesignation, items, date })
+  const blob = await res.blob()
+  const safe = slugify(schoolName)
+  const yyyymmdd = new Date().toISOString().slice(0, 10).replace(/-/g, '')
+  downloadBlob(blob, `pending-items-${safe}-${yyyymmdd}.pdf`)
+}
+
+function slugify(text) {
+  return (text || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'school'
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

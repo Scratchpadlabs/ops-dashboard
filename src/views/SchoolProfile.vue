@@ -622,6 +622,17 @@
               <ProgressSpinner style="width:28px;height:28px" />
             </div>
             <template v-else>
+              <div class="flex justify-end">
+                <Button
+                  label="Generate Pending Letter"
+                  icon="pi pi-file-pdf"
+                  size="small"
+                  :loading="generatingPendingLetter"
+                  :disabled="!pendingItemsCount"
+                  v-tooltip="!pendingItemsCount ? 'Nothing pending — every item is checked off' : ''"
+                  @click="generatePendingLetter"
+                />
+              </div>
               <DataReceivableSectionCard title="Onboarding Data" :items="dataReceivable.phases.onboarding" @change="saveDataReceivable" />
               <DataReceivableSectionCard
                 v-for="t in dataReceivable.phases.terms"
@@ -723,7 +734,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { activeYear, effectiveAcademicYear } from '../composables/useAcademicYear.js'
 import { db, storage, auth } from '../firebase/config'
 import { opsCollection, opsDoc } from '../firebase/collections.js'
-import { getDoc, getDocs, setDoc, updateDoc, doc, serverTimestamp, query, limit } from 'firebase/firestore'
+import { getDoc, getDocs, setDoc, updateDoc, addDoc, doc, serverTimestamp, query, limit } from 'firebase/firestore'
 import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage'
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
@@ -734,7 +745,7 @@ import {
   useTasks, priorityDotClass, assigneeChipClass, isTaskOverdue,
 } from '../composables/useTasks.js'
 import TaskDialog from '../components/tasks/TaskDialog.vue'
-import { generateAgreementFiles, generateQuotationPDF, generateInvoicePDF, generateOnboardingPDF } from '../utils/api.js'
+import { generateAgreementFiles, generateQuotationPDF, generateInvoicePDF, generateOnboardingPDF, generatePendingLetterPDF } from '../utils/api.js'
 
 import Button from 'primevue/button'
 import DataTable from 'primevue/datatable'
@@ -1428,6 +1439,63 @@ async function saveDataReceivable() {
     await setDoc(opsDoc('school_data_receivable', route.params.id), dataReceivable.value)
   } catch (e) {
     toast.add({ severity: 'error', summary: 'Error', detail: 'Could not save data receivable', life: 3000 })
+  }
+}
+
+// ── Pending Items letter — read-only over dataReceivable, never mutates it ──
+function collectPendingItems() {
+  if (!dataReceivable.value) return []
+  const out = []
+  const pushSection = (section, items) => {
+    for (const item of items || []) {
+      if (!item.received) out.push({ section, label: item.label, date: item.date || '' })
+    }
+  }
+  pushSection('Onboarding Data', dataReceivable.value.phases.onboarding)
+  for (const t of dataReceivable.value.phases.terms || []) {
+    pushSection(receivableTermTitle(t.term_number), t.items)
+  }
+  pushSection('Final Term Data', dataReceivable.value.phases.final)
+  const grading = dataReceivable.value.grading_scale
+  if (grading && !grading.received) {
+    out.push({ section: 'Grading Scale', label: 'Grading Scale', date: grading.date || '' })
+  }
+  return out
+}
+const pendingItemsCount = computed(() => collectPendingItems().length)
+
+const generatingPendingLetter = ref(false)
+async function generatePendingLetter() {
+  if (!school.value) return
+  const items = collectPendingItems()
+  if (!items.length) return
+
+  generatingPendingLetter.value = true
+  try {
+    await generatePendingLetterPDF({
+      schoolName: school.value.name,
+      contactName: school.value.contact_person || '',
+      contactDesignation: school.value.contact_designation || '',
+      items,
+      date: new Date().toLocaleDateString('en-GB'),
+    })
+    await addDoc(opsCollection('pending_letters'), {
+      school_id: route.params.id,
+      school_name: school.value.name,
+      item_count: items.length,
+      generated_by: auth.currentUser?.email || 'unknown',
+      generated_at: serverTimestamp(),
+    })
+    toast.add({
+      severity: 'success', summary: 'Downloaded',
+      detail: `Pending items letter generated (${items.length} item${items.length !== 1 ? 's' : ''})`,
+      life: 3000,
+    })
+  } catch (e) {
+    console.error(e)
+    toast.add({ severity: 'error', summary: 'Generation failed', detail: e.message || 'Could not generate pending letter', life: 4000 })
+  } finally {
+    generatingPendingLetter.value = false
   }
 }
 
