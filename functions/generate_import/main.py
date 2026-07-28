@@ -21,24 +21,31 @@ which is what raw `fetch()` + a hardcoded key both required and got wrong
 IAM auth before your CORS headers ever get a chance to be written, which the
 browser reports as a CORS error).
 
-Deploy (per function, same source directory):
+Deploy (per function, same source directory) — this repo deploys via plain
+`gcloud functions deploy`, not `firebase deploy --only functions`, so the
+`@https_fn.on_call(...)` decorator's memory/timeout_sec/max_instances/secrets
+arguments are NOT read at deploy time (that introspection only happens
+through the Firebase CLI's own build pipeline). They still matter for the
+callable *behavior* (CORS/auth), but the actual Cloud Run resource limits
+come from these gcloud flags and must be kept in sync with the decorator:
   gcloud functions deploy process_import \
     --gen2 --runtime python312 --region asia-south1 \
     --source . --entry-point process_import \
     --trigger-http --allow-unauthenticated \
-    --project clarified-1501
+    --memory 1024MB --timeout 540s --max-instances 3 --project clarified-1501 \
+    --set-secrets ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest
 
   gcloud functions deploy commit_import \
     --gen2 --runtime python312 --region asia-south1 \
     --source . --entry-point commit_import \
     --trigger-http --allow-unauthenticated \
-    --project clarified-1501
+    --memory 512MB --timeout 120s --max-instances 3 --project clarified-1501
 
 `--allow-unauthenticated` is still required at the IAM layer even for
 callables — that only lets the request reach the function; the function
 itself then checks `req.auth` (the Firebase ID token) and the ops-admin
-allowlist before doing anything. See functions/DEPLOY.md for memory/timeout/
-secrets flags.
+allowlist before doing anything. See functions/DEPLOY.md for the Secret
+Manager setup.
 
 The function's runtime service account needs `roles/datastore.user` (Firestore
 read/write) and `roles/storage.objectViewer` (read uploaded source files) on
