@@ -427,6 +427,14 @@
             </div>
 
             <template v-else>
+              <div class="flex justify-end">
+                <Button
+                  label="Generate Pending Letter"
+                  icon="pi pi-file-pdf"
+                  size="small"
+                  @click="pendingLetterVisible = true"
+                />
+              </div>
               <OperationSectionCard title="Phase 1 · Onboarding" :items="operations.phase1" @change="saveOperations" />
 
               <OperationSectionCard title="Phase 2 · Setup" :items="operations.phase2" @change="saveOperations" />
@@ -622,17 +630,6 @@
               <ProgressSpinner style="width:28px;height:28px" />
             </div>
             <template v-else>
-              <div class="flex justify-end">
-                <Button
-                  label="Generate Pending Letter"
-                  icon="pi pi-file-pdf"
-                  size="small"
-                  :loading="generatingPendingLetter"
-                  :disabled="!pendingItemsCount"
-                  v-tooltip="!pendingItemsCount ? 'Nothing pending — every item is checked off' : ''"
-                  @click="generatePendingLetter"
-                />
-              </div>
               <DataReceivableSectionCard title="Onboarding Data" :items="dataReceivable.phases.onboarding" @change="saveDataReceivable" />
               <DataReceivableSectionCard
                 v-for="t in dataReceivable.phases.terms"
@@ -725,6 +722,12 @@
     @deleted="loadSchoolTasks"
   />
 
+  <PendingLetterDialog
+    v-model:visible="pendingLetterVisible"
+    :school="school"
+    :operations="operations"
+  />
+
   <ConfirmDialog />
 </template>
 
@@ -745,7 +748,8 @@ import {
   useTasks, priorityDotClass, assigneeChipClass, isTaskOverdue,
 } from '../composables/useTasks.js'
 import TaskDialog from '../components/tasks/TaskDialog.vue'
-import { generateAgreementFiles, generateQuotationPDF, generateInvoicePDF, generateOnboardingPDF, generatePendingLetterPDF } from '../utils/api.js'
+import PendingLetterDialog from '../components/shared/PendingLetterDialog.vue'
+import { generateAgreementFiles, generateQuotationPDF, generateInvoicePDF, generateOnboardingPDF } from '../utils/api.js'
 
 import Button from 'primevue/button'
 import DataTable from 'primevue/datatable'
@@ -1442,62 +1446,10 @@ async function saveDataReceivable() {
   }
 }
 
-// ── Pending Items letter — read-only over dataReceivable, never mutates it ──
-function collectPendingItems() {
-  if (!dataReceivable.value) return []
-  const out = []
-  const pushSection = (section, items) => {
-    for (const item of items || []) {
-      if (!item.received) out.push({ section, label: item.label, date: item.date || '' })
-    }
-  }
-  pushSection('Onboarding Data', dataReceivable.value.phases.onboarding)
-  for (const t of dataReceivable.value.phases.terms || []) {
-    pushSection(receivableTermTitle(t.term_number), t.items)
-  }
-  pushSection('Final Term Data', dataReceivable.value.phases.final)
-  const grading = dataReceivable.value.grading_scale
-  if (grading && !grading.received) {
-    out.push({ section: 'Grading Scale', label: 'Grading Scale', date: grading.date || '' })
-  }
-  return out
-}
-const pendingItemsCount = computed(() => collectPendingItems().length)
-
-const generatingPendingLetter = ref(false)
-async function generatePendingLetter() {
-  if (!school.value) return
-  const items = collectPendingItems()
-  if (!items.length) return
-
-  generatingPendingLetter.value = true
-  try {
-    await generatePendingLetterPDF({
-      schoolName: school.value.name,
-      contactName: school.value.contact_person || '',
-      contactDesignation: school.value.contact_designation || '',
-      items,
-      date: new Date().toLocaleDateString('en-GB'),
-    })
-    await addDoc(opsCollection('pending_letters'), {
-      school_id: route.params.id,
-      school_name: school.value.name,
-      item_count: items.length,
-      generated_by: auth.currentUser?.email || 'unknown',
-      generated_at: serverTimestamp(),
-    })
-    toast.add({
-      severity: 'success', summary: 'Downloaded',
-      detail: `Pending items letter generated (${items.length} item${items.length !== 1 ? 's' : ''})`,
-      life: 3000,
-    })
-  } catch (e) {
-    console.error(e)
-    toast.add({ severity: 'error', summary: 'Generation failed', detail: e.message || 'Could not generate pending letter', life: 4000 })
-  } finally {
-    generatingPendingLetter.value = false
-  }
-}
+// ── Pending Items letter — v2 compose dialog (PendingLetterDialog.vue) reads
+// `operations` itself and handles the whole draft/edit/generate/log flow;
+// this view only needs to own the dialog's visibility. ─────────────────────
+const pendingLetterVisible = ref(false)
 
 async function setNumTerms(n) {
   if (!operations.value || operations.value.num_terms === n) return

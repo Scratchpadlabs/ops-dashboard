@@ -1,17 +1,23 @@
 """
 ClarifiEd Pending Items Letter Generator — Cloud Function (ReportLab)
 
-One-click PDF per school listing what's still outstanding on the Data
-Receivable checklist, so Sid doesn't have to hand-tally items and draft a
-WhatsApp message for every school. Returns a PDF blob directly, same
-pattern as generate_invoice / generate_agreement (raw fetch + X-Api-Key,
-not a Firebase callable — no Firestore/Storage access needed here).
+v2: a compose dialog (scope selection -> editable preview -> generate)
+replaced v1's one-click flow, so this now has two modes instead of always
+drafting-then-rendering in one shot:
+  mode="draft"  — LLM call ONLY, returns {"intro", "closing"} as JSON.
+                  Called once per "Draft letter"/"Regenerate draft" click.
+  mode="render" (default) — PURE render, NO LLM call. Takes the (possibly
+                  user-edited) intro/closing/extraNote and the selected
+                  items (each optionally carrying a `comment`) and returns
+                  the PDF. What was previewed in the dialog is exactly what
+                  gets rendered — see SchoolProfile.vue / PendingLetterDialog.vue.
 
-GUARDRAIL: the pending items list is rendered verbatim from the request
-payload by _build_pdf — the LLM call in _draft_paragraphs only ever produces
-the intro/closing prose and never sees or touches the item list. If that
-call fails, or neither provider's key is configured, _draft_paragraphs
-falls back to DEFAULT_INTRO/DEFAULT_CLOSING so the button always works.
+GUARDRAIL unchanged from v1: the pending items list is rendered verbatim —
+render mode never calls an LLM at all, so there's no path by which prose
+generation could touch item text. draft mode's _draft_paragraphs never sees
+the item list either way. If that call fails, or neither provider's key is
+configured, _draft_paragraphs falls back to DEFAULT_INTRO/DEFAULT_CLOSING so
+"Draft letter" always produces something editable (task requirement).
 
 Provider: OpenAI if OPENAI_API_KEY is set (the active provider — same
 switch as functions/generate_import/main.py's extract_file), else Anthropic
@@ -75,10 +81,11 @@ BODY_W   = PAGE_W - L_MARGIN - R_MARGIN
 
 
 def _make_style(name, font="Helvetica", size=9, leading=13, color=BLACK,
-                 align=4, space_before=0, space_after=4):
+                 align=4, space_before=0, space_after=4, left_indent=0):
     return ParagraphStyle(
         name, fontName=font, fontSize=size, leading=leading, textColor=color,
         alignment=align, spaceBefore=space_before, spaceAfter=space_after,
+        leftIndent=left_indent,
     )
 
 
@@ -88,6 +95,8 @@ BODY_RIGHT = _make_style("body_right", size=8, leading=11, color=GREY, align=2, 
 SALUTATION = _make_style("salutation", font="Helvetica-Bold", size=10, space_after=8)
 SECTION_H  = _make_style("section_h", font="Helvetica-Bold", size=9, color=GREY, space_before=8, space_after=3)
 ITEM_STYLE = _make_style("item", size=9, leading=13, space_after=2)
+COMMENT_STYLE = _make_style("comment", font="Helvetica-Oblique", size=8, leading=11,
+                             color=GREY, space_after=2, left_indent=10)
 SIGN_NAME  = _make_style("sign_name", font="Helvetica-Bold", size=9.5, color=NAVY, space_after=1)
 SIGN_SUB   = _make_style("sign_sub", size=8.5, color=GREY, space_after=0)
 
@@ -215,14 +224,19 @@ def _draft_paragraphs(school_name, contact_name):
 
 
 # ── PDF builder ──────────────────────────────────────────────────────────────
+# render mode ONLY — no LLM call here. intro/closing/extra_note come straight
+# from the request (the dialog's editable preview); if either text field is
+# blank (e.g. a render call made without ever drafting) the same fallback
+# prose from draft mode is used, so render never produces an empty letter.
 def _build_pdf(data):
     school_name          = (data.get("schoolName") or "").strip()
     contact_name         = (data.get("contactName") or "").strip()
     contact_designation  = (data.get("contactDesignation") or "").strip()
     items                = data.get("items") or []
     date_str             = (data.get("date") or "").strip() or datetime.today().strftime("%d/%m/%Y")
-
-    intro, closing = _draft_paragraphs(school_name, contact_name)
+    intro                = (data.get("intro") or "").strip() or DEFAULT_INTRO.format(school_name=school_name)
+    closing              = (data.get("closing") or "").strip() or DEFAULT_CLOSING
+    extra_note           = (data.get("extraNote") or "").strip()
 
     buf = io.BytesIO()
     doc = SimpleDocTemplate(
@@ -282,8 +296,10 @@ def _build_pdf(data):
     story.append(Paragraph(intro, BODY))
     story.append(Spacer(1, 4))
 
-    # ── Pending items — rendered verbatim from the payload, grouped by
-    # section if the frontend supplied one, never touched by the LLM. ───────
+    # ── Pending items — rendered verbatim from the payload (labels are never
+    # touched, comments are free text — see module docstring guardrail),
+    # grouped by section if the frontend supplied one. An item's optional
+    # comment renders as an indented italic note directly under it. ─────────
     story.append(Paragraph("Pending Items", _make_style(
         "items_h", font="Helvetica-Bold", size=10.5, color=NAVY, space_before=4, space_after=6)))
 
@@ -306,14 +322,24 @@ def _build_pdf(data):
             label = it["label"].strip()
             note = _format_note_date(it.get("date") or it.get("deadline") or "")
             text = label if not note else f'{label} <font color="{AMBER_HEX}">(noted: {note})</font>'
-            list_items.append(ListItem(Paragraph(text, ITEM_STYLE), leftIndent=6, spaceAfter=2))
+            flowables = [Paragraph(text, ITEM_STYLE)]
+            comment = (it.get("comment") or "").strip()
+            if comment:
+                flowables.append(Paragraph(comment, COMMENT_STYLE))
+            list_items.append(ListItem(flowables, leftIndent=6, spaceAfter=2))
         story.append(ListFlowable(
             list_items, bulletType="bullet", start="•",
             leftIndent=14, bulletFontSize=8, bulletColor=NAVY,
         ))
         story.append(Spacer(1, 4))
 
-    # ── Closing (LLM, or fallback) + sign-off ────────────────────────────────
+    # ── Extra note (optional, free text) — between items and closing ────────
+    if extra_note:
+        story.append(Spacer(1, 4))
+        for line in extra_note.split("\n"):
+            story.append(Paragraph(line.strip() or "&nbsp;", BODY))
+
+    # ── Closing (edited or fallback) + sign-off ──────────────────────────────
     story.append(Spacer(1, 8))
     story.append(Paragraph(closing, BODY))
     story.append(Spacer(1, 16))
@@ -339,6 +365,15 @@ def _build_pdf(data):
     return buf.read()
 
 
+def _draft_response(data):
+    """mode="draft" — LLM call only, no PDF. Called once per "Draft letter"/
+    "Regenerate draft" click in the compose dialog."""
+    school_name = (data.get("schoolName") or "").strip()
+    contact_name = (data.get("contactName") or "").strip()
+    intro, closing = _draft_paragraphs(school_name, contact_name)
+    return {"intro": intro, "closing": closing}
+
+
 # ── HTTP handler ─────────────────────────────────────────────────────────────
 @functions_framework.http
 def generate_pending_letter(request: Request):
@@ -349,11 +384,22 @@ def generate_pending_letter(request: Request):
         return Response("Unauthorized", 401, headers=CORS_HEADERS)
 
     data = request.get_json(silent=True) or {}
+    mode = (data.get("mode") or "render").strip().lower()
     school_name = (data.get("schoolName") or "").strip()
-    items = data.get("items") or []
 
     if not school_name:
         return Response("Missing schoolName", 400, headers=CORS_HEADERS)
+
+    if mode == "draft":
+        try:
+            result = _draft_response(data)
+        except Exception as e:
+            return Response(json.dumps({"error": str(e)}), 500,
+                             mimetype="application/json", headers=CORS_HEADERS)
+        return Response(json.dumps(result), 200, mimetype="application/json", headers=CORS_HEADERS)
+
+    # mode == "render" (default) — pure render, no LLM call (see _build_pdf).
+    items = data.get("items") or []
     if not items:
         return Response("No pending items to include", 400, headers=CORS_HEADERS)
 

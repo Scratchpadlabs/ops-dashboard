@@ -126,14 +126,24 @@ export async function commitImportRemote({ schoolId, jobId, entity, items, overw
   return res.data
 }
 
-// ── Pending Items letter ────────────────────────────────────────────────────
+// ── Pending Items letter (v2: draft -> edit -> render compose flow) ────────
 // Same raw-fetch + blob pattern as invoice/agreement, not a callable — the
-// function is stateless (no Firestore/Storage access) and only ever returns
-// a PDF. The item list is rendered verbatim server-side from `items`; the
-// LLM there only drafts the intro/closing prose (see functions/
-// generate_pending_letter/main.py's module docstring).
-export async function generatePendingLetterPDF({ schoolName, contactName, contactDesignation, items, date }) {
-  const res = await callCF(URLS.pendingLetter, { schoolName, contactName, contactDesignation, items, date })
+// function is stateless (no Firestore/Storage access). Two modes now:
+//   draft  — LLM call only, returns {intro, closing} JSON for the dialog's
+//            editable preview (see PendingLetterDialog.vue).
+//   render — pure render, NO LLM call — takes the (possibly edited)
+//            intro/closing/extraNote and the selected items (each optionally
+//            carrying a `comment`) and returns the PDF verbatim. See
+//            functions/generate_pending_letter/main.py's module docstring.
+export async function draftPendingLetter({ schoolName, contactName, contactDesignation }) {
+  const res = await callCF(URLS.pendingLetter, { mode: 'draft', schoolName, contactName, contactDesignation })
+  return res.json()
+}
+
+export async function generatePendingLetterPDF({ schoolName, contactName, contactDesignation, items, date, intro, closing, extraNote }) {
+  const res = await callCF(URLS.pendingLetter, {
+    mode: 'render', schoolName, contactName, contactDesignation, items, date, intro, closing, extraNote,
+  })
   const blob = await res.blob()
   const safe = slugify(schoolName)
   const yyyymmdd = new Date().toISOString().slice(0, 10).replace(/-/g, '')

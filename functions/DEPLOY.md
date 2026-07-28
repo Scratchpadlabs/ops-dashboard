@@ -1,18 +1,27 @@
 # Cloud Functions — Deploy Guide
 
-## generate_pending_letter (NEW)
+## generate_pending_letter (v2: compose dialog, draft/render modes)
 
-One-click PDF per school listing outstanding Data Receivable checklist items
-(SchoolProfile.vue's "Generate Pending Letter" button, Data Receivable tab).
-Same pattern as generate_invoice/generate_agreement — raw fetch + X-Api-Key,
-returns a PDF blob directly, no Firestore/Storage access in the function
-itself (the frontend logs each generation to `operations/ops/pending_letters`
-client-side after a successful download). Uses OpenAI (shares the
-`OPENAI_API_KEY` secret with process_import; Anthropic still works as a
-fallback provider if `ANTHROPIC_API_KEY` is bound instead — see main.py) to
-draft ONLY the intro/closing prose; the pending items list itself is always
-rendered verbatim from the request payload — see main.py's module docstring
-for the guardrail and its fallback if the LLM call fails.
+PDF per school listing outstanding pending items from the Operations tab
+(Phase 1 Onboarding / Phase 2 Setup / Phase 3 Digital Print incl. UDISE +
+Affiliation / per-term / Final Term — SchoolProfile.vue's "Generate Pending
+Letter" button opens PendingLetterDialog.vue: select scope -> draft ->
+edit -> generate). Same pattern as generate_invoice/generate_agreement —
+raw fetch + X-Api-Key, no Firestore/Storage access in the function itself
+(the frontend logs each generation to `operations/ops/pending_letters`
+client-side after a successful download).
+
+One endpoint, two modes via a `mode` field in the request body:
+- `mode: "draft"` — LLM call only, returns `{"intro", "closing"}` JSON for
+  the dialog's editable preview. Uses OpenAI (shares the `OPENAI_API_KEY`
+  secret with process_import; Anthropic works as a fallback provider if
+  `ANTHROPIC_API_KEY` is bound instead) to draft ONLY the intro/closing
+  prose — never sees the item list.
+- `mode: "render"` (default) — PURE render, NO LLM call. Takes the
+  (possibly user-edited) intro/closing/extraNote plus the selected items
+  (each optionally carrying a `comment`, rendered as an indented italic
+  note under it) and returns the PDF exactly as previewed. See main.py's
+  module docstring for the full guardrail.
 
 ### Files needed in the folder:
 - main.py ✅
