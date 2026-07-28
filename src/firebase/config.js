@@ -2,6 +2,7 @@ import { initializeApp } from 'firebase/app'
 import { getFirestore } from 'firebase/firestore'
 import { getStorage } from 'firebase/storage'
 import { getAuth } from 'firebase/auth'
+import { getFunctions } from 'firebase/functions'
 
 const firebaseConfig = {
   apiKey: "AIzaSyC3q60cBqtvOytXP4O3iK99OeOlh7MgvTw",
@@ -16,3 +17,8 @@ const app = initializeApp(firebaseConfig)
 export const db = getFirestore(app)
 export const storage = getStorage(app)
 export const auth = getAuth(app)
+// Deployed region for our Cloud Functions — must match, or httpsCallable
+// targets us-central1 by default and the request never reaches the function
+// (which surfaces to the browser as a CORS error, same symptom as a missing
+// Access-Control-Allow-Origin header).
+export const functions = getFunctions(app, 'asia-south1')

@@ -1,13 +1,25 @@
 # Cloud Functions — Deploy Guide
 
-## process_import (NEW)
+## process_import + commit_import (NEW)
 
-Extraction half of the School Material Import pipeline (see docs/task_import
-context) — parses uploaded xlsx/docx/pdf/image files via the Anthropic API
-and writes rows straight into `staging_imports/{jobId}/rows`. The commit
-half (`staging_imports` → live `schools/{schoolId}/...`) is NOT a Cloud
-Function — it's client-side batched writes in `src/composables/useImport.js`,
-same pattern as every other School Setup CSV import.
+The two halves of the School Material Import pipeline, both Firebase
+`on_call` callables (not raw HTTP functions with a hardcoded API key) — see
+main.py's module docstring for why. The frontend invokes them with
+`httpsCallable(functions, 'process_import' | 'commit_import')` from
+`src/utils/api.js`, where `functions` is `getFunctions(app, 'asia-south1')`
+(`src/firebase/config.js`) — the region must match this deploy or the client
+targets us-central1 and every call fails as what looks like a CORS error.
+
+- `process_import`: parses uploaded xlsx/docx/pdf/image files via the
+  Anthropic API and writes rows straight into `staging_imports/{jobId}/rows`.
+- `commit_import`: takes the plan `useImport.js`'s `buildCommitPlan` already
+  built client-side (plain Firestore reads, unchanged) and performs the
+  actual writes into `schools/{schoolId}/...`.
+
+Both verify `req.auth` (the caller's Firebase Auth ID token, attached
+automatically by `httpsCallable` when the user is signed in) against the
+`OPS_ADMIN_EMAILS` allowlist in main.py before doing anything — keep that
+list in sync with `src/config/opsAdmins.js`.
 
 ### Files needed in the folder:
 - main.py ✅
@@ -33,18 +45,26 @@ cd functions/generate_import
 gcloud functions deploy process_import \
   --gen2 --runtime python312 --region asia-south1 \
   --source . --entry-point process_import \
-  --trigger-http --allow-unauthenticated \
-  --memory 1024MB --timeout 540s --max-instances 3 --project clarified-1501 \
-  --set-env-vars MODEL=claude-sonnet-4-6 \
+  --trigger-http --allow-unauthenticated --project clarified-1501 \
   --set-secrets ANTHROPIC_API_KEY=anthropic-api-key:latest
+
+gcloud functions deploy commit_import \
+  --gen2 --runtime python312 --region asia-south1 \
+  --source . --entry-point commit_import \
+  --trigger-http --allow-unauthenticated --project clarified-1501
 ```
+Memory/timeout/max-instances for each are set in code via the `@https_fn.on_call(...)`
+decorator options in main.py, not deploy flags — `--allow-unauthenticated` is
+still required even though these are callables: it only lets the request
+reach the function at the IAM layer, the function itself then checks
+`req.auth` + the allowlist before doing anything.
+
 `ANTHROPIC_API_KEY` must be a Secret Manager secret (`anthropic-api-key`) —
 per golden rule 4, it never lives in the Vue app, Firestore, or the repo.
 Create it once with:
 ```
 printf '%s' 'sk-ant-...' | gcloud secrets create anthropic-api-key --data-file=- --project clarified-1501
 ```
-Update the URL in `src/utils/api.js` (`URLS.processImport`) after deploy.
 
 ---
 

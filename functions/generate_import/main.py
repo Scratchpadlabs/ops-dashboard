@@ -1,56 +1,80 @@
 #!/usr/bin/env python3
 """
-ClarifiEd material intake — extraction Cloud Function.
+ClarifiEd material intake — School Material Import Cloud Functions.
 
 Ports the extraction/validation logic from the `extract.py` prototype into a
-callable HTTP Cloud Function that writes results straight into Firestore
-`staging_imports/{jobId}` (job doc + `rows/{n}` subcollection), instead of
-CSV files, so the review UI can stream progress and 1000+ row imports don't
-have to round-trip through the browser.
+callable Cloud Function (`process_import`) that writes results straight into
+Firestore `staging_imports/{jobId}` (job doc + `rows/{n}` subcollection),
+instead of CSV files, so the review UI can stream progress and 1000+ row
+imports don't have to round-trip through the browser. `commit_import` is the
+second half — it takes the already-classified plan the review UI built
+client-side (src/composables/useImport.js's buildCommitPlan, still plain
+Firestore reads, unchanged) and performs the actual writes into
+`schools/{schoolId}/...` server-side.
 
-Deploy:
+Both are Firebase `on_call` callables, not raw HTTP functions: the callable
+protocol handles CORS/preflight itself (no manual OPTIONS branch or
+Access-Control-* headers needed) and gives each function a verified,
+decoded Firebase Auth ID token at `req.auth` — no custom X-Api-Key header,
+which is what raw `fetch()` + a hardcoded key both required and got wrong
+(a plain HTTP Cloud Function that isn't itself invokable anonymously fails
+IAM auth before your CORS headers ever get a chance to be written, which the
+browser reports as a CORS error).
+
+Deploy (per function, same source directory):
   gcloud functions deploy process_import \
     --gen2 --runtime python312 --region asia-south1 \
     --source . --entry-point process_import \
     --trigger-http --allow-unauthenticated \
-    --memory 1024MB --timeout 540s --max-instances 3 --project clarified-1501 \
-    --set-env-vars ANTHROPIC_API_KEY=...,MODEL=claude-sonnet-4-6
+    --project clarified-1501
+
+  gcloud functions deploy commit_import \
+    --gen2 --runtime python312 --region asia-south1 \
+    --source . --entry-point commit_import \
+    --trigger-http --allow-unauthenticated \
+    --project clarified-1501
+
+`--allow-unauthenticated` is still required at the IAM layer even for
+callables — that only lets the request reach the function; the function
+itself then checks `req.auth` (the Firebase ID token) and the ops-admin
+allowlist before doing anything. See functions/DEPLOY.md for memory/timeout/
+secrets flags.
 
 The function's runtime service account needs `roles/datastore.user` (Firestore
 read/write) and `roles/storage.objectViewer` (read uploaded source files) on
 the clarified-1501 project — grant those once via the Cloud Console/gcloud,
 they aren't set up by this deploy command.
-
-Deviation from the task's callable-function sketch: `commitImport` is NOT a
-second Cloud Function here. It's implemented client-side (src/composables/
-useImport.js) as chunked Firestore batch writes, exactly like every other
-School Setup import flow (see SubjectsTab.vue's classifyImportRow/runImport).
-That's a pure Firestore-to-Firestore move the client already has permission
-to do, and this repo has zero precedent for a Cloud Function touching
-Firestore for writes that don't need the LLM/API key — see CsvImportDialog.vue
-and SubjectsTab.vue for the pattern being mirrored. Only the LLM-calling half
-(extraction) needs to run server-side, per golden rule 4 (API key never in
-the Vue app).
 """
 import base64, json, os, re, statistics
 from datetime import datetime, date
 from pathlib import PurePosixPath
 
 import requests
-import functions_framework
-from flask import Request, Response
 
 import firebase_admin
 from firebase_admin import firestore, storage
+from firebase_functions import https_fn, options
 
-API_KEY = "9421060748"
 MODEL = os.environ.get("MODEL", "claude-sonnet-4-6")
 
-CORS_HEADERS = {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, X-Api-Key",
-}
+# Mirrors src/config/opsAdmins.js — keep in sync. Server-side is the
+# authoritative check; the frontend's isOpsAdmin() is only a UI gate.
+OPS_ADMIN_EMAILS = {"sid@ops.clarified.in", "angel@ops.clarified.in"}
+
+
+def _require_ops_admin(req: https_fn.CallableRequest) -> str:
+    """Verifies the callable's Firebase Auth token and the ops-admin
+    allowlist server-side. Returns the caller's email for use in
+    created_by/updated_by fields."""
+    if req.auth is None:
+        raise https_fn.HttpsError(
+            https_fn.FunctionsErrorCode.UNAUTHENTICATED, "Sign in required.")
+    email = str((req.auth.token or {}).get("email") or "").strip().lower()
+    if email not in OPS_ADMIN_EMAILS:
+        raise https_fn.HttpsError(
+            https_fn.FunctionsErrorCode.PERMISSION_DENIED,
+            "Not authorized for School Material Import.")
+    return email
 
 # ---------------------------------------------------------------- schemas ---
 # Kept as-is from extract.py — the prompts already forbid Aadhaar/SSSM/caste/
@@ -385,22 +409,26 @@ def _ensure_firebase():
         firebase_admin.initialize_app()
         _app_initialized = True
 
-@functions_framework.http
-def process_import(request: Request):
-    if request.method == "OPTIONS":
-        return Response("", 204, headers=CORS_HEADERS)
-    if request.headers.get("X-Api-Key") != API_KEY:
-        return Response("Unauthorized", 401, headers=CORS_HEADERS)
+@https_fn.on_call(
+    region="asia-south1",
+    memory=options.MemoryOption.GB_1,
+    timeout_sec=540,
+    max_instances=3,
+    secrets=["ANTHROPIC_API_KEY"],
+)
+def process_import(req: https_fn.CallableRequest):
+    _require_ops_admin(req)
 
-    data = request.get_json(silent=True) or {}
+    data = req.data or {}
     school_id = (data.get("schoolId") or "").strip()
     job_id = (data.get("jobId") or "").strip()
     entity = (data.get("entity") or "").strip()
     files = data.get("files") or []
 
     if not school_id or not job_id or entity not in SCHEMAS or not files:
-        return Response(json.dumps({"error": "Missing schoolId, jobId, valid entity, or files"}),
-                         400, headers=CORS_HEADERS, mimetype="application/json")
+        raise https_fn.HttpsError(
+            https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
+            "Missing schoolId, jobId, valid entity, or files")
 
     _ensure_firebase()
     db = firestore.client()
@@ -453,11 +481,147 @@ def process_import(request: Request):
             "completed_at": firestore.SERVER_TIMESTAMP,
         }, merge=True)
 
-        return Response(json.dumps({
-            "status": "ready", "rowCount": len(all_rows), "flagCount": flag_count,
-        }), 200, headers=CORS_HEADERS, mimetype="application/json")
+        return {"status": "ready", "rowCount": len(all_rows), "flagCount": flag_count}
 
+    except https_fn.HttpsError:
+        raise
     except Exception as e:
         job_ref.set({"status": "failed", "error": str(e)}, merge=True)
-        return Response(json.dumps({"error": str(e)}), 500,
-                         headers=CORS_HEADERS, mimetype="application/json")
+        raise https_fn.HttpsError(https_fn.FunctionsErrorCode.INTERNAL, str(e))
+
+
+# --------------------------------------------------------------- commit -----
+# Takes the plan the review UI already built client-side (useImport.js's
+# buildCommitPlan — plain Firestore reads against classes/subjects/staffs,
+# unchanged) and performs the actual writes into schools/{schoolId}/... here,
+# server-side, so the write path gets the same req.auth + allowlist check as
+# extraction instead of relying on the client's own Firestore permissions.
+# `items` mirrors plan.items from useImport.js, trimmed to just what's needed
+# to write: {status, docId, payload} for students/subjects/assessments, or
+# {status, staffId, staffIsNew, classId, subjectId, staffBase} for teachers.
+@https_fn.on_call(region="asia-south1", memory=options.MemoryOption.MB_512,
+                   timeout_sec=120, max_instances=3)
+def commit_import(req: https_fn.CallableRequest):
+    email = _require_ops_admin(req)
+
+    data = req.data or {}
+    school_id = (data.get("schoolId") or "").strip()
+    job_id = (data.get("jobId") or "").strip()
+    entity = (data.get("entity") or "").strip()
+    items = data.get("items") or []
+    overwrite_existing = bool(data.get("overwriteExisting"))
+
+    if not school_id or not job_id or entity not in ("students", "teachers", "subjects", "assessments"):
+        raise https_fn.HttpsError(
+            https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
+            "Missing schoolId, jobId, or valid entity")
+
+    _ensure_firebase()
+    db = firestore.client()
+    school_ref = db.collection("schools").document(school_id)
+    job_ref = db.collection("staging_imports").document(job_id)
+
+    writable = [it for it in items if it.get("status") == "CREATE"
+                or (it.get("status") == "UPDATE_CHANGED" and overwrite_existing)]
+
+    try:
+        if entity in ("students", "subjects"):
+            _commit_simple(db, school_ref.collection(entity), writable, email)
+        elif entity == "assessments":
+            _commit_assessments(db, school_ref.collection("assessments"), writable, email)
+        elif entity == "teachers":
+            _commit_teachers(school_ref.collection("staffs"), writable, email)
+
+        job_ref.set({
+            "status": "committed", "committed_at": firestore.SERVER_TIMESTAMP,
+            "committed_by": email,
+        }, merge=True)
+
+        return {"written": len(writable), "skipped": len(items) - len(writable)}
+
+    except https_fn.HttpsError:
+        raise
+    except Exception as e:
+        raise https_fn.HttpsError(https_fn.FunctionsErrorCode.INTERNAL, str(e))
+
+
+def _commit_simple(db, collection_ref, writable, email):
+    """students / subjects: one doc per item, merge-set."""
+    for i in range(0, len(writable), 450):
+        batch = db.batch()
+        for item in writable[i:i + 450]:
+            payload = dict(item.get("payload") or {})
+            payload["updated_at"] = firestore.SERVER_TIMESTAMP
+            payload["updated_by"] = email
+            if item.get("status") == "CREATE":
+                payload["created_at"] = firestore.SERVER_TIMESTAMP
+                payload["created_by"] = email
+            batch.set(collection_ref.document(item["docId"]), payload, merge=True)
+        batch.commit()
+
+
+def _commit_assessments(db, collection_ref, writable, email):
+    """Assessments are always CREATE (buildAssessmentsPlan never emits
+    UPDATE_* — see its comment in useImport.js), but always stamp both
+    created_* and updated_* to match the original client-side behavior."""
+    for i in range(0, len(writable), 450):
+        batch = db.batch()
+        for item in writable[i:i + 450]:
+            payload = dict(item.get("payload") or {})
+            payload["updated_at"] = firestore.SERVER_TIMESTAMP
+            payload["updated_by"] = email
+            payload["created_at"] = firestore.SERVER_TIMESTAMP
+            payload["created_by"] = email
+            batch.set(collection_ref.document(item["docId"]), payload, merge=True)
+        batch.commit()
+
+
+def _commit_teachers(staffs_ref, writable, email):
+    """Group by staff so each teacher gets exactly one write with a merged
+    assignments map — never overwrite another subject's assignment for the
+    same class, and never drop a second teacher on the same
+    (subject, grade, section): that's staffs/{idA} and staffs/{idB} each
+    separately gaining the same classId+subjectId in their own doc."""
+    by_staff = {}
+    for item in writable:
+        staff_id = item.get("staffId")
+        if staff_id not in by_staff:
+            by_staff[staff_id] = {
+                "staffIsNew": item.get("staffIsNew"),
+                "staffBase": item.get("staffBase") or {},
+                "adds": [],
+            }
+        by_staff[staff_id]["adds"].append(item)
+
+    for staff_id, group in by_staff.items():
+        assignments = {}
+        class_ids = []
+        if not group["staffIsNew"]:
+            snap = staffs_ref.document(staff_id).get()
+            if snap.exists:
+                d = snap.to_dict() or {}
+                assignments = dict(d.get("assignments") or {})
+                class_ids = list(d.get("classIds") or [])
+        class_id_set = set(class_ids)
+        for item in group["adds"]:
+            subject_id = item.get("subjectId")
+            if not subject_id:
+                continue
+            class_id = item.get("classId")
+            existing = set(assignments.get(class_id) or [])
+            existing.add(subject_id)
+            assignments[class_id] = list(existing)
+            class_id_set.add(class_id)
+
+        payload = {
+            "assignments": assignments, "classIds": list(class_id_set),
+            "updated_at": firestore.SERVER_TIMESTAMP, "updated_by": email,
+        }
+        if group["staffIsNew"]:
+            base = group["staffBase"]
+            payload.update({
+                "id": staff_id, "name": base.get("name") or "", "email": base.get("email") or "",
+                "type": "teacher", "needsAuthCreation": True, "authUid": None,
+                "created_at": firestore.SERVER_TIMESTAMP, "created_by": email,
+            })
+        staffs_ref.document(staff_id).set(payload, merge=True)

@@ -1,3 +1,6 @@
+import { httpsCallable } from 'firebase/functions'
+import { functions } from '../firebase/config'
+
 const API_KEY = '9421060748'
 
 const URLS = {
@@ -6,8 +9,6 @@ const URLS = {
   invoice:          'https://asia-south1-clarified-1501.cloudfunctions.net/generate_invoice',
   agreement:        'https://asia-south1-clarified-1501.cloudfunctions.net/generate_agreement',
   onboarding:       'https://generate-onboarding-q2w4pdi2ha-el.a.run.app',
-  // TODO: update after first deploy (see functions/DEPLOY.md → process_import)
-  processImport:    'https://asia-south1-clarified-1501.cloudfunctions.net/process_import',
 }
 
 async function callCF(url, payload) {
@@ -103,13 +104,25 @@ export async function generateOnboardingPDF(school, activeYear) {
   downloadBlob(blob, `Onboarding_${school.name}_${activeYear || '2026-27'}.pdf`)
 }
 
-// ── Import extraction ─────────────────────────────────────────────────────────
-// Unlike the PDF-generating functions above, this returns JSON (row/flag
-// counts), not a blob — the actual staged rows land in Firestore directly
-// from the Cloud Function, so there's nothing here to download.
+// ── Import extraction + commit ────────────────────────────────────────────────
+// Both are Firebase callable functions (httpsCallable), not raw fetch(): the
+// callable protocol handles CORS/preflight itself and forwards the signed-in
+// user's Firebase Auth ID token as req.auth, which process_import/commit_import
+// verify server-side against the ops-admin allowlist. The region MUST match
+// where the functions are deployed (asia-south1, see ../firebase/config.js) —
+// a wrong or missing region silently targets us-central1 and looks exactly
+// like a CORS failure in the browser.
+const processImportCallable = httpsCallable(functions, 'process_import', { timeout: 540_000 })
+const commitImportCallable = httpsCallable(functions, 'commit_import', { timeout: 120_000 })
+
 export async function startProcessImport({ schoolId, jobId, entity, files }) {
-  const res = await callCF(URLS.processImport, { schoolId, jobId, entity, files })
-  return res.json()
+  const res = await processImportCallable({ schoolId, jobId, entity, files })
+  return res.data
+}
+
+export async function commitImportRemote({ schoolId, jobId, entity, items, overwriteExisting }) {
+  const res = await commitImportCallable({ schoolId, jobId, entity, items, overwriteExisting })
+  return res.data
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

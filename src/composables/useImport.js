@@ -1,23 +1,27 @@
 /**
  * School Material Import — client-side glue between Firebase Storage,
- * the process_import Cloud Function, and the staging_imports Firestore tree.
+ * the process_import/commit_import Cloud Functions, and the
+ * staging_imports Firestore tree.
  *
- * commitImport is deliberately NOT a Cloud Function (see functions/
- * generate_import/main.py's module docstring for why) — it's chunked
- * Firestore batch writes, same pattern as SubjectsTab.vue's
- * classifyImportRow/runImport.
+ * buildCommitPlan stays client-side (plain Firestore reads against
+ * classes/subjects/staffs to classify each row as CREATE/UPDATE_CHANGED/
+ * UPDATE_UNCHANGED/ERROR for the confirm dialog — same pattern as
+ * SubjectsTab.vue's classifyImportRow). The actual write half, commitImport,
+ * hands that plan to the commit_import callable (functions/generate_import/
+ * main.py), which re-verifies req.auth + the ops-admin allowlist server-side
+ * before writing.
  */
 import {
-  doc, getDoc, getDocs, setDoc, updateDoc, onSnapshot, query, orderBy, limit,
-  writeBatch, serverTimestamp,
+  doc, getDocs, setDoc, updateDoc, onSnapshot, query, orderBy, limit,
+  serverTimestamp,
 } from 'firebase/firestore'
 import { ref as storageRef, uploadBytes } from 'firebase/storage'
 import { db, storage, auth } from '../firebase/config'
 import {
   stagingImportsCollection, stagingImportDoc, stagingImportRowsCollection,
-  schoolCollection, schoolDoc,
+  schoolCollection,
 } from '../firebase/schoolCollections.js'
-import { startProcessImport } from '../utils/api.js'
+import { startProcessImport, commitImportRemote } from '../utils/api.js'
 
 // ── Grade normalization — mirrors functions/generate_import/main.py's
 // normalize_grade/normalize_section exactly, since the review UI needs the
@@ -326,80 +330,26 @@ function summarize(entity, items) {
   return { entity, items, summary }
 }
 
-// ── Commit — writes the plan into schools/{schoolId}/... via chunked
-// batches, honoring the overwrite-existing gate on changed records. ────────
+// ── Commit — hands the plan to the commit_import callable, which performs
+// the actual writes into schools/{schoolId}/... server-side (re-verifying
+// req.auth + the ops-admin allowlist there) honoring the overwrite-existing
+// gate on changed records. Trimmed to just what the callable needs to write;
+// `row`/`reason`/error items aren't sent since they carry nothing writable. ─
 export async function commitImport(job, plan, { overwriteExisting } = {}) {
-  const schoolId = job.school_id
-  const writable = plan.items.filter(i =>
-    i.status === 'CREATE' || (i.status === 'UPDATE_CHANGED' && overwriteExisting))
-  const who = auth.currentUser?.email || 'unknown'
+  const nonError = plan.items.filter(i => i.status !== 'ERROR')
 
-  if (plan.entity === 'students' || plan.entity === 'subjects') {
-    const collectionName = plan.entity
-    for (let i = 0; i < writable.length; i += 450) {
-      const batch = writeBatch(db)
-      writable.slice(i, i + 450).forEach(item => {
-        const payload = { ...item.payload, updated_at: serverTimestamp(), updated_by: who }
-        if (item.status === 'CREATE') { payload.created_at = serverTimestamp(); payload.created_by = who }
-        batch.set(schoolDoc(schoolId, collectionName, item.docId), payload, { merge: true })
-      })
-      await batch.commit()
-    }
-  } else if (plan.entity === 'assessments') {
-    for (let i = 0; i < writable.length; i += 450) {
-      const batch = writeBatch(db)
-      writable.slice(i, i + 450).forEach(item => {
-        batch.set(schoolDoc(schoolId, 'assessments', item.docId), {
-          ...item.payload, updated_at: serverTimestamp(), updated_by: who,
-          created_at: serverTimestamp(), created_by: who,
-        }, { merge: true })
-      })
-      await batch.commit()
-    }
-  } else if (plan.entity === 'teachers') {
-    // Group by staff so each teacher gets exactly one write with a merged
-    // assignments map — never overwrite another subject's assignment for
-    // the same class, and never drop a second teacher on the same
-    // (subject, grade, section): that's staffs/{idA} and staffs/{idB} each
-    // separately gaining the same classId+subjectId in their own doc.
-    const byStaff = new Map()
-    for (const item of writable) {
-      if (!byStaff.has(item.staffId)) byStaff.set(item.staffId, { base: item.staffBase, staffIsNew: item.staffIsNew, adds: [] })
-      byStaff.get(item.staffId).adds.push(item)
-    }
-    for (const [staffId, group] of byStaff) {
-      let assignments = {}
-      let classIds = []
-      if (!group.staffIsNew) {
-        const snap = await getDoc(schoolDoc(schoolId, 'staffs', staffId))
-        if (snap.exists()) { assignments = { ...(snap.data().assignments || {}) }; classIds = [...(snap.data().classIds || [])] }
-      }
-      const classIdSet = new Set(classIds)
-      for (const item of group.adds) {
-        if (!item.subjectId) continue
-        const existing = new Set(assignments[item.classId] || [])
-        existing.add(item.subjectId)
-        assignments[item.classId] = Array.from(existing)
-        classIdSet.add(item.classId)
-      }
-      const payload = {
-        assignments, classIds: Array.from(classIdSet),
-        updated_at: serverTimestamp(), updated_by: who,
-      }
-      if (group.staffIsNew) {
-        Object.assign(payload, {
-          id: staffId, name: group.base.name, email: group.base.email, type: 'teacher',
-          needsAuthCreation: true, authUid: null,
-          created_at: serverTimestamp(), created_by: who,
-        })
-      }
-      await setDoc(schoolDoc(schoolId, 'staffs', staffId), payload, { merge: true })
-    }
-  }
+  const items = plan.entity === 'teachers'
+    ? nonError.map(i => ({
+        status: i.status, staffId: i.staffId, staffIsNew: i.staffIsNew,
+        classId: i.classId, subjectId: i.subjectId,
+        staffBase: { name: i.staffBase?.name || '', email: i.staffBase?.email || '' },
+      }))
+    : nonError.map(i => ({ status: i.status, docId: i.docId, payload: i.payload }))
 
-  await setDoc(stagingImportDoc(job.id), {
-    status: 'committed', committed_at: serverTimestamp(), committed_by: who,
-  }, { merge: true })
+  const result = await commitImportRemote({
+    schoolId: job.school_id, jobId: job.id, entity: plan.entity,
+    items, overwriteExisting: !!overwriteExisting,
+  })
 
-  return { written: writable.length, skipped: plan.items.length - writable.length }
+  return { written: result.written, skipped: plan.items.length - result.written }
 }
