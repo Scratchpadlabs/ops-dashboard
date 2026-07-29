@@ -750,15 +750,45 @@ def process_import(req: https_fn.CallableRequest):
     _require_ops_admin(req)
 
     data = req.data or {}
+    # Logged unconditionally (not just on failure) so a payload-shape
+    # regression on the frontend shows up in Cloud Functions logs even when
+    # the callable framework itself rejects the request before this line
+    # (e.g. a stale build still POSTing an unwrapped body — the framework's
+    # own pre-execution check raises INVALID_ARGUMENT "Bad Request" for that
+    # case, with no message of ours to log; req.data is at least visible for
+    # any request that *does* reach here).
+    print(f"process_import: received payload keys={sorted(data.keys())}")
+
+    # Callable requests cap out around 10MB; files[] here only ever carries
+    # Storage paths (uploadAndProcess in useImport.js sends raw bytes to
+    # Storage first, never inline), so this should stay a few hundred bytes.
+    # Logged as a guard against that invariant ever regressing.
+    approx_size = len(json.dumps(data, default=str))
+    if approx_size > 8 * 1024 * 1024:
+        print(f"process_import: payload is {approx_size} bytes — approaching the ~10MB callable limit")
+
     school_id = (data.get("schoolId") or "").strip()
     job_id = (data.get("jobId") or "").strip()
     entity = (data.get("entity") or "").strip()
     files = data.get("files") or []
 
-    if not school_id or not job_id or entity not in SCHEMAS or not files:
+    missing = []
+    if not school_id:
+        missing.append("schoolId")
+    if not job_id:
+        missing.append("jobId")
+    if entity not in SCHEMAS:
+        missing.append(f"entity (got {entity!r}, expected one of {sorted(SCHEMAS)})")
+    if not files:
+        missing.append("files (missing or empty)")
+    else:
+        for i, f in enumerate(files):
+            if not isinstance(f, dict) or not (f.get("path") or "").strip():
+                missing.append(f"files[{i}].path")
+    if missing:
         raise https_fn.HttpsError(
             https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
-            "Missing schoolId, jobId, valid entity, or files")
+            f"Missing/invalid field(s): {'; '.join(missing)}")
 
     # Everything below is inside the try — including client/bucket/job_ref
     # construction, which used to sit outside it and could throw an
