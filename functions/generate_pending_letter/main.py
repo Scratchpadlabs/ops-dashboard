@@ -147,17 +147,17 @@ DEFAULT_CLOSING = (
 )
 
 
-def _build_prompt(school_name, contact_name):
+def _build_prompt(school_name):
     return (
         "You are drafting a short, warm, professional letter from ClarifiEd (a school "
-        f"report-card platform) to {school_name}, a partner school"
-        + (f", addressed to {contact_name}" if contact_name else "")
-        + ". The letter separately lists data/items still pending from the school — you do "
-        "not see that list and must not reference specific item names or counts. A salutation "
-        "('Dear ...') is already rendered separately above your intro, and a sign-off "
-        "('Warm regards, Team ClarifiEd') is already rendered separately below your closing — "
-        "do NOT include a greeting or sign-off yourself, start straight into the body text. Write "
-        "exactly two short paragraphs:\n"
+        f"report-card platform) to {school_name}, a partner school. The letter separately "
+        "lists data/items still pending from the school — you do not see that list and must "
+        "not reference specific item names or counts. Address the school generally — do NOT "
+        "name or refer to any individual person (no principal, contact, or staff name/title) "
+        "anywhere in the text. A salutation ('Dear ...') is already rendered separately above "
+        "your intro, and a sign-off ('Warm regards, Team ClarifiEd') is already rendered "
+        "separately below your closing — do NOT include a greeting or sign-off yourself, start "
+        "straight into the body text. Write exactly two short paragraphs:\n"
         "1. intro — a courteous opening (2-3 sentences) introducing that a few items are "
         "still pending from their end.\n"
         "2. closing — a short closing (1-2 sentences) with a gentle nudge on timeline and a "
@@ -195,11 +195,12 @@ def _call_openai(prompt):
     return r.json()["choices"][0]["message"]["content"]
 
 
-def _draft_paragraphs(school_name, contact_name):
+def _draft_paragraphs(school_name):
     """Calls whichever LLM provider is configured for just the intro/closing
     prose. Never sees the item list, never returns anything that gets
     rendered as the item list — see _build_pdf, which renders `items` from
-    the request payload directly."""
+    the request payload directly. Never told a contact person's name either
+    — the letter addresses the school generally (see _build_prompt)."""
     fallback = (DEFAULT_INTRO.format(school_name=school_name), DEFAULT_CLOSING)
 
     if os.environ.get("OPENAI_API_KEY"):
@@ -209,7 +210,7 @@ def _draft_paragraphs(school_name, contact_name):
     else:
         return fallback
 
-    prompt = _build_prompt(school_name, contact_name)
+    prompt = _build_prompt(school_name)
     try:
         text = call(prompt)
         text = re.sub(r"^```(json)?|```$", "", text.strip(), flags=re.M).strip()
@@ -229,9 +230,9 @@ def _draft_paragraphs(school_name, contact_name):
 # blank (e.g. a render call made without ever drafting) the same fallback
 # prose from draft mode is used, so render never produces an empty letter.
 def _build_pdf(data):
+    # contactName/contactDesignation are deliberately never read here — the
+    # letter never names or refers to an individual (see _build_prompt).
     school_name          = (data.get("schoolName") or "").strip()
-    contact_name         = (data.get("contactName") or "").strip()
-    contact_designation  = (data.get("contactDesignation") or "").strip()
     items                = data.get("items") or []
     date_str             = (data.get("date") or "").strip() or datetime.today().strftime("%d/%m/%Y")
     intro                = (data.get("intro") or "").strip() or DEFAULT_INTRO.format(school_name=school_name)
@@ -290,8 +291,9 @@ def _build_pdf(data):
     story.append(Spacer(1, 14))
 
     # ── Salutation + intro (LLM, or fallback) ────────────────────────────────
-    salutation = f"Dear {contact_name}," + (f" {contact_designation}," if contact_designation else "") \
-        if contact_name else f"Dear {school_name} Team,"
+    # Always the generic school greeting — the contact person's name/position
+    # is never printed in the letter itself, even when known.
+    salutation = f"Dear {school_name} Team,"
     story.append(Paragraph(salutation, SALUTATION))
     story.append(Paragraph(intro, BODY))
     story.append(Spacer(1, 4))
@@ -367,10 +369,10 @@ def _build_pdf(data):
 
 def _draft_response(data):
     """mode="draft" — LLM call only, no PDF. Called once per "Draft letter"/
-    "Regenerate draft" click in the compose dialog."""
+    "Regenerate draft" click in the compose dialog. contactName is
+    deliberately never read here either — see _build_prompt."""
     school_name = (data.get("schoolName") or "").strip()
-    contact_name = (data.get("contactName") or "").strip()
-    intro, closing = _draft_paragraphs(school_name, contact_name)
+    intro, closing = _draft_paragraphs(school_name)
     return {"intro": intro, "closing": closing}
 
 
