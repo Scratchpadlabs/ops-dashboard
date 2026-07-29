@@ -1,4 +1,5 @@
 {
+  "//": "No \"functions\" section here on purpose: this repo's Cloud Functions (functions/generate_import, generate_invoice, etc.) are deployed one-by-one via plain `gcloud functions deploy`, not the Firebase CLI - see functions/DEPLOY.md. `firebase deploy` (this file) only ever touches hosting/firestore/storage; `firebase deploy --only functions:<name>` will fail here since no functions codebase is registered.",
   "hosting": {
     "public": "dist",
     "ignore": [
