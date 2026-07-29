@@ -1,5 +1,6 @@
 firebase-functions>=0.4.3
 requests==2.*
 openpyxl==3.*
+xlrd==2.*
 python-docx==1.*
 firebase-admin==6.*

@@ -56,7 +56,7 @@ read/write) and `roles/storage.objectViewer` (read uploaded source files) on
 the clarified-1501 project — grant those once via the Cloud Console/gcloud,
 they aren't set up by this deploy command.
 """
-import base64, difflib, json, os, re, statistics
+import base64, json, os, re, statistics
 from datetime import datetime, date
 from pathlib import PurePosixPath
 
@@ -65,6 +65,14 @@ import requests
 import firebase_admin
 from firebase_admin import firestore, storage
 from firebase_functions import https_fn, options
+
+from normalize import (
+    ROMAN_TO_NUM, normalize_grade, normalize_section, canonicalize,
+    extract_grade_tokens, clean_name, clean_email, EMAIL_DOMAIN_FIXES, _EMAIL_RE,
+    FUZZY_THRESHOLD, fuzzy_best_match, match_value,
+    STUDENT_HEADER_ALIASES, STUDENT_SCHEMA_KEYS, STUDENT_REQUIRED_FIELD,
+)
+from tabular_parser import parse_tabular_file
 
 # Must run at module load, not lazily inside a handler: the on_call framework
 # verifies the caller's Firebase Auth ID token BEFORE our function body ever
@@ -109,13 +117,17 @@ def _require_ops_admin(req: https_fn.CallableRequest) -> str:
 # (banned or not) is dropped automatically before it ever reaches Firestore.
 SCHEMAS = {
     "students": {
-        "row": ["grade", "section", "roll_no", "student_name", "gender",
-                "dob", "sr_no", "mother_name", "father_name", "contact"],
+        # Kept identical to normalize.STUDENT_SCHEMA_KEYS — the deterministic
+        # tabular_parser path and this LLM-extraction path must agree
+        # byte-for-byte on the row shape, since both feed the same
+        # clean_students_rows/validate_students below.
+        "row": STUDENT_SCHEMA_KEYS,
         "hints": (
             "grade: Nursery/LKG/UKG or 1..12 as plain numbers (convert roman numerals). "
             "section: single letter or empty. dob: YYYY-MM-DD; Excel serial numbers are "
             "days since 1899-12-30. Strip honorifics (MAS./MISS/MRS./MR.) from names and "
-            "use them to infer gender. contact: first valid 10-digit number only. "
+            "use them to infer gender. contact: first valid 10-digit number only. adm_no "
+            "is the admission/GR register number, distinct from sr_no (serial number). "
             "DO NOT extract Aadhaar numbers, SSSM ids, caste/category, religion, or "
             "addresses even if present — omit them entirely."
         ),
@@ -253,30 +265,6 @@ def extract_file(entity, filename, raw):
     # regardless of prompt compliance (golden rule 3, belt-and-braces).
     return [{k: str(r.get(k, "") or "") for k in schema_keys} for r in rows]
 
-# ------------------------------------------------------- grade normalizing ---
-ROMAN_TO_NUM = {"I": 1, "II": 2, "III": 3, "IV": 4, "V": 5, "VI": 6, "VII": 7,
-                "VIII": 8, "IX": 9, "X": 10, "XI": 11, "XII": 12}
-
-def normalize_grade(g):
-    """Map roman numerals / plain numbers / Nursery-LKG-UKG onto one comparable
-    form, since a school's live `classes.clazz` values and the LLM's extracted
-    `grade` values may use different conventions (extract.py normalizes to
-    plain numbers, but existing classes were hand-entered as e.g. 'III')."""
-    g = (g or "").strip()
-    if not g:
-        return ""
-    upper = g.upper()
-    if upper in ("NURSERY", "LKG", "UKG"):
-        return upper
-    if upper in ROMAN_TO_NUM:
-        return str(ROMAN_TO_NUM[upper])
-    if g.isdigit():
-        return str(int(g))
-    return upper
-
-def normalize_section(s):
-    return (s or "").strip().upper()
-
 # --------------------------------------------------------------- cleaning ---
 # Real school sheets are messy — typo email domains, "Garde 7,10", stray
 # whitespace, "Eng" vs "English" — and without this stage nearly every row
@@ -286,71 +274,10 @@ def normalize_section(s):
 # originals are always visible, nothing here writes to the live DB directly,
 # and anything uncertain becomes a *suggestion* (shown for one-click accept
 # in review) or a hard flag — never a silent guess.
-
-EMAIL_DOMAIN_FIXES = {
-    "gamil.com": "gmail.com", "gmial.com": "gmail.com", "gmal.com": "gmail.com",
-    "gmaill.com": "gmail.com", "yahooo.com": "yahoo.com",
-}
-_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
-
-def clean_email(raw):
-    """Trim, lowercase, fix known typo domains. Returns (cleaned, fix_or_None,
-    is_valid). Never guesses a missing/still-invalid address — that's always
-    a hard flag for validate_teachers to raise, not an auto-fix."""
-    original = raw or ""
-    v = original.strip().lower()
-    rule = "email_normalize"
-    if "@" in v:
-        local, _, domain = v.rpartition("@")
-        if domain in EMAIL_DOMAIN_FIXES:
-            v = f"{local}@{EMAIL_DOMAIN_FIXES[domain]}"
-            rule = "email_domain_typo"
-    valid = bool(_EMAIL_RE.match(v))
-    fix = {"field": "email", "original": original, "fixed": v, "rule": rule} if v != original and valid else None
-    return v, fix, valid
-
-
-_GRADE_WORD_RE = re.compile(r"gr[ae]de", re.IGNORECASE)
-_GRADE_TOKEN_RE = re.compile(
-    r"\b(nursery|lkg|ukg|xii|xi|x|ix|viii|vii|vi|iv|v|iii|ii|i|\d{1,2})\b", re.IGNORECASE)
-
-def extract_grade_tokens(raw):
-    """Tolerant grade-cell parser: strips a leading 'Grade'/'Garde' (any
-    case/typo/spacing) then pulls out every recognizable grade token
-    regardless of separators/spacing. 'Garde 7,10' -> ['7','10']; 'Grade7,8,9'
-    -> ['7','8','9']; 'Grade 8, 9 ' -> ['8','9']. Returns normalize_grade()'d
-    tokens, deduped, first-seen order — empty list if nothing recognizable."""
-    s = _GRADE_WORD_RE.sub(" ", raw or "")
-    tokens = []
-    for m in _GRADE_TOKEN_RE.finditer(s):
-        norm = normalize_grade(m.group(1))
-        if norm and norm not in tokens:
-            tokens.append(norm)
-    return tokens
-
-
-_WS_RE = re.compile(r"\s+")
-_INITIAL_RE = re.compile(r"^(?:[A-Za-z]\.)+$")
-
-def clean_name(raw):
-    """Collapse multiple spaces, trim, title-case — preserving initials like
-    'P.B.' as-is instead of mangling them into 'P.b.'. Returns (cleaned,
-    fix_or_None); caller fills in `field` on the fix dict."""
-    original = raw or ""
-    collapsed = _WS_RE.sub(" ", original.strip())
-    words = [w if _INITIAL_RE.match(w) else (w[:1].upper() + w[1:].lower() if w else w)
-             for w in collapsed.split(" ")]
-    v = " ".join(words)
-    fix = {"original": original, "fixed": v, "rule": "name_normalize"} if v != original else None
-    return v, fix
-
-
-def canonicalize(s):
-    """Comparison key only, never a display value: lowercase, strip
-    spaces/hyphens/dots. 'LKG-champion', 'LKG champion' and 'lkg.champion'
-    all canonicalize the same."""
-    return re.sub(r"[\s\-.]+", "", (s or "").strip().lower())
-
+#
+# name/email/grade/section normalizers now live in normalize.py (imported
+# above) — shared verbatim with tabular_parser.py's deterministic path, per
+# the hardening task's "one shared module" requirement.
 
 def load_import_aliases(db):
     """Global alias map (top-level `import_aliases` collection, not scoped to
@@ -368,55 +295,19 @@ def load_import_aliases(db):
     return aliases
 
 
-FUZZY_THRESHOLD = 0.85
-
-def fuzzy_best_match(value_canon, candidates):
-    """candidates: {canonical: display}. Returns (best_display, best_ratio),
-    or (None, 0.0) if candidates is empty. difflib (stdlib) rather than
-    Levenshtein/rapidfuzz — no extra pip dependency to manage in a Cloud
-    Function, and Ratcliff/Obershelp similarity serves the same near-match
-    purpose the task calls for."""
-    best_display, best_ratio = None, 0.0
-    for canon, display in candidates.items():
-        ratio = difflib.SequenceMatcher(None, value_canon, canon).ratio()
-        if ratio > best_ratio:
-            best_display, best_ratio = display, ratio
-    return best_display, best_ratio
-
-
-def match_value(raw, alias_type, valid_canon_to_display, aliases):
-    """Canonicalize + alias + fuzzy match for subject/section values against
-    the school's configured set. Returns one of:
-      ("auto", display, rule)        - exact canonical or alias hit
-      ("suggestion", display, ratio) - fuzzy >= FUZZY_THRESHOLD, NOT applied
-      ("unknown", None, None)        - below threshold — hard-flag territory
-    Never guesses below threshold; that's the entire point of Stage 2."""
-    original = (raw or "").strip()
-    if not original:
-        return "unknown", None, None
-    canon = canonicalize(original)
-    if canon in valid_canon_to_display:
-        return "auto", valid_canon_to_display[canon], "canonical_match"
-    alias_hit = aliases.get((alias_type, canon))
-    if alias_hit:
-        return "auto", alias_hit, "alias_match"
-    display, ratio = fuzzy_best_match(canon, valid_canon_to_display)
-    if display and ratio >= FUZZY_THRESHOLD:
-        return "suggestion", display, ratio
-    return "unknown", None, None
-
-
-def clean_students_rows(rows, cfg):
+def clean_students_rows(rows, cfg, provenance=None):
     """Stage 1 + 2 for students: name cleanup, tolerant grade parsing (first
     token only — a student has one grade; multiple tokens is itself flagged
     as ambiguous, not expanded), and section canonicalize/alias/fuzzy against
     that grade's configured sections. Returns a list of
-    {data, fixes, suggestions, flags} — `flags` here only covers what
-    validate_students below has no way to catch on its own (an ambiguous
+    {data, fixes, suggestions, flags, provenance} — `flags` here only covers
+    what validate_students below has no way to catch on its own (an ambiguous
     multi-grade cell); everything else it flags is appended afterward, once
-    run over this (now cleaner) `data`."""
+    run over this (now cleaner) `data`. `provenance` (optional, same length
+    as `rows`) carries {source_file, sheet, row} through unchanged — students
+    never expand 1 input row into >1 output row, so the alignment is exact."""
     out = []
-    for r in rows:
+    for i, r in enumerate(rows):
         d = dict(r)
         fixes, suggestions, flags = [], [], []
 
@@ -434,7 +325,7 @@ def clean_students_rows(rows, cfg):
                 fixes.append({"field": "grade", "original": grade_raw, "fixed": grade, "rule": "grade_parsed"})
             d["grade"] = grade
             if len(tokens) > 1:
-                flags.append({"field": "grade", "message": f"multiple grades found in '{grade_raw}' — using '{grade}', please verify"})
+                flags.append({"field": "grade", "message": f"multiple grades found in '{grade_raw}' — using '{grade}', please verify", "severity": "warning"})
         else:
             grade = ""
 
@@ -449,23 +340,27 @@ def clean_students_rows(rows, cfg):
             elif status == "suggestion":
                 suggestions.append({"field": "section", "original": section_raw, "suggested": display, "similarity": round(extra, 2)})
 
-        out.append({"data": d, "fixes": fixes, "suggestions": suggestions, "flags": flags})
+        prov = provenance[i] if provenance else None
+        out.append({"data": d, "fixes": fixes, "suggestions": suggestions, "flags": flags, "provenance": prov})
     return out
 
 
-def clean_teachers_rows(rows, cfg):
+def clean_teachers_rows(rows, cfg, provenance=None):
     """Stage 1 + 2 for teachers. Grade is the one field that can legitimately
     EXPAND a row: a multi-grade cell ('Garde 7,10') means one teacher-subject
     assignment spanning several grades, which the LLM is supposed to expand
     into separate rows itself but doesn't always manage — this is the
     deterministic fallback. Section/subject are then canonicalized per the
     row's own (possibly newly-split) grade. Returns a list of
-    {data, fixes, suggestions, flags}, one per OUTPUT row (>= len(rows));
-    `flags` is always empty here — a multi-grade cell is expected/valid for
-    teachers, not ambiguous, so there's nothing cleaning itself needs to flag
-    (unlike students) — validate_teachers appends everything else."""
+    {data, fixes, suggestions, flags, provenance}, one per OUTPUT row (>=
+    len(rows)); `flags` is always empty here — a multi-grade cell is
+    expected/valid for teachers, not ambiguous, so there's nothing cleaning
+    itself needs to flag (unlike students) — validate_teachers appends
+    everything else. `provenance` (optional, same length as `rows`) is
+    duplicated onto every row an expansion produces from the same source."""
     out = []
-    for r in rows:
+    for i, r in enumerate(rows):
+        prov = provenance[i] if provenance else None
         base_fixes = []
 
         v, fix = clean_name(r.get("teacher_name", ""))
@@ -522,7 +417,7 @@ def clean_teachers_rows(rows, cfg):
                 elif status == "suggestion":
                     suggestions.append({"field": "subject", "original": subject_raw, "suggested": display, "similarity": round(extra, 2)})
 
-            out.append({"data": d, "fixes": fixes, "suggestions": suggestions, "flags": []})
+            out.append({"data": d, "fixes": fixes, "suggestions": suggestions, "flags": [], "provenance": prov})
     return out
 
 # -------------------------------------------------------------- validate ----
@@ -535,12 +430,15 @@ def parse_dob(d):
     except ValueError:
         return None
 
-def _flag(field, message):
-    """Structured flag: {field, message}. `field` is None for row-level
-    checks not tied to one cell (duplicate name, DOB-vs-median) — lets the
-    review UI clear only the flags a specific accepted suggestion resolves,
-    instead of guessing from message text."""
-    return {"field": field, "message": message}
+def _flag(field, message, severity="warning"):
+    """Structured flag: {field, message, severity}. `field` is None for
+    row-level checks not tied to one cell (duplicate name, DOB-vs-median) —
+    lets the review UI clear only the flags a specific accepted suggestion
+    resolves, instead of guessing from message text. `severity` is "error"
+    only for the handful of checks that mean the row can't be committed
+    as-is (missing the one required field, invalid email) — everything else
+    is "warning": recoverable, kept, surfaced for human review."""
+    return {"field": field, "message": message, "severity": severity}
 
 def validate_students(rows, class_lookup, sections_by_grade):
     flags_by_row = [[] for _ in rows]
@@ -550,7 +448,7 @@ def validate_students(rows, class_lookup, sections_by_grade):
 
     for i, r in enumerate(rows):
         if not r.get("student_name", "").strip():
-            flags_by_row[i].append(_flag("student_name", "missing student name"))
+            flags_by_row[i].append(_flag("student_name", "missing student name", severity="error"))
         if not r.get("grade", "").strip():
             flags_by_row[i].append(_flag("grade", "missing grade"))
         dob_raw = r.get("dob", "").strip()
@@ -610,11 +508,11 @@ def validate_teachers(rows, class_lookup, sections_by_grade, subject_names_by_gr
 
     for i, r in enumerate(rows):
         if not r.get("teacher_name", "").strip():
-            flags_by_row[i].append(_flag("teacher_name", "missing teacher name"))
+            flags_by_row[i].append(_flag("teacher_name", "missing teacher name", severity="error"))
 
         email = r.get("email", "").strip()
         if email and not _EMAIL_RE.match(email):
-            flags_by_row[i].append(_flag("email", f"invalid email: '{email}'"))
+            flags_by_row[i].append(_flag("email", f"invalid email: '{email}'", severity="error"))
 
         grade = normalize_grade(r.get("grade"))
         section = normalize_section(r.get("section"))
@@ -647,7 +545,7 @@ def validate_required_fields(entity, rows):
         flags = []
         for k in required:
             if not r.get(k, "").strip():
-                flags.append(_flag(k, f"missing {k.replace('_', ' ')}"))
+                flags.append(_flag(k, f"missing {k.replace('_', ' ')}", severity="error"))
         flags_by_row.append(flags)
     return flags_by_row
 
@@ -735,6 +633,101 @@ def load_school_config(db, school_id, entity):
         "aliases": load_import_aliases(db),
     }
 
+# ----------------------------------------------------- per-file extraction -
+def _process_one_file(entity, name, raw, job_diag):
+    """Returns (rows, provenance) for one file, aligned 1:1. Deterministic
+    tabular parsing (tabular_parser.parse_tabular_file, content-sniffed —
+    never trusts the extension) is tried first for the `students` entity;
+    every other entity, and students when the deterministic parser can't
+    find a usable header, goes through the existing LLM extraction path.
+    Skips the LLM fallback on a genuinely terminal condition (empty/
+    password-protected/corrupt file) — that's pointless and slow to retry,
+    and would just bury the specific reason under a vaguer LLM error.
+    job_diag accumulates cross-file diagnostics for the job doc:
+    {warnings, errors, file_summaries, unmapped_headers}."""
+    if entity != "students":
+        llm_rows = extract_file(entity, name, raw)
+        provenance = [{"source_file": name, "sheet": None, "row": None,
+                        "excluded_default": False, "extra_flags": []} for _ in llm_rows]
+        job_diag["file_summaries"].append({
+            "name": name, "file_type_detected": None, "sheets_parsed": [], "sheets_skipped": [],
+            "row_count": len(llm_rows), "warning_count": 0, "error_count": 0, "used_llm_fallback": True,
+        })
+        return llm_rows, provenance
+
+    tab = parse_tabular_file(name, raw, STUDENT_SCHEMA_KEYS, STUDENT_HEADER_ALIASES, STUDENT_REQUIRED_FIELD)
+    job_diag["unmapped_headers"].update(tab.get("unmapped_headers", []))
+    terminal = any(e["message"].startswith(("empty file", "file unreadable")) for e in tab["errors"])
+
+    rows, provenance = [], []
+    used_fallback = False
+    if tab["rows"]:
+        warn_by_key, err_by_key = {}, {}
+        for w in tab["warnings"]:
+            if w.get("row") is not None:
+                warn_by_key.setdefault((w["sheet"], w["row"]), []).append(w)
+        for e in tab["errors"]:
+            if e.get("row") is not None:
+                err_by_key.setdefault((e["sheet"], e["row"]), []).append(e)
+        for r in tab["rows"]:
+            rows.append(r["data"])
+            key = (r["sheet"], r["row"])
+            extra_flags = ([_flag(w["field"], w["message"], severity=w.get("severity", "warning"))
+                             for w in warn_by_key.get(key, [])]
+                            + [_flag(e["field"], e["message"], severity=e.get("severity", "error"))
+                               for e in err_by_key.get(key, [])])
+            provenance.append({
+                "source_file": name, "sheet": r["sheet"], "row": r["row"],
+                "excluded_default": bool(r.get("excluded")), "extra_flags": extra_flags,
+            })
+    elif not terminal:
+        used_fallback = True
+        try:
+            llm_rows = extract_file(entity, name, raw)
+        except Exception as e:
+            llm_rows = []
+            job_diag["errors"].append({"file": name, "sheet": None, "row": None, "field": None,
+                                        "severity": "error", "message": f"extraction failed: {e}"})
+        for r in llm_rows:
+            rows.append(r)
+            provenance.append({"source_file": name, "sheet": None, "row": None,
+                                "excluded_default": False, "extra_flags": []})
+
+    for w in tab["warnings"]:
+        job_diag["warnings"].append({"file": name, "sheet": w["sheet"], "row": w["row"],
+                                      "field": w["field"], "severity": w.get("severity", "warning"),
+                                      "message": w["message"]})
+    for e in tab["errors"]:
+        job_diag["errors"].append({"file": name, "sheet": e["sheet"], "row": e["row"],
+                                    "field": e["field"], "severity": e.get("severity", "error"),
+                                    "message": e["message"]})
+    job_diag["file_summaries"].append({
+        "name": name, "file_type_detected": tab["file_type_detected"],
+        "sheets_parsed": tab["sheets_parsed"], "sheets_skipped": tab["sheets_skipped"],
+        "row_count": len(rows), "warning_count": len(tab["warnings"]), "error_count": len(tab["errors"]),
+        "used_llm_fallback": used_fallback,
+    })
+    return rows, provenance
+
+
+def _log_unknown_headers(db, labels, school_id):
+    """Firestore `import_unknown_headers`: {label, count, last_seen,
+    last_school_id} keyed by canonicalized label, so the alias dictionary in
+    normalize.STUDENT_HEADER_ALIASES can be grown from real production data
+    instead of guesswork — see the task's NOTES section."""
+    for label in labels:
+        canon = canonicalize(label)
+        if not canon:
+            continue
+        try:
+            db.collection("import_unknown_headers").document(canon).set({
+                "label": label, "count": firestore.Increment(1),
+                "last_seen": firestore.SERVER_TIMESTAMP, "last_school_id": school_id,
+            }, merge=True)
+        except Exception as e:
+            print(f"_log_unknown_headers: could not log '{label}': {e}")
+
+
 # ------------------------------------------------------------------ main ----
 @https_fn.on_call(
     region="asia-south1",
@@ -807,11 +800,36 @@ def process_import(req: https_fn.CallableRequest):
             "status": "processing", "model_used": MODEL,
         }, merge=True)
 
+        # job_diag accumulates cross-file diagnostics (never per-row data —
+        # that stays on each row doc) for the job summary: which files
+        # produced what, which sheets got skipped and why, every file/sheet/
+        # row-scoped warning and error. Capped before being written to the
+        # job doc (see below) to stay well under Firestore's 1MB doc limit
+        # even for a very messy multi-hundred-row file.
+        job_diag = {"warnings": [], "errors": [], "file_summaries": [], "unmapped_headers": set()}
+
         raw_rows = []
+        provenance = []
         for f in files:
-            blob = bucket.blob(f["path"])
-            raw = blob.download_as_bytes()
-            raw_rows.extend(extract_file(entity, f.get("name", f["path"]), raw))
+            name = f.get("name", f["path"])
+            try:
+                raw = bucket.blob(f["path"]).download_as_bytes()
+                file_rows, file_prov = _process_one_file(entity, name, raw, job_diag)
+            except Exception as e:
+                # One bad file must never take down the whole job — degrade
+                # to a file-level error and keep processing the rest.
+                job_diag["errors"].append({"file": name, "sheet": None, "row": None, "field": None,
+                                            "severity": "error", "message": f"could not process file: {e}"})
+                job_diag["file_summaries"].append({
+                    "name": name, "file_type_detected": "unknown", "sheets_parsed": [], "sheets_skipped": [],
+                    "row_count": 0, "warning_count": 0, "error_count": 1, "used_llm_fallback": False,
+                })
+                continue
+            raw_rows.extend(file_rows)
+            provenance.extend(file_prov)
+
+        if entity == "students" and job_diag["unmapped_headers"]:
+            _log_unknown_headers(db, job_diag["unmapped_headers"], school_id)
 
         cfg = load_school_config(db, school_id, entity)
 
@@ -822,11 +840,26 @@ def process_import(req: https_fn.CallableRequest):
         # get real cleaning; subjects/assessments pass through unchanged
         # (nothing in their schema needs config-matching against themselves).
         if entity == "students":
-            cleaned = clean_students_rows(raw_rows, cfg)
+            cleaned = clean_students_rows(raw_rows, cfg, provenance)
         elif entity == "teachers":
-            cleaned = clean_teachers_rows(raw_rows, cfg)
+            cleaned = clean_teachers_rows(raw_rows, cfg, provenance)
         else:
-            cleaned = [{"data": r, "fixes": [], "suggestions": [], "flags": []} for r in raw_rows]
+            # No expansion for subjects/assessments (1 input row -> 1 output
+            # row), so provenance stays index-aligned with raw_rows exactly
+            # like the students path.
+            cleaned = [{"data": r, "fixes": [], "suggestions": [], "flags": [],
+                        "provenance": provenance[i] if i < len(provenance) else None}
+                       for i, r in enumerate(raw_rows)]
+
+        # Merge in tabular_parser's own per-row diagnostics (ambiguous dates,
+        # invalid phone numbers, missing-name exclusions, ...) — only
+        # meaningful for students, and only 1:1-aligned there (teachers can
+        # expand past provenance's original length via multi-grade cells).
+        if entity == "students":
+            for c in cleaned:
+                extra = (c.get("provenance") or {}).get("extra_flags") or []
+                if extra:
+                    c["flags"] = extra + c["flags"]
 
         cleaned_data = [c["data"] for c in cleaned]
         if entity == "students":
@@ -845,32 +878,56 @@ def process_import(req: https_fn.CallableRequest):
             c["flags"] = c["flags"] + v_flags
 
         rows_ref = job_ref.collection("rows")
-        flag_count = fixed_count = suggestion_count = 0
+        flag_count = fixed_count = suggestion_count = error_flag_count = 0
+        included_row_count = 0
         for i in range(0, len(cleaned), 450):
             batch = db.batch()
             for j in range(i, min(i + 450, len(cleaned))):
                 c = cleaned[j]
+                prov = c.get("provenance") or {}
                 flag_count += len(c["flags"])
+                error_flag_count += sum(1 for fl in c["flags"] if fl.get("severity") == "error")
                 if c["fixes"]:
                     fixed_count += 1
                 if c["suggestions"]:
                     suggestion_count += 1
+                excluded_default = bool(prov.get("excluded_default"))
+                if not excluded_default:
+                    included_row_count += 1
                 batch.set(rows_ref.document(str(j)), {
                     "data": c["data"], "flags": c["flags"],
                     "fixes": c["fixes"], "suggestions": c["suggestions"],
-                    "edited": False, "excluded": False,
+                    "edited": False, "excluded": excluded_default,
+                    "source_file": prov.get("source_file"), "source_sheet": prov.get("sheet"),
+                    "source_row": prov.get("row"),
                 })
             batch.commit()
 
+        # 0 (usable) rows is ALWAYS an error state, per the parser-hardening
+        # contract — never "ready" with an empty table. A job can produce
+        # rows that are ALL excluded (e.g. every row in the file was missing
+        # a name) and that's the same story: nothing committable came out of
+        # this job, so the UI must show an error, not a quiet empty table.
+        status = "ready" if included_row_count > 0 else "error"
+        if status == "error" and not job_diag["errors"]:
+            job_diag["errors"].append({
+                "file": None, "sheet": None, "row": None, "field": None, "severity": "error",
+                "message": "0 usable rows extracted from the uploaded file(s)",
+            })
+
         job_ref.set({
-            "status": "ready", "row_count": len(cleaned), "flag_count": flag_count,
+            "status": status, "row_count": len(cleaned), "included_row_count": included_row_count,
+            "flag_count": flag_count, "error_flag_count": error_flag_count,
             "fixed_count": fixed_count, "suggestion_count": suggestion_count,
             "class_level_flags": class_level_flags,
+            "file_summaries": job_diag["file_summaries"],
+            "parse_warnings": job_diag["warnings"][:500],
+            "parse_errors": job_diag["errors"][:500],
             "completed_at": firestore.SERVER_TIMESTAMP,
         }, merge=True)
 
-        return {"status": "ready", "rowCount": len(cleaned), "flagCount": flag_count,
-                "fixedCount": fixed_count, "suggestionCount": suggestion_count}
+        return {"status": status, "rowCount": len(cleaned), "includedRowCount": included_row_count,
+                "flagCount": flag_count, "fixedCount": fixed_count, "suggestionCount": suggestion_count}
 
     except https_fn.HttpsError:
         raise

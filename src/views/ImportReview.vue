@@ -37,6 +37,32 @@
       <div class="text-sm text-slate-600">{{ job.error }}</div>
     </div>
 
+    <!-- Extraction completed but produced 0 usable rows — never "ready" with
+         an empty table; always a distinct error state with the detected
+         file type(s) and a named reason per file. -->
+    <div v-else-if="job.status === 'error'" class="bg-white rounded-xl border border-orange-200 p-6">
+      <div class="text-sm font-bold text-orange-600 mb-3"><i class="pi pi-exclamation-triangle mr-1"></i>0 usable rows extracted</div>
+      <div v-if="(job.file_summaries || []).length" class="space-y-3">
+        <div v-for="fs in job.file_summaries" :key="fs.name" class="border border-slate-100 rounded-lg p-3">
+          <div class="flex items-center gap-2 text-sm">
+            <span class="font-semibold text-slate-800 truncate">{{ fs.name }}</span>
+            <span class="px-2 py-0.5 rounded-full text-xs bg-slate-100 text-slate-600">{{ fs.file_type_detected || 'unknown' }}</span>
+            <span class="text-xs text-slate-400">{{ fs.row_count }} rows · {{ fs.warning_count }} warnings · {{ fs.error_count }} errors</span>
+          </div>
+          <div v-if="(fs.sheets_skipped || []).length" class="mt-2 space-y-0.5">
+            <div v-for="s in fs.sheets_skipped" :key="s.name" class="text-xs text-slate-500">
+              <span class="font-medium">{{ s.name }}:</span> {{ s.reason }}
+            </div>
+          </div>
+        </div>
+      </div>
+      <div v-if="(job.parse_errors || []).length" class="mt-3 pt-3 border-t border-slate-100 space-y-1">
+        <div v-for="(e, i) in job.parse_errors" :key="i" class="text-xs text-slate-600">
+          <span v-if="e.file" class="font-medium">{{ e.file }}<span v-if="e.sheet">/{{ e.sheet }}</span>:</span> {{ e.message }}
+        </div>
+      </div>
+    </div>
+
     <div v-else>
       <!-- ── Summary ──────────────────────────────────────────────────────── -->
       <div class="bg-white rounded-xl border border-slate-200 p-4 mb-4">
@@ -50,13 +76,27 @@
             <span v-for="(count, cls) in perClassCounts" :key="cls" class="px-2 py-0.5 rounded-full text-xs bg-slate-100 text-slate-600">{{ cls }}: {{ count }}</span>
           </div>
           <div class="ml-auto flex gap-2">
-            <Button label="Download error report" icon="pi pi-download" size="small" outlined :disabled="!flaggedCount" @click="downloadErrorReport" />
+            <Button label="Download error report" icon="pi pi-download" size="small" outlined :disabled="!hasReportableIssues" @click="downloadErrorReport" />
             <Button label="Source Files" icon="pi pi-file" size="small" outlined @click="sourceFilesVisible = true" />
           </div>
         </div>
         <div v-if="(job.class_level_flags || []).length" class="mt-3 border-t border-slate-100 pt-3">
           <div class="text-xs font-semibold text-amber-600 mb-1">Class-level flags</div>
           <div v-for="(f, i) in job.class_level_flags" :key="i" class="text-xs text-slate-500">{{ f }}</div>
+        </div>
+        <!-- Per-file summary chips: parsed N rows, W warnings, E errors, S sheets skipped -->
+        <div v-if="(job.file_summaries || []).length" class="mt-3 border-t border-slate-100 pt-3 flex flex-wrap gap-2">
+          <div v-for="fs in job.file_summaries" :key="fs.name"
+               class="px-2.5 py-1 rounded-lg text-xs bg-slate-50 text-slate-600 flex items-center gap-1.5"
+               v-tooltip="(fs.sheets_skipped || []).map(s => `${s.name}: ${s.reason}`).join('\n') || undefined">
+            <i class="pi pi-file text-slate-400"></i>
+            <span class="font-medium truncate max-w-[160px]">{{ fs.name }}</span>
+            <span v-if="fs.file_type_detected" class="text-slate-400">{{ fs.file_type_detected }}</span>
+            <span>·</span><span>{{ fs.row_count }} parsed</span>
+            <span v-if="fs.warning_count" class="text-amber-600">· {{ fs.warning_count }} warnings</span>
+            <span v-if="fs.error_count" class="text-red-500">· {{ fs.error_count }} errors</span>
+            <span v-if="(fs.sheets_skipped || []).length" class="text-orange-600">· {{ fs.sheets_skipped.length }} sheets skipped</span>
+          </div>
         </div>
       </div>
 
@@ -244,12 +284,12 @@ function throttledActivity() {
 }
 
 const COLUMNS = {
-  students: ['grade', 'section', 'roll_no', 'student_name', 'gender', 'dob', 'sr_no', 'mother_name', 'father_name', 'contact'],
+  students: ['grade', 'section', 'roll_no', 'student_name', 'gender', 'dob', 'sr_no', 'adm_no', 'mother_name', 'father_name', 'contact', 'email', 'city'],
   teachers: ['teacher_name', 'email', 'class_teacher_of', 'subject', 'grade', 'section'],
   subjects: ['stream', 'grade_band', 'subject', 'area'],
   assessments: ['stream', 'grade_band', 'assessment', 'date_start', 'date_end', 'instructional_days', 'syllabus_covered', 'exam_syllabus', 'max_written', 'activity_weight', 'total', 'duration'],
 }
-const LABELS = { roll_no: 'Roll No', student_name: 'Name', dob: 'DOB', sr_no: 'Sr No', mother_name: 'Mother', father_name: 'Father', teacher_name: 'Teacher', class_teacher_of: 'Class Teacher Of', grade_band: 'Grade Band', date_start: 'Start', date_end: 'End', instructional_days: 'Inst. Days', syllabus_covered: 'Syllabus Covered', exam_syllabus: 'Exam Syllabus', max_written: 'Max Written', activity_weight: 'Activity Wt', total: 'Total', duration: 'Duration' }
+const LABELS = { roll_no: 'Roll No', student_name: 'Name', dob: 'DOB', sr_no: 'Sr No', adm_no: 'Adm No', mother_name: 'Mother', father_name: 'Father', teacher_name: 'Teacher', class_teacher_of: 'Class Teacher Of', grade_band: 'Grade Band', date_start: 'Start', date_end: 'End', instructional_days: 'Inst. Days', syllabus_covered: 'Syllabus Covered', exam_syllabus: 'Exam Syllabus', max_written: 'Max Written', activity_weight: 'Activity Wt', total: 'Total', duration: 'Duration' }
 function colLabel(c) { return LABELS[c] || c.charAt(0).toUpperCase() + c.slice(1) }
 
 // Only section (students, teachers) and subject (teachers) go through
@@ -270,6 +310,8 @@ const tableRows = computed(() => rows.value.map(r => ({
   _excluded: !!r.excluded, ...r.data,
 })))
 const flaggedCount = computed(() => rows.value.filter(r => (r.flags || []).length).length)
+const hasReportableIssues = computed(() =>
+  !!flaggedCount.value || !!(job.value?.parse_errors || []).length || !!(job.value?.parse_warnings || []).length)
 const autoFixedCount = computed(() => rows.value.filter(r => (r.fixes || []).length).length)
 const suggestionsPendingCount = computed(() => rows.value.filter(r => (r.suggestions || []).length).length)
 const excludedCount = computed(() => rows.value.filter(r => r.excluded).length)
@@ -371,7 +413,8 @@ async function onToggleExclude(data, included) {
 function statusClass(status) {
   return {
     processing: 'bg-amber-50 text-amber-700', ready: 'bg-blue-50 text-blue-700',
-    committed: 'bg-green-50 text-green-700', failed: 'bg-red-50 text-red-700',
+    committed: 'bg-green-50 text-green-700', error: 'bg-orange-50 text-orange-700',
+    failed: 'bg-red-50 text-red-700',
   }[status] || 'bg-slate-100 text-slate-600'
 }
 function formatTs(ts) {
@@ -379,23 +422,49 @@ function formatTs(ts) {
   return ts.toDate().toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
 }
 
-// ── Error report CSV — one row per flag, so the same staged row can appear
-// more than once if it has multiple problems. Sent back to the school to fix
-// at source when a fix/suggestion isn't available in-app. ──────────────────
+// ── Error report CSV — file, sheet, row, field, severity, problem, action
+// taken. One row per flag, so the same staged row can appear more than once
+// if it has multiple problems, PLUS one row per file/sheet-level issue that
+// never became a staged row at all (empty file, no recognizable header,
+// password-protected...) sourced from job.parse_errors/parse_warnings.
+// Sent back to the school to fix at source when a fix/suggestion isn't
+// available in-app. ──────────────────────────────────────────────────────
 const ID_FIELD_BY_ENTITY = { students: 'student_name', teachers: 'teacher_name', subjects: 'subject', assessments: 'assessment' }
+function actionTakenFor(r, field) {
+  const fix = (r.fixes || []).find(f => f.field === field)
+  if (fix) return `auto-fixed: '${fix.original || ''}' -> '${fix.fixed}'`
+  const sugg = (r.suggestions || []).find(s => s.field === field)
+  if (sugg) return `suggestion pending: '${sugg.suggested}'`
+  if (r.excluded) return 'excluded'
+  return 'kept — flagged for review'
+}
 function downloadErrorReport() {
   const idField = ID_FIELD_BY_ENTITY[job.value?.entity] || ''
   const csvRows = []
   rows.value.forEach(r => {
     (r.flags || []).forEach(f => {
-      const sugg = (r.suggestions || []).find(s => s.field === f.field)
       csvRows.push({
-        row: r.id,
+        file: r.source_file || '',
+        sheet: r.source_sheet || '',
+        row: r.source_row ?? r.id,
         [idField || 'identifier']: r.data[idField] || '',
         field: f.field || '',
+        severity: f.severity || 'warning',
         problem: f.message,
-        suggestion: sugg ? sugg.suggested : '',
+        action_taken: actionTakenFor(r, f.field),
       })
+    })
+  })
+  // File/sheet-level issues with no row of their own (never staged) —
+  // row-scoped ones are already covered above via r.flags.
+  const jobLevel = [...(job.value?.parse_errors || []), ...(job.value?.parse_warnings || [])]
+    .filter(e => e.row == null)
+  jobLevel.forEach(e => {
+    csvRows.push({
+      file: e.file || '', sheet: e.sheet || '', row: '',
+      [idField || 'identifier']: '', field: e.field || '',
+      severity: e.severity || 'warning', problem: e.message,
+      action_taken: 'file/sheet skipped',
     })
   })
   if (!csvRows.length) {

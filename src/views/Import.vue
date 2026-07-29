@@ -57,9 +57,13 @@
       >
         <i class="pi pi-cloud-upload text-2xl mb-2 block"></i>
         Drag &amp; drop files here or click to browse
-        <div class="text-xs text-slate-300 mt-1">.xlsx .docx .pdf .png .jpg — multiple files allowed</div>
+        <div class="text-xs text-slate-300 mt-1">.xlsx .xls .csv .tsv .htm/.html .docx .pdf .png .jpg — multiple files allowed</div>
       </div>
-      <input ref="fileInputEl" type="file" multiple class="hidden" accept=".xlsx,.xlsm,.docx,.pdf,.png,.jpg,.jpeg" @change="onFileSelected" />
+      <input
+        ref="fileInputEl" type="file" multiple class="hidden"
+        accept=".xlsx,.xlsm,.xls,.csv,.tsv,.txt,.htm,.html,.docx,.pdf,.png,.jpg,.jpeg"
+        @change="onFileSelected"
+      />
 
       <div v-if="pendingFiles.length" class="space-y-1.5 mt-3">
         <div v-for="(f, i) in pendingFiles" :key="i" class="flex items-center gap-2 text-xs bg-slate-50 rounded-lg px-2.5 py-1.5">
@@ -97,7 +101,7 @@
           </template>
         </Column>
         <Column header="Rows" style="width:100px">
-          <template #body="{ data }">{{ data.row_count ?? '—' }}</template>
+          <template #body="{ data }">{{ data.included_row_count ?? data.row_count ?? '—' }}</template>
         </Column>
         <Column header="Flags" style="width:100px">
           <template #body="{ data }">{{ data.flag_count ?? '—' }}</template>
@@ -229,6 +233,11 @@ function statusClass(status) {
     processing: 'bg-amber-50 text-amber-700',
     ready: 'bg-blue-50 text-blue-700',
     committed: 'bg-green-50 text-green-700',
+    // 'error' = completed without crashing but produced 0 usable rows —
+    // distinct from 'failed' (an unexpected crash) per the parser hardening
+    // contract: 0 rows must never look like "ready" or be indistinguishable
+    // from a genuine crash.
+    error: 'bg-orange-50 text-orange-700',
     failed: 'bg-red-50 text-red-700',
   }[status] || 'bg-slate-100 text-slate-600'
 }

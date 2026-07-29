@@ -293,8 +293,9 @@ async function buildStudentsPlan(schoolId, rows) {
 
     const payload = {
       name: d.student_name || '', gender: d.gender || '', dob: d.dob || '',
-      srNo: d.sr_no || '', motherName: d.mother_name || '', fatherName: d.father_name || '',
-      contactNumber: d.contact || '', rollNo: d.roll_no || '', currentClassId: classId,
+      srNo: d.sr_no || '', admNo: d.adm_no || '', motherName: d.mother_name || '', fatherName: d.father_name || '',
+      contactNumber: d.contact || '', rollNo: d.roll_no || '', email: d.email || '', city: d.city || '',
+      currentClassId: classId,
     }
     const existing = existingById.get(docId)
     if (!existing) {
