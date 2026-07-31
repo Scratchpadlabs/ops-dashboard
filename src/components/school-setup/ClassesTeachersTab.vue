@@ -2,7 +2,10 @@
   <div class="pt-4">
     <div class="flex items-center justify-between mb-3">
       <div class="text-sm font-bold text-slate-900">Classes &amp; Teachers</div>
-      <Button label="Add Section" icon="pi pi-plus" size="small" @click="openAddSection" />
+      <div class="flex gap-2">
+        <SectionTemplateActions section-type="classes" :school-id="props.schoolId" @applied="loadAll" />
+        <Button label="Add Section" icon="pi pi-plus" size="small" @click="openAddSection" />
+      </div>
     </div>
 
     <div v-if="loading" class="flex items-center justify-center py-10">
@@ -136,6 +139,7 @@ import ToggleButton from 'primevue/togglebutton'
 import Checkbox from 'primevue/checkbox'
 import ProgressSpinner from 'primevue/progressspinner'
 import ConfirmDialog from 'primevue/confirmdialog'
+import SectionTemplateActions from './SectionTemplateActions.vue'
 
 import { schoolCollection, schoolDoc } from '../../firebase/schoolCollections.js'
 import { auth } from '../../firebase/config'

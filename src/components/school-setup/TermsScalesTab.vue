@@ -6,6 +6,7 @@
       <div class="flex items-center justify-between mb-3">
         <div class="text-sm font-bold text-slate-900">Terms</div>
         <div class="flex gap-2">
+          <SectionTemplateActions section-type="terms" :school-id="props.schoolId" @applied="loadTerms" />
           <Button label="Import CSV" icon="pi pi-upload" size="small" outlined @click="termImportVisible = true" />
           <Button label="Sample CSV" icon="pi pi-download" size="small" text @click="downloadTermSample" />
           <Button label="Export CSV" icon="pi pi-file-export" size="small" text @click="exportTerms" />
@@ -55,6 +56,7 @@
       <div class="flex items-center justify-between mb-3">
         <div class="text-sm font-bold text-slate-900">Grading Scales</div>
         <div class="flex gap-2">
+          <SectionTemplateActions section-type="grading_scales" :school-id="props.schoolId" @applied="loadScales" />
           <Button label="Import CSV" icon="pi pi-upload" size="small" outlined @click="openScaleImport" />
           <Button label="Sample CSV" icon="pi pi-download" size="small" text @click="downloadScaleSample" />
           <Button label="Export CSV" icon="pi pi-file-export" size="small" text @click="exportScales" />
@@ -210,6 +212,7 @@ import ToggleButton from 'primevue/togglebutton'
 import ProgressSpinner from 'primevue/progressspinner'
 import ConfirmDialog from 'primevue/confirmdialog'
 import CsvImportDialog from './CsvImportDialog.vue'
+import SectionTemplateActions from './SectionTemplateActions.vue'
 
 import { schoolCollection, schoolDoc } from '../../firebase/schoolCollections.js'
 import { db, auth } from '../../firebase/config'

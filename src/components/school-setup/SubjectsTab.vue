@@ -3,6 +3,7 @@
     <div class="flex items-center justify-between mb-3">
       <div class="text-sm font-bold text-slate-900">Subjects</div>
       <div class="flex gap-2">
+        <SectionTemplateActions section-type="subjects" :school-id="props.schoolId" @applied="loadSubjects" />
         <Button label="Import CSV" icon="pi pi-upload" size="small" outlined @click="importVisible = true" />
         <Button label="Sample CSV" icon="pi pi-download" size="small" text @click="downloadSample" />
         <Button label="Export CSV" icon="pi pi-file-export" size="small" text @click="exportCsv" />
@@ -155,6 +156,7 @@ import Select from 'primevue/select'
 import ProgressSpinner from 'primevue/progressspinner'
 import ConfirmDialog from 'primevue/confirmdialog'
 import CsvImportDialog from './CsvImportDialog.vue'
+import SectionTemplateActions from './SectionTemplateActions.vue'
 
 import { schoolCollection, schoolDoc, rootSchoolsCollection } from '../../firebase/schoolCollections.js'
 import { db, auth } from '../../firebase/config'

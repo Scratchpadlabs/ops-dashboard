@@ -3,6 +3,7 @@
     <div class="flex items-center justify-between mb-3">
       <div class="text-sm font-bold text-slate-900">Remark Categories</div>
       <div class="flex gap-2">
+        <SectionTemplateActions section-type="remark_categories" :school-id="props.schoolId" @applied="loadCategories" />
         <Button label="Copy from another school" icon="pi pi-copy" size="small" outlined @click="openCopyDialog" />
         <Button label="Add Category" icon="pi pi-plus" size="small" @click="openAddCategory" />
       </div>
@@ -128,6 +129,7 @@ import ToggleButton from 'primevue/togglebutton'
 import Select from 'primevue/select'
 import ProgressSpinner from 'primevue/progressspinner'
 import ConfirmDialog from 'primevue/confirmdialog'
+import SectionTemplateActions from './SectionTemplateActions.vue'
 
 import { schoolCollection, schoolDoc, rootSchoolsCollection } from '../../firebase/schoolCollections.js'
 import { db } from '../../firebase/config'

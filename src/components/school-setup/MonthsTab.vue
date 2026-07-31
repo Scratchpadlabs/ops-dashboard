@@ -3,6 +3,7 @@
     <div class="flex items-center justify-between mb-3">
       <div class="text-sm font-bold text-slate-900">Months</div>
       <div class="flex gap-2">
+        <SectionTemplateActions section-type="months" :school-id="props.schoolId" @applied="loadMonths" />
         <Button :label="gridMode ? 'Exit Grid Edit' : 'Grid Edit'" icon="pi pi-table" size="small" outlined @click="gridMode ? exitGridMode() : enterGridMode()" />
         <Button label="Generate Academic Year" icon="pi pi-calendar-plus" size="small" outlined @click="openGenerateDialog" />
         <Button label="Import CSV" icon="pi pi-upload" size="small" outlined @click="importVisible = true" />
@@ -181,6 +182,7 @@ import InputNumber from 'primevue/inputnumber'
 import Select from 'primevue/select'
 import ProgressSpinner from 'primevue/progressspinner'
 import ConfirmDialog from 'primevue/confirmdialog'
+import SectionTemplateActions from './SectionTemplateActions.vue'
 import CsvImportDialog from './CsvImportDialog.vue'
 
 import { schoolCollection, schoolDoc } from '../../firebase/schoolCollections.js'

@@ -283,6 +283,7 @@ const pageTitles = {
   'invoices':     'Invoices',
   'expenses':     'Expenses',
   'settings':     'Settings',
+  'settings-templates': 'Templates',
 }
 
 const pageTitle = computed(() => pageTitles[route.name] || 'Home')

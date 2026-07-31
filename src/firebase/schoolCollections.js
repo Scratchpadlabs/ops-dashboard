@@ -13,9 +13,19 @@ export const rootSchoolDoc = (schoolId) => doc(db, 'schools', schoolId)
 export const schoolCollection = (schoolId, name) => collection(db, 'schools', schoolId, name)
 export const schoolDoc = (schoolId, name, id) => doc(db, 'schools', schoolId, name, id)
 
-// Config templates are top-level — NOT scoped under any school.
-export const configTemplatesCollection = () => collection(db, 'config_templates')
-export const configTemplateDoc = (id) => doc(db, 'config_templates', id)
+// Generic School Setup template system (see src/utils/setupTemplates.js) —
+// top-level, NOT scoped under any school (a template captures a snapshot
+// FROM one school via created_from_school, but can be applied to any).
+// Supersedes the old single-purpose config_templates collection (see
+// scripts/migrate-config-templates.mjs for the one-time migration).
+export const setupTemplatesCollection = () => collection(db, 'setup_templates')
+export const setupTemplateDoc = (id) => doc(db, 'setup_templates', id)
+
+// A bundle groups templates across section types (e.g. "CBSE Primary" =
+// subjects + grading + assessment pattern + co-scholastic + terms) so School
+// Setup's "Apply Bundle" action can apply several sections in one go.
+export const setupBundlesCollection = () => collection(db, 'setup_bundles')
+export const setupBundleDoc = (id) => doc(db, 'setup_bundles', id)
 
 // Import staging is also top-level (a job belongs to one school, recorded
 // via school_id on the doc) — see functions/generate_import and

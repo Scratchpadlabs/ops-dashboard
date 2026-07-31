@@ -46,12 +46,15 @@
           @click="createTestSchool"
         />
       </div>
-      <span class="px-3 py-1.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-600">
-        {{ activeYear === 'All Years' ? 'All Years' : `AY ${activeYear}` }}
-      </span>
+      <div class="flex items-center gap-2">
+        <ApplyBundleDialog :school-id="selectedSchoolId" @applied="reloadTabs" />
+        <span class="px-3 py-1.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-600">
+          {{ activeYear === 'All Years' ? 'All Years' : `AY ${activeYear}` }}
+        </span>
+      </div>
     </div>
 
-    <Tabs value="overview">
+    <Tabs value="overview" :key="tabsKey">
       <TabList>
         <Tab value="overview">Overview</Tab>
         <Tab value="terms-scales">Terms &amp; Scales</Tab>
@@ -63,7 +66,6 @@
         <Tab value="months">Months</Tab>
         <Tab value="sheets-status">Sheets Status</Tab>
         <Tab value="clone-school">Clone School</Tab>
-        <Tab value="templates">Templates</Tab>
       </TabList>
       <TabPanels>
         <TabPanel value="overview"><OverviewTab :school-id="selectedSchoolId" :school="selectedSchoolObject" @saved="loadSchools" /></TabPanel>
@@ -76,7 +78,6 @@
         <TabPanel value="months"><MonthsTab :school-id="selectedSchoolId" /></TabPanel>
         <TabPanel value="sheets-status"><SheetsStatusTab :school-id="selectedSchoolId" /></TabPanel>
         <TabPanel value="clone-school"><CloneSchoolTab :school-id="selectedSchoolId" :school="selectedSchoolObject" /></TabPanel>
-        <TabPanel value="templates"><TemplatesTab :school-id="selectedSchoolId" /></TabPanel>
       </TabPanels>
     </Tabs>
   </div>
@@ -108,7 +109,7 @@ import CoScholasticTab from '../components/school-setup/CoScholasticTab.vue'
 import OverviewTab from '../components/school-setup/OverviewTab.vue'
 import SheetsStatusTab from '../components/school-setup/SheetsStatusTab.vue'
 import CloneSchoolTab from '../components/school-setup/CloneSchoolTab.vue'
-import TemplatesTab from '../components/school-setup/TemplatesTab.vue'
+import ApplyBundleDialog from '../components/school-setup/ApplyBundleDialog.vue'
 
 // Dedicated sandbox school — every Phase 2+ CRUD tab should default here so
 // trial writes never touch a real school's config.
@@ -154,6 +155,14 @@ const creatingTestSchool = ref(false)
 
 const hasTestSchool = computed(() => schools.value.some(s => s.id === TEST_SCHOOL_ID))
 const selectedSchoolObject = computed(() => schools.value.find(s => s.id === selectedSchoolId.value) || null)
+
+// Bumped after "Apply Bundle" writes across multiple sections at once —
+// forces every tab to remount and reload its own data fresh, since a bundle
+// touches sections beyond whichever single tab is currently open (unlike
+// SectionTemplateActions' single-section @applied, which just calls that
+// one tab's own reload function).
+const tabsKey = ref(0)
+function reloadTabs() { tabsKey.value++ }
 
 async function loadSchools() {
   loadingSchools.value = true

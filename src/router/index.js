@@ -15,6 +15,7 @@ import Agreements from '../views/Agreements.vue'
 import Invoices from '../views/Invoices.vue'
 import Expenses from '../views/Expenses.vue'
 import Settings from '../views/Settings.vue'
+import SettingsTemplates from '../views/SettingsTemplates.vue'
 import Login from '../views/Login.vue'
 import { isOpsAdmin } from '../config/opsAdmins.js'
 
@@ -34,6 +35,7 @@ const routes = [
   { path: '/invoices',      component: Invoices,      name: 'invoices' },
   { path: '/expenses',      component: Expenses,      name: 'expenses' },
   { path: '/settings',      component: Settings,      name: 'settings' },
+  { path: '/settings/templates', component: SettingsTemplates, name: 'settings-templates', meta: { opsAdminOnly: true } },
 ]
 
 export const router = createRouter({

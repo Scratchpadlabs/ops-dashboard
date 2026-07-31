@@ -6,6 +6,7 @@
         <Select v-model="selectedTermId" :options="terms" optionLabel="name" optionValue="id" placeholder="Select a term" class="w-56" />
       </div>
       <div class="flex gap-2">
+        <SectionTemplateActions section-type="co_scholastic_activities" :school-id="props.schoolId" @applied="loadActivities" />
         <Button :label="gridMode ? 'Exit Grid Edit' : 'Grid Edit'" icon="pi pi-table" size="small" outlined :disabled="!selectedTermId" @click="gridMode ? exitGridMode() : enterGridMode()" />
         <Button label="Import CSV" icon="pi pi-upload" size="small" outlined @click="importVisible = true" />
         <Button label="Sample CSV" icon="pi pi-download" size="small" text @click="downloadSample" />
@@ -153,6 +154,7 @@ import InputNumber from 'primevue/inputnumber'
 import Select from 'primevue/select'
 import ProgressSpinner from 'primevue/progressspinner'
 import ConfirmDialog from 'primevue/confirmdialog'
+import SectionTemplateActions from './SectionTemplateActions.vue'
 import CsvImportDialog from './CsvImportDialog.vue'
 
 import { schoolCollection, schoolDoc } from '../../firebase/schoolCollections.js'

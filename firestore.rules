@@ -51,9 +51,23 @@ service cloud.firestore {
       allow update, delete: if isOpsAdmin();
     }
 
-    // Config Templates (Phase 6): top-level, not under any school, ops-tooling
-    // only — not consumed by the teacher app, so read is admin-only too.
+    // Config Templates (Phase 6) — SUPERSEDED by setup_templates/setup_bundles
+    // below (see src/utils/setupTemplates.js and scripts/migrate-config-templates.mjs).
+    // Rule kept until Sid confirms the migration and cleans up the old
+    // collection; still ops-admin-only either way.
     match /config_templates/{templateId} {
+      allow read, write: if isOpsAdmin();
+    }
+
+    // School Setup generic template system: top-level, not under any school
+    // (a template captures a snapshot FROM one school via
+    // created_from_school, but can be applied to any). Same ops-tooling-only
+    // gate as config_templates above.
+    match /setup_templates/{templateId} {
+      allow read, write: if isOpsAdmin();
+    }
+    // Bundles group templates across section types — same gate.
+    match /setup_bundles/{bundleId} {
       allow read, write: if isOpsAdmin();
     }
 

@@ -79,12 +79,24 @@
       <div class="flex justify-end">
         <Button label="Save Settings" :loading="saving" @click="save" />
       </div>
+
+      <!-- School Setup Templates -->
+      <div class="bg-white rounded-xl border border-slate-200 p-4 flex items-center justify-between">
+        <div>
+          <label class="form-label">School Setup Templates</label>
+          <p class="text-xs text-slate-400 mt-1">Manage saved templates and bundles used by School Setup's Save/Apply Template actions.</p>
+        </div>
+        <RouterLink :to="{ name: 'settings-templates' }">
+          <Button label="Manage Templates" icon="pi pi-clone" size="small" outlined />
+        </RouterLink>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
+import { RouterLink } from 'vue-router'
 import { db } from '../firebase/config'
 import { doc, getDoc, setDoc } from 'firebase/firestore'
 import { useToast } from 'primevue/usetoast'
