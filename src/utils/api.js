@@ -64,7 +64,7 @@ export async function generateQuotationPDF(q) {
 
 // ── Invoice ───────────────────────────────────────────────────────────────────
 export async function generateInvoicePDF(inv) {
-  const res = await callCF(URLS.invoice, {
+  const payload = {
     schoolName:      inv.school_name,
     schoolAddress:   inv.school_address || '',
     schoolPhone:     inv.school_phone || '',
@@ -73,7 +73,17 @@ export async function generateInvoicePDF(inv) {
     pricePerStudent: inv.price_per_student,
     quantity:        inv.quantity,
     date:            formatDate(inv.created_at?.toDate ? inv.created_at.toDate() : new Date()),
-  })
+  }
+  // Installment invoices render as percent × contract value instead of
+  // price × quantity, plus an "invoiced to date" summary line.
+  if (inv.percent != null && inv.base_amount) {
+    payload.installmentLabel  = inv.installment_label || inv.installment_type || ''
+    payload.percent           = inv.percent
+    payload.baseAmount        = inv.base_amount
+    payload.amount            = inv.amount
+    payload.invoicedToDatePct = inv.invoiced_to_date_percent ?? null
+  }
+  const res = await callCF(URLS.invoice, payload)
   const blob = await res.blob()
   downloadBlob(blob, `Invoice_${inv.invoice_number}_${inv.school_name}.pdf`)
 }

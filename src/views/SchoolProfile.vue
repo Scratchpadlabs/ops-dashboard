@@ -174,7 +174,14 @@
                 <div v-if="!editingCommercial" class="grid grid-cols-2 gap-3 text-sm">
                   <div><span class="text-slate-400">Price per Student</span><div class="text-slate-800 font-medium">{{ school.price_per_student ? '₹' + formatPrice(school.price_per_student) : '—' }}</div></div>
                   <div><span class="text-slate-400">HPC Type</span><div class="text-slate-800 font-medium">{{ hpcTypeLabel(school.hpc_type) }}</div></div>
-                  <div><span class="text-slate-400">Installment Plan</span><div class="text-slate-800 font-medium">{{ school.installment_plan ? `Plan ${school.installment_plan} · ${school.installment_plan === 'B' ? '25-25-25-25' : '50-25-25'}` : '—' }}</div></div>
+                  <div><span class="text-slate-400">Payment Plan</span><div class="text-slate-800 font-medium">{{ schoolPlanLabel }}</div></div>
+                  <div>
+                    <span class="text-slate-400">Contract Value</span>
+                    <div class="text-slate-800 font-medium">
+                      {{ contractValue ? '₹' + formatPrice(contractValue) : '—' }}
+                      <span v-if="contractValue && !school.contract_value" class="text-xs text-slate-400 font-normal">(price × students)</span>
+                    </div>
+                  </div>
                   <div class="col-span-2"><span class="text-slate-400">Payment Terms Notes</span><div class="text-slate-800 font-medium">{{ school.payment_notes || '—' }}</div></div>
                 </div>
 
@@ -201,32 +208,74 @@
                     </div>
                   </div>
                   <div>
-                    <label class="form-label">Installment Plan</label>
-                    <div class="grid grid-cols-2 gap-2">
-                      <button
-                        type="button"
-                        @click="commercialForm.installment_plan = 'A'"
-                        class="p-2.5 rounded-lg border text-left transition-all"
-                        :class="commercialForm.installment_plan === 'A' ? 'border-blue-500 bg-blue-50' : 'border-slate-200 hover:border-slate-300'"
-                      >
-                        <div class="font-semibold text-xs text-slate-900">Plan A</div>
-                        <div class="text-[11px] text-slate-500">50% · 25% · 25%</div>
-                      </button>
-                      <button
-                        type="button"
-                        @click="commercialForm.installment_plan = 'B'"
-                        class="p-2.5 rounded-lg border text-left transition-all"
-                        :class="commercialForm.installment_plan === 'B' ? 'border-blue-500 bg-blue-50' : 'border-slate-200 hover:border-slate-300'"
-                      >
-                        <div class="font-semibold text-xs text-slate-900">Plan B</div>
-                        <div class="text-[11px] text-slate-500">25% · 25% · 25% · 25%</div>
-                      </button>
-                    </div>
+                    <label class="form-label">Payment Plan</label>
+                    <PaymentPlanPicker v-model="commercialForm.payment_plan_id" />
+                  </div>
+                  <div>
+                    <label class="form-label">Contract Value (₹)</label>
+                    <InputNumber
+                      v-model="commercialForm.contract_value"
+                      class="w-full" :min="1"
+                      :minFractionDigits="0" :maxFractionDigits="2"
+                      :placeholder="derivedContractValue ? `Auto: ₹${formatPrice(derivedContractValue)} (price × students)` : 'Agreed total the installment %s apply to'"
+                    />
+                    <p class="text-xs text-slate-400 mt-1">Leave empty to use price per student × student count.</p>
                   </div>
                   <div>
                     <label class="form-label">Payment Terms Notes</label>
                     <Textarea v-model="commercialForm.payment_notes" class="w-full" rows="2" autoResize />
                   </div>
+                </div>
+              </div>
+
+              <!-- Payment Position (derived from invoice docs at read time) -->
+              <div class="bg-white rounded-xl border border-slate-200 p-4">
+                <div class="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Payment Position</div>
+
+                <template v-if="position.contractValue">
+                  <div class="grid grid-cols-3 gap-3 mb-3">
+                    <div class="bg-slate-50 rounded-lg p-3">
+                      <div class="text-xs text-slate-400 uppercase tracking-wide mb-1">Invoiced</div>
+                      <div class="text-sm font-bold text-slate-900">{{ formatPct(position.invoicedPct) }}%</div>
+                      <div class="text-xs text-slate-400 mt-0.5">{{ formatRupee(position.invoicedAmount) }}</div>
+                    </div>
+                    <div class="bg-green-50 rounded-lg p-3">
+                      <div class="text-xs text-slate-400 uppercase tracking-wide mb-1">Received</div>
+                      <div class="text-sm font-bold text-green-700">{{ formatPct(position.receivedPct) }}%</div>
+                      <div class="text-xs text-slate-400 mt-0.5">{{ formatRupee(position.receivedAmount) }}</div>
+                    </div>
+                    <div class="bg-amber-50 rounded-lg p-3">
+                      <div class="text-xs text-slate-400 uppercase tracking-wide mb-1">Pending</div>
+                      <div class="text-sm font-bold text-amber-700">{{ formatPct(position.pendingPct) }}%</div>
+                      <div class="text-xs text-slate-400 mt-0.5">{{ formatRupee(position.pendingAmount) }}</div>
+                    </div>
+                  </div>
+
+                  <PaymentSegmentBar :segments="position.segments" />
+                  <div class="flex items-center gap-4 mt-2 text-[11px] text-slate-400">
+                    <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-green-500 inline-block"></span>Received</span>
+                    <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-amber-400 inline-block"></span>Invoiced, unpaid</span>
+                    <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-slate-200 inline-block"></span>Not yet invoiced</span>
+                    <span class="ml-auto">of {{ formatRupee(position.contractValue) }} contract value</span>
+                  </div>
+
+                  <div class="mt-3 pt-3 border-t border-slate-100 text-sm">
+                    <template v-if="nextInstallment">
+                      <span class="text-slate-400">Next suggested:</span>
+                      <span class="text-slate-800 font-medium ml-1">{{ nextInstallment.label }} — {{ formatPct(nextInstallment.percent) }}%
+                        ({{ formatRupee(position.contractValue * nextInstallment.percent / 100) }})</span>
+                    </template>
+                    <template v-else-if="schoolPlan">
+                      <span class="text-green-700 font-medium">All {{ schoolPlan.name }} installments invoiced.</span>
+                    </template>
+                    <template v-else>
+                      <span class="text-slate-400">No payment plan set — pick one under Commercial Details to get installment suggestions.</span>
+                    </template>
+                  </div>
+                </template>
+
+                <div v-else class="text-sm text-slate-400 py-2">
+                  Set a price per student &amp; student count (or an explicit contract value) under Commercial Details to see the payment position.
                 </div>
               </div>
 
@@ -585,26 +634,36 @@
                   <template #body="{ data }"><span class="text-sm text-slate-600">{{ data.description }}</span></template>
                 </Column>
                 <Column header="Stage">
-                  <template #body="{ data }"><span class="text-xs font-medium text-slate-500">{{ data.installment_type || '—' }}</span></template>
+                  <template #body="{ data }">
+                    <span class="text-xs font-medium text-slate-500">
+                      {{ data.installment_label || data.installment_type || '—' }}<span v-if="data.percent != null" class="text-slate-400"> · {{ formatPct(data.percent) }}%</span>
+                    </span>
+                  </template>
                 </Column>
                 <Column header="Amount">
-                  <template #body="{ data }"><span class="text-sm font-semibold text-slate-900">{{ formatRupee(data.price_per_student * data.quantity) }}</span></template>
+                  <template #body="{ data }">
+                    <span class="text-sm font-semibold text-slate-900">{{ formatRupee(invoiceAmount(data)) }}</span>
+                    <div v-if="invoicePaymentStatus(data) === 'partially_paid'" class="text-[11px] text-blue-600">{{ formatRupee(invoicePaidAmount(data)) }} received</div>
+                  </template>
                 </Column>
                 <Column header="Due Date">
                   <template #body="{ data }"><span class="text-xs text-slate-500">{{ formatDate(data.due_date) }}</span></template>
                 </Column>
                 <Column header="Status">
                   <template #body="{ data }">
-                    <span class="px-2 py-0.5 rounded-full text-xs font-semibold" :class="data.status === 'paid' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'">{{ data.status === 'paid' ? 'Paid' : 'Unpaid' }}</span>
+                    <span
+                      class="px-2 py-0.5 rounded-full text-xs font-semibold"
+                      :class="invoicePaymentStatus(data) === 'paid' ? 'bg-green-100 text-green-700' : invoicePaymentStatus(data) === 'partially_paid' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'"
+                    >{{ invoicePaymentStatus(data) === 'paid' ? 'Paid' : invoicePaymentStatus(data) === 'partially_paid' ? 'Partial' : 'Unpaid' }}</span>
                   </template>
                 </Column>
                 <Column header="" style="width:100px">
                   <template #body="{ data }">
                     <div class="flex gap-1">
                       <Button
-                        v-if="data.status !== 'paid'"
+                        v-if="invoicePaymentStatus(data) !== 'paid'"
                         icon="pi pi-check" text rounded size="small" severity="success"
-                        v-tooltip="'Mark as Paid'" @click="markInvoicePaid(data)"
+                        v-tooltip="'Mark Paid'" @click="markInvoicePaid(data)"
                       />
                       <Button icon="pi pi-download" text rounded size="small" v-tooltip="'Download PDF'" @click="downloadInvoice(data)" />
                     </div>
@@ -730,6 +789,12 @@
     :pending-groups="pendingLetterGroups"
   />
 
+  <MarkPaidDialog
+    v-model:visible="markPaidVisible"
+    :invoice="markPaidTarget"
+    @saved="onPaymentSaved"
+  />
+
   <ConfirmDialog />
 </template>
 
@@ -773,6 +838,14 @@ import OperationSectionCard from '../components/shared/OperationSectionCard.vue'
 import DigitalPrintTermCard from '../components/shared/DigitalPrintTermCard.vue'
 import DataReceivableSectionCard from '../components/shared/DataReceivableSectionCard.vue'
 import SanityCheckDialog from '../components/shared/SanityCheckDialog.vue'
+import MarkPaidDialog from '../components/shared/MarkPaidDialog.vue'
+import PaymentPlanPicker from '../components/shared/PaymentPlanPicker.vue'
+import PaymentSegmentBar from '../components/shared/PaymentSegmentBar.vue'
+import { usePaymentPlans } from '../composables/usePaymentPlans.js'
+import {
+  invoiceAmount, invoicePaymentStatus, invoicePaidAmount, invoiceOutstanding,
+  effectiveContractValue, paymentPosition, suggestNextInstallment,
+} from '../utils/paymentMath.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -933,15 +1006,34 @@ async function saveDetails() {
 }
 
 // ── Commercial Details (inline edit) ────────────────────────────────────────
+const { loadPaymentPlans, resolveSchoolPlanId, getSchoolPlan, legacyLetterFor } = usePaymentPlans()
+
 const editingCommercial = ref(false)
 const savingCommercial  = ref(false)
-const commercialForm = reactive({ price_per_student: null, hpc_type: null, installment_plan: 'A', payment_notes: '' })
+const commercialForm = reactive({ price_per_student: null, hpc_type: null, payment_plan_id: null, contract_value: null, payment_notes: '' })
+
+// Contract value the installment percentages apply to — explicit override
+// first, otherwise derived from price per student × student count.
+const contractValue = computed(() => effectiveContractValue(school.value))
+const derivedContractValue = computed(() =>
+  school.value?.price_per_student && school.value?.student_count
+    ? school.value.price_per_student * school.value.student_count
+    : null
+)
+
+const schoolPlan = computed(() => getSchoolPlan(school.value))
+const schoolPlanLabel = computed(() => {
+  const plan = schoolPlan.value
+  if (!plan) return '—'
+  return `${plan.name} · ${(plan.installments || []).map(i => `${i.percent}%`).join('-')}`
+})
 
 function openEditCommercial() {
   Object.assign(commercialForm, {
     price_per_student: school.value.price_per_student || null,
     hpc_type:           school.value.hpc_type || null,
-    installment_plan:   school.value.installment_plan || 'A',
+    payment_plan_id:    resolveSchoolPlanId(school.value),
+    contract_value:     school.value.contract_value || null,
     payment_notes:      school.value.payment_notes || '',
   })
   editingCommercial.value = true
@@ -955,9 +1047,14 @@ async function saveCommercial() {
     const payload = {
       price_per_student: commercialForm.price_per_student || null,
       hpc_type:           commercialForm.hpc_type || null,
-      installment_plan:   commercialForm.installment_plan || 'A',
+      payment_plan_id:    commercialForm.payment_plan_id || null,
+      contract_value:     commercialForm.contract_value || null,
       payment_notes:      commercialForm.payment_notes.trim(),
     }
+    // Older screens (Agreements, Quotations) still speak 'A'/'B' — keep the
+    // legacy letter in sync when the chosen plan maps to one.
+    const letter = legacyLetterFor(commercialForm.payment_plan_id)
+    if (letter) payload.installment_plan = letter
     await updateDoc(opsDoc('schools', school.value.id), {
       ...payload,
       updated_at: serverTimestamp(),
@@ -1593,10 +1690,17 @@ function formatTaskDue(dateStr) {
 }
 
 const invoiceSummary = computed(() => {
-  const total = schoolInvoices.value.reduce((s, i) => s + i.price_per_student * i.quantity, 0)
-  const paid  = schoolInvoices.value.filter(i => i.status === 'paid').reduce((s, i) => s + i.price_per_student * i.quantity, 0)
-  return { total, paid, outstanding: total - paid }
+  const total = schoolInvoices.value.reduce((s, i) => s + invoiceAmount(i), 0)
+  const paid  = schoolInvoices.value.reduce((s, i) => s + invoicePaidAmount(i), 0)
+  const outstanding = schoolInvoices.value.reduce((s, i) => s + invoiceOutstanding(i), 0)
+  return { total, paid, outstanding }
 })
+
+// ── Payment position (derived from invoice docs at read time) ────────────────
+const position = computed(() => paymentPosition(school.value, schoolInvoices.value))
+const nextInstallment = computed(() =>
+  suggestNextInstallment(schoolPlan.value, schoolInvoices.value, position.value.contractValue)
+)
 
 function goNewQuotation() {
   router.push({ name: 'quotations', query: { school_id: school.value.id, school_name: school.value.name, student_count: school.value.student_count || undefined } })
@@ -1723,30 +1827,23 @@ async function downloadInvoice(inv) {
   }
 }
 
+const markPaidVisible = ref(false)
+const markPaidTarget  = ref(null)
+
 function markInvoicePaid(invoice) {
-  confirm.require({
-    message: `Mark invoice ${invoice.invoice_number} as paid?`,
-    header: 'Mark as Paid',
-    icon: 'pi pi-check-circle',
-    rejectLabel: 'Cancel',
-    acceptLabel: 'Mark Paid',
-    accept: async () => {
-      try {
-        await updateDoc(opsDoc('invoices', invoice.id), {
-          status: 'paid',
-          paid_on: serverTimestamp(),
-          updated_at: serverTimestamp(),
-          updated_by: auth.currentUser?.email || 'unknown',
-        })
-        const amount = formatRupee(invoice.price_per_student * invoice.quantity)
-        toast.add({ severity: 'success', summary: 'Paid!', detail: `${amount} received from ${invoice.school_name}`, life: 3000 })
-        celebrate(`${amount} received from ${invoice.school_name}!`, '💰', 'invoice')
-        await loadInvoices()
-      } catch (e) {
-        toast.add({ severity: 'error', summary: 'Error', detail: 'Could not update invoice', life: 3000 })
-      }
-    }
-  })
+  markPaidTarget.value  = invoice
+  markPaidVisible.value = true
+}
+
+async function onPaymentSaved({ invoice, amount, fullyPaid }) {
+  const formatted = formatRupee(amount)
+  if (fullyPaid) {
+    toast.add({ severity: 'success', summary: 'Paid!', detail: `${formatted} received from ${invoice.school_name}`, life: 3000 })
+    celebrate(`${formatted} received from ${invoice.school_name}!`, '💰', 'invoice')
+  } else {
+    toast.add({ severity: 'success', summary: 'Partial payment', detail: `${formatted} received from ${invoice.school_name}`, life: 3000 })
+  }
+  await loadInvoices()
 }
 
 // ── Edit School dialog ───────────────────────────────────────────────────────────
@@ -1825,6 +1922,10 @@ function formatPrice(n) {
   if (n == null) return '0'
   return Number(n).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
 }
+function formatPct(pct) {
+  if (pct == null) return '0'
+  return Number(pct).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 1 })
+}
 
 // ── Load everything ──────────────────────────────────────────────────────────────
 async function loadEverything() {
@@ -1845,7 +1946,7 @@ watch(() => route.params.id, loadEverything)
 watch(activeYear, () => { Promise.all([loadQuotations(), loadAgreements(), loadInvoices()]) })
 
 onMounted(async () => {
-  await Promise.all([loadEverything(), loadModuleSettings(), loadSchoolTasks(), loadAllSchoolsForTasks()])
+  await Promise.all([loadEverything(), loadModuleSettings(), loadSchoolTasks(), loadAllSchoolsForTasks(), loadPaymentPlans()])
 })
 </script>
 

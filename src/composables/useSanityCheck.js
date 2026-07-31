@@ -31,6 +31,16 @@ export function useSanityCheck() {
     if (!form.school_address?.trim()) warnings.push({ level: 'warn', field: 'school_address', msg: 'School address is missing — it will appear blank on the invoice' })
     if (!form.school_phone?.trim()) warnings.push({ level: 'warn', field: 'school_phone', msg: 'School phone is missing — it will appear blank on the invoice' })
     if (!form.description?.trim()) warnings.push({ level: 'error', field: 'description', msg: 'Invoice description is required' })
+
+    if (form.installment_mode) {
+      // Installment invoice: percent × contract value — no price/qty needed.
+      if (!form.percent || form.percent <= 0) warnings.push({ level: 'error', field: 'percent', msg: 'Installment percent is required' })
+      if (form.percent > 100) warnings.push({ level: 'warn', field: 'percent', msg: `Installment is ${form.percent}% of the contract value — please verify` })
+      if (!form.amount || form.amount <= 0) warnings.push({ level: 'error', field: 'amount', msg: 'Invoice amount is required' })
+      if (form.amount > 2000000) warnings.push({ level: 'warn', msg: `Invoice total ₹${Number(form.amount).toLocaleString('en-IN')} is very large — please double-check` })
+      return warnings
+    }
+
     if (!form.price_per_student || form.price_per_student < 1) warnings.push({ level: 'error', field: 'price_per_student', msg: 'Price per student is required' })
     if (!form.quantity || form.quantity < 1) warnings.push({ level: 'error', field: 'quantity', msg: 'Student count is required' })
     if (form.price_per_student > 500) warnings.push({ level: 'warn', field: 'price_per_student', msg: `Price per student ₹${form.price_per_student} seems high — please verify` })

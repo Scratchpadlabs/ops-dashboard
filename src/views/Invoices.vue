@@ -25,7 +25,7 @@
       <div class="bg-white rounded-xl border border-slate-200 p-4">
         <div class="text-xs font-medium text-slate-400 uppercase tracking-wide mb-1">Collected (This Year)</div>
         <div class="text-2xl font-bold text-green-600">{{ formatRupee(totalCollected) }}</div>
-        <div class="text-xs text-slate-400 mt-1">{{ paidInvoices.length }} paid</div>
+        <div class="text-xs text-slate-400 mt-1">{{ paidInvoices.length }} paid<template v-if="partialInvoices.length"> · {{ partialInvoices.length }} partial</template></div>
       </div>
     </div>
 
@@ -92,16 +92,21 @@
               </template>
             </Column>
 
-            <Column field="installment_type" header="Stage" style="width: 110px">
+            <Column field="installment_type" header="Stage" style="width: 130px">
               <template #body="{ data }">
-                <span v-if="data.installment_type" class="text-xs font-medium text-slate-500">{{ data.installment_type }}</span>
+                <span v-if="data.installment_label || data.installment_type" class="text-xs font-medium text-slate-500">
+                  {{ data.installment_label || data.installment_type }}<span v-if="data.percent != null" class="text-slate-400"> · {{ formatPct(data.percent) }}%</span>
+                </span>
                 <span v-else class="text-xs text-slate-300">—</span>
               </template>
             </Column>
 
             <Column field="amount" header="Amount" sortable>
               <template #body="{ data }">
-                <span class="text-sm font-semibold text-slate-900">{{ formatRupee(data.price_per_student * data.quantity) }}</span>
+                <span class="text-sm font-semibold text-slate-900">{{ formatRupee(invoiceAmount(data)) }}</span>
+                <div v-if="invoicePaymentStatus(data) === 'partially_paid'" class="text-[11px] text-blue-600">
+                  {{ formatRupee(invoicePaidAmount(data)) }} received
+                </div>
               </template>
             </Column>
 
@@ -121,13 +126,9 @@
               <template #body="{ data }">
                 <span
                   class="px-2 py-0.5 rounded-full text-xs font-semibold"
-                  :class="data.status === 'paid'
-                    ? 'bg-green-100 text-green-700'
-                    : isOverdue(data)
-                      ? 'bg-red-100 text-red-700'
-                      : 'bg-amber-100 text-amber-700'"
+                  :class="statusChipClass(data)"
                 >
-                  {{ data.status === 'paid' ? 'Paid' : isOverdue(data) ? 'Overdue' : 'Unpaid' }}
+                  {{ statusChipLabel(data) }}
                 </span>
               </template>
             </Column>
@@ -143,12 +144,12 @@
                     @click="downloadInvoice(data)"
                   />
                   <Button
-                    v-if="data.status !== 'paid'"
+                    v-if="invoicePaymentStatus(data) !== 'paid'"
                     icon="pi pi-check"
                     text rounded size="small"
                     severity="success"
-                    v-tooltip="'Mark as Paid'"
-                    @click="markPaid(data)"
+                    v-tooltip="'Mark Paid'"
+                    @click="openMarkPaid(data)"
                   />
                   <Button
                     icon="pi pi-trash"
@@ -185,7 +186,7 @@
         </Column>
         <Column header="Amount">
           <template #body="{ data }">
-            <span class="text-sm text-slate-500">{{ formatRupee(data.price_per_student * data.quantity) }}</span>
+            <span class="text-sm text-slate-500">{{ formatRupee(invoiceAmount(data)) }}</span>
           </template>
         </Column>
         <Column header="Deleted">
@@ -234,8 +235,62 @@
           </div>
         </div>
 
-        <!-- Payment Stage -->
-        <div>
+        <!-- Installment (school has a contract value: suggest, allow override) -->
+        <div v-if="installmentMode">
+          <label class="form-label">Installment</label>
+
+          <div class="bg-blue-50 rounded-lg px-3 py-2 mb-2 text-xs text-blue-800 leading-relaxed">
+            Invoiced so far: <b>{{ formatPct(ctxInvoicedPct) }}%</b>
+            <template v-if="ctxPlan"> ({{ ctxInvoiceCount }} of {{ ctxPlan.installments.length }} · {{ ctxPlan.name }})</template>
+            <template v-else> ({{ ctxInvoiceCount }} invoice{{ ctxInvoiceCount !== 1 ? 's' : '' }})</template>.
+            <template v-if="suggestion"> Suggested: <b>{{ suggestion.label }} — {{ formatPct(suggestion.percent) }}%</b>.</template>
+            <template v-else-if="ctxPlan"> All plan installments are invoiced — this will be a custom installment.</template>
+            <template v-else> No payment plan set for this school — using a custom installment.</template>
+          </div>
+
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="form-label">Installment Label *</label>
+              <InputText v-model="form.installment_label" class="w-full" placeholder="e.g. Part payment" />
+            </div>
+            <div>
+              <label class="form-label">% of Contract *</label>
+              <InputNumber
+                :modelValue="form.percent"
+                @update:modelValue="setPercent"
+                class="w-full"
+                suffix="%"
+                :min="0" :max="999"
+                :minFractionDigits="0" :maxFractionDigits="2"
+              />
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-4 mt-3">
+            <div class="bg-slate-50 rounded-lg px-3 py-2">
+              <div class="text-xs text-slate-400 uppercase tracking-wide">Contract Value</div>
+              <div class="text-sm font-bold text-slate-900 mt-0.5">{{ formatRupee(ctxContractValue) }}</div>
+            </div>
+            <div>
+              <label class="form-label">This Invoice (₹) *</label>
+              <InputNumber
+                :modelValue="form.amount"
+                @update:modelValue="setInstallmentAmount"
+                class="w-full"
+                :min="1"
+                :minFractionDigits="0" :maxFractionDigits="2"
+              />
+            </div>
+          </div>
+
+          <div v-if="overInvoiceWarning" class="mt-2 text-xs text-amber-700 bg-amber-50 rounded-lg px-3 py-2">
+            ⚠ This takes total invoiced to <b>{{ formatPct(ctxInvoicedPct + (form.percent || 0)) }}%</b> of the contract value.
+            You can still create it.
+          </div>
+        </div>
+
+        <!-- Payment Stage (plain amount invoice, as before) -->
+        <div v-else>
           <label class="form-label">Payment Stage *</label>
           <div class="grid grid-cols-2 gap-2">
             <button
@@ -248,6 +303,9 @@
                 : 'bg-white text-slate-600 border-slate-200 hover:border-slate-400'"
             >{{ opt }}</button>
           </div>
+          <p v-if="form.school_name.trim()" class="text-xs text-slate-400 mt-2">
+            💡 Set a payment plan and price × students (or contract value) on the school to invoice by installment percentages.
+          </p>
         </div>
 
         <!-- Description -->
@@ -268,8 +326,8 @@
           <p v-if="hasIssue('description')" class="text-xs text-red-500 mt-1">{{ issueMessage('description') }}</p>
         </div>
 
-        <!-- Price per student -->
-        <div class="grid grid-cols-2 gap-4">
+        <!-- Price per student (plain amount invoices only) -->
+        <div v-if="!installmentMode" class="grid grid-cols-2 gap-4">
           <div>
             <label class="form-label">Price per Student (₹) *</label>
             <InputNumber
@@ -297,7 +355,11 @@
         </div>
 
         <!-- Total preview -->
-        <div v-if="form.price_per_student && form.quantity" class="bg-slate-50 rounded-lg px-4 py-3 flex justify-between items-center">
+        <div v-if="installmentMode && form.amount" class="bg-slate-50 rounded-lg px-4 py-3 flex justify-between items-center">
+          <span class="text-sm text-slate-500">{{ form.installment_label || 'Installment' }} · {{ formatPct(form.percent || 0) }}%</span>
+          <span class="text-lg font-bold text-slate-900">{{ formatRupee(form.amount) }}</span>
+        </div>
+        <div v-else-if="!installmentMode && form.price_per_student && form.quantity" class="bg-slate-50 rounded-lg px-4 py-3 flex justify-between items-center">
           <span class="text-sm text-slate-500">Total Amount</span>
           <span class="text-lg font-bold text-slate-900">{{ formatRupee(form.price_per_student * form.quantity) }}</span>
         </div>
@@ -319,6 +381,12 @@
         <Button label="Create Invoice" :loading="saving" @click="saveInvoice" />
       </template>
     </Dialog>
+
+    <MarkPaidDialog
+      v-model:visible="markPaidVisible"
+      :invoice="markPaidTarget"
+      @saved="onPaymentSaved"
+    />
 
     <SanityCheckDialog
       :visible="sanityDialogVisible"
@@ -348,6 +416,11 @@ import { useCelebration } from '../composables/useCelebration'
 import { useSanityCheck } from '../composables/useSanityCheck.js'
 import { generateInvoicePDF } from '../utils/api.js'
 import { generateInvoiceNumber } from '../utils/invoicePDF.js'
+import { usePaymentPlans } from '../composables/usePaymentPlans.js'
+import {
+  invoiceAmount, invoicePaymentStatus, invoicePaidAmount, invoiceOutstanding,
+  effectiveContractValue, invoicedPercentSoFar, suggestNextInstallment,
+} from '../utils/paymentMath.js'
 
 import Button from 'primevue/button'
 import DataTable from 'primevue/datatable'
@@ -359,6 +432,7 @@ import ProgressSpinner from 'primevue/progressspinner'
 import ConfirmDialog from 'primevue/confirmdialog'
 import SchoolSearchSelect from '../components/shared/SchoolSearchSelect.vue'
 import SanityCheckDialog from '../components/shared/SanityCheckDialog.vue'
+import MarkPaidDialog from '../components/shared/MarkPaidDialog.vue'
 
 const route = useRoute()
 const confirm = useConfirm()
@@ -414,6 +488,9 @@ const emptyForm = () => ({
   school_address: '',
   school_phone: '',
   installment_type: '',
+  installment_label: '',
+  percent: null,
+  amount: null,
   description: '',
   price_per_student: null,
   quantity: null,
@@ -421,6 +498,84 @@ const emptyForm = () => ({
 })
 
 const form = reactive(emptyForm())
+
+// ── Installment context (suggest next, allow override) ───────────────────────
+const { loadPaymentPlans, getSchoolPlan, resolveSchoolPlanId } = usePaymentPlans()
+
+// Full school record behind the form — by id when picked, by name when typed.
+const ctxSchool = computed(() => {
+  if (form.school_id) return allSchools.value.find(s => s.id === form.school_id) || null
+  const name = form.school_name.trim().toLowerCase()
+  if (!name) return null
+  return allSchools.value.find(s => (s.name || '').trim().toLowerCase() === name) || null
+})
+
+const ctxContractValue = computed(() => effectiveContractValue(ctxSchool.value))
+const installmentMode  = computed(() => !!ctxContractValue.value)
+const ctxPlan          = computed(() => getSchoolPlan(ctxSchool.value))
+
+// This school's existing invoices for the effective year (excluding deleted).
+const ctxInvoices = computed(() => {
+  const s = ctxSchool.value
+  if (!s) return []
+  const name = (s.name || '').trim().toLowerCase()
+  const year = effectiveAcademicYear()
+  return invoices.value.filter(i => {
+    if (i.deleted) return false
+    if (i.academic_year !== year) return false
+    return i.school_id ? i.school_id === s.id : (i.school_name || '').trim().toLowerCase() === name
+  })
+})
+
+const ctxInvoicedPct  = computed(() => invoicedPercentSoFar(ctxInvoices.value, ctxContractValue.value))
+const ctxInvoiceCount = computed(() => ctxInvoices.value.length)
+const suggestion      = computed(() => suggestNextInstallment(ctxPlan.value, ctxInvoices.value, ctxContractValue.value))
+
+const overInvoiceWarning = computed(() =>
+  installmentMode.value && form.percent && ctxInvoicedPct.value + form.percent > 100.5
+)
+
+function roundRupee(n) { return Math.round(n * 100) / 100 }
+
+// Percent drives the amount. Moving off the suggested percent switches the
+// invoice to a custom installment (one-off percentages like "30% now").
+function setPercent(pct) {
+  form.percent = pct
+  form.amount = pct && ctxContractValue.value ? roundRupee(ctxContractValue.value * pct / 100) : null
+  if (suggestion.value && pct !== suggestion.value.percent && form.installment_label === suggestion.value.label) {
+    form.installment_label = 'Part payment'
+  }
+}
+
+// Editing the rupee amount back-computes the percent.
+function setInstallmentAmount(amount) {
+  form.amount = amount
+  if (amount && ctxContractValue.value) {
+    form.percent = Math.round(amount / ctxContractValue.value * 100 * 100) / 100
+    if (suggestion.value && form.percent !== suggestion.value.percent && form.installment_label === suggestion.value.label) {
+      form.installment_label = 'Part payment'
+    }
+  }
+}
+
+// Prefill the suggested installment whenever the dialog is open in
+// installment mode and the user hasn't started customising.
+function applySuggestion() {
+  if (!installmentMode.value) return
+  if (suggestion.value) {
+    form.installment_label = suggestion.value.label
+    setPercent(suggestion.value.percent)
+  } else {
+    form.installment_label = 'Part payment'
+    form.percent = null
+    form.amount = null
+  }
+}
+
+watch(ctxSchool, (s, prev) => {
+  if (!dialogVisible.value) return
+  if (s?.id !== prev?.id || s?.name !== prev?.name) applySuggestion()
+})
 
 // ── Computed ──────────────────────────────────────────────────────────────────
 
@@ -440,18 +595,20 @@ const deletedInvoices = computed(() => {
   })
 })
 
-const unpaidInvoices  = computed(() => activeInvoices.value.filter(i => i.status !== 'paid'))
-const paidInvoices    = computed(() => activeInvoices.value.filter(i => i.status === 'paid'))
-const overdueInvoices = computed(() => activeInvoices.value.filter(i => i.status !== 'paid' && isOverdue(i)))
+const unpaidInvoices  = computed(() => activeInvoices.value.filter(i => invoicePaymentStatus(i) !== 'paid'))
+const paidInvoices    = computed(() => activeInvoices.value.filter(i => invoicePaymentStatus(i) === 'paid'))
+const partialInvoices = computed(() => activeInvoices.value.filter(i => invoicePaymentStatus(i) === 'partially_paid'))
+const overdueInvoices = computed(() => activeInvoices.value.filter(i => invoicePaymentStatus(i) !== 'paid' && isOverdue(i)))
 
+// Receivable/collected respect partial payments: outstanding = amount − received.
 const totalReceivable = computed(() =>
-  unpaidInvoices.value.reduce((s, i) => s + i.price_per_student * i.quantity, 0)
+  unpaidInvoices.value.reduce((s, i) => s + invoiceOutstanding(i), 0)
 )
 const overdueAmount = computed(() =>
-  overdueInvoices.value.reduce((s, i) => s + i.price_per_student * i.quantity, 0)
+  overdueInvoices.value.reduce((s, i) => s + invoiceOutstanding(i), 0)
 )
 const totalCollected = computed(() =>
-  paidInvoices.value.reduce((s, i) => s + i.price_per_student * i.quantity, 0)
+  activeInvoices.value.reduce((s, i) => s + invoicePaidAmount(i), 0)
 )
 
 const tabs = computed(() => [
@@ -472,14 +629,14 @@ const schoolGroups = computed(() => {
   })
   return Array.from(map.entries())
     .map(([school_name, invs]) => {
-      const unpaidCount  = invs.filter(i => i.status !== 'paid').length
-      const paidCount    = invs.filter(i => i.status === 'paid').length
-      const overdueCount = invs.filter(i => i.status !== 'paid' && isOverdue(i)).length
+      const unpaidCount  = invs.filter(i => invoicePaymentStatus(i) !== 'paid').length
+      const paidCount    = invs.filter(i => invoicePaymentStatus(i) === 'paid').length
+      const overdueCount = invs.filter(i => invoicePaymentStatus(i) !== 'paid' && isOverdue(i)).length
       return {
         school_name,
         invoices: invs,
         count: invs.length,
-        totalAmount: invs.reduce((s, i) => s + i.price_per_student * i.quantity, 0),
+        totalAmount: invs.reduce((s, i) => s + invoiceAmount(i), 0),
         unpaidCount,
         paidCount,
         overdueCount,
@@ -518,6 +675,21 @@ function groupBadgeLabel(g) {
 function groupBadgeClass(g) {
   if (g.unpaidCount === 0)   return 'bg-green-100 text-green-700'
   if (g.overdueCount > 0)    return 'bg-red-100 text-red-700'
+  return 'bg-amber-100 text-amber-700'
+}
+
+function statusChipLabel(inv) {
+  const status = invoicePaymentStatus(inv)
+  if (status === 'paid') return 'Paid'
+  if (status === 'partially_paid') return isOverdue(inv) ? 'Partial · Overdue' : 'Partial'
+  return isOverdue(inv) ? 'Overdue' : 'Unpaid'
+}
+
+function statusChipClass(inv) {
+  const status = invoicePaymentStatus(inv)
+  if (status === 'paid') return 'bg-green-100 text-green-700'
+  if (isOverdue(inv)) return 'bg-red-100 text-red-700'
+  if (status === 'partially_paid') return 'bg-blue-100 text-blue-700'
   return 'bg-amber-100 text-amber-700'
 }
 
@@ -619,17 +791,7 @@ function recalc() {
 }
 
 async function openNewInvoice() {
-  Object.assign(form, {
-    school_id:         null,
-    school_name:       '',
-    school_address:    '',
-    school_phone:      '',
-    installment_type:  '',
-    description:       '',
-    price_per_student: null,
-    quantity:          null,
-    invoice_number:    '',
-  })
+  Object.assign(form, emptyForm())
   formError.value = ''
   issueFields.value = new Set()
   pendingWarnings.value = []
@@ -642,22 +804,35 @@ function validate() {
   if (!form.school_name.trim())    return 'School name is required'
   if (!form.school_address.trim()) return 'School address is required'
   if (!form.school_phone.trim())   return 'School phone is required'
-  if (!form.installment_type)      return 'Select a payment stage'
+  if (installmentMode.value) {
+    if (!form.installment_label.trim()) return 'Installment label is required'
+    if (!form.percent || form.percent <= 0) return 'Installment percent is required'
+    if (!form.amount || form.amount <= 0)   return 'Invoice amount is required'
+  } else {
+    if (!form.installment_type)    return 'Select a payment stage'
+    if (!form.price_per_student)   return 'Price per student is required'
+    if (!form.quantity)            return 'Student count is required'
+  }
   if (!form.description.trim())    return 'Description is required'
-  if (!form.price_per_student)     return 'Price per student is required'
-  if (!form.quantity)              return 'Student count is required'
   return ''
+}
+
+// The stage recorded on the invoice — installment label when invoicing by
+// percent, the picked payment stage otherwise.
+function effectiveStage() {
+  return installmentMode.value ? form.installment_label.trim() : form.installment_type
 }
 
 // Checks for an existing active invoice for the same school + payment stage.
 // "Ad-hoc" invoices are expected to repeat, so they're excluded from the check.
 function findDuplicateInvoice() {
-  if (form.installment_type === 'Ad-hoc') return null
+  const stage = effectiveStage()
+  if (stage === 'Ad-hoc') return null
   const name = form.school_name.trim().toLowerCase()
   const year = effectiveAcademicYear()
   return invoices.value.filter(i => !i.deleted).find(i => {
     const sameSchool = form.school_id ? i.school_id === form.school_id : (i.school_name || '').trim().toLowerCase() === name
-    return sameSchool && i.installment_type === form.installment_type && i.academic_year === year
+    return sameSchool && (i.installment_label || i.installment_type) === stage && i.academic_year === year
   })
 }
 
@@ -665,7 +840,7 @@ async function saveInvoice() {
   formError.value = validate()
   if (formError.value) return
 
-  const warnings = checkInvoice(form)
+  const warnings = checkInvoice({ ...form, installment_mode: installmentMode.value })
   if (warnings.length > 0) {
     pendingWarnings.value = warnings
     sanityDialogVisible.value = true
@@ -711,21 +886,39 @@ async function createInvoiceRecord(bypassedWarnings = 0) {
     const dueDate = new Date(now)
     dueDate.setDate(dueDate.getDate() + (settings.value.invoice_due_days || 45))
 
+    const isInstallment = installmentMode.value
+    const school = ctxSchool.value
+
     await addDoc(opsCollection('invoices'), {
       school_id:         form.school_id || null,
       school_name:       form.school_name,
       school_address:    form.school_address,
       school_phone:      form.school_phone,
-      installment_type:  form.installment_type,
+      installment_type:  effectiveStage(),
       description:       form.description.trim(),
-      price_per_student: form.price_per_student,
-      quantity:          form.quantity,
+      // In installment mode, keep the school's per-student pricing for
+      // reference — the amount is percent × contract value, not price × qty.
+      price_per_student: isInstallment ? (school?.price_per_student ?? form.price_per_student ?? null) : form.price_per_student,
+      quantity:          isInstallment ? (school?.student_count ?? form.quantity ?? null) : form.quantity,
       invoice_number:    form.invoice_number,
       status:            'unpaid',
       due_date:          Timestamp.fromDate(dueDate),
       academic_year:     effectiveAcademicYear(),
       created_at:        serverTimestamp(),
       created_by:        auth.currentUser?.email || 'unknown',
+      // Installment fields — percent stays null on plain amount invoices.
+      installment_label: isInstallment ? form.installment_label.trim() : null,
+      percent:           isInstallment ? form.percent : null,
+      base_amount:       isInstallment ? ctxContractValue.value : null,
+      amount:            isInstallment ? form.amount : form.price_per_student * form.quantity,
+      payment_plan_id:   isInstallment ? resolveSchoolPlanId(school) : null,
+      // Snapshot for the PDF's "Invoiced to date incl. this invoice" line.
+      invoiced_to_date_percent: isInstallment
+        ? Math.round((ctxInvoicedPct.value + form.percent) * 10) / 10
+        : null,
+      payment_status:    'unpaid',
+      paid_amount:       null,
+      paid_date:         null,
     })
 
     toast.add({ severity: 'success', summary: 'Created', detail: `Invoice ${form.invoice_number} created`, life: 2500 })
@@ -742,32 +935,25 @@ async function createInvoiceRecord(bypassedWarnings = 0) {
   }
 }
 
-// ── Mark paid ─────────────────────────────────────────────────────────────────
+// ── Mark paid (full or partial, via MarkPaidDialog) ──────────────────────────
 
-async function markPaid(invoice) {
-  confirm.require({
-    message: `Mark invoice ${invoice.invoice_number} as paid?`,
-    header: 'Mark as Paid',
-    icon: 'pi pi-check-circle',
-    rejectLabel: 'Cancel',
-    acceptLabel: 'Mark Paid',
-    accept: async () => {
-      try {
-        await updateDoc(opsDoc('invoices', invoice.id), {
-          status: 'paid',
-          paid_on: serverTimestamp(),
-          updated_at: serverTimestamp(),
-          updated_by: auth.currentUser?.email || 'unknown',
-        })
-        const amount = formatRupee(invoice.price_per_student * invoice.quantity)
-        toast.add({ severity: 'success', summary: 'Paid!', detail: `${amount} received from ${invoice.school_name}`, life: 3000 })
-        celebrate(`${amount} received from ${invoice.school_name}!`, '💰', 'invoice')
-        await loadInvoices()
-      } catch (e) {
-        toast.add({ severity: 'error', summary: 'Error', detail: 'Could not update invoice', life: 3000 })
-      }
-    }
-  })
+const markPaidVisible = ref(false)
+const markPaidTarget  = ref(null)
+
+function openMarkPaid(invoice) {
+  markPaidTarget.value  = invoice
+  markPaidVisible.value = true
+}
+
+async function onPaymentSaved({ invoice, amount, fullyPaid }) {
+  const formatted = formatRupee(amount)
+  if (fullyPaid) {
+    toast.add({ severity: 'success', summary: 'Paid!', detail: `${formatted} received from ${invoice.school_name}`, life: 3000 })
+    celebrate(`${formatted} received from ${invoice.school_name}!`, '💰', 'invoice')
+  } else {
+    toast.add({ severity: 'success', summary: 'Partial payment', detail: `${formatted} received from ${invoice.school_name}`, life: 3000 })
+  }
+  await loadInvoices()
 }
 
 // ── Delete ────────────────────────────────────────────────────────────────────
@@ -829,7 +1015,7 @@ async function downloadInvoice(invoice) {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function isOverdue(invoice) {
-  if (invoice.status === 'paid') return false
+  if (invoicePaymentStatus(invoice) === 'paid') return false
   if (!invoice.due_date) return false
   const due = invoice.due_date.toDate ? invoice.due_date.toDate() : new Date(invoice.due_date)
   return due < new Date()
@@ -846,8 +1032,13 @@ function formatRupee(amount) {
   return '₹' + Number(amount).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
 }
 
+function formatPct(pct) {
+  if (pct == null) return '0'
+  return Number(pct).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 1 })
+}
+
 onMounted(async () => {
-  await Promise.all([loadInvoices(), loadLookupData(), loadSettings()])
+  await Promise.all([loadInvoices(), loadLookupData(), loadSettings(), loadPaymentPlans()])
 
   // Pre-fill from "New Invoice" launched off a school's profile page
   if (route.query.school_name) {

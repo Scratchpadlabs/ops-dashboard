@@ -111,10 +111,20 @@ def _build_invoice(data: dict, out):
     school_phone   = data.get("schoolPhone", "")
     invoice_number = data.get("invoiceNumber", "")
     description    = data.get("description", "")
-    price          = float(data.get("pricePerStudent", 0))
-    quantity       = int(data.get("quantity", 0))
+    price          = float(data.get("pricePerStudent") or 0)
+    quantity       = int(data.get("quantity") or 0)
     date_str       = data.get("date", datetime.today().strftime("%d/%m/%Y"))
-    amount         = price * quantity
+
+    # Installment invoices are percent × contract value, not price × quantity.
+    installment_label = (data.get("installmentLabel") or "").strip()
+    percent           = data.get("percent")
+    base_amount       = float(data.get("baseAmount") or 0)
+    is_installment    = percent is not None and base_amount > 0
+    if is_installment:
+        percent = float(percent)
+        amount  = float(data.get("amount") or 0) or base_amount * percent / 100.0
+    else:
+        amount = price * quantity
 
     W, H = A4
     M    = 14 * mm
@@ -220,24 +230,48 @@ def _build_invoice(data: dict, out):
     story.append(Spacer(1, 6*mm))
 
     # ── LINE ITEMS TABLE ──────────────────────────────────────────────────────
-    col_w = [(W - 2*M) * x for x in [0.42, 0.18, 0.18, 0.22]]
-
-    item_header = [
-        Paragraph("<b>Description</b>", _style("th", fontName=FONT_BOLD, fontSize=9, textColor=WHITE)),
-        Paragraph("<b>Price</b>",       _style("th", fontName=FONT_BOLD, fontSize=9, textColor=WHITE, alignment=TA_CENTER)),
-        Paragraph("<b>Quantity</b>",    _style("th", fontName=FONT_BOLD, fontSize=9, textColor=WHITE, alignment=TA_CENTER)),
-        Paragraph("<b>Amount</b>",      _style("th", fontName=FONT_BOLD, fontSize=9, textColor=WHITE, alignment=TA_RIGHT)),
-    ]
-
-    price_str  = f"Rs. {_format_inr(price)}"
     amount_str = f"Rs. {_format_inr(amount)}"
 
-    item_row = [
-        Paragraph(description, _style("td", fontSize=9)),
-        Paragraph(price_str,   _style("td", fontSize=9, alignment=TA_CENTER)),
-        Paragraph(str(quantity), _style("td", fontSize=9, alignment=TA_CENTER)),
-        Paragraph(f"<b>{amount_str}</b>", _style("td", fontName=FONT_BOLD, fontSize=9, alignment=TA_RIGHT)),
-    ]
+    if is_installment:
+        # Installment layout: label under the description, then the percentage
+        # of the agreed contract value and this invoice's amount.
+        col_w = [(W - 2*M) * x for x in [0.40, 0.14, 0.24, 0.22]]
+
+        item_header = [
+            Paragraph("<b>Description</b>",    _style("th", fontName=FONT_BOLD, fontSize=9, textColor=WHITE)),
+            Paragraph("<b>Percentage</b>",     _style("th", fontName=FONT_BOLD, fontSize=9, textColor=WHITE, alignment=TA_CENTER)),
+            Paragraph("<b>Contract Value</b>", _style("th", fontName=FONT_BOLD, fontSize=9, textColor=WHITE, alignment=TA_CENTER)),
+            Paragraph("<b>Amount</b>",         _style("th", fontName=FONT_BOLD, fontSize=9, textColor=WHITE, alignment=TA_RIGHT)),
+        ]
+
+        desc_html = description
+        if installment_label:
+            desc_html += f'<br/><font size="8" color="#64748b">{installment_label}</font>'
+
+        item_row = [
+            Paragraph(desc_html, _style("td", fontSize=9)),
+            Paragraph(f"{percent:g}%", _style("td", fontSize=9, alignment=TA_CENTER)),
+            Paragraph(f"Rs. {_format_inr(base_amount)}", _style("td", fontSize=9, alignment=TA_CENTER)),
+            Paragraph(f"<b>{amount_str}</b>", _style("td", fontName=FONT_BOLD, fontSize=9, alignment=TA_RIGHT)),
+        ]
+    else:
+        col_w = [(W - 2*M) * x for x in [0.42, 0.18, 0.18, 0.22]]
+
+        item_header = [
+            Paragraph("<b>Description</b>", _style("th", fontName=FONT_BOLD, fontSize=9, textColor=WHITE)),
+            Paragraph("<b>Price</b>",       _style("th", fontName=FONT_BOLD, fontSize=9, textColor=WHITE, alignment=TA_CENTER)),
+            Paragraph("<b>Quantity</b>",    _style("th", fontName=FONT_BOLD, fontSize=9, textColor=WHITE, alignment=TA_CENTER)),
+            Paragraph("<b>Amount</b>",      _style("th", fontName=FONT_BOLD, fontSize=9, textColor=WHITE, alignment=TA_RIGHT)),
+        ]
+
+        price_str = f"Rs. {_format_inr(price)}"
+
+        item_row = [
+            Paragraph(description, _style("td", fontSize=9)),
+            Paragraph(price_str,   _style("td", fontSize=9, alignment=TA_CENTER)),
+            Paragraph(str(quantity), _style("td", fontSize=9, alignment=TA_CENTER)),
+            Paragraph(f"<b>{amount_str}</b>", _style("td", fontName=FONT_BOLD, fontSize=9, alignment=TA_RIGHT)),
+        ]
 
     items_table = Table(
         [item_header, item_row],
@@ -284,7 +318,18 @@ def _build_invoice(data: dict, out):
         ("VALIGN",       (0,0), (-1,-1), "MIDDLE"),
     ]))
     story.append(total_table)
-    story.append(Spacer(1, 8*mm))
+
+    # Installment summary line under the total.
+    invoiced_to_date = data.get("invoicedToDatePct")
+    if is_installment and invoiced_to_date is not None:
+        story.append(Spacer(1, 2*mm))
+        story.append(Paragraph(
+            f"Invoiced to date incl. this invoice: {float(invoiced_to_date):g}% of contract value",
+            _style("inst_sum", fontSize=8, textColor=GRAY, alignment=TA_RIGHT)
+        ))
+        story.append(Spacer(1, 6*mm))
+    else:
+        story.append(Spacer(1, 8*mm))
 
     # ── PAYMENT DETAILS (dark section) ───────────────────────────────────────
     pay_header = Paragraph(
@@ -379,10 +424,17 @@ def generate_invoice(request: Request):
     if not school_name:
         return Response("Missing schoolName", 400, headers=CORS_HEADERS)
 
-    price    = float(data.get("pricePerStudent") or 0)
-    quantity = int(data.get("quantity") or 0)
-    if price <= 0 or quantity <= 0:
-        return Response("Invalid price or quantity", 400, headers=CORS_HEADERS)
+    # Installment invoices carry percent + baseAmount instead of price × quantity.
+    percent     = data.get("percent")
+    base_amount = float(data.get("baseAmount") or 0)
+    if percent is not None and base_amount > 0:
+        if float(percent) <= 0:
+            return Response("Invalid percent", 400, headers=CORS_HEADERS)
+    else:
+        price    = float(data.get("pricePerStudent") or 0)
+        quantity = int(data.get("quantity") or 0)
+        if price <= 0 or quantity <= 0:
+            return Response("Invalid price or quantity", 400, headers=CORS_HEADERS)
 
     if not (data.get("schoolAddress") or "").strip():
         return Response("Missing schoolAddress", 400, headers=CORS_HEADERS)

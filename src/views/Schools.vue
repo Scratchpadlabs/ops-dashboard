@@ -97,6 +97,19 @@
           </template>
         </Column>
 
+        <Column header="Payments" style="width:150px">
+          <template #body="{ data }">
+            <div v-if="schoolPosition(data)" class="w-32">
+              <PaymentSegmentBar :segments="schoolPosition(data).segments" compact />
+              <div class="text-[11px] text-slate-400 mt-1">
+                <span class="text-green-700 font-semibold">{{ Math.round(schoolPosition(data).receivedPct) }}%</span> recd ·
+                {{ Math.round(schoolPosition(data).invoicedPct) }}% inv
+              </div>
+            </div>
+            <span v-else class="text-xs text-slate-300">—</span>
+          </template>
+        </Column>
+
         <Column field="statuses" header="Status">
           <template #body="{ data }">
             <div class="flex flex-wrap gap-1">
@@ -238,27 +251,18 @@
             </div>
           </div>
           <div class="mt-4">
-            <label class="form-label">Installment Plan</label>
-            <div class="grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                @click="form.installment_plan = 'A'"
-                class="p-3 rounded-xl border text-left transition-all"
-                :class="form.installment_plan === 'A' ? 'border-blue-500 bg-blue-50' : 'border-slate-200 hover:border-slate-300'"
-              >
-                <div class="font-semibold text-sm text-slate-900 mb-1">Plan A</div>
-                <div class="text-xs text-slate-500">50% · 25% · 25%</div>
-              </button>
-              <button
-                type="button"
-                @click="form.installment_plan = 'B'"
-                class="p-3 rounded-xl border text-left transition-all"
-                :class="form.installment_plan === 'B' ? 'border-blue-500 bg-blue-50' : 'border-slate-200 hover:border-slate-300'"
-              >
-                <div class="font-semibold text-sm text-slate-900 mb-1">Plan B</div>
-                <div class="text-xs text-slate-500">25% · 25% · 25% · 25%</div>
-              </button>
-            </div>
+            <label class="form-label">Payment Plan</label>
+            <PaymentPlanPicker v-model="form.payment_plan_id" />
+          </div>
+          <div class="mt-4">
+            <label class="form-label">Contract Value (₹)</label>
+            <InputNumber
+              v-model="form.contract_value"
+              class="w-full" :min="1"
+              :minFractionDigits="0" :maxFractionDigits="2"
+              placeholder="Leave empty to use price × students"
+            />
+            <p class="text-xs text-slate-400 mt-1">The agreed total the installment percentages apply to.</p>
           </div>
           <div class="mt-4">
             <label class="form-label">Payment Terms Notes</label>
@@ -287,6 +291,7 @@ import { getDocs, getDoc, addDoc, updateDoc, deleteDoc, doc, orderBy, query, ser
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
 import { useCelebration } from '../composables/useCelebration'
+import { activeYear } from '../composables/useAcademicYear.js'
 
 import Button from 'primevue/button'
 import DataTable from 'primevue/datatable'
@@ -299,6 +304,10 @@ import MultiSelect from 'primevue/multiselect'
 import Select from 'primevue/select'
 import ProgressSpinner from 'primevue/progressspinner'
 import ConfirmDialog from 'primevue/confirmdialog'
+import PaymentPlanPicker from '../components/shared/PaymentPlanPicker.vue'
+import PaymentSegmentBar from '../components/shared/PaymentSegmentBar.vue'
+import { usePaymentPlans } from '../composables/usePaymentPlans.js'
+import { paymentPosition } from '../utils/paymentMath.js'
 
 const router = useRouter()
 const confirm = useConfirm()
@@ -306,7 +315,9 @@ const toast = useToast()
 const { celebrate } = useCelebration()
 
 const schools       = ref([])
+const invoices      = ref([])
 const loading       = ref(true)
+const { resolveSchoolPlanId, legacyLetterFor, loadPaymentPlans } = usePaymentPlans()
 const dialogVisible = ref(false)
 const editingSchool = ref(null)
 const saving        = ref(false)
@@ -412,6 +423,47 @@ async function loadModuleSettings() {
   }
 }
 
+// ── Compact payment position per row ──────────────────────────────────────────
+async function loadInvoicesForPositions() {
+  try {
+    const snap = await getDocs(query(opsCollection('invoices'), limit(500)))
+    invoices.value = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(i => !i.deleted)
+  } catch (e) {
+    console.error('Could not load invoices for payment positions', e)
+  }
+}
+
+const invoicesBySchool = computed(() => {
+  const byId = new Map()
+  const byName = new Map()
+  const inYear = (inv) =>
+    !activeYear.value || activeYear.value === 'All Years' || inv.academic_year === activeYear.value
+  invoices.value.filter(inYear).forEach(inv => {
+    if (inv.school_id) {
+      if (!byId.has(inv.school_id)) byId.set(inv.school_id, [])
+      byId.get(inv.school_id).push(inv)
+    } else {
+      const name = (inv.school_name || '').trim().toLowerCase()
+      if (!name) return
+      if (!byName.has(name)) byName.set(name, [])
+      byName.get(name).push(inv)
+    }
+  })
+  return { byId, byName }
+})
+
+// Derived at read time from the invoice docs — null when the school has no
+// contract value to measure against.
+function schoolPosition(school) {
+  const { byId, byName } = invoicesBySchool.value
+  const invs = [
+    ...(byId.get(school.id) || []),
+    ...(byName.get((school.name || '').trim().toLowerCase()) || []),
+  ]
+  const pos = paymentPosition(school, invs)
+  return pos.contractValue ? pos : null
+}
+
 // ── Navigation ────────────────────────────────────────────────────────────────
 function openProfile(school) {
   router.push({ name: 'school-profile', params: { id: school.id } })
@@ -424,7 +476,7 @@ const emptyForm = () => ({
   contact_phone: '', contact_email: '', modules: [], rm: null,
   second_language: 'Hindi',
   pocs: [],
-  price_per_student: null, hpc_type: null, installment_plan: 'A', payment_notes: '',
+  price_per_student: null, hpc_type: null, payment_plan_id: 'plan_a', contract_value: null, payment_notes: '',
 })
 const form = reactive(emptyForm())
 
@@ -454,7 +506,8 @@ function openEditDialog(school) {
     pocs: (school.pocs || []).map(p => ({ ...p })),
     price_per_student: school.price_per_student || null,
     hpc_type: school.hpc_type || null,
-    installment_plan: school.installment_plan || 'A',
+    payment_plan_id: resolveSchoolPlanId(school) || 'plan_a',
+    contract_value: school.contract_value || null,
     payment_notes: school.payment_notes || '',
   })
   formError.value = ''
@@ -486,9 +539,13 @@ async function saveSchool() {
         .map(p => ({ name: p.name.trim(), phone: p.phone.trim(), position: p.position.trim() })),
       price_per_student: form.price_per_student || null,
       hpc_type: form.hpc_type || null,
-      installment_plan: form.installment_plan || 'A',
+      payment_plan_id: form.payment_plan_id || null,
+      contract_value: form.contract_value || null,
       payment_notes: form.payment_notes.trim(),
     }
+    // Keep the legacy 'A'/'B' letter in sync for screens that still read it.
+    const letter = legacyLetterFor(form.payment_plan_id)
+    if (letter) payload.installment_plan = letter
     if (editingSchool.value) {
       payload.updated_at = serverTimestamp()
       payload.updated_by = auth.currentUser?.email || 'unknown'
@@ -562,7 +619,7 @@ function formatDate(ts) {
 }
 
 onMounted(async () => {
-  await Promise.all([loadSchools(), loadModuleSettings()])
+  await Promise.all([loadSchools(), loadModuleSettings(), loadPaymentPlans(), loadInvoicesForPositions()])
 })
 </script>
 
