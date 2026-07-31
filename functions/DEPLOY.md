@@ -186,6 +186,44 @@ Update the URL in src/utils/api.js to the Cloud Run URL after deploy.
 
 ---
 
+## process_intake_emails (NEW — Task 1: Email intake -> auto-staged imports)
+
+Scheduled (Cloud Scheduler, every 5 min) Gmail poller — schools email/forward
+material to a dedicated intake mailbox and it lands as `intake_files` docs
+(and, when confidently classified + the sender's school is known, an
+auto-staged `staging_imports` job using the exact same pipeline the Import
+tab uses). See `functions/email_intake/main.py`'s module docstring for the
+full flow and `functions/email_intake/SETUP.md` for the required one-time
+setup (mailbox, OAuth refresh token, Secret Manager secrets, IAM, the
+Scheduler job itself) — none of that is optional, the function does nothing
+useful until it's done.
+
+### Files needed in the folder:
+- main.py ✅
+- requirements.txt ✅
+- normalize.py, tabular_parser.py ✅ (verbatim copies of generate_import's —
+  see their header comments; keep in sync by hand)
+
+### Deploy:
+```
+cd functions/email_intake
+
+gcloud functions deploy process_intake_emails \
+  --gen2 --runtime python312 --region asia-south1 \
+  --source . --entry-point process_intake_emails \
+  --trigger-http --no-allow-unauthenticated --project clarified-1501 \
+  --memory 512MB --timeout 300s --max-instances 1 \
+  --set-secrets GMAIL_INTAKE_CLIENT_ID=GMAIL_INTAKE_CLIENT_ID:latest,GMAIL_INTAKE_CLIENT_SECRET=GMAIL_INTAKE_CLIENT_SECRET:latest,GMAIL_INTAKE_REFRESH_TOKEN=GMAIL_INTAKE_REFRESH_TOKEN:latest
+```
+
+`--no-allow-unauthenticated` here (unlike every other function in this repo)
+is deliberate: this function takes no useful input from a caller — it always
+just drains the intake mailbox — and should only ever be invoked by Cloud
+Scheduler via an OIDC token. See SETUP.md step 8 for the invoker service
+account + Scheduler job creation.
+
+---
+
 ## generate_quotation (EXISTING — no changes needed)
 
 Already deployed at:

@@ -28,3 +28,10 @@ export const stagingImportRowsCollection = (jobId) => collection(db, 'staging_im
 // time — see functions/generate_import/main.py's load_import_aliases.
 export const importAliasesCollection = () => collection(db, 'import_aliases')
 export const importAliasDoc = (id) => doc(db, 'import_aliases', id)
+
+// Email intake queue (also top-level, not scoped to any school — school_id
+// is null until matched/assigned) — written server-side by
+// functions/email_intake's process_intake_emails, read/corrected here by
+// the Intake Queue UI. See src/composables/useIntake.js.
+export const intakeFilesCollection = () => collection(db, 'intake_files')
+export const intakeFileDoc = (id) => doc(db, 'intake_files', id)

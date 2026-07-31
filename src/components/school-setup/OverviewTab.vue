@@ -17,6 +17,38 @@
       <Button label="Save" size="small" class="mt-3" :loading="savingSchool" @click="saveSchool" />
     </div>
 
+    <!-- ── Intake emails ────────────────────────────────────────────────── -->
+    <div class="bg-white rounded-xl border border-slate-200 p-4">
+      <div class="text-sm font-bold text-slate-900 mb-1">Intake Emails</div>
+      <p class="text-xs text-slate-400 mb-3">
+        Senders on this list auto-match to this school when they email material to the intake
+        mailbox — see the Intake Queue. Assigning a school to an unmatched email there adds it here
+        automatically; you can also add/remove addresses directly.
+      </p>
+      <div class="flex gap-2 mb-3">
+        <InputText
+          v-model="newIntakeEmail"
+          class="flex-1 text-sm"
+          placeholder="sender@school.example"
+          @keyup.enter="addIntakeEmail"
+        />
+        <Button icon="pi pi-plus" size="small" :loading="savingIntakeEmails" :disabled="!newIntakeEmail.trim()" @click="addIntakeEmail" />
+      </div>
+      <div v-if="!(school?.intake_emails || []).length" class="text-center py-4 text-slate-300 text-sm">No intake emails yet</div>
+      <div v-else class="flex flex-wrap gap-2">
+        <span
+          v-for="email in school.intake_emails" :key="email"
+          class="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-full pl-3 pr-1.5 py-1 text-xs text-slate-700"
+        >
+          {{ email }}
+          <button type="button" class="text-slate-300 hover:text-red-500" :disabled="savingIntakeEmails" @click="removeIntakeEmail(email)">
+            <i class="pi pi-times text-[10px]"></i>
+          </button>
+        </span>
+      </div>
+      <div v-if="intakeEmailError" class="text-sm text-red-500 bg-red-50 rounded-lg px-3 py-2 mt-3">{{ intakeEmailError }}</div>
+    </div>
+
     <!-- ── Hygiene panel ────────────────────────────────────────────────── -->
     <div class="bg-white rounded-xl border border-slate-200 p-4">
       <div class="flex items-center justify-between mb-3">
@@ -41,7 +73,7 @@
 
 <script setup>
 import { ref, reactive, watch, onMounted } from 'vue'
-import { getDocs, updateDoc, deleteDoc, getDoc, serverTimestamp } from 'firebase/firestore'
+import { getDocs, updateDoc, deleteDoc, getDoc, serverTimestamp, arrayUnion, arrayRemove } from 'firebase/firestore'
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
 
@@ -85,6 +117,50 @@ async function saveSchool() {
     schoolFormError.value = 'Something went wrong. Try again.'
   } finally {
     savingSchool.value = false
+  }
+}
+
+// ── Intake emails (schools/{schoolId}.intake_emails — see functions/
+// email_intake and src/composables/useIntake.js) ────────────────────────────
+const newIntakeEmail = ref('')
+const savingIntakeEmails = ref(false)
+const intakeEmailError = ref('')
+
+async function addIntakeEmail() {
+  const email = newIntakeEmail.value.trim().toLowerCase()
+  if (!email) return
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+    intakeEmailError.value = 'Enter a valid email address'
+    return
+  }
+  intakeEmailError.value = ''
+  savingIntakeEmails.value = true
+  try {
+    await updateDoc(rootSchoolDoc(props.schoolId), {
+      intake_emails: arrayUnion(email),
+      updated_at: serverTimestamp(), updated_by: auth.currentUser?.email || 'unknown',
+    })
+    newIntakeEmail.value = ''
+    emit('saved')
+  } catch (e) {
+    intakeEmailError.value = 'Could not save — try again.'
+  } finally {
+    savingIntakeEmails.value = false
+  }
+}
+
+async function removeIntakeEmail(email) {
+  savingIntakeEmails.value = true
+  try {
+    await updateDoc(rootSchoolDoc(props.schoolId), {
+      intake_emails: arrayRemove(email),
+      updated_at: serverTimestamp(), updated_by: auth.currentUser?.email || 'unknown',
+    })
+    emit('saved')
+  } catch (e) {
+    intakeEmailError.value = 'Could not remove — try again.'
+  } finally {
+    savingIntakeEmails.value = false
   }
 }
 
