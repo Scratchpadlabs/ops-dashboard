@@ -22,7 +22,11 @@
             : 'text-slate-400 hover:text-white hover:bg-slate-800'"
         >
           <i :class="item.icon" class="text-base w-4 text-center"></i>
-          <span>{{ item.label }}</span>
+          <span class="flex-1">{{ item.label }}</span>
+          <span
+            v-if="item.to === '/intake' && intakeBadgeCount > 0"
+            class="min-w-[18px] h-[18px] px-1 rounded-full bg-amber-500 text-white text-[10px] font-bold flex items-center justify-center"
+          >{{ intakeBadgeCount }}</span>
         </RouterLink>
       </nav>
 
@@ -128,6 +132,7 @@ import { isOpsAdmin } from './config/opsAdmins.js'
 import { getDocs } from 'firebase/firestore'
 import { activeYear, availableYears, computeCurrentAcademicYear } from './composables/useAcademicYear.js'
 import { isSearchOpen } from './composables/useGlobalSearch.js'
+import { listenUnprocessedIntakeCount } from './composables/useIntake.js'
 import {
   notificationsSupported, notificationPermission, notificationsEnabled,
   requestTaskNotificationPermission, disableTaskNotifications,
@@ -231,6 +236,19 @@ watch(() => route.name, maybeLoadAvailableYears)
 const currentUserEmail = ref(auth.currentUser?.email || null)
 onAuthStateChanged(auth, (user) => { currentUserEmail.value = user?.email || null })
 
+// ── Intake queue badge (ops-admin only — intake_files is admin-gated) ──────
+const intakeBadgeCount = ref(0)
+let unsubscribeIntakeBadge = null
+watch(currentUserEmail, (email) => {
+  unsubscribeIntakeBadge?.()
+  unsubscribeIntakeBadge = null
+  intakeBadgeCount.value = 0
+  if (isOpsAdmin(email)) {
+    unsubscribeIntakeBadge = listenUnprocessedIntakeCount((count) => { intakeBadgeCount.value = count })
+  }
+}, { immediate: true })
+onBeforeUnmount(() => unsubscribeIntakeBadge?.())
+
 const baseNavItems = [
   { to: '/',            label: 'Home',        icon: 'pi pi-home' },
   { to: '/tasks',       label: 'Tasks',       icon: 'pi pi-check-square' },
@@ -238,6 +256,7 @@ const baseNavItems = [
   { to: '/schools',     label: 'Schools',     icon: 'pi pi-building' },
   { to: '/school-setup', label: 'School Setup', icon: 'pi pi-shield' },
   { to: '/import',      label: 'Import',      icon: 'pi pi-cloud-upload' },
+  { to: '/intake',      label: 'Intake',      icon: 'pi pi-inbox' },
   { to: '/quotations',  label: 'Quotations',  icon: 'pi pi-file' },
   { to: '/agreements',  label: 'Agreements',  icon: 'pi pi-file-edit' },
   { to: '/invoices',    label: 'Invoices',    icon: 'pi pi-receipt' },
@@ -245,7 +264,7 @@ const baseNavItems = [
   { to: '/settings',    label: 'Settings',    icon: 'pi pi-cog' },
 ]
 
-const ADMIN_ONLY_NAV_PATHS = ['/school-setup', '/import']
+const ADMIN_ONLY_NAV_PATHS = ['/school-setup', '/import', '/intake']
 const navItems = computed(() =>
   baseNavItems.filter(item => !ADMIN_ONLY_NAV_PATHS.includes(item.to) || isOpsAdmin(currentUserEmail.value))
 )
@@ -258,6 +277,7 @@ const pageTitles = {
   'school-setup': 'School Setup',
   'import':       'Import',
   'import-review':'Review Import',
+  'intake':       'Intake',
   'quotations':   'Quotations',
   'agreements':   'Agreements',
   'invoices':     'Invoices',

@@ -1,5 +1,13 @@
 #!/usr/bin/env python3
 """
+VERBATIM COPY of functions/generate_import/normalize.py. Each Cloud Function
+here deploys from its own self-contained source directory (plain `gcloud
+functions deploy`, not a shared package — see functions/DEPLOY.md), so this
+module can't be imported across function folders at deploy time. Same
+convention as generate_invoice copying its font files or generate_pending_letter
+copying logo.png from generate_agreement: keep this in sync with the
+generate_import copy by hand whenever one changes.
+
 Shared alias dictionaries and cell/value normalizers for the School Material
 Import pipeline. One module, per the parser-hardening contract: the LLM-based
 cleaning path in main.py (clean_students_rows/clean_teachers_rows) and the

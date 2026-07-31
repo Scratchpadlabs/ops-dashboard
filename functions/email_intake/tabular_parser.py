@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
 """
+VERBATIM COPY of functions/generate_import/tabular_parser.py — see
+normalize.py's header in this same folder for why each function folder
+carries its own copy instead of a shared import. Keep in sync by hand.
+
 Deterministic, never-raising tabular file parser — the hardening layer
 described in task-parser-hardening.txt. Sniffs actual file content (never
 trusts the extension), iterates every sheet, scores candidate header rows

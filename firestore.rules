@@ -76,6 +76,17 @@ service cloud.firestore {
       allow read, write: if isOpsAdmin();
     }
 
+    // Email intake queue (Task 1: Email intake -> auto-staged imports):
+    // top-level, not scoped to any school (school_id is null until matched/
+    // assigned). Written server-side by functions/email_intake's scheduled
+    // process_intake_emails using the Admin SDK (which bypasses these rules
+    // entirely) — this match block only governs the Intake Queue UI's own
+    // reads/writes (status corrections, school assignment, dismiss). Same
+    // ops-admin gate as the rest of Import, since it's the same surface.
+    match /intake_files/{fileId} {
+      allow read, write: if isOpsAdmin();
+    }
+
     // Deny everything else
     match /{document=**} {
       allow read, write: if false;
