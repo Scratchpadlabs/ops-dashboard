@@ -1,110 +1,120 @@
 <template>
   <div>
-    <!-- School selector — surveys live in the teacher-app tree
-         (schools/<id>/surveys), the same tree School Setup works in, NOT the
-         ops CRM's operations/ops/schools. -->
-    <div class="flex items-center justify-between gap-4 mb-5">
+    <!-- Surveys live in the teacher-app tree (schools/<id>/surveys), the same
+         tree School Setup works in — NOT the ops CRM's operations/ops/schools,
+         which has no link to a root school id to resolve a roster from. -->
+    <div class="flex items-center justify-between gap-4 mb-4 flex-wrap">
       <div class="flex items-center gap-2">
         <Select
-          v-model="selectedSchoolId"
-          :options="schools" optionLabel="name" optionValue="id"
-          placeholder="Select a school" class="w-80" :loading="loadingSchools" filter
+          v-model="schoolId" :options="schools" optionLabel="name" optionValue="id"
+          placeholder="Select a school" class="w-72" :loading="loadingSchools" filter
         />
-        <span v-if="overview" class="text-xs text-slate-400">
-          {{ overview.active_student_count }} active students
+        <span v-if="matrix" class="text-xs text-slate-400">
+          {{ matrix.active_student_count }} active students
+          <span v-if="matrix.from_cache" v-tooltip="'Served from the cached matrix — refresh to recount'">· cached</span>
         </span>
       </div>
       <div class="flex gap-2">
-        <Button label="Refresh counts" icon="pi pi-refresh" size="small" text
-          :loading="loadingOverview" :disabled="!selectedSchoolId" @click="refreshOverview" />
-        <Button label="Assign Survey" icon="pi pi-send" size="small"
-          :disabled="!selectedSchoolId" @click="openDialog('assign')" />
+        <Button label="Refresh" icon="pi pi-refresh" size="small" text
+          :loading="loadingMatrix" :disabled="!schoolId" @click="reload(true)" />
+        <Button label="Download report" icon="pi pi-download" size="small" outlined
+          :disabled="!schoolId || !surveys.length" @click="reportVisible = true" />
       </div>
     </div>
 
-    <div v-if="!selectedSchoolId" class="text-center py-20 bg-white rounded-xl border border-slate-200">
-      <i class="pi pi-inbox text-4xl text-slate-300 mb-3 block"></i>
-      <p class="text-slate-500 font-medium">Select a school to see its surveys</p>
+    <div v-if="!schoolId" class="text-center py-20 bg-white rounded-xl border border-slate-200">
+      <i class="pi pi-th-large text-4xl text-slate-300 mb-3 block"></i>
+      <p class="text-slate-500 font-medium">Select a school to see its survey matrix</p>
     </div>
 
     <template v-else>
-      <div v-if="loading" class="flex items-center justify-center py-20">
+      <!-- ── Filters (persisted in the URL so a view is shareable) ───────── -->
+      <div class="bg-white rounded-xl border border-slate-200 p-3 mb-4 flex items-end gap-3 flex-wrap">
+        <div>
+          <label class="form-label">Classes</label>
+          <MultiSelect
+            v-model="filters.classIds" :options="classOptions" optionLabel="label" optionValue="value"
+            placeholder="All classes" class="w-64" filter display="chip" :maxSelectedLabels="2"
+          />
+        </div>
+        <div>
+          <label class="form-label">Grade</label>
+          <MultiSelect
+            v-model="filters.grades" :options="grades" placeholder="All grades" class="w-40"
+            :maxSelectedLabels="3"
+          />
+        </div>
+        <div>
+          <label class="form-label">Status</label>
+          <Select v-model="filters.status" :options="statusOptions" optionLabel="label" optionValue="value" class="w-48" />
+        </div>
+        <div class="flex items-center gap-2 pb-1">
+          <Checkbox v-model="filters.activeWindowOnly" binary inputId="activeOnly" @update:modelValue="reload(true)" />
+          <label for="activeOnly" class="text-sm text-slate-600">Active window only</label>
+        </div>
+        <Button v-if="hasFilters" label="Clear" text size="small" class="ml-auto" @click="clearFilters" />
+      </div>
+
+      <div v-if="loadingMatrix" class="flex items-center justify-center py-20">
         <ProgressSpinner style="width:32px;height:32px" />
       </div>
 
-      <div v-else-if="!visibleSurveys.length" class="text-center py-20 bg-white rounded-xl border border-slate-200">
+      <div v-else-if="!surveys.length" class="text-center py-20 bg-white rounded-xl border border-slate-200">
         <i class="pi pi-inbox text-4xl text-slate-300 mb-3 block"></i>
         <p class="text-slate-500 font-medium">No surveys for this school</p>
-        <p v-if="hiddenCount" class="text-xs text-slate-400 mt-1">
-          {{ hiddenCount }} incomplete/test document{{ hiddenCount !== 1 ? 's' : '' }} hidden.
+        <p v-if="filters.activeWindowOnly" class="text-xs text-slate-400 mt-1">
+          Only active-window surveys are shown — clear that filter to see all.
         </p>
       </div>
 
-      <div v-else>
-        <div class="bg-white rounded-xl border border-slate-200 overflow-hidden mb-4">
-          <DataTable :value="visibleSurveys" size="small" stripedRows>
-            <Column header="Survey">
-              <template #body="{ data }">
-                <div class="font-medium text-sm text-slate-900">{{ label(data) }}</div>
-                <div class="font-mono text-xs text-slate-400">{{ data.id }}</div>
-              </template>
-            </Column>
-            <Column header="Audience" style="width:110px">
-              <template #body="{ data }">
-                <span class="px-2 py-0.5 rounded-full text-xs font-semibold"
-                  :class="audienceOf(data) === 'staff' ? 'bg-violet-100 text-violet-700' : 'bg-blue-50 text-blue-700'">
-                  {{ audienceOf(data) === 'staff' ? 'Staff' : 'Students' }}
-                </span>
-              </template>
-            </Column>
-            <Column header="Window" style="width:200px">
-              <template #body="{ data }">
-                <span class="text-xs" :class="windowClass(data)">{{ windowLabel(data) }}</span>
-              </template>
-            </Column>
-            <Column header="Assigned" style="width:110px">
-              <template #body="{ data }">
-                <span v-if="overview" class="text-sm font-semibold text-slate-900">{{ assignedCount(data) }}</span>
-                <span v-else class="text-xs text-slate-300">—</span>
-              </template>
-            </Column>
-            <Column header="Responded" style="width:110px">
-              <template #body="{ data }">
-                <!-- null (not measurable) is deliberately shown differently
-                     from 0 (measurable, none yet) — see survey_overview. -->
-                <span v-if="overview && respondedCount(data) !== null" class="text-sm text-slate-700">{{ respondedCount(data) }}</span>
-                <span v-else class="text-xs text-slate-300" v-tooltip="overview ? 'No responses subcollection for this survey' : 'Load counts to see this'">—</span>
-              </template>
-            </Column>
-            <Column header="" style="width:150px">
-              <template #body="{ data }">
-                <div class="flex gap-1">
-                  <Button label="Assign" text size="small" @click="openDialog('assign', data.id)" />
-                  <Button label="Remove" text size="small" severity="danger" @click="openDialog('unassign', data.id)" />
-                </div>
-              </template>
-            </Column>
-          </DataTable>
+      <template v-else>
+        <div v-if="(matrix?.unresolved_response_surveys || []).length"
+             class="text-xs text-amber-700 bg-amber-50 rounded-lg px-3 py-2 mb-3">
+          <i class="pi pi-exclamation-triangle text-xs mr-1"></i>
+          Responses aren't attributable for {{ matrix.unresolved_response_surveys.join(', ') }} —
+          those cells show “—” for responded/completion rather than a misleading zero.
         </div>
 
-        <p v-if="hiddenCount" class="text-xs text-slate-400 mb-4">
-          {{ hiddenCount }} incomplete/test document{{ hiddenCount !== 1 ? 's' : '' }} hidden from this list — filtered from the UI only, nothing was deleted.
-        </p>
-
-        <!-- Per-student inbox management -->
-        <div class="mb-4">
-          <StudentInboxPanel :school-id="selectedSchoolId" :surveys="visibleSurveys" @changed="onApplied" />
-        </div>
+        <SurveyMatrix
+          :surveys="surveys"
+          :rows="filteredRows"
+          :totals="totals"
+          :selection="selection"
+          :metric="metric"
+          :expanded="expandedClass"
+          :active-student-count="matrix?.active_student_count || 0"
+          :unresolved-response-surveys="matrix?.unresolved_response_surveys || []"
+          @update:metric="setMetric"
+          @select-cells="onSelectCells"
+          @select-row="onSelectRow"
+          @select-column="onSelectColumn"
+          @toggle-expand="onToggleExpand"
+        >
+          <template #drilldown="{ classId }">
+            <ClassDrilldown
+              :school-id="schoolId"
+              :class-id="classId"
+              :surveys="surveys"
+              :students="students"
+              :loading="loadingRoster"
+              :responders="drilldownResponders"
+              :status-filter="filters.status"
+              @changed="onDrilldownChanged"
+            />
+          </template>
+        </SurveyMatrix>
 
         <!-- Run history -->
-        <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div class="bg-white rounded-xl border border-slate-200 overflow-hidden mt-4">
           <div class="px-4 py-2.5 border-b border-slate-100 flex items-center justify-between">
             <div class="text-sm font-bold text-slate-900">Recent assignment runs</div>
             <Button icon="pi pi-refresh" text rounded size="small" :loading="loadingRuns" @click="refreshRuns" />
           </div>
           <DataTable v-if="runs.length" :value="runs" size="small" stripedRows>
-            <Column header="Survey">
-              <template #body="{ data }"><span class="text-sm text-slate-700">{{ data.survey_name || data.survey_id }}</span></template>
+            <Column header="Surveys">
+              <template #body="{ data }">
+                <span class="text-sm text-slate-700">{{ (data.survey_names || [data.survey_id]).join(', ') }}</span>
+              </template>
             </Column>
             <Column header="Action" style="width:100px">
               <template #body="{ data }">
@@ -114,10 +124,8 @@
                 </span>
               </template>
             </Column>
-            <Column header="Scope" style="width:160px">
-              <template #body="{ data }">
-                <span class="text-xs text-slate-500">{{ scopeLabel(data) }}</span>
-              </template>
+            <Column header="Scope" style="width:150px">
+              <template #body="{ data }"><span class="text-xs text-slate-500">{{ scopeLabel(data) }}</span></template>
             </Column>
             <Column header="Result" style="width:170px">
               <template #body="{ data }">
@@ -139,91 +147,261 @@
           </DataTable>
           <div v-else class="text-center text-sm text-slate-400 py-8">No assignment runs yet for this school</div>
         </div>
-      </div>
+      </template>
     </template>
 
-    <AssignSurveyDialog
-      v-model:visible="dialogVisible"
-      :school-id="selectedSchoolId"
-      :mode="dialogMode"
-      :preset-survey-id="dialogSurveyId"
+    <!-- ── Sticky action bar — acts on the whole selection at once ───────── -->
+    <Transition name="fade">
+      <div v-if="selection.size" class="fixed bottom-0 left-0 right-0 z-40 flex justify-center pb-4 px-4 pointer-events-none">
+        <div class="pointer-events-auto bg-slate-900 text-white rounded-xl shadow-lg px-4 py-2.5 flex items-center gap-3 flex-wrap">
+          <span class="text-sm font-semibold">{{ selection.size }} class-survey pair{{ selection.size !== 1 ? 's' : '' }} selected</span>
+          <span class="text-xs text-slate-300">{{ selectedClassCount }} class(es) · {{ selectedSurveyCount }} survey(s)</span>
+          <div class="flex gap-2 ml-2">
+            <Button label="Assign selected" icon="pi pi-check" size="small" @click="openAction('assign')" />
+            <Button label="Unassign selected" icon="pi pi-times" size="small" severity="danger" @click="openAction('unassign')" />
+            <Button label="Clear" size="small" text class="!text-slate-300" @click="selection = new Set()" />
+          </div>
+        </div>
+      </div>
+    </Transition>
+
+    <SelectionActionDialog
+      v-model:visible="actionVisible"
+      :school-id="schoolId"
+      :mode="actionMode"
+      :pairs="[...selection]"
+      :surveys="surveys"
       @applied="onApplied"
+    />
+
+    <ReportDialog
+      v-model:visible="reportVisible"
+      :school-id="schoolId"
+      :surveys="surveys"
+      :filters="reportFilters"
+      :visible-survey-ids="surveys.map(s => s.id)"
     />
   </div>
 </template>
 
 <script setup>
-import { ref, watch, onMounted } from 'vue'
+import { ref, reactive, computed, watch, onMounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import Select from 'primevue/select'
+import MultiSelect from 'primevue/multiselect'
+import Checkbox from 'primevue/checkbox'
 import Button from 'primevue/button'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import ProgressSpinner from 'primevue/progressspinner'
 
-import AssignSurveyDialog from '../components/surveys/AssignSurveyDialog.vue'
-import StudentInboxPanel from '../components/surveys/StudentInboxPanel.vue'
-import { useSurveys, surveyLabel, guessAudience } from '../composables/useSurveys.js'
+import SurveyMatrix from '../components/surveys/SurveyMatrix.vue'
+import SelectionActionDialog from '../components/surveys/SelectionActionDialog.vue'
+import ClassDrilldown from '../components/surveys/ClassDrilldown.vue'
+import ReportDialog from '../components/surveys/ReportDialog.vue'
+import {
+  useSurveys, gradeOf, STATUS_NOT_ASSIGNED, STATUS_PENDING, STATUS_COMPLETED,
+} from '../composables/useSurveys.js'
 
+const route = useRoute()
+const router = useRouter()
 const toast = useToast()
 const {
-  schools, visibleSurveys, hiddenCount, overview, loading,
-  loadSchools, loadSurveys, loadOverview, loadRuns,
+  schools, matrix, surveys, rows, totals, grades, students,
+  loadingMatrix, loadingRoster,
+  loadSchools, loadMatrix, loadClassDetail, loadRuns,
 } = useSurveys()
 
-const selectedSchoolId = ref(null)
+const schoolId = ref(null)
 const loadingSchools = ref(false)
-const loadingOverview = ref(false)
 const loadingRuns = ref(false)
 const runs = ref([])
+const metric = ref('all')
+const selection = ref(new Set())
+const expandedClass = ref(null)
+const drilldownResponders = ref({})
+const actionVisible = ref(false)
+const actionMode = ref('assign')
+const reportVisible = ref(false)
 
-const dialogVisible = ref(false)
-const dialogMode = ref('assign')
-const dialogSurveyId = ref(null)
+const filters = reactive({ classIds: [], grades: [], status: 'all', activeWindowOnly: false })
 
-const label = surveyLabel
-const audienceOf = guessAudience
+const statusOptions = [
+  { value: 'all', label: 'Any status' },
+  { value: STATUS_NOT_ASSIGNED, label: 'Not assigned' },
+  { value: STATUS_PENDING, label: 'Assigned, not responded' },
+  { value: STATUS_COMPLETED, label: 'Responded' },
+]
 
-function openDialog(mode, surveyId = null) {
-  dialogMode.value = mode
-  dialogSurveyId.value = surveyId
-  dialogVisible.value = true
+const classOptions = computed(() =>
+  rows.value.map(r => ({ value: r.class_id, label: `${r.class_id} (${r.student_count})` })))
+
+const hasFilters = computed(() =>
+  filters.classIds.length || filters.grades.length || filters.status !== 'all' || filters.activeWindowOnly)
+
+/**
+ * Row filtering. The status filter is a CELL-level predicate here (does this
+ * class have any student in that state for any survey?) — the precise
+ * per-student version lives in the drill-down, where individual students are
+ * actually visible.
+ */
+const filteredRows = computed(() => {
+  let list = rows.value
+  if (filters.classIds.length) {
+    const set = new Set(filters.classIds)
+    list = list.filter(r => set.has(r.class_id))
+  }
+  if (filters.grades.length) {
+    const set = new Set(filters.grades)
+    list = list.filter(r => set.has(gradeOf(r.class_id)))
+  }
+  if (filters.status !== 'all') {
+    list = list.filter(r => surveys.value.some(s => matchesStatus(r.cells[s.id], filters.status)))
+  }
+  return list
+})
+
+function matchesStatus(cell, status) {
+  if (!cell) return false
+  if (status === STATUS_NOT_ASSIGNED) return cell.assigned < cell.total
+  if (status === STATUS_PENDING) return cell.assigned - cell.responded > 0
+  if (status === STATUS_COMPLETED) return cell.responded > 0
+  return true
 }
 
-function assignedCount(s) {
-  if (!overview.value) return 0
-  const map = audienceOf(s) === 'staff' ? overview.value.staff_assigned : overview.value.assigned
-  return map?.[s.id] || 0
+const selectedClassCount = computed(() => new Set([...selection.value].map(p => p.split('::')[0])).size)
+const selectedSurveyCount = computed(() => new Set([...selection.value].map(p => p.split('::')[1])).size)
+
+// Filters passed to the report generator — a filtered view downloads
+// filtered data, and the file states these in its header row.
+const reportFilters = computed(() => ({
+  classIds: filters.classIds.length
+    ? filters.classIds
+    : (filters.grades.length ? filteredRows.value.map(r => r.class_id) : []),
+  status: filters.status,
+  activeWindowOnly: filters.activeWindowOnly,
+  search: '',
+}))
+
+// ── Selection ───────────────────────────────────────────────────────────────
+function onSelectCells(pairs, { additive } = {}) {
+  const next = additive ? new Set(selection.value) : new Set()
+  pairs.forEach(p => next.add(p))
+  selection.value = next
 }
-function respondedCount(s) {
-  const v = overview.value?.responses?.[s.id]
-  return v === undefined ? null : v
+function onSelectRow(classId, event) {
+  const pairs = surveys.value.map(s => `${classId}::${s.id}`)
+  toggleGroup(pairs, event)
+}
+function onSelectColumn(surveyId, event) {
+  const pairs = filteredRows.value.map(r => `${r.class_id}::${surveyId}`)
+  toggleGroup(pairs, event)
+}
+// Clicking a header that is already fully selected deselects it — otherwise
+// there is no way to undo a row/column click without clearing everything.
+function toggleGroup(pairs, event) {
+  const additive = event?.shiftKey || event?.ctrlKey || event?.metaKey
+  const allSelected = pairs.every(p => selection.value.has(p))
+  const next = additive ? new Set(selection.value) : new Set(allSelected ? selection.value : [])
+  pairs.forEach(p => (allSelected ? next.delete(p) : next.add(p)))
+  selection.value = next
+}
+function setMetric(m) { metric.value = m }
+
+async function onToggleExpand(classId) {
+  expandedClass.value = expandedClass.value === classId ? null : classId
+  if (!expandedClass.value) return
+  // Loaded per class on expand — bounded by class size rather than pulling
+  // the whole school's roster to show 30 rows.
+  try {
+    const detail = await loadClassDetail(schoolId.value, classId)
+    drilldownResponders.value = detail.responders
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Could not load the class', detail: e.message, life: 4000 })
+  }
 }
 
-function toDate(ts) {
-  if (!ts) return null
-  return ts.toDate ? ts.toDate() : new Date(ts)
-}
-function fmt(d) {
-  return d ? d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: '2-digit' }) : '—'
-}
-function windowLabel(s) {
-  const start = toDate(s.startAt), end = toDate(s.expiresAt)
-  if (!start && !end) return 'No window set'
-  return `${fmt(start)} – ${fmt(end)}`
-}
-function windowClass(s) {
-  const now = new Date()
-  const start = toDate(s.startAt), end = toDate(s.expiresAt)
-  if (end && end < now) return 'text-slate-400'
-  if (start && start > now) return 'text-amber-600'
-  return 'text-slate-600'
+function openAction(mode) {
+  actionMode.value = mode
+  actionVisible.value = true
 }
 
+async function onApplied() {
+  selection.value = new Set()
+  await Promise.all([reload(true), refreshRuns()])
+}
+async function onDrilldownChanged() {
+  await refreshRuns()
+}
+
+// ── Data ────────────────────────────────────────────────────────────────────
+async function reload(force = false) {
+  if (!schoolId.value) return
+  try {
+    await loadMatrix(schoolId.value, { activeWindowOnly: filters.activeWindowOnly, force })
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Could not load the matrix', detail: e.message, life: 5000 })
+  }
+}
+async function refreshRuns() {
+  if (!schoolId.value) return
+  loadingRuns.value = true
+  try {
+    runs.value = await loadRuns(schoolId.value)
+  } catch (e) {
+    console.error('Could not load assignment runs', e)
+    runs.value = []
+  } finally {
+    loadingRuns.value = false
+  }
+}
+
+function clearFilters() {
+  const wasWindowFiltered = filters.activeWindowOnly
+  Object.assign(filters, { classIds: [], grades: [], status: 'all', activeWindowOnly: false })
+  if (wasWindowFiltered) reload(true)
+}
+
+// ── URL persistence — the whole view is shareable ───────────────────────────
+function syncUrl() {
+  const q = {}
+  if (schoolId.value) q.school = schoolId.value
+  if (filters.classIds.length) q.classes = filters.classIds.join(',')
+  if (filters.grades.length) q.grades = filters.grades.join(',')
+  if (filters.status !== 'all') q.status = filters.status
+  if (filters.activeWindowOnly) q.active = '1'
+  if (metric.value !== 'all') q.metric = metric.value
+  router.replace({ query: q }).catch(() => {})
+}
+
+function readUrl() {
+  const q = route.query
+  if (q.school) schoolId.value = String(q.school)
+  filters.classIds = q.classes ? String(q.classes).split(',').filter(Boolean) : []
+  filters.grades = q.grades ? String(q.grades).split(',').filter(Boolean) : []
+  filters.status = q.status ? String(q.status) : 'all'
+  filters.activeWindowOnly = q.active === '1'
+  metric.value = q.metric ? String(q.metric) : 'all'
+}
+
+watch([() => ({ ...filters }), metric, schoolId], syncUrl, { deep: true })
+
+watch(schoolId, async (id) => {
+  selection.value = new Set()
+  expandedClass.value = null
+  students.value = []
+  runs.value = []
+  matrix.value = null
+  if (!id) return
+  await Promise.all([reload(), refreshRuns()])
+})
+
+// ── Presentation ────────────────────────────────────────────────────────────
 function scopeLabel(r) {
   if (r.scope_type === 'school') return 'Entire school'
   if (r.scope_type === 'classes') return `${(r.scope_value || []).length} class(es)`
-  if (r.scope_type === 'ids') return `${(r.scope_value || []).length} specific`
+  if (r.scope_type === 'ids') return `${(r.scope_value || []).length} student(s)`
   return r.scope_type || '—'
 }
 function runStatusClass(s) {
@@ -234,54 +412,17 @@ function runStatusClass(s) {
   }[s] || 'bg-slate-100 text-slate-600'
 }
 function formatTs(ts) {
-  const d = toDate(ts)
+  const d = ts?.toDate ? ts.toDate() : (ts ? new Date(ts) : null)
   return d ? d.toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''
 }
 
-// Counts need a full roster pass server-side, so they are explicitly
-// requested rather than loaded with the page — cheap to skip when you're
-// just here to assign something.
-async function refreshOverview() {
-  if (!selectedSchoolId.value) return
-  loadingOverview.value = true
-  try {
-    await loadOverview(selectedSchoolId.value)
-  } catch (e) {
-    toast.add({ severity: 'error', summary: 'Could not load counts', detail: e.message, life: 4000 })
-  } finally {
-    loadingOverview.value = false
-  }
-}
-
-async function refreshRuns() {
-  if (!selectedSchoolId.value) return
-  loadingRuns.value = true
-  try {
-    runs.value = await loadRuns(selectedSchoolId.value)
-  } catch (e) {
-    console.error('Could not load assignment runs', e)
-    runs.value = []
-  } finally {
-    loadingRuns.value = false
-  }
-}
-
-async function onApplied() {
-  await Promise.all([refreshRuns(), overview.value ? refreshOverview() : Promise.resolve()])
-}
-
-watch(selectedSchoolId, async (id) => {
-  overview.value = null
-  runs.value = []
-  if (!id) return
-  await Promise.all([loadSurveys(id), refreshRuns()])
-})
-
 onMounted(async () => {
+  readUrl()
   loadingSchools.value = true
   try {
     const list = await loadSchools()
-    if (!selectedSchoolId.value && list.length) selectedSchoolId.value = list[0].id
+    if (!schoolId.value && list.length) schoolId.value = list[0].id
+    else if (schoolId.value) await Promise.all([reload(), refreshRuns()])
   } catch (e) {
     toast.add({ severity: 'error', summary: 'Could not load schools', detail: e.message, life: 4000 })
   } finally {
@@ -289,3 +430,17 @@ onMounted(async () => {
   }
 })
 </script>
+
+<style scoped>
+.form-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  color: #64748b;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.fade-enter-active, .fade-leave-active { transition: opacity 0.15s, transform 0.15s; }
+.fade-enter-from, .fade-leave-to { opacity: 0; transform: translateY(8px); }
+</style>

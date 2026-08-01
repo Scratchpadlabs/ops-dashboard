@@ -128,3 +128,155 @@ def filter_scope(docs, scope, audience):
         docs = [(i, d) for i, d in docs if str((d or {}).get("type") or "student") == "student"]
 
     return docs
+
+
+# ─────────────────────────── matrix + status (v2) ──────────────────────────
+# The v2 UI is CLASS-first: a classes x surveys grid, multi-survey selection,
+# and completion reports. Everything below is the pure half of that.
+
+# Class ids encode the grade ("I_Diamond", "II_Ruby", "10_A"), and plain
+# string sorting gets them WRONG: '_' (0x5F) sorts after 'I', so "II_Ruby"
+# lands before "I_Diamond", and "10_A" before "2_A". Every class list in the
+# matrix and in the reports goes through class_sort_key so rows read in
+# school order. Mirrors the grade ordering in src/utils/structureInference.js
+# and the education KB's grade canon (Nursery < LKG < UKG < 1..12).
+_PRE_PRIMARY_ORDER = {"PRE-NURSERY": -4, "NURSERY": -3, "LKG": -2, "UKG": -1}
+_ROMAN_ORDER = {"I": 1, "II": 2, "III": 3, "IV": 4, "V": 5, "VI": 6,
+                 "VII": 7, "VIII": 8, "IX": 9, "X": 10, "XI": 11, "XII": 12}
+
+
+def grade_order(grade):
+    """Sortable position for a grade token. Unknown grades sort last rather
+    than raising — an unrecognized class must still appear in the matrix."""
+    g = str(grade or "").strip().upper()
+    if g in _PRE_PRIMARY_ORDER:
+        return _PRE_PRIMARY_ORDER[g]
+    if g in _ROMAN_ORDER:
+        return _ROMAN_ORDER[g]
+    if g.isdigit():
+        return int(g)
+    return 999
+
+
+def class_sort_key(class_id):
+    """('I_Diamond') -> (1, 'diamond', 'i_diamond'). Grade first, then
+    section, with the raw id as a final tiebreak so ordering is stable."""
+    raw = str(class_id or "")
+    grade, _, section = raw.partition("_")
+    return (grade_order(grade), section.strip().lower(), raw.lower())
+
+
+def student_sort_key(student):
+    """Class order, then roll number NUMERICALLY (so 2 precedes 10), then
+    name. A non-numeric roll sorts after the numeric ones rather than
+    breaking the comparison."""
+    roll = str((student or {}).get("rollNo") or "").strip()
+    roll_num = (0, int(roll)) if roll.isdigit() else (1, 0)
+    return (class_sort_key((student or {}).get("classId")), roll_num, roll.lower(),
+            str((student or {}).get("name") or "").lower())
+
+
+STATUS_NOT_ASSIGNED = "not assigned"
+STATUS_PENDING = "pending"
+STATUS_COMPLETED = "completed"
+
+SCHOOL_TOTAL_KEY = "__school__"
+
+
+def student_status(student, survey_id, responder_ids, inbox_field=DEFAULT_INBOX_FIELD):
+    """One student's position on one survey.
+
+    Three distinct outcomes, never collapsed (the task is explicit): a
+    student who was never assigned is "not assigned", NOT "pending" —
+    conflating them would inflate every pending report with people who were
+    never asked in the first place.
+    """
+    inbox = (student or {}).get(inbox_field)
+    if not isinstance(inbox, list) or survey_id not in inbox:
+        return STATUS_NOT_ASSIGNED
+    return STATUS_COMPLETED if (student or {}).get("id") in (responder_ids or set()) else STATUS_PENDING
+
+
+def build_matrix(students, survey_ids, responders_by_survey, inbox_field=DEFAULT_INBOX_FIELD):
+    """The classes x surveys grid.
+
+    `students` is [{id, classId, ...}] already filtered to active students.
+    `responders_by_survey` is {survey_id: set(student_id)}.
+
+    Returns {rows: [...], totals: {...}} where each row is
+      {class_id, student_count, cells: {survey_id: {assigned, responded, total}}}
+    and totals is the same cell shape keyed by survey for the pinned
+    school-total row. Counting responded only among ASSIGNED students keeps
+    completion % meaningful — a stray response from someone who was never
+    assigned can't push a class over 100%.
+    """
+    by_class = {}
+    for s in students:
+        by_class.setdefault(s.get("classId") or "(no class)", []).append(s)
+
+    rows = []
+    totals = {sid: {"assigned": 0, "responded": 0, "total": 0} for sid in survey_ids}
+
+    for class_id in sorted(by_class, key=class_sort_key):
+        members = by_class[class_id]
+        cells = {}
+        for sid in survey_ids:
+            responders = responders_by_survey.get(sid) or set()
+            assigned = 0
+            responded = 0
+            for st in members:
+                inbox = st.get(inbox_field)
+                if isinstance(inbox, list) and sid in inbox:
+                    assigned += 1
+                    if st.get("id") in responders:
+                        responded += 1
+            cells[sid] = {"assigned": assigned, "responded": responded, "total": len(members)}
+            totals[sid]["assigned"] += assigned
+            totals[sid]["responded"] += responded
+            totals[sid]["total"] += len(members)
+        rows.append({"class_id": class_id, "student_count": len(members), "cells": cells})
+
+    return {"rows": rows, "totals": totals}
+
+
+def plan_multi(docs, survey_ids, mode, inbox_field=DEFAULT_INBOX_FIELD):
+    """Target plan across SEVERAL surveys at once.
+
+    v2 assigns N surveys x M classes as one action, so the unit of work is a
+    (survey, doc) pair rather than a doc. Returns
+      {per_survey: {survey_id: plan_targets(...)},
+       total_writes, total_already, inactive, pairs}
+    `inactive` is counted ONCE per document, not once per survey — otherwise
+    a 3-survey run over 10 inactive students would report 30 skips and read
+    as a much bigger problem than it is.
+    """
+    per_survey = {}
+    total_writes = 0
+    total_already = 0
+    for sid in survey_ids:
+        plan = plan_targets(docs, sid, mode, inbox_field)
+        per_survey[sid] = plan
+        total_writes += len(plan["to_write"])
+        total_already += plan["already"]
+
+    inactive = sum(1 for _, d in docs if is_inactive(d))
+    return {
+        "per_survey": per_survey,
+        "total_writes": total_writes,
+        "total_already": total_already,
+        "inactive": inactive,
+        "pairs": len(survey_ids) * max(len(docs) - inactive, 0),
+    }
+
+
+def in_active_window(survey, now):
+    """True when now falls inside [startAt, expiresAt]. A missing bound is
+    treated as open-ended, which is how these docs are actually used —
+    requiring both would hide every survey that never set an end date."""
+    start = (survey or {}).get("startAt")
+    end = (survey or {}).get("expiresAt")
+    if start is not None and now < start:
+        return False
+    if end is not None and now > end:
+        return False
+    return True

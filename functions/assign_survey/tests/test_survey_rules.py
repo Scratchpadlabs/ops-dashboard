@@ -225,3 +225,144 @@ def test_counts_always_partition_the_candidate_set():
 def test_empty_candidate_set_is_a_clean_no_op():
     plan = plan_targets([], "AAM1-mid", "assign")
     assert plan == {"to_write": [], "already": 0, "inactive": 0, "existing_field": 0}
+
+
+# ═══════════════════════════ v2: matrix + multi-survey ═════════════════════
+from survey_rules import (  # noqa: E402
+    STATUS_COMPLETED, STATUS_PENDING, STATUS_NOT_ASSIGNED,
+    student_status, build_matrix, plan_multi, in_active_window,
+)
+
+
+def st(sid, class_id, inbox=None, **kw):
+    return {"id": sid, "name": sid, "classId": class_id, "type": "student",
+            FIELD: list(inbox or []), **kw}
+
+
+# ─────────────────────────────── student status ────────────────────────────
+def test_never_assigned_is_not_pending():
+    """The distinction the reports exist for: someone never asked must not
+    be counted as an outstanding responder."""
+    s = st("s1", "I_Diamond", [])
+    assert student_status(s, "AAM1-mid", set()) == STATUS_NOT_ASSIGNED
+    assert student_status(s, "AAM1-mid", {"s1"}) == STATUS_NOT_ASSIGNED
+
+
+def test_assigned_without_response_is_pending():
+    s = st("s1", "I_Diamond", ["AAM1-mid"])
+    assert student_status(s, "AAM1-mid", set()) == STATUS_PENDING
+    assert student_status(s, "AAM1-mid", {"other"}) == STATUS_PENDING
+
+
+def test_assigned_with_response_is_completed():
+    s = st("s1", "I_Diamond", ["AAM1-mid"])
+    assert student_status(s, "AAM1-mid", {"s1"}) == STATUS_COMPLETED
+
+
+def test_status_handles_a_missing_or_malformed_inbox():
+    assert student_status({"id": "s1"}, "AAM1-mid", set()) == STATUS_NOT_ASSIGNED
+    assert student_status({"id": "s1", FIELD: "AAM1-mid"}, "AAM1-mid", set()) == STATUS_NOT_ASSIGNED
+
+
+# ──────────────────────────────── matrix build ─────────────────────────────
+ROSTER_2 = [
+    st("s1", "I_Diamond", ["AAM1-mid", "SEW1"]),
+    st("s2", "I_Diamond", ["AAM1-mid"]),
+    st("s3", "I_Diamond", []),
+    st("s4", "II_Ruby", ["AAM1-mid"]),
+]
+RESP = {"AAM1-mid": {"s1", "s4"}, "SEW1": set()}
+
+
+def test_matrix_rows_are_per_class_with_counts():
+    m = build_matrix(ROSTER_2, ["AAM1-mid", "SEW1"], RESP)
+    rows = {r["class_id"]: r for r in m["rows"]}
+    assert set(rows) == {"I_Diamond", "II_Ruby"}
+    assert rows["I_Diamond"]["student_count"] == 3
+    assert rows["I_Diamond"]["cells"]["AAM1-mid"] == {"assigned": 2, "responded": 1, "total": 3}
+    assert rows["I_Diamond"]["cells"]["SEW1"] == {"assigned": 1, "responded": 0, "total": 3}
+    assert rows["II_Ruby"]["cells"]["AAM1-mid"] == {"assigned": 1, "responded": 1, "total": 1}
+
+
+def test_matrix_totals_are_the_school_row():
+    m = build_matrix(ROSTER_2, ["AAM1-mid", "SEW1"], RESP)
+    assert m["totals"]["AAM1-mid"] == {"assigned": 3, "responded": 2, "total": 4}
+    assert m["totals"]["SEW1"] == {"assigned": 1, "responded": 0, "total": 4}
+
+
+def test_responses_from_unassigned_students_are_not_counted():
+    """A stray response from someone never assigned must not push a class
+    over 100% completion."""
+    roster = [st("s1", "I_Diamond", [])]
+    m = build_matrix(roster, ["AAM1-mid"], {"AAM1-mid": {"s1"}})
+    assert m["rows"][0]["cells"]["AAM1-mid"] == {"assigned": 0, "responded": 0, "total": 1}
+
+
+def test_matrix_handles_students_with_no_class():
+    m = build_matrix([st("s1", None, ["AAM1-mid"])], ["AAM1-mid"], {})
+    assert m["rows"][0]["class_id"] == "(no class)"
+
+
+def test_matrix_is_empty_but_well_shaped_with_no_students():
+    m = build_matrix([], ["AAM1-mid"], {})
+    assert m["rows"] == []
+    assert m["totals"] == {"AAM1-mid": {"assigned": 0, "responded": 0, "total": 0}}
+
+
+# ────────────────────────────── multi-survey plan ──────────────────────────
+def test_plan_multi_sums_writes_across_surveys():
+    docs = [("s1", ROSTER_2[0]), ("s2", ROSTER_2[1]), ("s3", ROSTER_2[2])]
+    multi = plan_multi(docs, ["AAM1-mid", "SEW1"], "assign")
+    # AAM1-mid: only s3 needs it. SEW1: s2 and s3 need it.
+    assert len(multi["per_survey"]["AAM1-mid"]["to_write"]) == 1
+    assert len(multi["per_survey"]["SEW1"]["to_write"]) == 2
+    assert multi["total_writes"] == 3
+    assert multi["total_already"] == 3
+
+
+def test_plan_multi_counts_inactive_once_not_once_per_survey():
+    """Three surveys over ten inactive students is ten skips, not thirty —
+    otherwise the preview reads as a far bigger problem than it is."""
+    docs = [("s1", {"type": "student", "isActive": False}),
+            ("s2", {"type": "student", "isActive": False})]
+    multi = plan_multi(docs, ["A", "B", "C"], "assign")
+    assert multi["inactive"] == 2
+    assert multi["total_writes"] == 0
+
+
+def test_plan_multi_unassign_only_touches_holders():
+    docs = [("s1", ROSTER_2[0]), ("s3", ROSTER_2[2])]
+    multi = plan_multi(docs, ["AAM1-mid", "SEW1"], "unassign")
+    assert multi["per_survey"]["AAM1-mid"]["to_write"] == ["s1"]
+    assert multi["per_survey"]["SEW1"]["to_write"] == ["s1"]
+
+
+def test_plan_multi_with_no_surveys_is_a_clean_no_op():
+    multi = plan_multi([("s1", ROSTER_2[0])], [], "assign")
+    assert multi["total_writes"] == 0
+    assert multi["per_survey"] == {}
+
+
+# ─────────────────────────────── active window ─────────────────────────────
+class _TS:
+    """Stand-in for a Firestore timestamp — only comparison is used."""
+    def __init__(self, v):
+        self.v = v
+    def __lt__(self, o):
+        return self.v < (o.v if isinstance(o, _TS) else o)
+    def __gt__(self, o):
+        return self.v > (o.v if isinstance(o, _TS) else o)
+
+
+def test_active_window_treats_missing_bounds_as_open_ended():
+    now = _TS(50)
+    assert in_active_window({}, now)
+    assert in_active_window({"startAt": _TS(10)}, now)
+    assert in_active_window({"expiresAt": _TS(90)}, now)
+    assert in_active_window({"startAt": _TS(10), "expiresAt": _TS(90)}, now)
+
+
+def test_active_window_excludes_future_and_expired():
+    now = _TS(50)
+    assert not in_active_window({"startAt": _TS(80)}, now)
+    assert not in_active_window({"expiresAt": _TS(20)}, now)

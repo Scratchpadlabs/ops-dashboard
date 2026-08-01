@@ -52,35 +52,39 @@ differs from `https://asia-south1-clarified-1501.cloudfunctions.net/generate_pen
 
 ---
 
-## assign_survey + survey_overview (NEW — survey assignment)
+## assign_survey + survey_matrix + survey_report + class_detail (survey management)
 
-Day-to-day ops: assign or unassign a survey to a whole school, selected
-classes, or specific students, replacing the manual "push survey IDs into
-each student's surveyInbox by script" step.
+Day-to-day ops. The UI is a CLASS-first matrix (classes as rows, surveys as
+columns): select any set of cells — drag a range, click a row header for a
+whole class, a column header for a whole survey — and assign or unassign all
+of it as ONE run. Plus downloadable completion/pending reports.
 
-Server-side because the task requires reliability at scale: a 3000-student
-school is 3000 reads and several batched writes (chunked at 450), which must
-not depend on a browser tab staying open. Progress is written to the run doc
-after each chunk and streamed to the UI via onSnapshot — the same pattern
-staging_imports uses.
+Server-side because the task requires it at scale: a 3000-student school is
+3000 reads plus an id-only pass per survey, and up to several batched writes
+(chunked at 450), which must not depend on a browser tab staying open.
 
 - `assign_survey` — preview OR apply, same call with `dryRun` flipped, so the
-  count in the confirm dialog is exactly what happens. Uses arrayUnion /
-  arrayRemove only, so re-assigning never duplicates and unassigning never
-  touches a record that doesn't have the survey. Refuses to assign a
-  junk/test survey doc (no name translations or no questions), while still
-  allowing unassign so ids pushed by the old scripts can be cleaned up.
-  Never writes to survey documents, and never deletes anything.
-- `survey_overview` — per-survey assigned counts (one roster pass) plus
-  response counts via Firestore's count() aggregation over
-  surveys/<id>/responses. Response counts degrade to null, not zero, when the
-  subcollection isn't there, so the UI can tell "none yet" from "not
-  measurable".
+  count on the confirm button is exactly what happens. Takes `surveyIds` (a
+  LIST) so N surveys x M classes is one run with one audit entry. Uses
+  arrayUnion / arrayRemove only: re-assigning never duplicates, unassigning
+  never touches a record that doesn't have the survey. Refuses to ASSIGN a
+  junk/test survey doc while still allowing unassign, so ids the old scripts
+  pushed can be cleaned up. Never writes to survey documents, never deletes.
+- `survey_matrix` — the whole grid in one call: per-cell assigned/responded/
+  total, class rows sorted in grade order. Cached to
+  `survey_matrix_cache/current`; `force` recomputes.
+- `survey_report` — class-wise / survey-wise / cumulative reports as CSV or
+  XLSX, respecting the caller's active filters and stating scope + filters +
+  timestamp in a header row. Returned inline as base64 (tens to low hundreds
+  of KB even at 3000 students) rather than parked in Storage.
+- `class_detail` — one class's students plus who among them responded, for
+  the matrix drill-down. Bounded by class size, not school size.
 
 ### Files needed in the folder:
 - main.py ✅
-- survey_rules.py ✅ (pure decision logic, unit-tested — see tests/)
-- requirements.txt ✅
+- survey_rules.py ✅ (pure decision logic + matrix, unit-tested)
+- survey_reports.py ✅ (pure report row builders, unit-tested)
+- requirements.txt ✅ (includes openpyxl for XLSX)
 
 ### Deploy:
 ```
@@ -92,23 +96,42 @@ gcloud functions deploy assign_survey \
   --trigger-http --allow-unauthenticated --project clarified-1501 \
   --memory 512MB --timeout 540s --max-instances 3
 
-gcloud functions deploy survey_overview \
+gcloud functions deploy survey_matrix \
   --gen2 --runtime python312 --region asia-south1 \
-  --source . --entry-point survey_overview \
+  --source . --entry-point survey_matrix \
+  --trigger-http --allow-unauthenticated --project clarified-1501 \
+  --memory 1024MB --timeout 300s --max-instances 3
+
+gcloud functions deploy survey_report \
+  --gen2 --runtime python312 --region asia-south1 \
+  --source . --entry-point survey_report \
+  --trigger-http --allow-unauthenticated --project clarified-1501 \
+  --memory 1024MB --timeout 300s --max-instances 3
+
+gcloud functions deploy class_detail \
+  --gen2 --runtime python312 --region asia-south1 \
+  --source . --entry-point class_detail \
   --trigger-http --allow-unauthenticated --project clarified-1501 \
   --memory 512MB --timeout 120s --max-instances 3
 ```
 
-No secrets and no new IAM: both are plain Firestore readers/writers, and the
-runtime service account's existing `roles/editor` covers it. No firestore.rules
-change either — the Admin SDK bypasses rules, and the dashboard only reads.
+No secrets and no new IAM: these are plain Firestore readers/writers, covered
+by the runtime service account's existing `roles/editor`. No firestore.rules
+change either — the Admin SDK bypasses rules and the dashboard only reads.
+
+**Response attribution:** completion is derived from
+`surveys/<id>/responses`, read with `select([])` so only document ids move,
+and a responder is identified by the response doc id (falling back to
+`studentId`/`student_id`/`uid` fields). A survey whose responses can't be
+attributed is reported in `unresolved_response_surveys` and rendered as "—",
+never as a misleading zero. If that list is non-empty for a survey you know
+has responses, check what the response doc ids actually look like.
 
 **BEFORE THE FIRST STAFF RUN:** the staff inbox field name is an assumption.
 Students use `surveyInbox` (verified); nothing in this repo reads a staff
-inbox, so staff is assumed to mirror it. The preview reports how many
-targeted staff records actually carry the field — if it says "0 of N", stop
-and confirm the real field name against a live staff doc, then pass it as
-`inboxField`. Student assignment is unaffected.
+inbox, so staff mirrors it. The preview reports how many targeted records
+actually carry the field — if it says "0 of N", stop and confirm the real
+field name, then pass it as `inboxField`. Student assignment is unaffected.
 
 ---
 

@@ -144,16 +144,39 @@ export async function classifyValueRemote({ value, context }) {
 // staying open. Preview and apply are THE SAME CALL with dryRun flipped, so
 // the number in the confirm dialog is the number that happens.
 const assignSurveyCallable = httpsCallable(functions, 'assign_survey', { timeout: 540_000 })
-const surveyOverviewCallable = httpsCallable(functions, 'survey_overview', { timeout: 120_000 })
+const surveyMatrixCallable = httpsCallable(functions, 'survey_matrix', { timeout: 300_000 })
+const surveyReportCallable = httpsCallable(functions, 'survey_report', { timeout: 300_000 })
+const classDetailCallable = httpsCallable(functions, 'class_detail', { timeout: 120_000 })
 
-export async function assignSurveyRemote({ schoolId, runId, surveyId, audience, mode, scope, dryRun, inboxField }) {
-  const res = await assignSurveyCallable({ schoolId, runId, surveyId, audience, mode, scope, dryRun, inboxField })
+// surveyIds is a LIST: the matrix selects N surveys x M classes and assigns
+// all of it as one action.
+export async function assignSurveyRemote({ schoolId, runId, surveyIds, audience, mode, scope, dryRun, inboxField }) {
+  const res = await assignSurveyCallable({ schoolId, runId, surveyIds, audience, mode, scope, dryRun, inboxField })
   return res.data
 }
 
-export async function surveyOverviewRemote({ schoolId, inboxField }) {
-  const res = await surveyOverviewCallable({ schoolId, inboxField })
+export async function surveyMatrixRemote({ schoolId, activeWindowOnly, force, inboxField }) {
+  const res = await surveyMatrixCallable({ schoolId, activeWindowOnly, force, inboxField })
   return res.data
+}
+
+// Returns {filename, mime, content_base64} — the file is built server-side
+// and handed back inline; downloadReport() turns it into a download.
+export async function surveyReportRemote({ schoolId, scope, format, surveyIds, filters, inboxField }) {
+  const res = await surveyReportCallable({ schoolId, scope, format, surveyIds, filters, inboxField })
+  return res.data
+}
+
+// One class's students + who among them responded. Scoped server-side so
+// the drill-down never pulls a whole school's roster to show 30 rows.
+export async function classDetailRemote({ schoolId, classId, inboxField }) {
+  const res = await classDetailCallable({ schoolId, classId, inboxField })
+  return res.data
+}
+
+export function downloadReport({ filename, mime, content_base64 }) {
+  const bytes = Uint8Array.from(atob(content_base64), c => c.charCodeAt(0))
+  downloadBlob(new Blob([bytes], { type: mime }), filename)
 }
 
 export async function startProcessImport({ schoolId, jobId, entity, files }) {

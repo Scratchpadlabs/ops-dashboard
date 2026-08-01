@@ -1,163 +1,67 @@
 /**
- * Surveys — day-to-day assignment operations.
+ * Survey management (v2) — class-first matrix, multi-survey assignment,
+ * completion reports.
  *
- * Reads are client-side (surveys, classes, and the student roster for the
- * pickers); every WRITE goes through the assign_survey Cloud Function, which
- * owns batching, progress and the audit log. Nothing here ever writes to a
- * survey document — this feature assigns, it does not edit surveys.
+ * The matrix, the assignment writes and the reports all happen in Cloud
+ * Functions (functions/assign_survey): a 3000-student school is 3000 reads
+ * plus an id-only pass per survey, which is not work for a browser tab. This
+ * composable is the client half — it holds the loaded matrix, the roster used
+ * for drill-down, and the filter state.
+ *
+ * Nothing here ever writes to a survey document.
  */
 import { ref, computed } from 'vue'
 import { getDocs, query, orderBy, limit, onSnapshot } from 'firebase/firestore'
 import {
-  surveysCollection, schoolCollection, surveyAssignmentsCollection, surveyAssignmentDoc,
-  rootSchoolsCollection,
+  surveyAssignmentsCollection, surveyAssignmentDoc, rootSchoolsCollection,
 } from '../firebase/schoolCollections.js'
-import { assignSurveyRemote, surveyOverviewRemote } from '../utils/api.js'
+import {
+  assignSurveyRemote, surveyMatrixRemote, surveyReportRemote, classDetailRemote,
+} from '../utils/api.js'
 
-// Mirrors functions/assign_survey/main.py's DEFAULT_INBOX_FIELD. Verified in
-// the data model for students; assumed for staff (see that file's comment) —
-// the preview reports how many targeted docs actually carry the field, which
-// is what surfaces a wrong assumption before any write.
+// Mirrors DEFAULT_INBOX_FIELD in functions/assign_survey/survey_rules.py.
+// Verified for students; assumed for staff (see that file) — the preview
+// reports how many targeted docs actually carry it, which is what surfaces a
+// wrong assumption before any write.
 export const INBOX_FIELD = 'surveyInbox'
 
-/**
- * The junk/test filter, mirroring is_real_survey() in the Cloud Function.
- *
- * The collection holds test docs (ids like 'zzzzzzzzzzzzzzzzzy1'..'y17').
- * Structural rather than an id blocklist: a real survey has at least one
- * non-empty name translation and a non-empty questions array. This only ever
- * hides — nothing is deleted, and the same doc stays visible to unassign if
- * an old script already pushed it into inboxes.
- */
-export function isRealSurvey(s) {
-  const hasName = s?.name && typeof s.name === 'object' &&
-    Object.values(s.name).some(v => String(v || '').trim())
-  return !!hasName && Array.isArray(s?.questions) && s.questions.length > 0
-}
-
-export function surveyLabel(s) {
-  return s?.name?.en || s?.name?.mr || Object.values(s?.name || {}).find(Boolean) || s?.id || ''
-}
+export const STATUS_NOT_ASSIGNED = 'not assigned'
+export const STATUS_PENDING = 'pending'
+export const STATUS_COMPLETED = 'completed'
 
 /**
- * Whether a survey targets staff rather than students.
+ * Grade-aware class ordering, mirroring class_sort_key in survey_rules.py.
  *
- * There is no dedicated audience field on the survey docs, so this is a
- * best-effort read of the id/segment metadata (TEACHERAAM is the known
- * staff-facing one). It only ever seeds the dialog's default — the user
- * picks the audience explicitly and can override it, which is the behavior
- * the task asks for when the metadata can't answer.
+ * Plain string sorting gets these WRONG — '_' (0x5F) sorts after 'I', so
+ * "II_Ruby" lands before "I_Diamond", and "10_A" before "2_A". The matrix
+ * rows arrive already sorted by the server; this exists for anything the
+ * client groups itself (drill-down, class filter lists).
  */
-export function guessAudience(s) {
-  const haystack = `${s?.id || ''} ${s?.segmentForInternalPurpose || ''}`.toLowerCase()
-  return /teacher|staff/.test(haystack) ? 'staff' : 'students'
+const PRE_PRIMARY_ORDER = { 'PRE-NURSERY': -4, NURSERY: -3, LKG: -2, UKG: -1 }
+const ROMAN_ORDER = { I: 1, II: 2, III: 3, IV: 4, V: 5, VI: 6, VII: 7, VIII: 8, IX: 9, X: 10, XI: 11, XII: 12 }
+
+export function gradeOrder(grade) {
+  const g = String(grade || '').trim().toUpperCase()
+  if (g in PRE_PRIMARY_ORDER) return PRE_PRIMARY_ORDER[g]
+  if (g in ROMAN_ORDER) return ROMAN_ORDER[g]
+  if (/^\d+$/.test(g)) return parseInt(g, 10)
+  return 999
 }
 
-export function useSurveys() {
-  const schools = ref([])
-  const surveys = ref([])
-  const classes = ref([])
-  const students = ref([])
-  const overview = ref(null)
-  const loading = ref(false)
-  const loadingRoster = ref(false)
-
-  const visibleSurveys = ref([])
-  const hiddenCount = ref(0)
-
-  async function loadSchools() {
-    const snap = await getDocs(query(rootSchoolsCollection(), orderBy('name'), limit(500)))
-    schools.value = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(s => s.isActive !== false)
-    return schools.value
-  }
-
-  async function loadSurveys(schoolId) {
-    if (!schoolId) { surveys.value = []; visibleSurveys.value = []; hiddenCount.value = 0; return }
-    loading.value = true
-    try {
-      const snap = await getDocs(surveysCollection(schoolId))
-      surveys.value = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-      visibleSurveys.value = surveys.value
-        .filter(isRealSurvey)
-        .sort((a, b) => surveyLabel(a).localeCompare(surveyLabel(b)))
-      hiddenCount.value = surveys.value.length - visibleSurveys.value.length
-    } finally {
-      loading.value = false
-    }
-  }
-
-  async function loadClasses(schoolId) {
-    if (!schoolId) { classes.value = []; return }
-    const snap = await getDocs(schoolCollection(schoolId, 'classes'))
-    classes.value = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-  }
-
-  /**
-   * The roster, for the class counts and the specific-student picker.
-   *
-   * This is the one genuinely large client-side read (3000+ docs at the top
-   * end), so it is loaded on demand when the dialog opens rather than with
-   * the page. Assignment itself never depends on it — the Cloud Function
-   * re-resolves targets server-side from the scope, so a stale or partial
-   * roster here can't produce a wrong write.
-   */
-  async function loadRoster(schoolId) {
-    if (!schoolId) { students.value = []; return }
-    loadingRoster.value = true
-    try {
-      const snap = await getDocs(schoolCollection(schoolId, 'students'))
-      students.value = snap.docs
-        .map(d => ({ id: d.id, ...d.data() }))
-        .filter(s => (s.type || 'student') === 'student')
-    } finally {
-      loadingRoster.value = false
-    }
-  }
-
-  const activeStudents = computed(() => students.value.filter(s => !isInactive(s)))
-
-  const studentsByClass = computed(() => {
-    const map = new Map()
-    for (const s of activeStudents.value) {
-      const key = s.classId || '(no class)'
-      map.set(key, (map.get(key) || 0) + 1)
-    }
-    return map
-  })
-
-  async function loadOverview(schoolId) {
-    overview.value = await surveyOverviewRemote({ schoolId, inboxField: INBOX_FIELD })
-    return overview.value
-  }
-
-  async function loadRuns(schoolId) {
-    const snap = await getDocs(query(surveyAssignmentsCollection(schoolId), orderBy('run_at', 'desc'), limit(25)))
-    return snap.docs.map(d => ({ id: d.id, ...d.data() }))
-  }
-
-  // Preview and apply are the same call with dryRun flipped — see api.js.
-  function preview(args) { return assignSurveyRemote({ ...args, dryRun: true, inboxField: INBOX_FIELD }) }
-  function apply(args) { return assignSurveyRemote({ ...args, dryRun: false, inboxField: INBOX_FIELD }) }
-
-  // Progress streams through the run doc the function updates per chunk,
-  // rather than the UI polling the callable.
-  function watchRun(schoolId, runId, cb) {
-    return onSnapshot(surveyAssignmentDoc(schoolId, runId), snap => {
-      cb(snap.exists() ? { id: snap.id, ...snap.data() } : null)
-    })
-  }
-
-  return {
-    schools, surveys, visibleSurveys, hiddenCount, classes, students, activeStudents,
-    studentsByClass, overview, loading, loadingRoster,
-    loadSchools, loadSurveys, loadClasses, loadRoster, loadOverview, loadRuns,
-    preview, apply, watchRun,
-  }
+export function compareClassIds(a, b) {
+  const [ga, , sa] = String(a || '').match(/^([^_]*)(_)?(.*)$/).slice(1)
+  const [gb, , sb] = String(b || '').match(/^([^_]*)(_)?(.*)$/).slice(1)
+  return gradeOrder(ga) - gradeOrder(gb)
+    || String(sa).toLowerCase().localeCompare(String(sb).toLowerCase())
+    || String(a).localeCompare(String(b))
 }
 
-// Mirrors is_inactive() in functions/assign_survey/main.py: a record is
-// active unless it explicitly says otherwise, so a roster that predates the
-// flag isn't silently skipped in its entirety.
+export function gradeOf(classId) {
+  return String(classId || '').split('_')[0] || ''
+}
+
+// Mirrors is_inactive() in survey_rules.py: active unless it explicitly says
+// otherwise, so a roster predating the flag isn't skipped wholesale.
 const INACTIVE_VALUES = new Set([
   'inactive', 'left', 'tc', 'tc issued', 'dropped', 'dropout',
   'alumni', 'passed out', 'transferred', 'withdrawn',
@@ -166,4 +70,102 @@ export function isInactive(doc) {
   if (doc?.isActive === false) return true
   const status = String(doc?.enrollmentStatus || doc?.status || '').trim().toLowerCase()
   return INACTIVE_VALUES.has(status)
+}
+
+/** One student's status on one survey — mirrors student_status() exactly. */
+export function studentStatus(student, surveyId, responderIds) {
+  const inbox = student?.[INBOX_FIELD]
+  if (!Array.isArray(inbox) || !inbox.includes(surveyId)) return STATUS_NOT_ASSIGNED
+  return responderIds?.has?.(student.id) ? STATUS_COMPLETED : STATUS_PENDING
+}
+
+export function useSurveys() {
+  const schools = ref([])
+  const matrix = ref(null)          // {surveys, rows, totals, ...}
+  const students = ref([])
+  const loadingMatrix = ref(false)
+  const loadingRoster = ref(false)
+
+  async function loadSchools() {
+    const snap = await getDocs(query(rootSchoolsCollection(), orderBy('name'), limit(500)))
+    schools.value = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(s => s.isActive !== false)
+    return schools.value
+  }
+
+  async function loadMatrix(schoolId, { activeWindowOnly = false, force = false } = {}) {
+    if (!schoolId) { matrix.value = null; return null }
+    loadingMatrix.value = true
+    try {
+      matrix.value = await surveyMatrixRemote({ schoolId, activeWindowOnly, force, inboxField: INBOX_FIELD })
+      return matrix.value
+    } finally {
+      loadingMatrix.value = false
+    }
+  }
+
+  /**
+   * One class's students plus who among them responded — for drill-down.
+   *
+   * Deliberately per-class rather than a whole-school roster read: the
+   * payload and the response lookup both stay bounded by class size. The
+   * matrix itself never needs this (it arrives pre-counted), and neither
+   * does assignment (the function re-resolves targets server-side from the
+   * scope, so stale data here cannot produce a wrong write).
+   */
+  async function loadClassDetail(schoolId, classId) {
+    if (!schoolId || !classId) return { students: [], responders: {} }
+    loadingRoster.value = true
+    try {
+      const detail = await classDetailRemote({ schoolId, classId, inboxField: INBOX_FIELD })
+      students.value = detail.students || []
+      // Response ids arrive as arrays; Sets are what studentStatus() wants.
+      const responders = {}
+      for (const [sid, ids] of Object.entries(detail.responders || {})) responders[sid] = new Set(ids)
+      return { students: students.value, responders }
+    } finally {
+      loadingRoster.value = false
+    }
+  }
+
+  async function loadRuns(schoolId) {
+    const snap = await getDocs(query(surveyAssignmentsCollection(schoolId), orderBy('run_at', 'desc'), limit(25)))
+    return snap.docs.map(d => ({ id: d.id, ...d.data() }))
+  }
+
+  // Preview and apply are the same server call with dryRun flipped, so the
+  // count on the confirm button is the count that happens.
+  const preview = (args) => assignSurveyRemote({ ...args, dryRun: true, inboxField: INBOX_FIELD })
+  const apply = (args) => assignSurveyRemote({ ...args, dryRun: false, inboxField: INBOX_FIELD })
+
+  // Progress streams through the run doc the function updates per chunk.
+  function watchRun(schoolId, runId, cb) {
+    return onSnapshot(surveyAssignmentDoc(schoolId, runId), snap => {
+      cb(snap.exists() ? { id: snap.id, ...snap.data() } : null)
+    })
+  }
+
+  const surveys = computed(() => matrix.value?.surveys || [])
+  const rows = computed(() => matrix.value?.rows || [])
+  const totals = computed(() => matrix.value?.totals || {})
+  const allClassIds = computed(() => rows.value.map(r => r.class_id))
+  const grades = computed(() => [...new Set(allClassIds.value.map(gradeOf))]
+    .sort((a, b) => gradeOrder(a) - gradeOrder(b)))
+
+  return {
+    schools, matrix, surveys, rows, totals, allClassIds, grades, students,
+    loadingMatrix, loadingRoster,
+    loadSchools, loadMatrix, loadClassDetail, loadRuns,
+    preview, apply, watchRun,
+    generateReport: surveyReportRemote,
+  }
+}
+
+/** Cell arithmetic used by both the grid and the drill-down. */
+export function completionPct(cell) {
+  if (!cell?.assigned) return 0
+  return Math.round(cell.responded / cell.assigned * 100)
+}
+export function assignedPct(cell) {
+  if (!cell?.total) return 0
+  return Math.round(cell.assigned / cell.total * 100)
 }
