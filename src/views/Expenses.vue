@@ -61,7 +61,7 @@
       <DataTable :value="schoolProfitability" size="small" stripedRows>
         <Column header="School Name">
           <template #body="{ data }">
-            <span class="text-sm font-medium text-slate-800">{{ data.school_name }}</span>
+            <span class="text-sm font-medium text-slate-800 cell-truncate" :title="data.school_name">{{ data.school_name }}</span>
           </template>
         </Column>
         <Column header="Revenue">
@@ -223,7 +223,7 @@
         >
           <Column header="School Name">
             <template #body="{ data }">
-              <span class="text-sm font-medium text-slate-800">{{ data.school_name }}</span>
+              <span class="text-sm font-medium text-slate-800 cell-truncate" :title="data.school_name">{{ data.school_name }}</span>
             </template>
           </Column>
           <Column header="Total Expenses">

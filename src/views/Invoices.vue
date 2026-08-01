@@ -67,7 +67,7 @@
           <div class="flex items-center gap-3">
             <i class="pi text-xs text-slate-400" :class="isExpanded(g.school_name) ? 'pi-chevron-down' : 'pi-chevron-right'"></i>
             <div class="text-left">
-              <div class="text-sm font-semibold text-slate-900">{{ g.school_name }}</div>
+              <div class="text-sm font-semibold text-slate-900 cell-truncate" :title="g.school_name">{{ g.school_name }}</div>
               <div class="text-xs text-slate-400 mt-0.5">{{ g.count }} invoice{{ g.count !== 1 ? 's' : '' }}</div>
             </div>
           </div>
@@ -88,7 +88,7 @@
 
             <Column field="description" header="Description">
               <template #body="{ data }">
-                <span class="text-sm text-slate-600">{{ data.description }}</span>
+                <span class="text-sm text-slate-600 cell-truncate" :title="data.description">{{ data.description }}</span>
               </template>
             </Column>
 

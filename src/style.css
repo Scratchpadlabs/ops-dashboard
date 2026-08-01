@@ -26,3 +26,73 @@ body {
 .p-button {
   font-family: 'Inter', sans-serif !important;
 }
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Horizontal-overflow containment
+   ──────────────────────────────────────────────────────────────────────────
+   The pattern that caused page-wide horizontal scrolling, and the rules that
+   stop it coming back:
+
+   1. A flex/grid CHILD defaults to min-width:auto, so it refuses to shrink
+      below its content and pushes its ANCESTORS wider. Every flex/grid child
+      that can contain a table or long text needs min-width:0. The app shell
+      sets this on the main column (see App.vue); `.min-w-0` is available in
+      markup for the rest.
+   2. A wide table must scroll INSIDE its own container. Wrap it in
+      `.table-scroll` — never let it size its parent.
+   3. Long unbroken strings (school names, emails, file paths) must truncate,
+      not widen. Use `.cell-truncate` with a title attribute.
+   ────────────────────────────────────────────────────────────────────────── */
+
+.table-scroll {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+/* Every PrimeVue DataTable scrolls inside its own container rather than
+   sizing its parent. One rule instead of wrapping twenty call sites — and it
+   cannot be forgotten on the next table someone adds. (Both the v4 and v3
+   container class names are covered.) */
+.p-datatable .p-datatable-table-container,
+.p-datatable .p-datatable-wrapper {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+/* Truncate to one line and keep the layout honest inside flex/grid parents. */
+.cell-truncate {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Denser data tables — recovers real horizontal room across every list view
+   without touching the type scale. */
+.p-datatable-sm .p-datatable-thead > tr > th,
+.p-datatable-sm .p-datatable-tbody > tr > td {
+  padding: 0.4rem 0.5rem;
+}
+
+/* A table cell is a block container: without this its content can still push
+   the column wider than the width the Column declared. */
+.p-datatable .p-datatable-tbody > tr > td {
+  overflow-wrap: anywhere;
+}
+
+/* Frozen first column + header for the wide-by-nature grids. */
+.grid-freeze thead th {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+.grid-freeze .freeze-col {
+  position: sticky;
+  left: 0;
+  z-index: 10;
+}
+.grid-freeze thead .freeze-col {
+  z-index: 30;
+}

@@ -76,6 +76,12 @@
             <span v-for="(count, cls) in perClassCounts" :key="cls" class="px-2 py-0.5 rounded-full text-xs bg-slate-100 text-slate-600">{{ cls }}: {{ count }}</span>
           </div>
           <div class="ml-auto flex gap-2">
+            <Button
+              v-if="hiddenColumnCount > 0 || showAllColumns"
+              :label="showAllColumns ? 'Show key columns' : `Show all columns (+${hiddenColumnCount})`"
+              :icon="showAllColumns ? 'pi pi-compress' : 'pi pi-expand'"
+              size="small" outlined @click="showAllColumns = !showAllColumns"
+            />
             <Button label="Download error report" icon="pi pi-download" size="small" outlined :disabled="!hasReportableIssues" @click="downloadErrorReport" />
             <Button label="Source Files" icon="pi pi-file" size="small" outlined @click="sourceFilesVisible = true" />
           </div>
@@ -122,7 +128,7 @@
               <Checkbox :modelValue="!data._excluded" binary @update:modelValue="v => onToggleExclude(data, v)" />
             </template>
           </Column>
-          <Column v-for="col in columns" :key="col" :field="col" :header="colLabel(col)" style="min-width:130px">
+          <Column v-for="col in columns" :key="col" :field="col" :header="colLabel(col)" style="min-width:96px; max-width:180px">
             <template #body="{ data, field }">
               <ImportFieldResolver
                 v-if="isResolverField(field) && (fieldFlag(data, field) || fieldSuggestion(data, field))"
@@ -135,8 +141,8 @@
                 @resolve="v => onResolve(data, field, v)"
                 @resolve-all="v => onResolveAll(data, field, v)"
               />
-              <div v-else class="flex items-center gap-1">
-                <span class="truncate">{{ data[field] }}</span>
+              <div v-else class="flex items-center gap-1 min-w-0">
+                <span class="cell-truncate" :title="data[field]">{{ data[field] }}</span>
                 <i v-if="fieldFix(data, field)" class="pi pi-check-circle text-blue-500 text-xs flex-shrink-0"
                   v-tooltip="fixTooltip(data, field)"></i>
               </div>
@@ -292,6 +298,20 @@ const COLUMNS = {
   subjects: ['stream', 'grade_band', 'subject', 'area'],
   assessments: ['stream', 'grade_band', 'assessment', 'date_start', 'date_end', 'instructional_days', 'syllabus_covered', 'exam_syllabus', 'max_written', 'activity_weight', 'total', 'duration'],
 }
+/**
+ * The columns worth seeing at a glance. Students parse 13 fields, which at
+ * 130px each is ~1.8x a 1366px laptop's content width — so the default view
+ * shows what a reviewer actually scans (who, which class, the fields most
+ * often wrong) and everything else is one toggle away. Nothing is dropped
+ * from the data, only from the default view.
+ */
+const ESSENTIAL_COLUMNS = {
+  students: ['grade', 'section', 'roll_no', 'student_name', 'gender', 'dob', 'contact'],
+  teachers: ['teacher_name', 'email', 'subject', 'grade', 'section'],
+  subjects: ['grade_band', 'subject', 'area'],
+  assessments: ['grade_band', 'assessment', 'date_start', 'date_end', 'max_written', 'total'],
+}
+
 const LABELS = { roll_no: 'Roll No', student_name: 'Name', dob: 'DOB', sr_no: 'Sr No', adm_no: 'Adm No', mother_name: 'Mother', father_name: 'Father', teacher_name: 'Teacher', class_teacher_of: 'Class Teacher Of', grade_band: 'Grade Band', date_start: 'Start', date_end: 'End', instructional_days: 'Inst. Days', syllabus_covered: 'Syllabus Covered', exam_syllabus: 'Exam Syllabus', max_written: 'Max Written', activity_weight: 'Activity Wt', total: 'Total', duration: 'Duration' }
 function colLabel(c) { return LABELS[c] || c.charAt(0).toUpperCase() + c.slice(1) }
 
@@ -307,7 +327,25 @@ const rows = ref([])
 const schoolName = ref('')
 let unsubJob = null, unsubRows = null
 
-const columns = computed(() => COLUMNS[job.value?.entity] || [])
+const allColumns = computed(() => COLUMNS[job.value?.entity] || [])
+const showAllColumns = ref(false)
+// Columns carrying a flag or a pending suggestion are always shown, whatever
+// the toggle says — hiding the column a reviewer needs to act on would make
+// the compact view actively harmful rather than merely terse.
+const flaggedColumns = computed(() => {
+  const set = new Set()
+  for (const r of rows.value) {
+    ;(r.flags || []).forEach(f => f.field && set.add(f.field))
+    ;(r.suggestions || []).forEach(sg => sg.field && set.add(sg.field))
+  }
+  return set
+})
+const columns = computed(() => {
+  if (showAllColumns.value) return allColumns.value
+  const essential = new Set(ESSENTIAL_COLUMNS[job.value?.entity] || allColumns.value)
+  return allColumns.value.filter(c => essential.has(c) || flaggedColumns.value.has(c))
+})
+const hiddenColumnCount = computed(() => allColumns.value.length - columns.value.length)
 const tableRows = computed(() => rows.value.map(r => ({
   _id: r.id, _flags: r.flags || [], _fixes: r.fixes || [], _suggestions: r.suggestions || [],
   _excluded: !!r.excluded, ...r.data,
@@ -413,8 +451,10 @@ async function onResolveAll(data, field, value) {
 async function onCellEditComplete(event) {
   const { data, newValue, field } = event
   data[field] = newValue
+  // Writes every parsed column, not just the visible ones — the column
+  // toggle is a view concern and must never truncate the staged row.
   const payload = {}
-  columns.value.forEach(c => { payload[c] = data[c] })
+  allColumns.value.forEach(c => { payload[c] = data[c] })
   try {
     await updateRowData(jobId.value, data._id, payload)
   } catch (e) {

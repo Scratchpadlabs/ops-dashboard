@@ -76,7 +76,10 @@
         </div>
 
         <SurveyMatrix
-          :surveys="surveys"
+          :surveys="visibleSurveys"
+          :all-surveys="surveys"
+          :visible-survey-ids="visibleSurveyIds"
+          @update:visible-survey-ids="setVisibleSurveys"
           :rows="filteredRows"
           :totals="totals"
           :selection="selection"
@@ -94,7 +97,7 @@
             <ClassDrilldown
               :school-id="schoolId"
               :class-id="classId"
-              :surveys="surveys"
+              :surveys="visibleSurveys"
               :students="students"
               :loading="loadingRoster"
               :responders="drilldownResponders"
@@ -114,7 +117,7 @@
           <DataTable v-if="runs.length" :value="runs" size="small" stripedRows>
             <Column header="Surveys">
               <template #body="{ data }">
-                <span class="text-sm text-slate-700">{{ (data.survey_names || [data.survey_id]).join(', ') }}</span>
+                <span class="text-sm text-slate-700 cell-truncate" :title="(data.survey_names || [data.survey_id]).join(', ')">{{ (data.survey_names || [data.survey_id]).join(', ') }}</span>
               </template>
             </Column>
             <Column header="Action" style="width:100px">
@@ -188,7 +191,7 @@
       :school-id="schoolId"
       :surveys="surveys"
       :filters="reportFilters"
-      :visible-survey-ids="surveys.map(s => s.id)"
+      :visible-survey-ids="visibleSurveyIds"
     />
   </div>
 </template>
@@ -228,6 +231,23 @@ const loadingRuns = ref(false)
 const runsError = ref('')
 const runs = ref([])
 const metric = ref('all')
+// Column picker. Empty = show everything, so the URL stays short in the
+// common case and only carries a `cols` param once columns are hidden.
+const hiddenSurveyIds = ref([])
+const visibleSurveys = computed(() => {
+  const hidden = new Set(hiddenSurveyIds.value)
+  return surveys.value.filter(s => !hidden.has(s.id))
+})
+const visibleSurveyIds = computed(() => visibleSurveys.value.map(s => s.id))
+function setVisibleSurveys(ids) {
+  const keep = new Set(ids)
+  hiddenSurveyIds.value = surveys.value.filter(s => !keep.has(s.id)).map(s => s.id)
+  // Dropping a column must drop its cells from the selection too, or an
+  // assign would target a survey no longer on screen.
+  if (selection.value.size) {
+    selection.value = new Set([...selection.value].filter(p => keep.has(p.split('::')[1])))
+  }
+}
 const selection = ref(new Set())
 const expandedClass = ref(null)
 const drilldownResponders = ref({})
@@ -405,6 +425,7 @@ function syncUrl() {
   if (filters.status !== 'all') q.status = filters.status
   if (filters.activeWindowOnly) q.active = '1'
   if (metric.value !== 'all') q.metric = metric.value
+  if (hiddenSurveyIds.value.length) q.hide = hiddenSurveyIds.value.join(',')
   router.replace({ query: q }).catch(() => {})
 }
 
@@ -416,9 +437,10 @@ function readUrl() {
   filters.status = q.status ? String(q.status) : 'all'
   filters.activeWindowOnly = q.active === '1'
   metric.value = q.metric ? String(q.metric) : 'all'
+  hiddenSurveyIds.value = q.hide ? String(q.hide).split(',').filter(Boolean) : []
 }
 
-watch([() => ({ ...filters }), metric, schoolId], syncUrl, { deep: true })
+watch([() => ({ ...filters }), metric, schoolId, hiddenSurveyIds], syncUrl, { deep: true })
 
 watch(schoolId, async (id) => {
   selection.value = new Set()

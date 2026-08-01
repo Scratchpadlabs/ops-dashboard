@@ -4,10 +4,16 @@
   <div v-else class="min-h-screen flex" style="background: var(--surface-ground)">
 
     <!-- Sidebar -->
-    <aside class="w-56 min-h-screen flex flex-col border-r" style="background: #0f172a; border-color: #1e293b">
-      <div class="px-5 py-5 border-b flex items-center" style="border-color: #1e293b">
-        <div class="bg-white rounded-xl p-2 mx-3 my-3 flex items-center justify-center">
-          <img src="/logo.png" class="w-28 object-contain" />
+    <aside
+      class="min-h-screen flex flex-col border-r flex-shrink-0 transition-[width] duration-200"
+      :class="sidebarCollapsed ? 'w-16' : 'w-56'"
+      style="background: #0f172a; border-color: #1e293b"
+    >
+      <div class="border-b flex items-center justify-center" style="border-color: #1e293b"
+           :class="sidebarCollapsed ? 'px-2 py-4' : 'px-5 py-5'">
+        <div class="bg-white rounded-xl flex items-center justify-center"
+             :class="sidebarCollapsed ? 'p-1.5' : 'p-2 mx-3 my-3'">
+          <img src="/logo.png" class="object-contain" :class="sidebarCollapsed ? 'w-8' : 'w-28'" />
         </div>
       </div>
 
@@ -16,24 +22,42 @@
           v-for="item in navItems"
           :key="item.to"
           :to="item.to"
-          class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150"
-          :class="isActive(item.to)
-            ? 'text-white bg-blue-600'
-            : 'text-slate-400 hover:text-white hover:bg-slate-800'"
+          class="flex items-center gap-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150"
+          :class="[
+            isActive(item.to) ? 'text-white bg-blue-600' : 'text-slate-400 hover:text-white hover:bg-slate-800',
+            sidebarCollapsed ? 'px-0 justify-center' : 'px-3',
+          ]"
+          v-tooltip.right="sidebarCollapsed ? item.label : undefined"
         >
-          <i :class="item.icon" class="text-base w-4 text-center"></i>
-          <span>{{ item.label }}</span>
+          <i :class="item.icon" class="text-base w-4 text-center flex-shrink-0"></i>
+          <span v-if="!sidebarCollapsed" class="truncate">{{ item.label }}</span>
         </RouterLink>
       </nav>
+
+      <!-- Collapse toggle — the single biggest width win available, ~160px
+           back on every screen, so the choice is remembered across sessions. -->
+      <div class="px-3 pb-2">
+        <button
+          @click="toggleSidebar"
+          class="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-medium text-slate-500 hover:text-white hover:bg-slate-800 transition-colors"
+          :class="sidebarCollapsed ? 'justify-center px-0' : ''"
+          v-tooltip.right="sidebarCollapsed ? 'Expand sidebar' : undefined"
+        >
+          <i class="pi text-sm flex-shrink-0" :class="sidebarCollapsed ? 'pi-angle-double-right' : 'pi-angle-double-left'"></i>
+          <span v-if="!sidebarCollapsed">Collapse</span>
+        </button>
+      </div>
 
       <!-- Academic year switcher -->
       <div class="px-3 py-3 border-t relative" style="border-color: #1e293b">
         <button
           @click="yearDropdownOpen = !yearDropdownOpen"
           class="w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold text-slate-300 hover:bg-slate-800 transition-colors"
+          v-tooltip.right="sidebarCollapsed ? (activeYear === 'All Years' ? 'All Years' : `AY ${activeYear}`) : undefined"
         >
-          <span>{{ activeYear === 'All Years' ? 'All Years' : `AY ${activeYear}` }}</span>
+          <span class="truncate">{{ sidebarCollapsed ? (activeYear === 'All Years' ? 'All' : String(activeYear).slice(2, 4)) : (activeYear === 'All Years' ? 'All Years' : `AY ${activeYear}`) }}</span>
           <i
+            v-if="!sidebarCollapsed"
             class="pi pi-chevron-down text-[10px] transition-transform duration-150"
             :style="{ transform: yearDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)' }"
           ></i>
@@ -80,7 +104,12 @@
     </aside>
 
     <!-- Main -->
-    <div class="flex-1 flex flex-col min-h-screen">
+    <!-- min-w-0 is load-bearing: a flex item defaults to min-width:auto, so
+         without it ANY too-wide table refuses to shrink and pushes the whole
+         PAGE sideways instead of scrolling inside its own container. This one
+         declaration is what turns page-level horizontal scroll into contained,
+         per-table scroll everywhere in the app. -->
+    <div class="flex-1 flex flex-col min-h-screen min-w-0">
       <header class="h-14 border-b flex items-center justify-between px-6 bg-white" style="border-color: var(--surface-border)">
         <h1 class="text-sm font-semibold" style="color: var(--text-primary)">{{ pageTitle }}</h1>
         <div class="flex items-center gap-3">
@@ -107,7 +136,7 @@
         </div>
       </header>
 
-      <main class="flex-1 p-6">
+      <main class="flex-1 p-6 min-w-0 overflow-x-hidden">
         <RouterView />
       </main>
     </div>
@@ -227,6 +256,17 @@ function maybeLoadAvailableYears() {
 
 onMounted(maybeLoadAvailableYears)
 watch(() => route.name, maybeLoadAvailableYears)
+
+// ── Sidebar collapse ────────────────────────────────────────────────────
+// Remembered across sessions: on a 1366px laptop the icon rail gives back
+// ~160px of content width, which is the difference between several tables
+// fitting and not, so the preference is worth persisting.
+const SIDEBAR_KEY = 'ops.sidebarCollapsed'
+const sidebarCollapsed = ref(localStorage.getItem(SIDEBAR_KEY) === '1')
+function toggleSidebar() {
+  sidebarCollapsed.value = !sidebarCollapsed.value
+  localStorage.setItem(SIDEBAR_KEY, sidebarCollapsed.value ? '1' : '0')
+}
 
 const currentUserEmail = ref(auth.currentUser?.email || null)
 onAuthStateChanged(auth, (user) => { currentUserEmail.value = user?.email || null })

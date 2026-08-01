@@ -29,11 +29,11 @@
       <ProgressSpinner style="width:22px;height:22px" />
     </div>
 
-    <div v-else class="overflow-auto bg-white rounded-lg border border-slate-200" style="max-height:340px">
+    <div v-else class="overflow-auto bg-white rounded-lg border border-slate-200 grid-freeze" style="max-height:340px">
       <table class="w-full text-sm">
-        <thead class="sticky top-0 bg-slate-50 z-10">
+        <thead class="bg-slate-50">
           <tr>
-            <th class="px-2 py-1.5" style="width:34px">
+            <th class="freeze-col bg-slate-50 px-2 py-1.5" style="width:30px">
               <Checkbox
                 :modelValue="allVisibleSelected" binary
                 :indeterminate="someVisibleSelected && !allVisibleSelected"
@@ -41,22 +41,29 @@
                 @update:modelValue="toggleAllVisible"
               />
             </th>
-            <th class="text-left px-3 py-1.5 text-xs font-semibold text-slate-400 uppercase" style="min-width:180px">Student</th>
-            <th class="text-left px-2 py-1.5 text-xs font-semibold text-slate-400 uppercase" style="width:70px">Roll</th>
-            <th v-for="s in surveys" :key="s.id" class="px-2 py-1.5 text-center text-xs font-semibold text-slate-500" style="min-width:92px">
-              {{ s.label }}
+            <th class="freeze-col bg-slate-50 text-left px-2 py-1.5 text-xs font-semibold text-slate-400 uppercase"
+                style="left:30px; min-width:140px; max-width:160px">Student</th>
+            <th class="text-left px-1.5 py-1.5 text-xs font-semibold text-slate-400 uppercase" style="width:52px">Roll</th>
+            <th v-for="s in surveys" :key="s.id"
+                class="px-1 py-1.5 text-center text-xs font-semibold text-slate-500"
+                style="min-width:56px; max-width:72px"
+                v-tooltip.bottom="s.label">
+              <span class="cell-truncate">{{ s.id }}</span>
             </th>
           </tr>
         </thead>
         <tbody>
           <tr v-for="st in filtered" :key="st.id" class="border-t border-slate-100 hover:bg-slate-50"
               :class="selectedIds.has(st.id) ? 'bg-violet-50' : ''">
-            <td class="px-2 py-1">
+            <td class="freeze-col px-2 py-1" :class="selectedIds.has(st.id) ? 'bg-violet-50' : 'bg-white'">
               <Checkbox :modelValue="selectedIds.has(st.id)" binary @update:modelValue="v => toggleStudent(st.id, v)" />
             </td>
-            <td class="px-3 py-1 text-slate-700 truncate">{{ st.name || st.id }}</td>
-            <td class="px-2 py-1 text-xs text-slate-400">{{ st.rollNo || '—' }}</td>
-            <td v-for="s in surveys" :key="s.id" class="px-2 py-1 text-center">
+            <td class="freeze-col px-2 py-1 text-slate-700" style="left:30px; max-width:160px"
+                :class="selectedIds.has(st.id) ? 'bg-violet-50' : 'bg-white'">
+              <span class="cell-truncate" :title="st.name || st.id">{{ st.name || st.id }}</span>
+            </td>
+            <td class="px-1.5 py-1 text-xs text-slate-400">{{ st.rollNo || '—' }}</td>
+            <td v-for="s in surveys" :key="s.id" class="px-1 py-1 text-center">
               <div class="flex items-center justify-center gap-1">
                 <Checkbox
                   :modelValue="isAssigned(st, s.id)" binary

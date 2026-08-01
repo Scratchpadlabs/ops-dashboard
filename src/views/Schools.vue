@@ -76,7 +76,7 @@
               class="cursor-pointer hover:text-blue-600 transition-colors"
               @click="openProfile(data)"
             >
-              <div class="font-medium text-slate-900 text-sm">{{ data.name }}</div>
+              <div class="font-medium text-slate-900 text-sm cell-truncate" :title="data.name">{{ data.name }}</div>
               <div class="text-xs text-slate-400 mt-0.5">{{ data.city }}</div>
             </div>
           </template>
@@ -85,7 +85,7 @@
         <Column field="contact_person" header="Contact">
           <template #body="{ data }">
             <div>
-              <div class="text-sm text-slate-700">{{ data.contact_person }}</div>
+              <div class="text-sm text-slate-700 cell-truncate" :title="data.contact_person">{{ data.contact_person }}</div>
               <div class="text-xs text-slate-400">{{ data.contact_phone }}</div>
             </div>
           </template>

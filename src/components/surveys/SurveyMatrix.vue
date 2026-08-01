@@ -14,6 +14,14 @@
         >{{ m.label }}</button>
       </div>
 
+      <MultiSelect
+        :modelValue="visibleSurveyIds"
+        :options="allSurveys" optionLabel="label" optionValue="id"
+        placeholder="Columns" class="w-44" size="small" filter
+        :maxSelectedLabels="0" :selectedItemsLabel="`${visibleSurveyIds.length} of ${allSurveys.length} columns`"
+        @update:modelValue="v => $emit('update:visible-survey-ids', v)"
+      />
+
       <div class="flex items-center gap-3 ml-auto text-[11px] text-slate-400">
         <span class="flex items-center gap-1"><span class="w-3 h-3 rounded" :class="shadeClass(0)"></span>none</span>
         <span class="flex items-center gap-1"><span class="w-3 h-3 rounded" :class="shadeClass(50)"></span>partial</span>
@@ -25,18 +33,18 @@
       <table class="text-sm border-collapse w-full" style="user-select: none">
         <thead class="sticky top-0 z-20">
           <tr>
-            <th class="sticky left-0 z-30 bg-slate-50 border-b border-r border-slate-200 px-3 py-2 text-left text-xs font-semibold text-slate-400 uppercase" style="min-width:170px">
+            <th class="sticky left-0 z-30 bg-slate-50 border-b border-r border-slate-200 px-2 py-2 text-left text-xs font-semibold text-slate-400 uppercase" style="min-width:132px; max-width:132px">
               Class
             </th>
             <th
               v-for="s in surveys" :key="s.id"
-              class="bg-slate-50 border-b border-slate-200 px-2 py-2 text-center cursor-pointer hover:bg-slate-100 transition-colors"
-              style="min-width:104px"
-              :title="`Select ${s.label} across all classes`"
+              class="bg-slate-50 border-b border-slate-200 px-1.5 py-2 text-center cursor-pointer hover:bg-slate-100 transition-colors"
+              style="min-width:74px; max-width:96px"
+              v-tooltip.bottom="headerTooltip(s)"
               @click="$emit('select-column', s.id, $event)"
             >
-              <div class="text-xs font-semibold text-slate-700 truncate">{{ s.label }}</div>
-              <div class="text-[10px] font-normal" :class="windowClass(s)">{{ windowLabel(s) }}</div>
+              <div class="text-xs font-semibold text-slate-700 cell-truncate">{{ shortLabel(s) }}</div>
+              <span class="inline-block w-1.5 h-1.5 rounded-full mt-0.5" :class="windowDotClass(s)"></span>
             </th>
           </tr>
         </thead>
@@ -44,7 +52,7 @@
         <tbody>
           <!-- Pinned school total -->
           <tr class="bg-slate-50/70">
-            <td class="sticky left-0 z-10 bg-slate-50 border-b border-r border-slate-200 px-3 py-2">
+            <td class="sticky left-0 z-10 bg-slate-50 border-b border-r border-slate-200 px-2 py-1.5" style="max-width:132px">
               <div class="text-xs font-bold text-slate-800">School total</div>
               <div class="text-[11px] text-slate-400">{{ activeStudentCount }} students</div>
             </td>
@@ -55,7 +63,7 @@
 
           <template v-for="row in rows" :key="row.class_id">
             <tr class="hover:bg-slate-50/60">
-              <td class="sticky left-0 z-10 bg-white border-b border-r border-slate-100 px-3 py-1.5">
+              <td class="sticky left-0 z-10 bg-white border-b border-r border-slate-100 px-2 py-1" style="max-width:132px">
                 <div class="flex items-center gap-1.5">
                   <button
                     type="button" class="text-slate-300 hover:text-slate-600 flex-shrink-0"
@@ -70,7 +78,7 @@
                     :title="`Select ${row.class_id} across all surveys`"
                     @click="$emit('select-row', row.class_id, $event)"
                   >
-                    <div class="text-xs font-semibold text-slate-800 truncate">{{ row.class_id }}</div>
+                    <div class="text-xs font-semibold text-slate-800 cell-truncate" :title="row.class_id">{{ row.class_id }}</div>
                     <div class="text-[11px] text-slate-400">{{ row.student_count }} students</div>
                   </button>
                 </div>
@@ -106,6 +114,7 @@
 
 <script setup>
 import { ref, computed, h } from 'vue'
+import MultiSelect from 'primevue/multiselect'
 
 /**
  * The classes x surveys grid.
@@ -116,7 +125,11 @@ import { ref, computed, h } from 'vue'
  * beyond the in-progress drag.
  */
 const props = defineProps({
+  // `surveys` is what renders (already narrowed by the column picker);
+  // `allSurveys` is the full set the picker chooses from.
   surveys: { type: Array, default: () => [] },
+  allSurveys: { type: Array, default: () => [] },
+  visibleSurveyIds: { type: Array, default: () => [] },
   rows: { type: Array, default: () => [] },
   totals: { type: Object, default: () => ({}) },
   selection: { type: Set, default: () => new Set() },
@@ -125,7 +138,10 @@ const props = defineProps({
   activeStudentCount: { type: Number, default: 0 },
   unresolvedResponseSurveys: { type: Array, default: () => [] },
 })
-const emit = defineEmits(['update:metric', 'select-cells', 'select-row', 'select-column', 'toggle-expand'])
+const emit = defineEmits([
+  'update:metric', 'update:visible-survey-ids',
+  'select-cells', 'select-row', 'select-column', 'toggle-expand',
+])
 
 const metrics = [
   { value: 'all', label: 'All' },
@@ -202,6 +218,35 @@ function cellClass(row, surveyId) {
     shadeClass(pctFor(row.cells[surveyId])),
     selected ? 'ring-2 ring-inset ring-violet-500' : 'hover:brightness-95',
   ]
+}
+
+/**
+ * A compact column label. Survey ids are already terse and meaningful here
+ * ("AAM1-mid", "SEW1"), so the id beats a truncated prose name — and the full
+ * name plus date window lives in the tooltip rather than costing every column
+ * two lines of width.
+ */
+function shortLabel(s) {
+  const id = String(s.id || '')
+  if (id.length <= 10) return id
+  const label = String(s.label || id)
+  return label.length <= 10 ? label : id.slice(0, 10) + '…'
+}
+
+function headerTooltip(s) {
+  const bits = [s.label || s.id]
+  if (s.label && s.label !== s.id) bits.push(`(${s.id})`)
+  bits.push(windowLabel(s))
+  bits.push('— click to select this survey across all classes')
+  return bits.join(' · ')
+}
+
+// The window is a coloured dot in the header; the dates are in the tooltip.
+function windowDotClass(s) {
+  const now = Date.now()
+  if (s.expires_at && s.expires_at < now) return 'bg-slate-300'
+  if (s.start_at && s.start_at > now) return 'bg-amber-400'
+  return 'bg-green-400'
 }
 
 function fmtDate(ms) {
