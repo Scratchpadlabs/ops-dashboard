@@ -171,6 +171,28 @@ def test_diff_names_what_is_kept():
         assert kept in diff["kept"]
 
 
+def test_diff_says_the_ops_crm_checklists_are_untouched():
+    """The Operations and Data-Receivable checklists live in the ops CRM tree,
+    keyed by a DIFFERENT id space than the root school this resets. The reset
+    cannot touch them, so the confirm screen must say so rather than leave it
+    to be assumed either way."""
+    diff = build_reset_diff([], {}, [])
+    assert any("ops CRM" in k for k in diff["kept"])
+
+
+def test_diff_never_echoes_an_option_it_cannot_perform():
+    """Guards the bug this test was written for: the wizard once offered
+    'reset the operations checklist' and reset_execute had no code for it, so
+    the preview reported an effect that never happened. A flag must not appear
+    in the diff just because the caller sent it."""
+    diff = build_reset_diff([], {"reset_operations": True,
+                                  "reset_receivables": True,
+                                  "some_future_option": True}, [])
+    for ghost in ("reset_operations", "reset_receivables", "some_future_option"):
+        assert ghost not in diff
+    assert diff["write_estimate"] == 0
+
+
 def test_write_estimate_is_the_sum_of_the_itemized_counts():
     roster = [st("s1", "I_A", surveyInbox=["x"]), st("s2", "XII_A", reports=["r"])]
     diff = build_reset_diff(roster, {

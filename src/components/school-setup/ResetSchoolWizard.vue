@@ -192,6 +192,13 @@
             </div>
           </div>
 
+          <!-- Stating what is NOT touched is as much a part of the confirm
+               step as the change list: it is what stops someone assuming a
+               reset wipes their subject and term configuration too. -->
+          <div v-if="preview.kept?.length" class="text-sm text-slate-600 bg-slate-50 rounded px-2.5 py-2">
+            Left unchanged: {{ preview.kept.join(', ') }}.
+          </div>
+
           <div class="pt-2 border-t border-slate-100">
             <label class="form-label">Type the school id to confirm: <span class="font-mono">{{ form.schoolId }}</span></label>
             <InputText v-model="form.confirmText" class="w-72 font-mono" placeholder="school id" />
@@ -325,11 +332,16 @@ const RESET_OPTIONS = [
     hint: 'Empties the reports array on each student. The archive holds the previous contents.' },
   { key: 'clear_sheets', label: 'Clear smart sheet entries',
     hint: "Deletes this school's sheet entries so the new session starts empty." },
-  { key: 'reset_operations', label: 'Reset the operations checklist',
-    hint: 'Starts the delivery checklist fresh for the new cycle.' },
-  { key: 'reset_receivables', label: 'Reset the data-receivable checklist',
-    hint: 'Starts the pending-data checklist fresh for the new cycle.' },
 ]
+
+// DELIBERATELY ABSENT: the Operations and Data-Receivable checklists.
+// They live in the ops CRM tree (operations/ops/school_operations/<id> and
+// .../school_data_receivable/<id>), keyed by the OPS school doc id — a
+// different id space from the root schools/<schoolId> this wizard resets,
+// with no link between the two. Offering them here would mean guessing which
+// CRM school matches, and a wrong guess silently wipes another school's
+// delivery checklist. Reset those from that school's profile page instead,
+// where the id is unambiguous.
 
 const POST_TASKS = [
   { key: 'surveys', label: "Assign this session's surveys", to: '/surveys', action: 'Open Surveys' },
@@ -363,7 +375,7 @@ let unsubRun = null
 const form = reactive({
   schoolId: null, archiveLabel: '', confirmText: '', dryRun: false,
   options: { promote: true, clear_inbox: true, clear_reports: true,
-              clear_sheets: false, reset_operations: false, reset_receivables: false },
+              clear_sheets: false },
   removeIds: [], postDone: {},
 })
 
@@ -431,7 +443,11 @@ async function loadState() {
 async function loadRoster() {
   if (!form.schoolId) return
   const snap = await getDocs(schoolCollection(form.schoolId, 'students'))
-  roster.value = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+  // Doc id assigned AFTER the spread: a student document carrying its own
+  // `id` field must not shadow the real one. removeIds is matched against
+  // the doc id server-side, so a shadowed id here would silently mark the
+  // wrong student as left — or none at all.
+  roster.value = snap.docs.map(d => ({ ...d.data(), id: d.id }))
     .filter(s => (s.type || 'student') === 'student' && s.isActive !== false)
     .sort((a, b) => String(a.classId || '').localeCompare(String(b.classId || '')))
 }

@@ -61,13 +61,13 @@ export function useWizardRun(type, steps) {
     try {
       const snap = await getDocs(query(
         wizardRunsCollection(), ...clauses, orderBy('updated_at', 'desc'), limit(5)))
-      return snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      return snap.docs.map(d => ({ ...d.data(), id: d.id }))
     } catch (e) {
       // An ordering/index problem must not hide the resume affordance
       // entirely — fall back to an unordered read.
       console.error('Could not query wizard runs in order; retrying unordered', e)
       const snap = await getDocs(query(wizardRunsCollection(), ...clauses, limit(5)))
-      return snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      return snap.docs.map(d => ({ ...d.data(), id: d.id }))
     }
   }
 
@@ -92,7 +92,7 @@ export function useWizardRun(type, steps) {
     loading.value = true
     try {
       const snap = await getDoc(runDoc(runId))
-      run.value = snap.exists() ? { id: snap.id, ...snap.data() } : null
+      run.value = snap.exists() ? { ...snap.data(), id: snap.id } : null
       return run.value
     } finally {
       loading.value = false

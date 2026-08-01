@@ -452,7 +452,12 @@ def check_new_school(req: https_fn.CallableRequest):
     ok, err = validate_school_id(school_id)
 
     db = firestore.client()
-    existing = [{"id": d.id, **(d.to_dict() or {})}
+    # NOTE the ordering: the doc id is assigned AFTER the spread, so a school
+    # document carrying its own `id` field cannot shadow the real doc id. The
+    # select(["name"]) projection happens to prevent that today, but relying
+    # on the projection is how this bug reached production once already —
+    # see the "(no class)" grouping fix in functions/assign_survey.
+    existing = [{**(d.to_dict() or {}), "id": d.id}
                 for d in db.collection("schools").select(["name"]).stream()]
 
     return {

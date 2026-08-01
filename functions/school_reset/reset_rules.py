@@ -184,11 +184,19 @@ def build_reset_diff(students, options, existing_class_ids=None, inbox_field="su
         "reports_detached_count": len(reports_to_detach),
         "removed_count": len(to_remove),
         "clear_sheets": bool(opts.get("clear_sheets")),
-        "reset_operations": bool(opts.get("reset_operations")),
-        "reset_receivables": bool(opts.get("reset_receivables")),
+        # NOTE: there is deliberately no reset_operations / reset_receivables
+        # option. Those checklists live in the ops CRM tree
+        # (operations/ops/school_operations, .../school_data_receivable),
+        # keyed by the OPS school doc id — a different id space from the root
+        # schools/<id> this resets, with no link between them. Echoing such a
+        # flag back here would make the preview claim an effect reset_execute
+        # cannot deliver. If they are ever added, add them to BOTH this diff
+        # and reset_execute, and resolve the id explicitly rather than
+        # assuming the two ids match.
         # Named explicitly so the confirm screen can state what is NOT touched.
         "kept": ["subjects", "terms", "grading scales", "remark categories",
-                  "months", "teachers/staff", "school details"],
+                  "months", "teachers/staff", "school details",
+                  "operations & data-receivable checklists (ops CRM)"],
     }
     diff["plan"] = plan
     diff["write_estimate"] = (

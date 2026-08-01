@@ -231,6 +231,21 @@ Two new top-level collections, both in `firestore.rules`:
 list on the `schools/{schoolId}/{collection}/{docId}` rule, so the audit log
 can be read but not forged from the client.
 
+### What the reset deliberately CANNOT do
+The Operations and Data-Receivable checklists are **not** resettable from this
+wizard, and this is not an oversight. They live in the ops CRM tree
+(`operations/ops/school_operations/<id>`, `.../school_data_receivable/<id>`),
+keyed by the **ops CRM school doc id** — a different id space from the root
+`schools/<id>` the reset operates on, with no link between the two trees.
+Offering the option would mean guessing which CRM school matches, and a wrong
+guess silently clears a different school's delivery checklist. Reset those
+from that school's profile page, where the id is unambiguous.
+
+`build_reset_diff` will not echo an option it cannot perform (there is a test
+for this), so the preview can never claim an effect `reset_execute` doesn't
+deliver. If these are ever wired up, add them to BOTH the diff and
+`reset_execute`, and resolve the CRM id explicitly.
+
 ### FIRST RUN — do this on TEST_SCHOOL
 The Reset wizard has a **dry run** toggle on the execute step. Use it:
 1. Run the whole wizard against `TEST_SCHOOL` with dry run ON. Read the run

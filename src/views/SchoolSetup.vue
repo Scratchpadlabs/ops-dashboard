@@ -207,8 +207,12 @@ async function loadSchools() {
   loadingSchools.value = true
   try {
     const snap = await getDocs(query(rootSchoolsCollection(), orderBy('name'), limit(500)))
+    // Doc id assigned AFTER the spread. Root school documents in this tree
+    // are known to carry their own `id` field, and letting it win is what
+    // made the Surveys picker disagree with the URL (see the "(no class)"
+    // fix); every id-based comparison below depends on the real doc id.
     schools.value = snap.docs
-      .map(d => ({ id: d.id, ...d.data() }))
+      .map(d => ({ ...d.data(), id: d.id }))
       .filter(s => s.isActive !== false)
   } catch (e) {
     console.error('Could not load schools', e)
