@@ -41,11 +41,25 @@
         <div class="grid grid-cols-3 gap-4">
           <div>
             <label class="form-label">Grade (clazz) *</label>
-            <InputText v-model="form.clazz" class="w-full" placeholder="e.g. III" :disabled="!!editingClass" />
+            <KbClassifiedInput
+              v-model="form.clazz"
+              :expect="GRADE"
+              context="a grade/class in School Setup"
+              :allowed-types="[GRADE, OTHER]"
+              placeholder="e.g. III"
+              :disabled="!!editingClass"
+            />
           </div>
           <div>
             <label class="form-label">Section *</label>
-            <InputText v-model="form.section" class="w-full" placeholder="e.g. A" :disabled="!!editingClass" />
+            <KbClassifiedInput
+              v-model="form.section"
+              :expect="SECTION"
+              context="a section name in School Setup"
+              :allowed-types="[SECTION, OTHER]"
+              placeholder="e.g. A, Rose, Champion"
+              :disabled="!!editingClass"
+            />
           </div>
           <div>
             <label class="form-label">Stage *</label>
@@ -140,10 +154,14 @@ import ConfirmDialog from 'primevue/confirmdialog'
 import { schoolCollection, schoolDoc } from '../../firebase/schoolCollections.js'
 import { auth } from '../../firebase/config'
 import { regenerateStudentsSchemaClassOptions } from '../../utils/schoolSetupHelpers.js'
+import KbClassifiedInput from '../shared/KbClassifiedInput.vue'
+import { useEducationKB } from '../../composables/useEducationKB.js'
+import { GRADE, SECTION, OTHER } from '../../utils/educationKB.js'
 
 const props = defineProps({ schoolId: { type: String, default: null } })
 const confirm = useConfirm()
 const toast = useToast()
+const { loadKB } = useEducationKB()
 
 const stageOptions = [
   { label: 'Foundation', value: 'foundation' },
@@ -376,7 +394,7 @@ async function saveTeacherMatrix() {
 }
 
 watch(() => props.schoolId, loadAll)
-onMounted(loadAll)
+onMounted(() => { loadAll(); loadKB() })
 </script>
 
 <style scoped>

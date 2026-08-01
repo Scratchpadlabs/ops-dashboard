@@ -19,6 +19,20 @@
       <div v-if="suggestion" class="text-[10px] text-amber-600">
         Suggested: <b>{{ suggestion.suggested }}</b> ({{ Math.round(suggestion.similarity * 100) }}% match)
       </div>
+      <!-- What the education knowledge base makes of the raw value, even when
+           this school hasn't configured it. Tells apart "typo for a subject
+           they do have" from "a real subject missing from their setup" — the
+           second is a School Setup gap, not an import mistake. -->
+      <div v-if="kbHint" class="text-[10px] text-slate-500">
+        Knowledge base: <b>{{ kbHint.canonical }}</b>
+        <span class="text-slate-400">· {{ kbHint.typeLabel }}</span>
+        <button
+          v-if="!options.includes(kbHint.canonical)"
+          type="button"
+          class="ml-1 text-violet-600 underline"
+          v-tooltip="'Not configured for this grade — add it in School Setup, or use Propose Structure'"
+        >not in this school's setup</button>
+      </div>
       <button v-if="matchCount > 0 && picked" type="button"
         class="text-[10px] text-violet-600 underline"
         @click="$emit('resolve-all', picked)">
@@ -39,6 +53,9 @@ const props = defineProps({
   suggestion: { type: Object, default: null },
   options: { type: Array, default: () => [] },
   matchCount: { type: Number, default: 0 },
+  // {canonical, typeLabel} from the shared education KB, or null — supplied
+  // by ImportReview.vue so this component stays presentational.
+  kbHint: { type: Object, default: null },
 })
 defineEmits(['resolve', 'resolve-all'])
 

@@ -76,6 +76,17 @@ service cloud.firestore {
       allow read, write: if isOpsAdmin();
     }
 
+    // Education knowledge base overlay: global (NOT scoped to any school)
+    // learned classifications — is this value a subject, a co-scholastic
+    // area, a grade, a section? Seeded knowledge lives in code
+    // (functions/generate_import/education_kb.json); only human-confirmed
+    // additions land here, same self-learning pattern as import_aliases
+    // above, and the same ops-admin gate. The import Cloud Function reads
+    // this collection with the Admin SDK, which bypasses these rules.
+    match /kb_entries/{entryId} {
+      allow read, write: if isOpsAdmin();
+    }
+
     // Deny everything else
     match /{document=**} {
       allow read, write: if false;

@@ -265,7 +265,15 @@ def test_grade_tokens_recognize_jr_sr_kg():
     assert extract_grade_tokens("Jr. KG") == ["LKG"]
     assert extract_grade_tokens("Sr KG") == ["UKG"]
     assert extract_grade_tokens("Sr. KG") == ["UKG"]
-    assert extract_grade_tokens("Nursery") == ["NURSERY"]
+    # 'Nursery', not 'NURSERY': grade vocabulary now comes from education_kb
+    # and normalize_grade returns that shared canonical form. Safe because
+    # normalize_grade is a comparison key applied to BOTH sides of every
+    # lookup (imported value and the school's live classes.clazz alike), and
+    # src/utils/educationKB.js returns the identical form in the browser.
+    assert extract_grade_tokens("Nursery") == ["Nursery"]
+    assert extract_grade_tokens("Junior KG") == ["LKG"]
+    assert extract_grade_tokens("Std. 5") == ["5"]
+    assert extract_grade_tokens("Garde 7,10") == ["7", "10"]
 
 
 def test_teacher_shaped_file_never_crashes_deterministic_student_parser():

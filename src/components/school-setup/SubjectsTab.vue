@@ -29,7 +29,22 @@
             <Column field="id" header="ID" style="width:220px">
               <template #body="{ data }"><span class="font-mono text-xs text-slate-500">{{ data.id }}</span></template>
             </Column>
-            <Column field="name" header="Name" />
+            <Column field="name" header="Name">
+              <template #body="{ data }">
+                <span>{{ data.name }}</span>
+                <span v-if="data.name_original" class="text-xs text-slate-400 ml-1.5">(from “{{ data.name_original }}”)</span>
+              </template>
+            </Column>
+            <Column field="area" header="Area" style="width:130px">
+              <template #body="{ data }">
+                <span
+                  v-if="data.area"
+                  class="px-2 py-0.5 rounded-full text-xs font-semibold"
+                  :class="data.area === 'Co-Scholastic' ? 'bg-violet-100 text-violet-700' : 'bg-blue-50 text-blue-700'"
+                >{{ data.area }}</span>
+                <span v-else class="text-xs text-slate-300" v-tooltip="'Not classified — open the subject and let the knowledge base categorize it'">—</span>
+              </template>
+            </Column>
             <Column field="curricular_goals" header="Goals" style="width:100px">
               <template #body="{ data }"><span class="text-xs text-slate-400">{{ (data.curricular_goals || []).length }}</span></template>
             </Column>
@@ -54,7 +69,14 @@
           </div>
           <div>
             <label class="form-label">Name *</label>
-            <InputText v-model="form.name" class="w-full" placeholder="e.g. English" :disabled="!!editingSubject" />
+            <KbClassifiedInput
+              v-model="form.name"
+              :expect="SUBJECT"
+              context="the Subjects list in School Setup"
+              placeholder="e.g. English"
+              :disabled="!!editingSubject"
+              @classified="onNameClassified"
+            />
           </div>
         </div>
         <div>
@@ -155,10 +177,13 @@ import Select from 'primevue/select'
 import ProgressSpinner from 'primevue/progressspinner'
 import ConfirmDialog from 'primevue/confirmdialog'
 import CsvImportDialog from './CsvImportDialog.vue'
+import KbClassifiedInput from '../shared/KbClassifiedInput.vue'
 
 import { schoolCollection, schoolDoc, rootSchoolsCollection } from '../../firebase/schoolCollections.js'
 import { db, auth } from '../../firebase/config'
 import { toCsv, downloadCsv } from '../../utils/csv.js'
+import { useEducationKB } from '../../composables/useEducationKB.js'
+import { SUBJECT, COSCHOLASTIC, classify as classifyValue } from '../../utils/educationKB.js'
 
 const props = defineProps({ schoolId: { type: String, default: null } })
 const toast = useToast()
@@ -201,7 +226,21 @@ const dialogVisible = ref(false)
 const editingSubject = ref(null)
 const saving = ref(false)
 const formError = ref('')
-const form = reactive({ grade: '', name: '', id: '', goals: [] })
+const form = reactive({ grade: '', name: '', id: '', goals: [], area: '', name_original: '' })
+
+// The knowledge base decides scholastic vs co-scholastic; the subject doc
+// records it as `area` so the import parser's core-subject coverage check
+// (functions/generate_import/main.py) and the Co-Scholastic tab agree with
+// School Setup instead of each guessing separately.
+const { loadKB, overlay } = useEducationKB()
+
+function onNameClassified({ type, canonical, original }) {
+  if (type === SUBJECT) form.area = 'Scholastic'
+  else if (type === COSCHOLASTIC) form.area = 'Co-Scholastic'
+  // Keep what was actually typed — 'Eng' stays recoverable after the field
+  // itself has been normalized to 'English'.
+  form.name_original = original && original !== canonical ? original : ''
+}
 
 function slugify(grade, name) {
   const cleanName = name.trim().replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_|_$/g, '')
@@ -226,14 +265,17 @@ function goalsToDoc(goals) {
 
 function openAddSubject() {
   editingSubject.value = null
-  Object.assign(form, { grade: '', name: '', id: '', goals: [] })
+  Object.assign(form, { grade: '', name: '', id: '', goals: [], area: '', name_original: '' })
   formError.value = ''
   dialogVisible.value = true
 }
 
 function openEditSubject(subject) {
   editingSubject.value = subject
-  Object.assign(form, { grade: parseGrade(subject.id), name: subject.name || '', id: subject.id, goals: goalsFromDoc(subject) })
+  Object.assign(form, {
+    grade: parseGrade(subject.id), name: subject.name || '', id: subject.id, goals: goalsFromDoc(subject),
+    area: subject.area || '', name_original: subject.name_original || '',
+  })
   formError.value = ''
   dialogVisible.value = true
 }
@@ -257,6 +299,8 @@ async function saveSubject() {
   try {
     const payload = {
       name: form.name.trim(),
+      area: form.area || areaFor(form.name),
+      name_original: form.name_original || '',
       curricular_goals: goalsToDoc(form.goals),
       updated_at: serverTimestamp(),
       updated_by: auth.currentUser?.email || 'unknown',
@@ -343,7 +387,7 @@ async function classifyImportRow(raw) {
   if (!name) return { raw, _status: 'ERROR', _reason: 'Missing name' }
   const id = (raw.id || '').trim() || slugify(grade, name)
   const existing = subjects.value.find(s => s.id === id)
-  return { raw, id, _status: existing ? 'UPDATE' : 'CREATE', payload: { name } }
+  return { raw, id, _status: existing ? 'UPDATE' : 'CREATE', payload: { name, area: areaFor(name) } }
 }
 
 async function runImport(validRows) {
@@ -359,6 +403,17 @@ async function runImport(validRows) {
   }
   toast.add({ severity: 'success', summary: 'Imported', detail: `${validRows.length} row(s)`, life: 2500 })
   await loadSubjects()
+}
+
+// Scholastic/Co-Scholastic straight from the shared knowledge base. Only a
+// HIGH-confidence answer sets it — a name the KB can't place is left blank
+// rather than mis-filed, and shows up as unclassified in the table.
+function areaFor(name) {
+  const r = classifyValue(name, { overlay: overlay.value })
+  if (r.confidence < 0.95) return ''
+  if (r.type === SUBJECT) return 'Scholastic'
+  if (r.type === COSCHOLASTIC) return 'Co-Scholastic'
+  return ''
 }
 
 function downloadSample() {
@@ -378,7 +433,7 @@ function exportCsv() {
 }
 
 watch(() => props.schoolId, loadSubjects)
-onMounted(() => { loadSubjects(); loadOtherSchools() })
+onMounted(() => { loadSubjects(); loadOtherSchools(); loadKB() })
 </script>
 
 <style scoped>

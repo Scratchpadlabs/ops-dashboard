@@ -98,7 +98,16 @@
       <div class="space-y-4 pt-2">
         <div>
           <label class="form-label">Name *</label>
-          <InputText v-model="form.name" class="w-full" placeholder="e.g. Art & Craft" />
+          <KbClassifiedInput
+            v-model="form.name"
+            :expect="COSCHOLASTIC"
+            context="the Co-Scholastic activities list in School Setup"
+            placeholder="e.g. Art & Craft"
+            @classified="onNameClassified"
+          />
+          <p v-if="areaWarning" class="text-xs text-amber-600 mt-1">
+            <i class="pi pi-exclamation-triangle text-xs mr-0.5"></i>{{ areaWarning }}
+          </p>
         </div>
         <div class="grid grid-cols-2 gap-4">
           <div>
@@ -154,13 +163,29 @@ import Select from 'primevue/select'
 import ProgressSpinner from 'primevue/progressspinner'
 import ConfirmDialog from 'primevue/confirmdialog'
 import CsvImportDialog from './CsvImportDialog.vue'
+import KbClassifiedInput from '../shared/KbClassifiedInput.vue'
 
 import { schoolCollection, schoolDoc } from '../../firebase/schoolCollections.js'
 import { db, auth } from '../../firebase/config'
 import { checkEnteredMarksCoScholastic, slugify } from '../../utils/assessmentHelpers.js'
 import { toCsv, downloadCsv } from '../../utils/csv.js'
+import { useEducationKB } from '../../composables/useEducationKB.js'
+import { COSCHOLASTIC, SUBJECT } from '../../utils/educationKB.js'
 
 const props = defineProps({ schoolId: { type: String, default: null } })
+
+// The knowledge base knows which side of the scholastic line an activity
+// belongs on. Here it earns its keep by catching the genuine mistake: an
+// academic subject typed into the Co-Scholastic tab. Warned, never blocked —
+// a school is allowed to grade Computer as an activity if it wants to.
+const { loadKB } = useEducationKB()
+const areaWarning = ref('')
+
+function onNameClassified({ type, canonical }) {
+  areaWarning.value = type === SUBJECT
+    ? `“${canonical}” is normally a scholastic subject — add it under Subjects unless this school grades it as an activity.`
+    : ''
+}
 const confirm = useConfirm()
 const toast = useToast()
 
@@ -224,6 +249,7 @@ function openAdd() {
   editingActivity.value = null
   const nextOrder = activities.value.length ? Math.max(...activities.value.map(a => a.order || 0)) + 1 : 1
   Object.assign(form, { name: '', entryType: 'marks', maxMarks: null, gradingScaleId: null, conversionType: 'none', conversionFactor: null, order: nextOrder })
+  areaWarning.value = ''
   formError.value = ''
   dialogVisible.value = true
 }
@@ -235,6 +261,7 @@ function openEdit(activity) {
     gradingScaleId: activity.gradingScaleId || null, conversionType: activity.conversionType || 'none',
     conversionFactor: activity.conversionFactor || null, order: activity.order || 1,
   })
+  areaWarning.value = ''
   formError.value = ''
   dialogVisible.value = true
 }
@@ -515,7 +542,7 @@ function exportCsv() {
 
 watch(() => props.schoolId, () => { loadStatic(); activities.value = []; selectedTermId.value = null })
 watch(selectedTermId, () => { loadActivities(); exitGridMode() })
-onMounted(loadStatic)
+onMounted(() => { loadStatic(); loadKB() })
 </script>
 
 <style scoped>

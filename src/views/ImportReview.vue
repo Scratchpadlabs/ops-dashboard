@@ -131,6 +131,7 @@
                 :suggestion="fieldSuggestion(data, field)"
                 :options="resolverOptions(data, field)"
                 :match-count="pendingMatchCount(data, field)"
+                :kb-hint="kbHint(data, field)"
                 @resolve="v => onResolve(data, field, v)"
                 @resolve-all="v => onResolveAll(data, field, v)"
               />
@@ -249,6 +250,8 @@ import {
   loadSectionsByGrade, loadSubjectsByGrade,
 } from '../composables/useImport.js'
 import ImportFieldResolver from '../components/shared/ImportFieldResolver.vue'
+import { useEducationKB } from '../composables/useEducationKB.js'
+import { TYPE_LABELS, SUBJECT, SECTION, UNKNOWN } from '../utils/educationKB.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -369,6 +372,23 @@ function pendingMatchCount(data, field) {
   }).length
 }
 function aliasTypeFor(field) { return field === 'section' ? 'class' : 'subject' }
+
+// ── Education knowledge base ────────────────────────────────────────────────
+// The same shared KB the Cloud Function's cleaning stage uses (its seed file
+// IS this module's seed file), so review shows the same understanding the
+// parser had. Purely advisory here: it explains an unresolved value, it
+// never picks one — resolving stays Sid's call.
+const { loadKB, classify: classifyKb } = useEducationKB()
+
+function kbHint(data, field) {
+  const raw = fieldSuggestion(data, field)?.original ?? data[field]
+  if (!raw) return null
+  const r = classifyKb(raw, field === 'section' ? SECTION : SUBJECT)
+  if (r.type === UNKNOWN || !r.canonical) return null
+  // Nothing to add when the KB just echoes what's already in the cell.
+  if (r.canonical === String(raw).trim()) return null
+  return { canonical: r.canonical, typeLabel: TYPE_LABELS[r.type] || r.type }
+}
 
 async function onResolve(data, field, value) {
   const raw = rows.value.find(r => r.id === data._id)
@@ -553,6 +573,7 @@ onMounted(() => {
     if (isFirstLoad) await loadResolverOptions()
   })
   unsubRows = listenRows(jobId.value, (list) => { rows.value = list })
+  loadKB()
 })
 onUnmounted(() => { unsubJob?.(); unsubRows?.() })
 </script>

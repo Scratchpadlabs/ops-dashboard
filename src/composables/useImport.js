@@ -22,21 +22,22 @@ import {
   schoolCollection, importAliasDoc,
 } from '../firebase/schoolCollections.js'
 import { startProcessImport, commitImportRemote } from '../utils/api.js'
+import { classify, GRADE } from '../utils/educationKB.js'
 
-// ── Grade normalization — mirrors functions/generate_import/main.py's
-// normalize_grade/normalize_section exactly, since the review UI needs the
-// same "does this row's class-section exist" answer the Cloud Function used
-// when it raised the flag. ──────────────────────────────────────────────────
-const ROMAN_TO_NUM = { I: 1, II: 2, III: 3, IV: 4, V: 5, VI: 6, VII: 7, VIII: 8, IX: 9, X: 10, XI: 11, XII: 12 }
-
+// ── Grade normalization — delegates to the shared education knowledge base
+// (src/utils/educationKB.js), which is seeded from the very same
+// education_kb.json that functions/generate_import/education_kb.py reads.
+// The review UI needs the same "does this row's class-section exist" answer
+// the Cloud Function used when it raised the flag, and the only way to
+// guarantee that is one shared vocabulary rather than two hand-synced
+// roman-numeral tables (which is what this used to be). ─────────────────────
 export function normalizeGrade(g) {
   const s = (g || '').trim()
   if (!s) return ''
-  const upper = s.toUpperCase()
-  if (['NURSERY', 'LKG', 'UKG'].includes(upper)) return upper
-  if (ROMAN_TO_NUM[upper]) return String(ROMAN_TO_NUM[upper])
-  if (/^\d+$/.test(s)) return String(parseInt(s, 10))
-  return upper
+  // expect: GRADE is correct here — every caller already knows this value
+  // came from a grade column, the context that lets a bare 'V' read as 5.
+  const r = classify(s, { expect: GRADE })
+  return r.type === GRADE && r.canonical ? r.canonical : s.toUpperCase()
 }
 export function normalizeSection(s) {
   return (s || '').trim().toUpperCase()

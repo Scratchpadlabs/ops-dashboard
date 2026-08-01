@@ -8,31 +8,49 @@ the same normalization rule.
 
 Everything here is pure/stdlib-only (plus difflib) and side-effect free, so
 it's safe to import from a pytest file without pulling in firebase_admin.
+
+Grade/section/subject KNOWLEDGE itself no longer lives here — it moved to
+education_kb.py (seeded from education_kb.json, shared with the browser).
+This module keeps the cell-level MECHANICS (name/email/phone/DOB cleanup,
+fuzzy matching, header aliases) and delegates every "what does this value
+mean" question to the KB, so there is exactly one roman-numeral table, one
+Jr-KG spelling list, and one subject alias dictionary in the codebase.
 """
 import difflib
 import re
 from datetime import date, datetime, timedelta
 
+import education_kb as kb
+
 # ------------------------------------------------------------ grade/class ---
-ROMAN_TO_NUM = {"I": 1, "II": 2, "III": 3, "IV": 4, "V": 5, "VI": 6, "VII": 7,
-                "VIII": 8, "IX": 9, "X": 10, "XI": 11, "XII": 12}
+# Derived from the KB, never hand-maintained here — this used to be a literal
+# dict that drifted from the JSON seed. Kept as a module export because
+# main.py and the tests import it by name.
+ROMAN_TO_NUM = {
+    alias.upper(): int(entry)
+    for entry in kb.list_grades() if entry.isdigit()
+    for alias in kb.aliases_for(entry, kb.GRADE)
+    if re.fullmatch(r"[ivxIVX]+", alias)
+}
 
 
 def normalize_grade(g):
     """Map roman numerals / plain numbers / Nursery-LKG-UKG onto one
     comparable form, since a school's live `classes.clazz` values and
-    imported `grade` values may use different conventions."""
+    imported `grade` values may use different conventions.
+
+    Thin wrapper over the KB's grade classification. `expect=GRADE` is right
+    here: every caller already knows this cell is a grade (it came from a
+    grade column), which is exactly the context that lets a bare 'V' be read
+    as 5 rather than section V. Unrecognized values pass through uppercased,
+    unchanged from the original behavior."""
     g = (g or "").strip()
     if not g:
         return ""
-    upper = g.upper()
-    if upper in ("NURSERY", "LKG", "UKG"):
-        return upper
-    if upper in ROMAN_TO_NUM:
-        return str(ROMAN_TO_NUM[upper])
-    if g.isdigit():
-        return str(int(g))
-    return upper
+    result = kb.classify(g, expect=kb.GRADE)
+    if result["type"] == kb.GRADE and result["canonical"]:
+        return result["canonical"]
+    return g.upper()
 
 
 def normalize_section(s):
@@ -46,26 +64,45 @@ def canonicalize(s):
     return re.sub(r"[\s\-.]+", "", (s or "").strip().lower())
 
 
-_GRADE_WORD_RE = re.compile(r"gr[ae]de", re.IGNORECASE)
-# "Jr KG"/"Jr. KG"/"Junior KG" and "Sr KG"/"Sr. KG"/"Senior KG" are common
-# alternate spellings of LKG/UKG respectively — normalized to LKG/UKG before
-# tokenizing so both naming conventions land on the same canonical value.
-_JR_KG_RE = re.compile(r"\b(?:jr\.?|junior)\s*\.?\s*kg\b", re.IGNORECASE)
-_SR_KG_RE = re.compile(r"\b(?:sr\.?|senior)\s*\.?\s*kg\b", re.IGNORECASE)
+# Prefix words ('Grade', the frequent 'Garde' typo, 'Std', 'Class'...) and the
+# grade token vocabulary are both built from the KB seed rather than spelled
+# out here. Longest-first alternation so 'xii' wins over 'xi' over 'x'.
+_GRADE_WORD_RE = re.compile(
+    r"\b(?:%s)(?=\d|\b)" % "|".join(re.escape(p) for p in sorted(kb.SEED["grade_prefixes"], key=len, reverse=True)),
+    re.IGNORECASE)
+
+_MULTIWORD_GRADE_ALIASES = sorted(
+    ((alias, canonical)
+     for canonical in kb.list_grades()
+     for alias in kb.aliases_for(canonical, kb.GRADE) + [canonical]
+     if " " in alias.strip()),
+    key=lambda p: -len(p[0]))
+
+_GRADE_TOKENS = sorted(
+    {alias for canonical in kb.list_grades()
+     for alias in kb.aliases_for(canonical, kb.GRADE) + [canonical]
+     if alias.strip() and " " not in alias and not alias.isdigit() and alias.isascii()},
+    key=len, reverse=True)
 _GRADE_TOKEN_RE = re.compile(
-    r"\b(nursery|lkg|ukg|xii|xi|x|ix|viii|vii|vi|iv|v|iii|ii|i|\d{1,2})\b", re.IGNORECASE)
+    r"\b(%s|\d{1,2})\b" % "|".join(re.escape(t) for t in _GRADE_TOKENS), re.IGNORECASE)
 
 
 def extract_grade_tokens(raw):
-    """Tolerant grade-cell parser: strips a leading 'Grade'/'Garde' (any
-    case/typo/spacing), normalizes Jr KG/Sr KG to LKG/UKG, then pulls out
-    every recognizable grade token regardless of separators/spacing.
-    'Garde 7,10' -> ['7','10']; 'Grade7,8,9' -> ['7','8','9']; 'Jr. KG' ->
-    ['LKG']. Returns normalize_grade()'d tokens, deduped, first-seen order —
-    empty list if nothing recognizable."""
+    """Tolerant grade-cell parser: strips a leading 'Grade'/'Garde'/'Std'
+    (any case/typo/spacing), collapses multi-word aliases like 'Jr. KG' /
+    'Senior KG' to their canonical form, then pulls out every recognizable
+    grade token regardless of separators/spacing. 'Garde 7,10' -> ['7','10'];
+    'Grade7,8,9' -> ['7','8','9']; 'Jr. KG' -> ['LKG']. Returns
+    normalize_grade()'d tokens, deduped, first-seen order — empty list if
+    nothing recognizable.
+
+    Multi-word aliases have to be substituted BEFORE tokenizing: 'Jr KG'
+    tokenizes to nothing useful otherwise, and 'Junior KG' would strand a
+    bare 'KG'."""
     s = _GRADE_WORD_RE.sub(" ", raw or "")
-    s = _JR_KG_RE.sub(" LKG ", s)
-    s = _SR_KG_RE.sub(" UKG ", s)
+    for alias, canonical in _MULTIWORD_GRADE_ALIASES:
+        s = re.sub(r"\b%s\b" % re.escape(alias).replace(r"\ ", r"\s*\.?\s*"),
+                    f" {canonical} ", s, flags=re.IGNORECASE)
     tokens = []
     for m in _GRADE_TOKEN_RE.finditer(s):
         norm = normalize_grade(m.group(1))

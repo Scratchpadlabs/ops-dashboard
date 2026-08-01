@@ -72,6 +72,7 @@ from normalize import (
     FUZZY_THRESHOLD, fuzzy_best_match, match_value,
     STUDENT_HEADER_ALIASES, STUDENT_SCHEMA_KEYS, STUDENT_REQUIRED_FIELD,
 )
+import education_kb as kb
 from tabular_parser import parse_tabular_file
 
 # Must run at module load, not lazily inside a handler: the on_call framework
@@ -279,6 +280,59 @@ def extract_file(entity, filename, raw):
 # above) — shared verbatim with tabular_parser.py's deterministic path, per
 # the hardening task's "one shared module" requirement.
 
+def load_kb_entries(db):
+    """Learned overlay for the education knowledge base (top-level
+    `kb_entries`, not scoped to any school) — the same self-learning pattern
+    as import_aliases, but for MEANING rather than spelling: {canonicalized
+    value: (type, canonical)}.
+
+    Only ever written by a human confirming a classification in the UI (see
+    the classify_value callable below and src/composables/useEducationKB.js).
+    A cached type of "other" is as useful as a positive answer — it stops the
+    LLM being asked about that value ever again."""
+    try:
+        return kb.build_overlay([d.to_dict() or {} for d in db.collection("kb_entries").stream()])
+    except Exception as e:
+        # A missing/unreadable overlay must never take down an import — the
+        # seeded KB alone still classifies the overwhelming majority.
+        print(f"load_kb_entries: falling back to seed-only KB: {e}")
+        return {}
+
+
+def kb_match(raw, kind, valid_canon_to_display, aliases, kb_overlay):
+    """match_value(), plus the knowledge base as a second chance.
+
+    The school's own configured values win first (a school that calls it
+    'Eng' in its live Subjects list should keep seeing 'Eng'). Only when that
+    finds nothing does the KB get consulted, to turn the raw value into its
+    canonical form ('Eng' -> 'English') and retry the match — which is what
+    lets an import land on a school's configured 'English' with no learned
+    alias and no fuzzy guesswork.
+
+    Returns match_value's own (status, display, extra) triple, so callers
+    treat a KB-resolved hit exactly like any other auto-fix."""
+    status, display, extra = match_value(raw, kind, valid_canon_to_display, aliases)
+    if status == "auto":
+        return status, display, extra
+
+    expect = kb.SUBJECT if kind == "subject" else kb.SECTION
+    result = kb.classify(raw, expect=expect, overlay=kb_overlay)
+    canonical = result["canonical"]
+    if not canonical or result["confidence"] < kb.HIGH_CONFIDENCE:
+        return status, display, extra
+    if result["type"] not in (kb.SUBJECT, kb.COSCHOLASTIC, kb.SECTION):
+        return status, display, extra
+
+    retry_status, retry_display, _ = match_value(canonical, kind, valid_canon_to_display, aliases)
+    if retry_status == "auto":
+        return "auto", retry_display, "kb_canonical_match"
+    # The KB knows what the value means but this school hasn't configured it —
+    # keep the weaker original outcome rather than inventing a value the
+    # school's setup can't accept. Structure inference (Part C) is where a
+    # missing subject gets proposed for real.
+    return status, display, extra
+
+
 def load_import_aliases(db):
     """Global alias map (top-level `import_aliases` collection, not scoped to
     any one school) — {(type, canonical_from): display_to}. An exact hit here
@@ -332,7 +386,7 @@ def clean_students_rows(rows, cfg, provenance=None):
         section_raw = d.get("section", "")
         if section_raw.strip():
             candidates = cfg["sections_by_grade"].get(grade, {})
-            status, display, extra = match_value(section_raw, "class", candidates, cfg["aliases"])
+            status, display, extra = kb_match(section_raw, "class", candidates, cfg["aliases"], cfg["kb_overlay"])
             if status == "auto":
                 if display != section_raw.strip():
                     fixes.append({"field": "section", "original": section_raw, "fixed": display, "rule": extra})
@@ -395,7 +449,7 @@ def clean_teachers_rows(rows, cfg, provenance=None):
             section_raw = d.get("section", "")
             if section_raw.strip():
                 candidates = cfg["sections_by_grade"].get(grade, {})
-                status, display, extra = match_value(section_raw, "class", candidates, cfg["aliases"])
+                status, display, extra = kb_match(section_raw, "class", candidates, cfg["aliases"], cfg["kb_overlay"])
                 if status == "auto":
                     if display != section_raw.strip():
                         fixes.append({"field": "section", "original": section_raw, "fixed": display, "rule": extra})
@@ -408,7 +462,7 @@ def clean_teachers_rows(rows, cfg, provenance=None):
             subject_clean = subject_raw.rstrip("?").strip()
             if subject_clean:
                 candidates = cfg["subjects_by_grade_canon"].get(grade, {})
-                status, display, extra = match_value(subject_clean, "subject", candidates, cfg["aliases"])
+                status, display, extra = kb_match(subject_clean, "subject", candidates, cfg["aliases"], cfg["kb_overlay"])
                 if status == "auto":
                     fixed_value = display + ("?" if subject_ambiguous else "")
                     if fixed_value != subject_raw:
@@ -419,6 +473,50 @@ def clean_teachers_rows(rows, cfg, provenance=None):
 
             out.append({"data": d, "fixes": fixes, "suggestions": suggestions, "flags": [], "provenance": prov})
     return out
+
+def clean_subjects_rows(rows, cfg, provenance=None):
+    """Stage 1 + 2 for subjects. The one entity where the knowledge base does
+    the whole job on its own: it decides whether each row is a scholastic
+    subject or a co-scholastic area (the `area` column schools leave blank
+    more often than not) and normalizes the name to its canonical form.
+
+    Both are auto-fixes only at HIGH confidence. A medium-confidence name
+    becomes a suggestion for review; an unknown one is left exactly as typed
+    with no `area` invented — an unrecognized activity name is precisely what
+    the classify_value LLM fallback and a human confirmation exist for, and
+    guessing 'Scholastic' here would quietly mis-file it."""
+    out = []
+    for i, r in enumerate(rows):
+        d = dict(r)
+        fixes, suggestions, flags = [], [], []
+
+        name_raw = (d.get("subject") or "").strip()
+        if name_raw:
+            result = kb.classify(name_raw, overlay=cfg["kb_overlay"])
+            canonical = result["canonical"]
+            is_entity = result["type"] in (kb.SUBJECT, kb.COSCHOLASTIC)
+
+            if is_entity and result["confidence"] >= kb.HIGH_CONFIDENCE:
+                if canonical != name_raw:
+                    fixes.append({"field": "subject", "original": name_raw, "fixed": canonical,
+                                   "rule": f"kb_{result['source']}"})
+                    d["subject"] = canonical
+                area = "Scholastic" if result["type"] == kb.SUBJECT else "Co-Scholastic"
+                if not (d.get("area") or "").strip():
+                    fixes.append({"field": "area", "original": "", "fixed": area, "rule": "kb_area"})
+                    d["area"] = area
+            elif is_entity and result["confidence"] >= kb.MEDIUM_CONFIDENCE:
+                suggestions.append({"field": "subject", "original": name_raw, "suggested": canonical,
+                                     "similarity": round(result["confidence"], 2)})
+            elif not (d.get("area") or "").strip():
+                flags.append({"field": "area", "severity": "warning",
+                               "message": f"'{name_raw}' is not in the education knowledge base — "
+                                          "set Scholastic/Co-Scholastic manually, or classify it in School Setup"})
+
+        prov = provenance[i] if provenance else None
+        out.append({"data": d, "fixes": fixes, "suggestions": suggestions, "flags": flags, "provenance": prov})
+    return out
+
 
 # -------------------------------------------------------------- validate ----
 def parse_dob(d):
@@ -591,6 +689,7 @@ def load_school_config(db, school_id, entity):
                                for match_value() in clean_teachers_rows
       core_subjects_by_grade  unchanged
       aliases                 global import_aliases map, see load_import_aliases
+      kb_overlay              learned education-KB overlay, see load_kb_entries
     """
     classes_ref = db.collection("schools").document(school_id).collection("classes")
     classes = [{"id": d.id, **d.to_dict()} for d in classes_ref.stream()]
@@ -631,6 +730,7 @@ def load_school_config(db, school_id, entity):
         "subjects_by_grade_canon": subjects_by_grade_canon,
         "core_subjects_by_grade": core_subjects_by_grade,
         "aliases": load_import_aliases(db),
+        "kb_overlay": load_kb_entries(db),
     }
 
 # ----------------------------------------------------- per-file extraction -
@@ -837,16 +937,20 @@ def process_import(req: https_fn.CallableRequest):
         # validation, on every parsed row — see the "cleaning" section above.
         # Teachers can come out LONGER than raw_rows: a multi-grade cell
         # ('Garde 7,10') expands into one row per grade. Students/teachers
-        # get real cleaning; subjects/assessments pass through unchanged
-        # (nothing in their schema needs config-matching against themselves).
+        # match against the school's own config; subjects are classified
+        # against the education knowledge base (scholastic vs co-scholastic);
+        # assessments pass through unchanged (nothing in their schema needs
+        # matching against anything).
         if entity == "students":
             cleaned = clean_students_rows(raw_rows, cfg, provenance)
         elif entity == "teachers":
             cleaned = clean_teachers_rows(raw_rows, cfg, provenance)
+        elif entity == "subjects":
+            cleaned = clean_subjects_rows(raw_rows, cfg, provenance)
         else:
-            # No expansion for subjects/assessments (1 input row -> 1 output
-            # row), so provenance stays index-aligned with raw_rows exactly
-            # like the students path.
+            # No expansion for assessments (1 input row -> 1 output row), so
+            # provenance stays index-aligned with raw_rows exactly like the
+            # students path.
             cleaned = [{"data": r, "fixes": [], "suggestions": [], "flags": [],
                         "provenance": provenance[i] if i < len(provenance) else None}
                        for i, r in enumerate(raw_rows)]
@@ -935,6 +1039,108 @@ def process_import(req: https_fn.CallableRequest):
         if job_ref is not None:
             job_ref.set({"status": "failed", "error": str(e)}, merge=True)
         raise https_fn.HttpsError(https_fn.FunctionsErrorCode.INTERNAL, str(e))
+
+
+# ------------------------------------------------------- classify_value -----
+# LAST RESORT ONLY. The deterministic knowledge base (education_kb.py) answers
+# the overwhelming majority of values for free; this callable exists purely
+# for the ones it has never seen, and the frontend must only reach it after
+# classify() has come back `unknown` (see src/composables/useEducationKB.js).
+#
+# Three hard rules, all enforced here rather than trusted to the caller:
+#   - It is asked ONCE per value: the answer is cached in `kb_entries` on
+#     confirmation, and a cached entry short-circuits classify() forever after.
+#   - It NEVER writes to the KB. It returns a SUGGESTION. Only a human
+#     accepting that suggestion writes the entry (client-side, recording who
+#     confirmed it), so a hallucinated answer can't silently become canon.
+#   - A refusal/garbage/unavailable model degrades to type "unknown" with a
+#     reason, never to a guess.
+CLASSIFY_PROMPT = (
+    "You are classifying a single value taken from an Indian school's own data "
+    "files, for a report-card platform.\n"
+    "Value: {value}\n"
+    "{context}"
+    "Answer with ONE of these types:\n"
+    '  "subject"       — a scholastic/academic subject (English, Mathematics, Science...)\n'
+    '  "coscholastic"  — a co-scholastic area or activity (Art & Craft, Yoga, Physical Education...)\n'
+    '  "grade"         — a class/grade level (Nursery, LKG, 1..12)\n'
+    '  "section"       — a section/division name within a grade (A, Rose, Champion...)\n'
+    '  "other"         — none of the above (a header label, a teacher name, a stray note...)\n'
+    'Also give the canonical form you would file it under (for "other", use "").\n'
+    "Return ONLY JSON: {{\"type\": \"...\", \"canonical\": \"...\", \"reason\": \"one short sentence\"}}"
+)
+
+
+def _llm_classify(value, context=""):
+    """Returns {type, canonical, reason} or None when no model is reachable."""
+    prompt = CLASSIFY_PROMPT.format(value=value, context=context)
+    blocks = [{"type": "text", "text": prompt}]
+    caller = call_openai_compatible if os.environ.get("OPENAI_API_KEY") else call_anthropic
+    raw = caller(blocks, "Classify the value above.")
+    raw = re.sub(r"^```(json)?|```$", "", (raw or "").strip(), flags=re.M).strip()
+    data = json.loads(raw)
+    kind = str(data.get("type") or "").strip().lower()
+    if kind not in kb.ENTITY_TYPES + (kb.OTHER,):
+        return None
+    return {
+        "type": kind,
+        "canonical": str(data.get("canonical") or "").strip(),
+        "reason": str(data.get("reason") or "").strip()[:300],
+    }
+
+
+@https_fn.on_call(region="asia-south1", memory=options.MemoryOption.MB_512,
+                   timeout_sec=60, max_instances=3, secrets=["OPENAI_API_KEY"])
+def classify_value(req: https_fn.CallableRequest):
+    """Classify one unrecognized value. Request: {value, context?}.
+
+    Response: {source, type, canonical, confidence, reason}. `source` is
+    "kb" when the deterministic layer actually knew the answer after all
+    (the client raced a freshly-learned entry, or passed a value it hadn't
+    checked), "llm" for a model suggestion, "unavailable" when no model
+    answered. NOTHING here writes to Firestore.
+    """
+    _require_ops_admin(req)
+
+    data = req.data or {}
+    value = (data.get("value") or "").strip()
+    context = (data.get("context") or "").strip()
+    if not value:
+        raise https_fn.HttpsError(
+            https_fn.FunctionsErrorCode.INVALID_ARGUMENT, "Missing value")
+
+    try:
+        db = firestore.client()
+        overlay = load_kb_entries(db)
+    except Exception as e:
+        print(f"classify_value: KB overlay unavailable, using seed only: {e}")
+        overlay = {}
+
+    # Never spend a model call on something already known — the client is
+    # supposed to check first, but this is the guarantee, not the hope.
+    known = kb.classify(value, overlay=overlay)
+    if known["type"] != kb.UNKNOWN and known["confidence"] >= kb.MEDIUM_CONFIDENCE:
+        return {"source": "kb", "type": known["type"], "canonical": known["canonical"],
+                "confidence": known["confidence"],
+                "reason": f"Already known to the knowledge base ({known['source']} match)."}
+
+    ctx = f"Context: it appeared in {context}.\n" if context else ""
+    try:
+        suggestion = _llm_classify(value, ctx)
+    except Exception as e:
+        print(f"classify_value: LLM call failed for {value!r}: {e}")
+        suggestion = None
+
+    if not suggestion:
+        return {"source": "unavailable", "type": kb.UNKNOWN, "canonical": "",
+                "confidence": 0.0,
+                "reason": "No classification available — set the type manually."}
+
+    return {"source": "llm", "type": suggestion["type"],
+            "canonical": suggestion["canonical"] or value,
+            # Deliberately below HIGH_CONFIDENCE: a model answer is a
+            # suggestion awaiting human confirmation, never an auto-apply.
+            "confidence": 0.5, "reason": suggestion["reason"]}
 
 
 # --------------------------------------------------------------- commit -----

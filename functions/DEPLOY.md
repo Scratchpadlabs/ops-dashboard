@@ -52,6 +52,57 @@ differs from `https://asia-south1-clarified-1501.cloudfunctions.net/generate_pen
 
 ---
 
+## classify_value (NEW — education knowledge base LLM fallback)
+
+Third callable in the `generate_import` source folder. Classifies ONE
+unrecognized value — "is this a scholastic subject, a co-scholastic area, a
+grade, a section, or something else?" — for the Smart School Setup knowledge
+base.
+
+It is the LAST rung of a four-rung ladder, and the other three cost nothing:
+
+1. `education_kb.py` / `src/utils/educationKB.js` answer deterministically
+   from the shared seed (`education_kb.json`) plus the learned `kb_entries`
+   overlay. This handles the overwhelming majority.
+2. Only an `unknown` result reaches this function, once per value.
+3. The answer is returned as a **suggestion**. This function NEVER writes to
+   Firestore.
+4. A human confirming that suggestion writes `kb_entries/{canonicalValue}`
+   client-side — and from then on rung 1 answers it forever. Confirmed
+   "other" answers are cached too, precisely so the model is never asked
+   about that value again.
+
+Shares the `OPENAI_API_KEY` secret and provider switch with `process_import`
+(Anthropic works as a fallback provider if `ANTHROPIC_API_KEY` is bound
+instead). If no model is reachable it returns `type: "unknown"` with a reason
+rather than a guess — the UI then just asks the human to pick the type.
+
+### Deploy:
+```
+cd functions/generate_import
+
+gcloud functions deploy classify_value \
+  --gen2 --runtime python312 --region asia-south1 \
+  --source . --entry-point classify_value \
+  --trigger-http --allow-unauthenticated --project clarified-1501 \
+  --memory 512MB --timeout 60s --max-instances 3 \
+  --set-secrets OPENAI_API_KEY=OPENAI_API_KEY:latest \
+  --set-env-vars MODEL=gpt-4o-mini
+```
+
+**`education_kb.json` must be deployed with this folder** — it is the single
+seed file the browser bundle imports too (`src/utils/educationKB.js`), which
+is exactly why it lives here rather than in `src/`: `--source .` picks it up
+automatically, so the deployed parser and the shipped frontend can never
+disagree about what a subject is. Redeploy `process_import` as well after
+editing it, since its cleaning stage reads the same file.
+
+Firestore: `kb_entries` is a new top-level collection (ops-admin read/write,
+see firestore.rules). No IAM changes — the runtime service account's existing
+`roles/editor` already covers it.
+
+---
+
 ## process_import + commit_import (NEW)
 
 The two halves of the School Material Import pipeline, both Firebase

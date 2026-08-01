@@ -126,6 +126,18 @@ export async function generateOnboardingPDF(school, activeYear) {
 const processImportCallable = httpsCallable(functions, 'process_import', { timeout: 540_000 })
 const commitImportCallable = httpsCallable(functions, 'commit_import', { timeout: 120_000 })
 
+// Education-KB LLM fallback — LAST RESORT, one call per never-before-seen
+// value. Callers must check the deterministic KB first (useEducationKB.js
+// does); the function itself re-checks and short-circuits rather than
+// spending a model call on something already known. It returns a SUGGESTION
+// and never writes to kb_entries — only a human confirming does that.
+const classifyValueCallable = httpsCallable(functions, 'classify_value', { timeout: 60_000 })
+
+export async function classifyValueRemote({ value, context }) {
+  const res = await classifyValueCallable({ value, context })
+  return res.data
+}
+
 export async function startProcessImport({ schoolId, jobId, entity, files }) {
   const res = await processImportCallable({ schoolId, jobId, entity, files })
   return res.data

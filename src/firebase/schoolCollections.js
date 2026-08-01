@@ -28,3 +28,11 @@ export const stagingImportRowsCollection = (jobId) => collection(db, 'staging_im
 // time — see functions/generate_import/main.py's load_import_aliases.
 export const importAliasesCollection = () => collection(db, 'import_aliases')
 export const importAliasDoc = (id) => doc(db, 'import_aliases', id)
+
+// Learned overlay for the education knowledge base — global, same
+// self-learning pattern as import_aliases but for MEANING (is this value a
+// subject, a co-scholastic area, a grade, a section?) rather than spelling.
+// Seeded knowledge lives in code (functions/generate_import/education_kb.json);
+// only human-confirmed additions land here. Doc id is the canonicalized value.
+export const kbEntriesCollection = () => collection(db, 'kb_entries')
+export const kbEntryDoc = (id) => doc(db, 'kb_entries', id)
