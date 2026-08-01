@@ -6,9 +6,16 @@
   >
     <div class="space-y-4 pt-1">
       <div class="text-sm text-slate-600">
-        <b>{{ pairs.length }}</b> class-survey pair{{ pairs.length !== 1 ? 's' : '' }} selected —
-        {{ surveyIds.length }} survey{{ surveyIds.length !== 1 ? 's' : '' }} across
-        {{ classIds.length }} class{{ classIds.length !== 1 ? 'es' : '' }}.
+        <template v-if="isStudentScope">
+          <b>{{ studentIds.length }}</b> specific student{{ studentIds.length !== 1 ? 's' : '' }}
+          in {{ studentClassId }} — {{ surveyIds.length }} survey{{ surveyIds.length !== 1 ? 's' : '' }}.
+          The rest of the class is not touched.
+        </template>
+        <template v-else>
+          <b>{{ pairs.length }}</b> class-survey pair{{ pairs.length !== 1 ? 's' : '' }} selected —
+          {{ surveyIds.length }} survey{{ surveyIds.length !== 1 ? 's' : '' }} across
+          {{ classIds.length }} class{{ classIds.length !== 1 ? 'es' : '' }}.
+        </template>
       </div>
 
       <!-- A selection is a scatter of cells, not necessarily a rectangle. The
@@ -24,11 +31,11 @@
         <div class="text-sm text-slate-800">
           <template v-if="mode === 'assign'">
             This will assign <b>{{ surveyLabels }}</b> to <b>{{ preview.will_change }}</b>
-            student record{{ preview.will_change !== 1 ? 's' : '' }} across {{ classIds.length }} class(es).
+            student record{{ preview.will_change !== 1 ? 's' : '' }}{{ isStudentScope ? '' : ` across ${classIds.length} class(es)` }}.
           </template>
           <template v-else>
             This will remove <b>{{ surveyLabels }}</b> from <b>{{ preview.will_change }}</b>
-            student record{{ preview.will_change !== 1 ? 's' : '' }} across {{ classIds.length }} class(es).
+            student record{{ preview.will_change !== 1 ? 's' : '' }}{{ isStudentScope ? '' : ` across ${classIds.length} class(es)` }}.
           </template>
         </div>
         <div class="text-xs text-slate-500 mt-1 space-y-0.5">
@@ -112,6 +119,11 @@ const props = defineProps({
   mode: { type: String, default: 'assign' },
   pairs: { type: Array, default: () => [] },      // ["classId::surveyId", ...]
   surveys: { type: Array, default: () => [] },
+  // Student-scope mode: when set, the run targets these specific students
+  // instead of whole classes. Same preview + write path either way.
+  studentIds: { type: Array, default: () => [] },
+  studentSurveyIds: { type: Array, default: () => [] },
+  studentClassId: { type: String, default: null },
 })
 const emit = defineEmits(['update:visible', 'applied'])
 
@@ -126,9 +138,18 @@ const error = ref('')
 const runDoc = ref(null)
 let unsubRun = null
 
-const classIds = computed(() => [...new Set(props.pairs.map(p => p.split('::')[0]))])
-const surveyIds = computed(() => [...new Set(props.pairs.map(p => p.split('::')[1]))])
-const isRectangle = computed(() => props.pairs.length === classIds.value.length * surveyIds.value.length)
+const isStudentScope = computed(() => props.studentIds.length > 0)
+const classIds = computed(() => isStudentScope.value
+  ? (props.studentClassId ? [props.studentClassId] : [])
+  : [...new Set(props.pairs.map(p => p.split('::')[0]))])
+const surveyIds = computed(() => isStudentScope.value
+  ? props.studentSurveyIds
+  : [...new Set(props.pairs.map(p => p.split('::')[1]))])
+const scopePayload = computed(() => isStudentScope.value
+  ? { type: 'ids', ids: props.studentIds }
+  : { type: 'classes', classIds: classIds.value })
+const isRectangle = computed(() => isStudentScope.value
+  || props.pairs.length === classIds.value.length * surveyIds.value.length)
 const surveyLabels = computed(() => {
   const labels = surveyIds.value.map(id => props.surveys.find(s => s.id === id)?.label || id)
   return labels.length <= 3 ? labels.join(', ') : `${labels.slice(0, 3).join(', ')} +${labels.length - 3} more`
@@ -141,7 +162,7 @@ async function runPreview() {
     preview.value = await previewRemote({
       schoolId: props.schoolId, surveyIds: surveyIds.value,
       audience: 'students', mode: props.mode,
-      scope: { type: 'classes', classIds: classIds.value },
+      scope: scopePayload.value,
     })
   } catch (e) {
     error.value = e.message || 'Could not build the preview.'
@@ -159,7 +180,7 @@ async function runApply() {
     const result = await applyRemote({
       schoolId: props.schoolId, runId, surveyIds: surveyIds.value,
       audience: 'students', mode: props.mode,
-      scope: { type: 'classes', classIds: classIds.value },
+      scope: scopePayload.value,
     })
     done.value = true
     toast.add({

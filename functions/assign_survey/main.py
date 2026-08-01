@@ -75,7 +75,7 @@ from firebase_functions import https_fn, options
 from survey_rules import (
     DEFAULT_INBOX_FIELD, is_inactive, is_real_survey, student_status,
     plan_targets, plan_multi, filter_scope, build_matrix, in_active_window,
-    student_sort_key,
+    student_sort_key, resolve_class_key, class_field_report,
 )
 from survey_reports import (
     class_wise_rows, survey_wise_rows, cumulative_rows, rows_to_csv, report_header,
@@ -407,6 +407,11 @@ def survey_matrix(req: https_fn.CallableRequest):
         "totals": matrix["totals"],
         "active_student_count": len(students),
         "unresolved_response_surveys": unresolved,
+        # Diagnostics: which field each student's class was actually read
+        # from, and the keys present on any doc where none was found. This
+        # is what makes a future "everything is (no class)" answerable from
+        # the response rather than by inspecting Firestore by hand.
+        "class_fields": class_field_report(students),
         "active_window_only": active_window_only,
         "generated_at": firestore.SERVER_TIMESTAMP,
     }
@@ -447,18 +452,39 @@ def class_detail(req: https_fn.CallableRequest):
     db = firestore.client()
     school_ref = db.collection("schools").document(school_id)
 
-    students = []
-    for d in school_ref.collection("students").where("classId", "==", class_id).stream():
-        doc = d.to_dict() or {}
-        if str(doc.get("type") or "student") != "student" or is_inactive(doc):
-            continue
-        students.append({
-            "id": d.id,
-            "name": doc.get("name") or d.id,
+    def shape(doc_id, doc, class_key):
+        return {
+            "id": doc_id,
+            "name": doc.get("name") or doc_id,
             "rollNo": doc.get("rollNo") or "",
-            "classId": doc.get("classId") or "",
+            "classId": class_key,
             inbox_field: doc.get(inbox_field) or [],
-        })
+        }
+
+    # Fast path: an indexed equality query on the conventional field. It is
+    # only an optimization — students may key their class off currentClassId
+    # or grade+section instead, so an empty result falls through to a scan
+    # resolved exactly the way the matrix groups. Correctness never depends
+    # on guessing the field name right.
+    students = []
+    try:
+        for d in school_ref.collection("students").where("classId", "==", class_id).stream():
+            doc = d.to_dict() or {}
+            if str(doc.get("type") or "student") != "student" or is_inactive(doc):
+                continue
+            students.append(shape(d.id, doc, class_id))
+    except Exception as e:
+        print(f"class_detail: indexed lookup failed, falling back to scan: {e}")
+
+    if not students:
+        for d in school_ref.collection("students").stream():
+            doc = d.to_dict() or {}
+            if str(doc.get("type") or "student") != "student" or is_inactive(doc):
+                continue
+            key, _ = resolve_class_key(doc)
+            if key == class_id:
+                students.append(shape(d.id, doc, key))
+
     students.sort(key=student_sort_key)
 
     survey_ids = [s["id"] for s in _load_real_surveys(school_ref)]

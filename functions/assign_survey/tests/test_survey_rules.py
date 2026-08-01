@@ -366,3 +366,87 @@ def test_active_window_excludes_future_and_expired():
     now = _TS(50)
     assert not in_active_window({"startAt": _TS(80)}, now)
     assert not in_active_window({"expiresAt": _TS(20)}, now)
+
+
+# ═════════════════ class key resolution (the "(no class)" bug) ═════════════
+from survey_rules import (  # noqa: E402
+    resolve_class_key, class_field_report, NO_CLASS,
+)
+
+
+def test_classid_is_used_when_present():
+    assert resolve_class_key({"classId": "I_Diamond"}) == ("I_Diamond", "classId")
+
+
+def test_current_class_id_is_honoured():
+    """This repo's OWN import pipeline writes currentClassId, not classId
+    (src/composables/useImport.js buildStudentsPlan). Reading only classId
+    put every such student into '(no class)'."""
+    assert resolve_class_key({"currentClassId": "II_Ruby"}) == ("II_Ruby", "currentClassId")
+
+
+def test_snake_case_variant_is_honoured():
+    assert resolve_class_key({"class_id": "III_Pearl"}) == ("III_Pearl", "class_id")
+
+
+def test_grade_and_section_compose_into_one_key():
+    """Both conventions must land on the SAME group key, or a school using
+    separate fields renders as a different set of rows."""
+    assert resolve_class_key({"grade": "I", "section": "Diamond"}) == ("I_Diamond", "grade")
+    assert resolve_class_key({"clazz": "II", "sec": "Ruby"}) == ("II_Ruby", "clazz")
+
+
+def test_grade_without_a_section_still_groups_by_grade():
+    """A partially-populated roster is more useful grouped by grade than
+    dumped whole into '(no class)'."""
+    assert resolve_class_key({"grade": "V"}) == ("V", "grade")
+
+
+def test_a_direct_class_id_beats_grade_and_section():
+    student = {"classId": "I_Diamond", "grade": "II", "section": "Ruby"}
+    assert resolve_class_key(student)[0] == "I_Diamond"
+
+
+def test_no_class_only_when_genuinely_absent():
+    assert resolve_class_key({"name": "A"}) == (NO_CLASS, None)
+    assert resolve_class_key({"classId": ""}) == (NO_CLASS, None)
+    assert resolve_class_key({"classId": "   "}) == (NO_CLASS, None)
+    assert resolve_class_key(None) == (NO_CLASS, None)
+
+
+def test_non_string_class_values_are_coerced_not_dropped():
+    assert resolve_class_key({"classId": 7})[0] == "7"
+
+
+def test_matrix_groups_a_mixed_school_correctly():
+    """The regression this whole resolver exists for: three students, three
+    different field shapes, one class each — none should be '(no class)'."""
+    roster = [
+        {"id": "a", "classId": "I_Diamond", FIELD: []},
+        {"id": "b", "currentClassId": "I_Diamond", FIELD: []},
+        {"id": "c", "grade": "I", "section": "Diamond", FIELD: []},
+    ]
+    m = build_matrix(roster, ["AAM1-mid"], {})
+    assert [r["class_id"] for r in m["rows"]] == ["I_Diamond"]
+    assert m["rows"][0]["student_count"] == 3
+
+
+def test_class_scope_matches_students_of_every_shape():
+    """filter_scope is the WRITE path — if it reads only classId, assigning
+    by class silently writes to zero students for affected schools."""
+    docs = [
+        ("a", {"type": "student", "classId": "I_Diamond"}),
+        ("b", {"type": "student", "currentClassId": "I_Diamond"}),
+        ("c", {"type": "student", "grade": "I", "section": "Diamond"}),
+        ("d", {"type": "student", "classId": "II_Ruby"}),
+    ]
+    out = filter_scope(docs, {"type": "classes", "classIds": ["I_Diamond"]}, "students")
+    assert [i for i, _ in out] == ["a", "b", "c"]
+
+
+def test_class_field_report_names_the_field_actually_used():
+    report = class_field_report([
+        {"classId": "I_A"}, {"classId": "I_B"}, {"currentClassId": "II_A"}, {"name": "orphan"},
+    ])
+    assert report["sources"] == {"classId": 2, "currentClassId": 1, NO_CLASS: 1}
+    assert report["unresolved_sample_fields"] == [["name"]]

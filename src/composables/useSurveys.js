@@ -88,7 +88,15 @@ export function useSurveys() {
 
   async function loadSchools() {
     const snap = await getDocs(query(rootSchoolsCollection(), orderBy('name'), limit(500)))
-    schools.value = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(s => s.isActive !== false)
+    // `...d.data()` must come FIRST. School docs carry their own `id` field
+    // (School Setup writes one), and spreading data() after `id: d.id` let
+    // that stored value shadow the real Firestore doc id — so the picker
+    // showed one school's name while every server call targeted whatever
+    // string the `id` field happened to hold. The doc id is the only thing
+    // that addresses a subcollection, so it always wins.
+    schools.value = snap.docs
+      .map(d => ({ ...d.data(), id: d.id }))
+      .filter(s => s.isActive !== false)
     return schools.value
   }
 
@@ -127,9 +135,25 @@ export function useSurveys() {
     }
   }
 
+  /**
+   * Assignment run history.
+   *
+   * orderBy('run_at') silently drops any doc missing that field, so a failed
+   * ordering would look identical to "no runs yet". The unordered fallback
+   * exists to tell those two apart: if it returns rows the ordered query
+   * didn't, the problem is the query, not the data.
+   */
   async function loadRuns(schoolId) {
-    const snap = await getDocs(query(surveyAssignmentsCollection(schoolId), orderBy('run_at', 'desc'), limit(25)))
-    return snap.docs.map(d => ({ id: d.id, ...d.data() }))
+    const shape = (snap) => snap.docs.map(d => ({ ...d.data(), id: d.id }))
+    try {
+      const snap = await getDocs(query(
+        surveyAssignmentsCollection(schoolId), orderBy('run_at', 'desc'), limit(25)))
+      if (snap.size) return shape(snap)
+    } catch (e) {
+      console.error('survey run history: ordered query failed, retrying unordered', e)
+    }
+    const snap = await getDocs(query(surveyAssignmentsCollection(schoolId), limit(25)))
+    return shape(snap).sort((a, b) => (b.run_at?.seconds || 0) - (a.run_at?.seconds || 0))
   }
 
   // Preview and apply are the same server call with dryRun flipped, so the

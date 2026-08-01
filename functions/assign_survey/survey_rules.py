@@ -114,8 +114,12 @@ def filter_scope(docs, scope, audience):
     scope_type = (scope or {}).get("type") or "school"
 
     if scope_type == "classes":
+        # Resolved the same way the matrix groups — a school whose students
+        # key their class off currentClassId or grade+section must still be
+        # assignable BY CLASS. Reading a bare `classId` here matched nothing
+        # for those schools and wrote silently to zero students.
         wanted = set((scope or {}).get("classIds") or [])
-        docs = [(i, d) for i, d in docs if str((d or {}).get("classId") or "") in wanted]
+        docs = [(i, d) for i, d in docs if resolve_class_key(d)[0] in wanted]
     elif scope_type == "ids":
         wanted = set((scope or {}).get("ids") or [])
         docs = [(i, d) for i, d in docs if i in wanted]
@@ -212,7 +216,8 @@ def build_matrix(students, survey_ids, responders_by_survey, inbox_field=DEFAULT
     """
     by_class = {}
     for s in students:
-        by_class.setdefault(s.get("classId") or "(no class)", []).append(s)
+        key, _ = resolve_class_key(s)
+        by_class.setdefault(key, []).append(s)
 
     rows = []
     totals = {sid: {"assigned": 0, "responded": 0, "total": 0} for sid in survey_ids}
@@ -280,3 +285,73 @@ def in_active_window(survey, now):
     if end is not None and now > end:
         return False
     return True
+
+
+# ──────────────────────── class key resolution (bugfix) ────────────────────
+# Students do NOT all carry `classId`. Verified shapes in this codebase:
+#   - classId          the shape the survey spec documents
+#   - currentClassId   what THIS repo's own import pipeline writes
+#                      (src/composables/useImport.js buildStudentsPlan)
+#   - grade + section  as separate fields, needing composition
+# Reading only `classId` put every student of an affected school into
+# "(no class)", which is what this resolver fixes. "(no class)" is now
+# reserved for a student that genuinely carries none of these.
+CLASS_ID_FIELDS = ("classId", "currentClassId", "class_id", "classID", "classid")
+GRADE_FIELDS = ("grade", "clazz", "standard", "std", "class")
+SECTION_FIELDS = ("section", "sec", "division", "div")
+
+NO_CLASS = "(no class)"
+
+
+def _first_nonempty(doc, fields):
+    for f in fields:
+        v = doc.get(f)
+        if v is None:
+            continue
+        v = str(v).strip()
+        if v:
+            return v, f
+    return None, None
+
+
+def resolve_class_key(student):
+    """(class_key, source_field) for one student doc.
+
+    A direct class-id field wins. Failing that, a grade+section pair is
+    composed into the same "GRADE_SECTION" shape the class ids use, so both
+    conventions land on ONE group key and a school using either renders
+    identically. A grade with no section still groups by grade rather than
+    collapsing to "(no class)" — a partially-populated roster is far more
+    useful grouped by grade than dumped in one bucket.
+    """
+    if not isinstance(student, dict):
+        return NO_CLASS, None
+
+    value, field = _first_nonempty(student, CLASS_ID_FIELDS)
+    if value:
+        return value, field
+
+    grade, gfield = _first_nonempty(student, GRADE_FIELDS)
+    if grade:
+        section, _ = _first_nonempty(student, SECTION_FIELDS)
+        return (f"{grade}_{section}" if section else grade), gfield
+
+    return NO_CLASS, None
+
+
+def class_field_report(students):
+    """Which field each student's class came from, as counts.
+
+    Returned by survey_matrix so a future "everything is (no class)" is
+    diagnosable from the response itself instead of by guesswork: it names
+    the field actually used, and lists the keys present on unresolved docs.
+    """
+    sources = {}
+    unresolved_samples = []
+    for s in students:
+        _, field = resolve_class_key(s)
+        key = field or NO_CLASS
+        sources[key] = sources.get(key, 0) + 1
+        if field is None and len(unresolved_samples) < 5:
+            unresolved_samples.append(sorted(k for k in (s or {}) if k != "id")[:25])
+    return {"sources": sources, "unresolved_sample_fields": unresolved_samples}

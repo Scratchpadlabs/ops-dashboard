@@ -100,6 +100,7 @@
               :responders="drilldownResponders"
               :status-filter="filters.status"
               @changed="onDrilldownChanged"
+              @bulk="onStudentBulk"
             />
           </template>
         </SurveyMatrix>
@@ -145,7 +146,12 @@
               </template>
             </Column>
           </DataTable>
-          <div v-else class="text-center text-sm text-slate-400 py-8">No assignment runs yet for this school</div>
+          <div v-else-if="runsError" class="text-center text-sm text-red-500 py-8">
+            <i class="pi pi-exclamation-triangle text-xs mr-1"></i>{{ runsError }}
+          </div>
+          <div v-else class="text-center text-sm text-slate-400 py-8">
+            No assignment runs yet for this school — the log is written by the Cloud Function on each run.
+          </div>
         </div>
       </template>
     </template>
@@ -171,6 +177,9 @@
       :mode="actionMode"
       :pairs="[...selection]"
       :surveys="surveys"
+      :student-ids="studentScope.studentIds"
+      :student-survey-ids="studentScope.surveyIds"
+      :student-class-id="studentScope.classId"
       @applied="onApplied"
     />
 
@@ -216,6 +225,7 @@ const {
 const schoolId = ref(null)
 const loadingSchools = ref(false)
 const loadingRuns = ref(false)
+const runsError = ref('')
 const runs = ref([])
 const metric = ref('all')
 const selection = ref(new Set())
@@ -223,6 +233,9 @@ const expandedClass = ref(null)
 const drilldownResponders = ref({})
 const actionVisible = ref(false)
 const actionMode = ref('assign')
+// Set when the action comes from the drill-down's student selection rather
+// than from matrix cells — the dialog switches to an ids scope.
+const studentScope = ref({ studentIds: [], surveyIds: [], classId: null })
 const reportVisible = ref(false)
 
 const filters = reactive({ classIds: [], grades: [], status: 'all', activeWindowOnly: false })
@@ -323,12 +336,28 @@ async function onToggleExpand(classId) {
 }
 
 function openAction(mode) {
+  studentScope.value = { studentIds: [], surveyIds: [], classId: null }
+  actionMode.value = mode
+  actionVisible.value = true
+}
+
+// Bulk action on specific students inside an expanded class.
+function onStudentBulk({ mode, studentIds, surveyIds, classId }) {
+  studentScope.value = { studentIds, surveyIds, classId }
   actionMode.value = mode
   actionVisible.value = true
 }
 
 async function onApplied() {
   selection.value = new Set()
+  studentScope.value = { studentIds: [], surveyIds: [], classId: null }
+  // Re-read the open class so its ticks reflect what was just written.
+  if (expandedClass.value) {
+    try {
+      const detail = await loadClassDetail(schoolId.value, expandedClass.value)
+      drilldownResponders.value = detail.responders
+    } catch { /* the matrix reload below is the source of truth anyway */ }
+  }
   await Promise.all([reload(true), refreshRuns()])
 }
 async function onDrilldownChanged() {
@@ -347,11 +376,15 @@ async function reload(force = false) {
 async function refreshRuns() {
   if (!schoolId.value) return
   loadingRuns.value = true
+  runsError.value = ''
   try {
     runs.value = await loadRuns(schoolId.value)
   } catch (e) {
+    // An empty table used to mean both "no runs yet" and "the query broke".
+    // Say which.
     console.error('Could not load assignment runs', e)
     runs.value = []
+    runsError.value = e.message || 'Could not read the assignment log.'
   } finally {
     loadingRuns.value = false
   }

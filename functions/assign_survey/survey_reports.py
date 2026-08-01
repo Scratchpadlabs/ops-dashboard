@@ -23,8 +23,15 @@ from datetime import datetime, timezone
 
 from survey_rules import (
     DEFAULT_INBOX_FIELD, STATUS_COMPLETED, STATUS_PENDING, STATUS_NOT_ASSIGNED,
-    student_status, class_sort_key, student_sort_key,
+    student_status, class_sort_key, student_sort_key, resolve_class_key,
 )
+
+
+def class_of(student):
+    """The student's class group key — same resolution the matrix uses, so a
+    downloaded report can never group differently from the grid it came
+    from."""
+    return resolve_class_key(student)[0]
 
 
 def _pct(part, whole):
@@ -56,7 +63,7 @@ def class_wise_rows(students, survey_ids, survey_labels, responders_by_survey,
         row = {
             "Student": s.get("name") or s.get("id"),
             "Roll No": s.get("rollNo") or "",
-            "Class": s.get("classId") or "",
+            "Class": class_of(s),
         }
         for sid in survey_ids:
             row[survey_labels.get(sid, sid)] = student_status(
@@ -81,11 +88,11 @@ def survey_wise_rows(students, survey_id, survey_label, responders_by_survey,
         detail.append({
             "Student": s.get("name") or s.get("id"),
             "Roll No": s.get("rollNo") or "",
-            "Class": s.get("classId") or "",
+            "Class": class_of(s),
             "Survey": survey_label,
             "Status": status,
         })
-        c = per_class.setdefault(s.get("classId") or "(no class)",
+        c = per_class.setdefault(class_of(s),
                                   {"students": 0, "assigned": 0, "completed": 0, "pending": 0})
         c["students"] += 1
         if status != STATUS_NOT_ASSIGNED:
@@ -130,7 +137,7 @@ def cumulative_rows(students, survey_ids, survey_labels, responders_by_survey,
     """One row per (class, survey) with counts and completion %, plus totals."""
     by_class = {}
     for s in students:
-        by_class.setdefault(s.get("classId") or "(no class)", []).append(s)
+        by_class.setdefault(class_of(s), []).append(s)
 
     rows = []
     grand = {sid: {"students": 0, "assigned": 0, "completed": 0, "pending": 0} for sid in survey_ids}
