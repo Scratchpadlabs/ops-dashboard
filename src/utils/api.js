@@ -174,6 +174,58 @@ export async function classDetailRemote({ schoolId, classId, inboxField }) {
   return res.data
 }
 
+// ── Setup wizards: new school / reset school ──────────────────────────────
+// All five are server-side for the same reason as survey assignment: a reset
+// touches every student document, and it must not depend on a browser tab
+// staying open. The split matters —
+//   check_new_school / school_state / reset_preview  read only
+//   archive_school                                   writes only to archives/
+//   reset_execute                                    the only one that can
+//                                                    touch live school data,
+//                                                    and it refuses without a
+//                                                    verified archive.
+// reset_execute is also preview-and-apply in one call via dryRun, so the
+// numbers shown in the confirm step are the numbers that happen.
+const checkNewSchoolCallable = httpsCallable(functions, 'check_new_school', { timeout: 60_000 })
+const schoolStateCallable = httpsCallable(functions, 'school_state', { timeout: 120_000 })
+const archiveSchoolCallable = httpsCallable(functions, 'archive_school', { timeout: 540_000 })
+const resetPreviewCallable = httpsCallable(functions, 'reset_preview', { timeout: 300_000 })
+const resetExecuteCallable = httpsCallable(functions, 'reset_execute', { timeout: 540_000 })
+
+export async function checkNewSchoolRemote({ schoolId, name }) {
+  const res = await checkNewSchoolCallable({ schoolId, name })
+  return res.data
+}
+
+export async function schoolStateRemote({ schoolId }) {
+  const res = await schoolStateCallable({ schoolId })
+  return res.data
+}
+
+// `label` names the session being archived (e.g. "2025-26"). The archive id is
+// `${schoolId}__${label}`, so re-archiving the same session overwrites that
+// snapshot rather than accumulating copies.
+export async function archiveSchoolRemote({ schoolId, label }) {
+  const res = await archiveSchoolCallable({ schoolId, label })
+  return res.data
+}
+
+export async function resetPreviewRemote({ schoolId, options }) {
+  const res = await resetPreviewCallable({ schoolId, options })
+  return res.data
+}
+
+// confirmSchoolId must equal schoolId — checked server-side, not just in the
+// dialog — and archiveId must point at an archive the server can re-verify.
+export async function resetExecuteRemote({
+  schoolId, confirmSchoolId, archiveId, runId, options, dryRun,
+}) {
+  const res = await resetExecuteCallable({
+    schoolId, confirmSchoolId, archiveId, runId, options, dryRun,
+  })
+  return res.data
+}
+
 export function downloadReport({ filename, mime, content_base64 }) {
   const bytes = Uint8Array.from(atob(content_base64), c => c.charCodeAt(0))
   downloadBlob(new Blob([bytes], { type: mime }), filename)

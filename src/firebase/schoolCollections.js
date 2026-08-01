@@ -44,3 +44,15 @@ export const surveysCollection = (schoolId) => collection(db, 'schools', schoolI
 export const surveyDoc = (schoolId, surveyId) => doc(db, 'schools', schoolId, 'surveys', surveyId)
 export const surveyAssignmentsCollection = (schoolId) => collection(db, 'schools', schoolId, 'survey_assignments')
 export const surveyAssignmentDoc = (schoolId, runId) => doc(db, 'schools', schoolId, 'survey_assignments', runId)
+
+// Setup wizard runs — top-level, resumable progress for the New School and
+// Reset School wizards. Not read by the teacher/student apps.
+export const wizardRunsCollection = () => collection(db, 'setup_wizard_runs')
+export const wizardRunDoc = (runId) => doc(db, 'setup_wizard_runs', runId)
+
+// Reset run log lives under the school it reset, so the audit trail travels
+// with the school. Archives are top-level and deliberately OUTSIDE the school
+// tree — the teacher/student apps must never read them.
+export const schoolResetsCollection = (schoolId) => collection(db, 'schools', schoolId, 'resets')
+export const archivesCollection = () => collection(db, 'archives')
+export const archiveDoc = (archiveId) => doc(db, 'archives', archiveId)

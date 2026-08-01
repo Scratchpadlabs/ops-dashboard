@@ -95,6 +95,41 @@ service cloud.firestore {
       allow read, write: if isOpsAdmin();
     }
 
+    // Setup wizard runs (New School / Reset School): top-level progress docs
+    // written by the browser as each step completes, so closing the tab
+    // mid-setup loses nothing. Not scoped under a school because the New
+    // School wizard starts a run BEFORE the school doc exists. Ops-admin only
+    // — a wizard run names schools and reset options and has no business
+    // being readable by the teacher app.
+    match /setup_wizard_runs/{runId} {
+      allow read, write: if isOpsAdmin();
+    }
+
+    // Archives: pre-reset snapshots of a school's students, classes, sheet
+    // entries and survey responses. Top-level and deliberately OUTSIDE
+    // schools/** so the teacher and student apps cannot see them — an
+    // archived roster surfacing in an app would look like live data.
+    //
+    // Written ONLY by functions/school_reset (Admin SDK, bypasses these
+    // rules); the dashboard reads them to confirm an archive exists and to
+    // show its verified counts. Client writes are therefore denied outright
+    // rather than granted to ops-admins: nothing in the UI should be able to
+    // edit a snapshot that reset_execute treats as proof.
+    match /archives/{archiveId} {
+      allow read: if isOpsAdmin();
+      allow write: if false;
+      match /{sub=**} {
+        allow read: if isOpsAdmin();
+        allow write: if false;
+      }
+    }
+
+    // Reset run log: schools/{id}/resets/{runId}, written by reset_execute
+    // through the Admin SDK. The dashboard reads it for run history. Read is
+    // already covered by the schools/{schoolId}/{collection}/{docId} rule
+    // above; 'resets' is deliberately NOT in that rule's writable-collection
+    // list, so the client cannot forge or amend an audit entry.
+
     // Deny everything else
     match /{document=**} {
       allow read, write: if false;

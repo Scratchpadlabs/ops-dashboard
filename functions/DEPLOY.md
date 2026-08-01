@@ -135,6 +135,117 @@ field name, then pass it as `inboxField`. Student assignment is unaffected.
 
 ---
 
+## school_state + archive_school + reset_preview + reset_execute + check_new_school (NEW — setup wizards)
+
+Backs the **New School** and **Reset School** wizards on the School Setup
+page. Five callables in one `functions/school_reset` source folder.
+
+**Read this before deploying:** there is NO academic-year field anywhere in
+the school tree, and the teacher/student apps do not version data by year.
+A "reset" is therefore an **in-place mutation of live data** — promoting
+students to the next grade, clearing survey inboxes, and so on. Nothing is
+copied to a new year because there is no year to copy to. That is why the
+archive step exists and why it is not optional.
+
+- `check_new_school` — validates a proposed doc id and warns about
+  near-duplicate school names before one more "Samartha School" /
+  "samarthaschool" pair gets created. Reads only; the wizard still lets you
+  proceed past a warning deliberately.
+- `school_state` — current counts (students, classes, staff, subjects, terms,
+  surveys, sheet entries, how many students carry an inbox or reports).
+  Reads only. Used by both wizards.
+- `archive_school` — snapshots students, classes, smart_sheet_entries and
+  survey responses to `archives/{schoolId}__{label}`, then **re-reads the
+  copy and compares row counts**. Writes only to `archives/` — it cannot
+  touch a school document. `label` names the session, e.g. `2025-26`, so
+  re-archiving the same session overwrites that snapshot instead of piling
+  up copies.
+- `reset_preview` — the itemized diff: who is promoted, who graduates, who
+  can't be mapped, what gets cleared. Reads only; this function has no write
+  path at all.
+- `reset_execute` — the only one that can modify live school data, behind
+  three gates enforced server-side rather than trusted to the UI:
+  1. an `archiveId` whose counts the function re-verifies itself,
+  2. `confirmSchoolId` echoed back exactly, and
+  3. `dryRun`, which produces the full run log and writes nothing.
+  Writes are batched at 450 and each student's changes are merged into ONE
+  write. Graduating and leaving students are marked inactive, never deleted.
+  Every run is logged to `schools/{id}/resets/{runId}`.
+
+### Files needed in the folder:
+- main.py ✅
+- reset_rules.py ✅ (pure promotion/diff/id logic, 44 unit tests)
+- requirements.txt ✅
+
+### Deploy:
+```
+cd functions/school_reset
+
+gcloud functions deploy check_new_school \
+  --gen2 --runtime python312 --region asia-south1 \
+  --source . --entry-point check_new_school \
+  --trigger-http --allow-unauthenticated --project clarified-1501 \
+  --memory 512MB --timeout 60s --max-instances 3
+
+gcloud functions deploy school_state \
+  --gen2 --runtime python312 --region asia-south1 \
+  --source . --entry-point school_state \
+  --trigger-http --allow-unauthenticated --project clarified-1501 \
+  --memory 512MB --timeout 120s --max-instances 3
+
+gcloud functions deploy archive_school \
+  --gen2 --runtime python312 --region asia-south1 \
+  --source . --entry-point archive_school \
+  --trigger-http --allow-unauthenticated --project clarified-1501 \
+  --memory 1024MB --timeout 540s --max-instances 3
+
+gcloud functions deploy reset_preview \
+  --gen2 --runtime python312 --region asia-south1 \
+  --source . --entry-point reset_preview \
+  --trigger-http --allow-unauthenticated --project clarified-1501 \
+  --memory 1024MB --timeout 300s --max-instances 3
+
+gcloud functions deploy reset_execute \
+  --gen2 --runtime python312 --region asia-south1 \
+  --source . --entry-point reset_execute \
+  --trigger-http --allow-unauthenticated --project clarified-1501 \
+  --memory 1024MB --timeout 540s --max-instances 3
+```
+
+No secrets and no new IAM — plain Firestore readers/writers under the runtime
+service account's existing `roles/editor`.
+
+### firestore.rules
+Two new top-level collections, both in `firestore.rules`:
+- `setup_wizard_runs/{runId}` — ops-admin read/write. Written by the BROWSER
+  as each wizard step completes, which is what makes a half-finished setup
+  resumable after closing the tab. Top-level rather than under a school
+  because the New School wizard starts a run before the school exists.
+- `archives/{archiveId}/**` — ops-admin **read, write denied outright**.
+  Written only by `archive_school` via the Admin SDK, which bypasses rules.
+  Client writes are denied rather than granted because `reset_execute`
+  treats archive counts as proof; nothing in the UI should be able to edit
+  the thing it verifies against.
+
+`schools/{id}/resets` is deliberately absent from the writable-collection
+list on the `schools/{schoolId}/{collection}/{docId}` rule, so the audit log
+can be read but not forged from the client.
+
+### FIRST RUN — do this on TEST_SCHOOL
+The Reset wizard has a **dry run** toggle on the execute step. Use it:
+1. Run the whole wizard against `TEST_SCHOOL` with dry run ON. Read the run
+   log — it lists every intended write.
+2. Repeat with dry run OFF on TEST_SCHOOL and check the post-reset counts.
+3. Only then run it on a real school, and re-read the preview before
+   confirming. The archive is what makes step 3 recoverable.
+
+The inbox field assumption from the survey section applies here too:
+clearing survey inboxes targets `surveyInbox`. The preview reports how many
+students actually carry the field — if it says 0 of N on a school you know
+has assignments, stop and confirm the field name before executing.
+
+---
+
 ## classify_value (NEW — education knowledge base LLM fallback)
 
 Third callable in the `generate_import` source folder. Classifies ONE

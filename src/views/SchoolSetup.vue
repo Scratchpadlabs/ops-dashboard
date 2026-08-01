@@ -51,8 +51,12 @@
       </span>
     </div>
 
-    <Tabs value="overview">
+    <!-- `scrollable` because the tab strip is now long enough to overflow at
+         1280px; without it the whole page gains a horizontal scrollbar. -->
+    <Tabs v-model:value="activeTab" scrollable>
       <TabList>
+        <Tab value="new-school"><i class="pi pi-sparkles text-xs mr-1.5"></i>New School</Tab>
+        <Tab value="reset-school"><i class="pi pi-refresh text-xs mr-1.5"></i>Reset School</Tab>
         <Tab value="overview">Overview</Tab>
         <Tab value="terms-scales">Terms &amp; Scales</Tab>
         <Tab value="subjects">Subjects</Tab>
@@ -68,6 +72,16 @@
         <Tab value="templates">Templates</Tab>
       </TabList>
       <TabPanels>
+        <!-- The wizards pick their own school (New School creates one, Reset
+             selects one explicitly), so neither takes the page selector's
+             value — a reset must never inherit a selection made for another
+             purpose. -->
+        <TabPanel value="new-school">
+          <NewSchoolWizard @open-tab="handleOpenTab" @school-created="handleSchoolCreated" />
+        </TabPanel>
+        <TabPanel value="reset-school">
+          <ResetSchoolWizard @open-tab="handleOpenTab" />
+        </TabPanel>
         <TabPanel value="overview"><OverviewTab :school-id="selectedSchoolId" :school="selectedSchoolObject" @saved="loadSchools" /></TabPanel>
         <TabPanel value="terms-scales"><TermsScalesTab :school-id="selectedSchoolId" /></TabPanel>
         <TabPanel value="subjects"><SubjectsTab :school-id="selectedSchoolId" /></TabPanel>
@@ -88,6 +102,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { getDocs, query, orderBy, limit, setDoc, serverTimestamp } from 'firebase/firestore'
 import Select from 'primevue/select'
 import Password from 'primevue/password'
@@ -115,12 +130,39 @@ import CloneSchoolTab from '../components/school-setup/CloneSchoolTab.vue'
 import TemplatesTab from '../components/school-setup/TemplatesTab.vue'
 import StructureTab from '../components/school-setup/StructureTab.vue'
 import KnowledgeBaseTab from '../components/school-setup/KnowledgeBaseTab.vue'
+import NewSchoolWizard from '../components/school-setup/NewSchoolWizard.vue'
+import ResetSchoolWizard from '../components/school-setup/ResetSchoolWizard.vue'
 
 // Dedicated sandbox school — every Phase 2+ CRUD tab should default here so
 // trial writes never touch a real school's config.
 const TEST_SCHOOL_ID = 'TEST_SCHOOL'
 
 const { isElevated, markActivity, reauthenticate } = useStepUpAuth()
+const router = useRouter()
+
+const activeTab = ref('overview')
+
+/**
+ * The wizards hand off to the place that actually does a piece of work rather
+ * than reimplementing it. A target is either a tab key on this page or an app
+ * route ('/import', '/surveys') — leading slash is the discriminator.
+ *
+ * Wizard progress lives in Firestore (setup_wizard_runs), not in component
+ * state, so leaving for another tab or route and coming back resumes at the
+ * same step. That's why this can navigate away freely.
+ */
+function handleOpenTab(to) {
+  if (!to) return
+  if (String(to).startsWith('/')) router.push(to)
+  else activeTab.value = to
+}
+
+/** New School wizard created a school: refresh the selector and point it at
+ *  the new school, so the config tabs it links to open on the right one. */
+async function handleSchoolCreated(schoolId) {
+  await loadSchools()
+  if (schools.value.some(s => s.id === schoolId)) selectedSchoolId.value = schoolId
+}
 
 const password = ref('')
 const reauthing = ref(false)
