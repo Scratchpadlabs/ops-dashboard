@@ -42,6 +42,14 @@ service cloud.firestore {
                         // per the stale-rules warning above.
                         'students'];
     }
+    // Survey assignment (functions/assign_survey) writes each recipient's
+    // surveyInbox array and logs each run to
+    // schools/{id}/survey_assignments/{runId}. Both happen through the Admin
+    // SDK, which bypasses these rules entirely — nothing extra is granted
+    // here on purpose. The dashboard only READS surveys and run history,
+    // which the authenticated-read rule above already covers, and it never
+    // writes a survey document at all.
+
     // Sheets Status (Phase 5) only toggles isFrozen / deletes empty stray docs
     // on existing smart_sheet_entries — never creates sheets (teacher app
     // find-or-creates those). Scoped separately since this collection is

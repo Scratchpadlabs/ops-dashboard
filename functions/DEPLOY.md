@@ -52,6 +52,66 @@ differs from `https://asia-south1-clarified-1501.cloudfunctions.net/generate_pen
 
 ---
 
+## assign_survey + survey_overview (NEW — survey assignment)
+
+Day-to-day ops: assign or unassign a survey to a whole school, selected
+classes, or specific students, replacing the manual "push survey IDs into
+each student's surveyInbox by script" step.
+
+Server-side because the task requires reliability at scale: a 3000-student
+school is 3000 reads and several batched writes (chunked at 450), which must
+not depend on a browser tab staying open. Progress is written to the run doc
+after each chunk and streamed to the UI via onSnapshot — the same pattern
+staging_imports uses.
+
+- `assign_survey` — preview OR apply, same call with `dryRun` flipped, so the
+  count in the confirm dialog is exactly what happens. Uses arrayUnion /
+  arrayRemove only, so re-assigning never duplicates and unassigning never
+  touches a record that doesn't have the survey. Refuses to assign a
+  junk/test survey doc (no name translations or no questions), while still
+  allowing unassign so ids pushed by the old scripts can be cleaned up.
+  Never writes to survey documents, and never deletes anything.
+- `survey_overview` — per-survey assigned counts (one roster pass) plus
+  response counts via Firestore's count() aggregation over
+  surveys/<id>/responses. Response counts degrade to null, not zero, when the
+  subcollection isn't there, so the UI can tell "none yet" from "not
+  measurable".
+
+### Files needed in the folder:
+- main.py ✅
+- survey_rules.py ✅ (pure decision logic, unit-tested — see tests/)
+- requirements.txt ✅
+
+### Deploy:
+```
+cd functions/assign_survey
+
+gcloud functions deploy assign_survey \
+  --gen2 --runtime python312 --region asia-south1 \
+  --source . --entry-point assign_survey \
+  --trigger-http --allow-unauthenticated --project clarified-1501 \
+  --memory 512MB --timeout 540s --max-instances 3
+
+gcloud functions deploy survey_overview \
+  --gen2 --runtime python312 --region asia-south1 \
+  --source . --entry-point survey_overview \
+  --trigger-http --allow-unauthenticated --project clarified-1501 \
+  --memory 512MB --timeout 120s --max-instances 3
+```
+
+No secrets and no new IAM: both are plain Firestore readers/writers, and the
+runtime service account's existing `roles/editor` covers it. No firestore.rules
+change either — the Admin SDK bypasses rules, and the dashboard only reads.
+
+**BEFORE THE FIRST STAFF RUN:** the staff inbox field name is an assumption.
+Students use `surveyInbox` (verified); nothing in this repo reads a staff
+inbox, so staff is assumed to mirror it. The preview reports how many
+targeted staff records actually carry the field — if it says "0 of N", stop
+and confirm the real field name against a live staff doc, then pass it as
+`inboxField`. Student assignment is unaffected.
+
+---
+
 ## classify_value (NEW — education knowledge base LLM fallback)
 
 Third callable in the `generate_import` source folder. Classifies ONE

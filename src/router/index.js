@@ -8,6 +8,7 @@ import Schools from '../views/Schools.vue'
 import SchoolProfile from '../views/SchoolProfile.vue'
 import SchoolSetup from '../views/SchoolSetup.vue'
 import Import from '../views/Import.vue'
+import Surveys from '../views/Surveys.vue'
 import ImportReview from '../views/ImportReview.vue'
 import Quotations from '../views/Quotations.vue'
 import Agreements from '../views/Agreements.vue'
@@ -26,6 +27,7 @@ const routes = [
   { path: '/schools/:id',   component: SchoolProfile, name: 'school-profile' },
   { path: '/school-setup',  component: SchoolSetup,   name: 'school-setup', meta: { opsAdminOnly: true } },
   { path: '/import',        component: Import,        name: 'import', meta: { opsAdminOnly: true } },
+  { path: '/surveys',       component: Surveys,       name: 'surveys', meta: { opsAdminOnly: true } },
   { path: '/import/:jobId', component: ImportReview,  name: 'import-review', meta: { opsAdminOnly: true } },
   { path: '/quotations',    component: Quotations,    name: 'quotations' },
   { path: '/agreements',    component: Agreements,    name: 'agreements' },

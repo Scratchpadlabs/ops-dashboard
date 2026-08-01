@@ -138,6 +138,24 @@ export async function classifyValueRemote({ value, context }) {
   return res.data
 }
 
+// ── Survey assignment ─────────────────────────────────────────────────────
+// Server-side for the reason the task gives: a 3000-student school is 3000
+// reads and several batched writes, which must not depend on a browser tab
+// staying open. Preview and apply are THE SAME CALL with dryRun flipped, so
+// the number in the confirm dialog is the number that happens.
+const assignSurveyCallable = httpsCallable(functions, 'assign_survey', { timeout: 540_000 })
+const surveyOverviewCallable = httpsCallable(functions, 'survey_overview', { timeout: 120_000 })
+
+export async function assignSurveyRemote({ schoolId, runId, surveyId, audience, mode, scope, dryRun, inboxField }) {
+  const res = await assignSurveyCallable({ schoolId, runId, surveyId, audience, mode, scope, dryRun, inboxField })
+  return res.data
+}
+
+export async function surveyOverviewRemote({ schoolId, inboxField }) {
+  const res = await surveyOverviewCallable({ schoolId, inboxField })
+  return res.data
+}
+
 export async function startProcessImport({ schoolId, jobId, entity, files }) {
   const res = await processImportCallable({ schoolId, jobId, entity, files })
   return res.data

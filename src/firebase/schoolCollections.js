@@ -36,3 +36,11 @@ export const importAliasDoc = (id) => doc(db, 'import_aliases', id)
 // only human-confirmed additions land here. Doc id is the canonicalized value.
 export const kbEntriesCollection = () => collection(db, 'kb_entries')
 export const kbEntryDoc = (id) => doc(db, 'kb_entries', id)
+
+// Surveys and their assignment runs live under the teacher-app school tree.
+// Survey docs themselves are READ-ONLY from this dashboard — assignment only
+// ever writes each recipient's inbox array (see functions/assign_survey).
+export const surveysCollection = (schoolId) => collection(db, 'schools', schoolId, 'surveys')
+export const surveyDoc = (schoolId, surveyId) => doc(db, 'schools', schoolId, 'surveys', surveyId)
+export const surveyAssignmentsCollection = (schoolId) => collection(db, 'schools', schoolId, 'survey_assignments')
+export const surveyAssignmentDoc = (schoolId, runId) => doc(db, 'schools', schoolId, 'survey_assignments', runId)
