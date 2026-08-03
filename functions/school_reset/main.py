@@ -284,10 +284,21 @@ def archive_school(req: https_fn.CallableRequest):
         "completed_at": firestore.SERVER_TIMESTAMP,
     }, merge=True)
 
+    # verified_at is returned so the UI can EVIDENCE verification rather than
+    # assert it. The Execute step treats a missing timestamp, location or
+    # count set as "not verified" — see archiveStatus in ResetSchoolWizard.vue.
+    verified_at = None
+    try:
+        verified_at = (dst.get().to_dict() or {}).get("completed_at")
+        verified_at = verified_at.isoformat() if verified_at else None
+    except Exception:                                            # noqa: BLE001
+        verified_at = None
+
     return {
         "archive_id": archive_id,
         "location": f"archives/{archive_id}",
         "verified": ok,
+        "verified_at": verified_at,
         "source_counts": source_counts,
         "archived_counts": reread,
         "mismatches": mismatches,

@@ -21,8 +21,24 @@
       <Button label="Start reset" icon="pi pi-play" @click="begin" />
     </div>
 
+    <!-- TARGET BANNER. In a destructive flow the school being acted on must
+         never be something the user has to infer from body text or from a
+         page-level selector that can point elsewhere. -->
+    <div v-if="run && form.schoolId"
+         class="flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 mb-4">
+      <i class="pi pi-exclamation-triangle text-red-600"></i>
+      <div class="min-w-0">
+        <div class="text-xs uppercase tracking-wide text-red-500 font-semibold">Resetting</div>
+        <div class="text-sm font-bold text-red-900 font-mono cell-truncate">{{ form.schoolId }}</div>
+      </div>
+      <span v-if="schoolLocked"
+            class="ml-auto text-[11px] text-red-600 flex items-center gap-1">
+        <i class="pi pi-lock" style="font-size:10px"></i>Locked for this run
+      </span>
+    </div>
+
     <WizardShell
-      v-else
+      v-if="run"
       title="Reset school"
       :steps="STEPS" :current-step="currentStep" :current-index="currentIndex" :percent="percent"
       :status-of="statusOf" :summary-of="summaryOf" :is-unlocked="isUnlocked"
@@ -34,7 +50,13 @@
         <div>
           <label class="form-label">School *</label>
           <Select v-model="form.schoolId" :options="schools" optionLabel="name" optionValue="id"
-            placeholder="Select a school" class="w-80" filter @update:modelValue="loadState" />
+            placeholder="Select a school" class="w-80" filter :disabled="schoolLocked"
+            @update:modelValue="onSchoolPicked" />
+          <p v-if="schoolLocked" class="text-xs text-slate-500 mt-1">
+            <i class="pi pi-lock text-[10px] mr-1"></i>
+            Locked to this run. Discard the run to reset a different school — changing it here
+            would leave the archive pointing at one school and the changes at another.
+          </p>
         </div>
 
         <!-- Plain, unavoidable statement of what this operation is. No
@@ -264,15 +286,53 @@
 
       <!-- ── 6 · Execute ───────────────────────────────────────────────── -->
       <div v-else-if="currentStep === 'reset.execute'" class="space-y-3">
+        <!-- Archive evidence. Rendered from archiveStatus, the same computed
+             that gates the button — they cannot disagree. -->
+        <div class="rounded-lg border px-3 py-2.5"
+             :class="archiveStatus.ok ? 'border-emerald-200 bg-emerald-50' : 'border-red-200 bg-red-50'">
+          <div class="text-sm font-semibold"
+               :class="archiveStatus.ok ? 'text-emerald-800' : 'text-red-800'">
+            <i :class="archiveStatus.ok ? 'pi pi-verified' : 'pi pi-ban'" class="text-xs mr-1"></i>
+            {{ archiveStatus.ok ? 'Archive verified' : 'Archive NOT verified' }}
+          </div>
+
+          <template v-if="archiveStatus.ok">
+            <div class="text-xs font-mono text-slate-700 mt-1">{{ archive.location }}</div>
+            <div class="text-xs text-slate-600">Verified {{ formatTs(archive.verified_at) }}</div>
+            <table class="text-xs mt-2">
+              <tr class="text-slate-400">
+                <td class="pr-4">collection</td><td class="pr-3">live</td><td>archived</td>
+              </tr>
+              <tr v-for="r in archiveStatus.rows" :key="r.collection">
+                <td class="pr-4 text-slate-500">{{ r.collection }}</td>
+                <td class="pr-3 text-slate-700 tabular-nums">{{ r.source }}</td>
+                <td class="text-slate-700 tabular-nums">{{ r.archived }}</td>
+                <td class="pl-2">
+                  <i v-if="r.ok" class="pi pi-check text-emerald-600" style="font-size:10px"></i>
+                  <i v-else class="pi pi-times text-red-600" style="font-size:10px"></i>
+                </td>
+              </tr>
+            </table>
+          </template>
+
+          <template v-else>
+            <p class="text-sm text-red-700 mt-1">
+              A reset cannot run without a complete, verified archive. Missing:
+              <b>{{ archiveStatus.missing.join('; ') }}</b>.
+            </p>
+            <Button label="Back to Archive" icon="pi pi-arrow-left" size="small" class="mt-2"
+              @click="onGo('reset.archive')" />
+          </template>
+        </div>
+
         <div v-if="!result" class="text-sm text-slate-700">
           <template v-if="form.dryRun">
             This is a dry run. It will produce the full plan and a run log entry, and will not write
             to any student record.
           </template>
-          <template v-else>
+          <template v-else-if="archiveStatus.ok">
             This will apply the changes listed in the previous step to
             <span class="font-mono font-semibold">{{ form.schoolId }}</span>.
-            The archive at <span class="font-mono">{{ archive?.location }}</span> has been verified.
           </template>
         </div>
 
@@ -294,6 +354,7 @@
           :label="form.dryRun ? 'Run dry run' : 'Apply reset'"
           :icon="form.dryRun ? 'pi pi-play' : 'pi pi-exclamation-triangle'"
           :severity="form.dryRun ? undefined : 'danger'"
+          :disabled="!form.dryRun && !archiveStatus.ok"
           :loading="executing" @click="runExecute" />
 
         <div v-if="result" class="text-sm rounded-lg px-3 py-2.5"
@@ -343,7 +404,7 @@ import {
   downloadReport,
 } from '../../utils/api.js'
 
-const emit = defineEmits(['open-tab'])
+const emit = defineEmits(['open-tab', 'active-school'])
 const toast = useToast()
 
 /**
@@ -421,6 +482,14 @@ const runDoc = ref(null)
 const rosterSearch = ref('')
 const openBucket = ref(null)
 
+/**
+ * Once the archive step is done the school is FIXED for the run: an archive
+ * taken against one school cannot vouch for changes to another.
+ */
+const schoolLocked = computed(() =>
+  !!archive.value?.archive_id ||
+  ['done', 'skipped'].includes(statusOf('reset.archive')))
+
 const busy = ref(false)
 const error = ref('')
 const caption = ref('')
@@ -450,6 +519,12 @@ const BUCKET_TONES = {
   blocked: 'border-red-200 bg-red-50 text-red-800',
 }
 function bucketTone(action) { return BUCKET_TONES[action] || BUCKET_TONES.unchanged }
+
+function formatTs(value) {
+  if (!value) return 'unknown'
+  const d = new Date(value)
+  return isNaN(d) ? String(value) : d.toLocaleString('en-IN')
+}
 
 /**
  * Record the explicit "leave these students alone" decision (item 13). It is
@@ -484,6 +559,41 @@ const filteredRoster = computed(() => {
     String(s.classId || '').toLowerCase().includes(q)).slice(0, 200)
 })
 
+/**
+ * THE single source of truth for whether an archive may be relied on.
+ *
+ * Both the Execute step's prose and its block read this computed, so they are
+ * structurally incapable of disagreeing — the bug that produced "The archive
+ * at  has been verified" beside "A verified archive is required".
+ *
+ * Verification is EVIDENCED, not asserted. Anything missing means not
+ * verified: no id, no location, no timestamp, no counts, or any collection
+ * whose archived count differs from its source count.
+ */
+const archiveStatus = computed(() => {
+  const a = archive.value
+  const missing = []
+  if (!a) return { ok: false, missing: ['no archive has been created for this run'] }
+  if (!a.archive_id) missing.push('archive id')
+  if (!a.location) missing.push('archive location')
+  if (!a.verified_at) missing.push('verification timestamp')
+
+  const src = a.source_counts || {}
+  const arc = a.archived_counts || {}
+  if (!Object.keys(src).length) missing.push('source item counts')
+  if (!Object.keys(arc).length) missing.push('archived item counts')
+
+  const mismatched = Object.keys(src).filter(k => arc[k] !== src[k])
+  if (mismatched.length) {
+    missing.push(`matching counts for: ${mismatched.join(', ')}`)
+  }
+  if (a.verified !== true) missing.push('server verification flag')
+
+  return { ok: missing.length === 0, missing, rows: Object.keys(src).map(k => ({
+    collection: k, source: src[k], archived: arc[k], ok: arc[k] === src[k],
+  })) }
+})
+
 const runStatusText = computed(() => {
   const s = runDoc.value?.status
   if (s === 'done') return 'Complete'
@@ -510,15 +620,33 @@ const canContinue = computed(() => {
 async function begin() { busy.value = true; try { await wizard.start() } finally { busy.value = false } }
 async function resume(runId) {
   await wizard.load(runId)
-  if (run.value?.school_id) { form.schoolId = run.value.school_id; await loadState() }
+  // Restore everything the later steps depend on. Without the archive, a
+  // resumed run walks to Execute with the step ticked and no archive id.
+  if (run.value?.archive) {
+    archive.value = run.value.archive
+    form.archiveLabel = run.value.archive.label || form.archiveLabel
+  }
+  if (run.value?.options) Object.assign(form.options, run.value.options)
+  if (run.value?.school_id) {
+    form.schoolId = run.value.school_id
+    emit('active-school', run.value.school_id)
+    await loadState()
+    await loadRoster()
+  }
 }
 async function discard(runId) {
   await wizard.load(runId); await wizard.abandon()
   wizard.run.value = null
   resumable.value = resumable.value.filter(r => r.id !== runId)
 }
-function onExit() { unsubRun?.(); wizard.run.value = null; refreshResumable() }
+function onExit() { unsubRun?.(); wizard.run.value = null; emit('active-school', null); refreshResumable() }
 async function refreshResumable() { resumable.value = await wizard.findResumable() }
+
+/** Selecting a school announces it to the page so the top selector follows. */
+async function onSchoolPicked(id) {
+  emit('active-school', id)
+  await loadState()
+}
 
 async function loadState() {
   if (!form.schoolId) return
@@ -559,6 +687,22 @@ async function runArchive() {
   try {
     archive.value = await archiveSchoolRemote({
       schoolId: form.schoolId, label: form.archiveLabel.trim(),
+    })
+    // Persist it on the RUN, not just in component state. These wizards are
+    // resumable by design, so an archive held only in memory disappears the
+    // moment the tab is closed or the wizard is re-entered — leaving the step
+    // marked done while reset_execute receives no archiveId and refuses.
+    // Observed on a real run: "The archive at  has been verified".
+    await wizard.patch({
+      archive: {
+        archive_id: archive.value.archive_id,
+        location: archive.value.location,
+        verified: !!archive.value.verified,
+        verified_at: archive.value.verified_at || new Date().toISOString(),
+        label: form.archiveLabel.trim(),
+        source_counts: archive.value.source_counts || {},
+        archived_counts: archive.value.archived_counts || {},
+      },
     })
     if (!archive.value.verified) {
       error.value = 'Archive verification failed. The reset cannot proceed until an archive verifies.'
@@ -635,10 +779,11 @@ async function onNext() {
         await loadRoster()
         break
       case 'reset.archive':
-        summary = `Archived to ${archive.value.location}`
+        summary = `Archived to ${archive.value?.location || '(unknown)'}`
         break
       case 'reset.choose':
         summary = RESET_OPTIONS.filter(o => form.options[o.key]).length + ' change(s) selected'
+        await wizard.patch({ options: { ...form.options } })
         break
       case 'reset.roster':
         summary = `${form.removeIds.length} leaving`

@@ -35,8 +35,17 @@
           placeholder="Select a school"
           class="w-80"
           :loading="loadingSchools"
+          :disabled="!!resetTargetSchoolId"
           filter
         />
+        <!-- While a reset run is active the page selector follows it and is
+             frozen. A destructive flow must never be able to show one school
+             at the top of the page and act on another. -->
+        <span v-if="resetTargetSchoolId"
+              class="px-2.5 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700 flex items-center gap-1">
+          <i class="pi pi-lock" style="font-size:10px"></i>
+          Reset in progress
+        </span>
         <Button
           v-if="!hasTestSchool"
           label="Create TEST_SCHOOL sandbox"
@@ -82,7 +91,7 @@
           <NewSchoolWizard @open-tab="handleOpenTab" @school-created="handleSchoolCreated" />
         </TabPanel>
         <TabPanel value="reset-school">
-          <ResetSchoolWizard @open-tab="handleOpenTab" />
+          <ResetSchoolWizard @open-tab="handleOpenTab" @active-school="onResetTarget" />
         </TabPanel>
         <TabPanel value="overview"><OverviewTab :school-id="selectedSchoolId" :school="selectedSchoolObject" @saved="loadSchools" /></TabPanel>
         <TabPanel value="terms-scales"><TermsScalesTab :school-id="selectedSchoolId" /></TabPanel>
@@ -147,6 +156,18 @@ const { isElevated, markActivity, reauthenticate } = useStepUpAuth()
 const router = useRouter()
 
 const activeTab = ref('overview')
+
+/**
+ * The school an in-progress reset targets. While set, the page selector is
+ * pinned to it and frozen — the alternative is a destructive wizard acting on
+ * NAVODAYA while the header reads TEST_SCHOOL, which is what happened once.
+ */
+const resetTargetSchoolId = ref(null)
+
+function onResetTarget(schoolId) {
+  resetTargetSchoolId.value = schoolId || null
+  if (schoolId) selectedSchoolId.value = schoolId
+}
 
 /**
  * The wizards hand off to the place that actually does a piece of work rather
