@@ -48,12 +48,44 @@ SUSPECT_SUBSTRINGS = ("class", "grade", "std", "standard", "section", "sec",
                       "div", "batch", "stream")
 
 
+AUTH_HELP = """
+Could not authenticate to Firestore.
+
+In Cloud Shell the metadata server sometimes returns a service account with no
+'email' field, which the Firestore gRPC auth plugin requires. Fix it with an
+explicit application-default login:
+
+    gcloud auth application-default login
+    gcloud auth application-default set-quota-project {project}
+
+then re-run this script. (Without this the client retries for 300s before
+surfacing the error, which looks like a hang.)
+"""
+
+
 def connect(project):
     try:
         from google.cloud import firestore
     except ImportError:
         sys.exit("Missing dependency. Run:  pip install google-cloud-firestore")
-    return firestore.Client(project=project)
+
+    client = firestore.Client(project=project)
+
+    # Preflight: one tiny read with a short timeout. Without it a credentials
+    # problem surfaces only after the default 300s retry budget, five minutes
+    # into what looks like a working scan.
+    try:
+        next(iter(client.collection("schools").select([]).limit(1).stream(timeout=20)), None)
+    except StopIteration:
+        pass
+    except Exception as e:                                       # noqa: BLE001
+        text = str(e)
+        if any(m in text for m in ("email", "credential", "UNAUTHENTICATED",
+                                    "Getting metadata from plugin", "403")):
+            sys.exit(AUTH_HELP.format(project=project))
+        sys.exit(f"Could not reach Firestore for project {project!r}:\n  {text}")
+
+    return client
 
 
 def scan_school(db, school_id, limit=None):
