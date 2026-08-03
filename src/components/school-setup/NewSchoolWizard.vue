@@ -27,6 +27,7 @@
       :steps="STEPS" :current-step="currentStep" :current-index="currentIndex" :percent="percent"
       :status-of="statusOf" :summary-of="summaryOf" :is-unlocked="isUnlocked"
       :caption="caption" :error="error" :busy="busy" :can-continue="canContinue"
+      :blocked-reason="blockedReason"
       @go="onGo" @back="onBack" @next="onNext" @skip="onSkip" @exit="onExit"
     >
       <!-- ── 1 · Create ────────────────────────────────────────────────── -->
@@ -150,11 +151,82 @@
         <div class="text-sm text-slate-600 bg-slate-50 rounded-lg px-3 py-2.5">
           {{ HANDOFF_STEPS[currentStep].body }}
         </div>
+
+        <!-- ── Teachers & students: the step people spend longest on ────── -->
+        <template v-if="currentStep === 'new.people'">
+          <div class="rounded-lg border border-blue-200 bg-blue-50 p-3.5 space-y-3">
+            <div class="text-sm font-semibold text-blue-900">
+              <i class="pi pi-inbox text-xs mr-1"></i>What to ask the school for
+            </div>
+            <ul class="text-sm text-blue-900 space-y-1 list-disc pl-5">
+              <li><b>A staff list</b> — names, and emails if they have them.</li>
+              <li><b>A student roster</b> — one row per student, ideally all classes in one file.</li>
+            </ul>
+
+            <div class="text-sm text-blue-900 bg-white/70 rounded px-3 py-2">
+              <b>Whatever format they already have is fine.</b>
+              Excel or CSV, one sheet or many, headers part-way down the page, merged
+              header rows, class written as “I”, “1”, “Grade 1” or “Std I” — the importer
+              handles all of it and shows you a review screen before anything is written.
+              Do not send them away to reformat a file.
+            </div>
+
+            <div>
+              <div class="text-xs font-semibold text-blue-900 mb-1.5">
+                Columns that matter (only <span class="font-mono">Name</span> is required)
+              </div>
+              <div class="grid grid-cols-2 gap-3">
+                <div v-for="set in [
+                       { title: 'Students', cols: STUDENT_COLUMNS },
+                       { title: 'Teachers', cols: TEACHER_COLUMNS }]" :key="set.title">
+                  <div class="text-[11px] uppercase tracking-wide text-blue-500 font-semibold mb-1">
+                    {{ set.title }}
+                  </div>
+                  <div class="space-y-0.5">
+                    <div v-for="c in set.cols" :key="c.key" class="text-xs text-blue-900">
+                      <span class="font-mono">{{ c.key }}</span>
+                      <span v-if="c.required" class="text-red-600 font-semibold"> *</span>
+                      <span v-if="c.note" class="text-blue-500"> — {{ c.note }}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="flex flex-wrap gap-2 pt-1">
+              <Button label="Download student template" icon="pi pi-download" size="small" outlined
+                @click="downloadStudentTemplate" />
+              <Button label="Download teacher template" icon="pi pi-download" size="small" outlined
+                @click="downloadTeacherTemplate" />
+            </div>
+            <p class="text-[11px] text-blue-600">
+              Templates are a starting point to send the school, not a required format.
+            </p>
+          </div>
+
+          <div class="text-sm text-slate-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+            <b>Import teachers before students.</b> Class-teacher links resolve against staff
+            that already exist; doing it the other way round leaves those links empty.
+          </div>
+        </template>
+
         <div class="flex flex-wrap gap-2">
           <Button v-for="l in HANDOFF_STEPS[currentStep].links" :key="l.to"
             :label="l.label" icon="pi pi-external-link" size="small" outlined
             @click="openTab(l.to)" />
         </div>
+
+        <!-- Required steps carry a live re-check; optional ones do not. -->
+        <div v-if="stepDef?.required" class="flex items-center gap-2">
+          <Button label="Re-check" icon="pi pi-refresh" size="small"
+            :loading="verifying" @click="verifyRequirement" />
+          <span v-if="state" class="text-xs"
+                :class="requirementMet ? 'text-emerald-700' : 'text-amber-700'">
+            <i :class="requirementMet ? 'pi pi-check' : 'pi pi-clock'" class="text-[10px] mr-1"></i>
+            {{ state.counts?.[stepDef.requires] || 0 }} {{ stepDef.requires }} configured
+          </span>
+        </div>
+
         <div>
           <label class="form-label">What did you set up? (one line, appears in the step rail)</label>
           <InputText v-model="form.notes[currentStep]" class="w-full"
@@ -177,18 +249,42 @@
               </div>
             </div>
           </div>
-          <!-- Gaps are LISTED, never hidden. A wizard that quietly reports
-               success on a half-configured school is worse than no wizard. -->
-          <div v-if="gaps.length" class="border border-amber-200 bg-amber-50 rounded-lg p-3">
-            <div class="text-sm font-semibold text-amber-800 mb-1">Still missing ({{ gaps.length }})</div>
-            <div v-for="g in gaps" :key="g.key" class="flex items-center gap-2 text-sm text-amber-800 py-0.5">
+          <!-- CONFIGURATION gaps are a real problem: these steps were
+               required and something has since been removed. -->
+          <div v-if="configGaps.length" class="border border-red-200 bg-red-50 rounded-lg p-3">
+            <div class="text-sm font-semibold text-red-800 mb-1">
+              Configuration incomplete ({{ configGaps.length }})
+            </div>
+            <div v-for="g in configGaps" :key="g.key" class="flex items-center gap-2 text-sm text-red-800 py-0.5">
               <i class="pi pi-exclamation-triangle text-xs"></i>
               <span>{{ g.label }}</span>
               <Button :label="g.action" text size="small" class="ml-auto" @click="openTab(g.to)" />
             </div>
           </div>
+
+          <!-- AWAITING SCHOOL DATA is a SUCCESS state. Teachers, students and
+               surveys routinely arrive weeks after configuration; reporting
+               that as a failure trains people to ignore the review screen. -->
+          <div v-else-if="pendingData.length"
+               class="border border-emerald-200 bg-emerald-50 rounded-lg p-3">
+            <div class="text-sm font-semibold text-emerald-800 mb-1">
+              <i class="pi pi-check-circle text-xs mr-1"></i>Configured — awaiting school data
+            </div>
+            <p class="text-sm text-emerald-700 mb-2">
+              This school is fully set up and ready to use. These are waiting on the school
+              to send their files, and can be added at any time.
+            </p>
+            <div v-for="g in pendingData" :key="g.key"
+                 class="flex items-center gap-2 text-sm text-emerald-800 py-0.5">
+              <i class="pi pi-clock text-xs"></i>
+              <span>{{ g.label }}</span>
+              <Button :label="g.action" text size="small" class="ml-auto" @click="openTab(g.to)" />
+            </div>
+          </div>
+
           <div v-else class="text-sm text-emerald-700 bg-emerald-50 rounded-lg px-3 py-2">
-            <i class="pi pi-check-circle text-xs mr-1"></i>Everything the wizard checks for is configured.
+            <i class="pi pi-check-circle text-xs mr-1"></i>Fully configured, with teachers,
+            students and surveys all in place.
           </div>
         </template>
         <Button label="Re-check" icon="pi pi-refresh" text size="small" @click="loadState" />
@@ -216,6 +312,9 @@ import { rootSchoolDoc, schoolDoc } from '../../firebase/schoolCollections.js'
 import { db, auth } from '../../firebase/config'
 import { checkNewSchoolRemote, schoolStateRemote } from '../../utils/api.js'
 import { slugifySchoolId } from '../../utils/wizardHelpers.js'
+import {
+  STUDENT_COLUMNS, TEACHER_COLUMNS, studentTemplateCsv, teacherTemplateCsv, downloadCsv,
+} from '../../utils/importTemplates.js'
 
 const emit = defineEmits(['open-tab', 'school-created'])
 const toast = useToast()
@@ -225,15 +324,27 @@ const STEPS = [
     blurb: 'Creates the Firestore document everything else hangs off. The id is yours to choose — it is how the school is addressed everywhere, so it cannot be changed later.' },
   { key: 'new.details', label: 'School details',
     blurb: 'Location, board, contact and owner. Used on generated documents and for filtering across the dashboard.' },
-  { key: 'new.structure', label: 'Grades & sections',
+  // REQUIRED. A student import against a school with no classes, subjects or
+  // terms does not fail — it writes rows that reference nothing, and the
+  // dashboard then shows a roster that no class-scoped feature can see. These
+  // three gates exist to make that state unreachable, and they are checked
+  // against LIVE counts rather than a self-declaration.
+  { key: 'new.structure', label: 'Grades & sections', required: true,
+    requires: 'classes',
     blurb: 'The classes students will belong to. Everything downstream — subjects, surveys, reports — is scoped by class, so this comes before people.' },
-  { key: 'new.subjects', label: 'Subjects',
+  { key: 'new.subjects', label: 'Subjects', required: true,
+    requires: 'subjects',
     blurb: 'Scholastic and co-scholastic subjects per grade. The knowledge base classifies each name so the split is consistent across schools.' },
-  { key: 'new.academics', label: 'Terms, scales & remarks',
+  { key: 'new.academics', label: 'Terms, scales & remarks', required: true,
+    requires: 'terms',
     blurb: 'The assessment machinery: terms, grading scales, months and remark categories. Applying a template is usually faster than building it by hand.' },
-  { key: 'new.people', label: 'Teachers & students',
-    blurb: 'Import staff first, then the student roster — students need their classes to exist, which they now do.' },
+  // SKIPPABLE BY DESIGN. School data arrives days or weeks after configuration,
+  // and finishing without it is a normal, successful outcome — not a failure.
+  { key: 'new.people', label: 'Teachers & students', optional: true,
+    skipLabel: 'Skip — data can be added anytime from Import',
+    blurb: 'Import staff first, then the student roster. Schools rarely have these files ready on day one; skipping is expected and the school stays fully usable without them.' },
   { key: 'new.surveys', label: 'Surveys', optional: true,
+    skipLabel: 'Skip — surveys can be assigned anytime',
     blurb: 'Assign the standard survey set to the new students. Safe to leave until the roster settles.' },
   { key: 'new.review', label: 'Review & finish',
     blurb: 'What is configured, what is missing, and where to fix each gap. Nothing incomplete is hidden.' },
@@ -304,6 +415,13 @@ const form = reactive({
 function labelFor(key) { return STEPS.find(s => s.key === key)?.label || key }
 function openTab(to) { emit('open-tab', to) }
 
+function downloadStudentTemplate() {
+  downloadCsv('student-import-template.csv', studentTemplateCsv())
+}
+function downloadTeacherTemplate() {
+  downloadCsv('teacher-import-template.csv', teacherTemplateCsv())
+}
+
 const previewClasses = computed(() => {
   if (form.structureRoute !== 'manual') return []
   const sections = form.sections.split(',').map(s => s.trim()).filter(Boolean)
@@ -311,17 +429,49 @@ const previewClasses = computed(() => {
   return form.grades.flatMap(g => sections.map(s => `${g}_${s}`))
 })
 
-const gaps = computed(() => {
+/**
+ * Two different things, deliberately NOT merged.
+ *
+ * configGaps  — a required step's output is missing. A real problem: the
+ *               wizard would not have let you past it, so something was
+ *               removed afterwards.
+ * pendingData — the school has not sent its files yet. Entirely normal, and
+ *               reported as success rather than as an error.
+ */
+const configGaps = computed(() => {
   if (!state.value) return []
   const c = state.value.counts
   const out = []
   if (!c.classes) out.push({ key: 'classes', label: 'No classes configured', to: 'classes-teachers', action: 'Add classes' })
   if (!c.subjects) out.push({ key: 'subjects', label: 'No subjects configured', to: 'subjects', action: 'Add subjects' })
   if (!c.terms) out.push({ key: 'terms', label: 'No terms configured', to: 'terms-scales', action: 'Add terms' })
-  if (!c.staffs) out.push({ key: 'staffs', label: 'No staff imported', to: '/import', action: 'Import staff' })
-  if (!c.students) out.push({ key: 'students', label: 'No students imported', to: '/import', action: 'Import students' })
-  if (c.students && !c.students_with_surveys) out.push({ key: 'surveys', label: 'No students have surveys assigned', to: '/surveys', action: 'Assign surveys' })
   return out
+})
+
+const pendingData = computed(() => {
+  if (!state.value) return []
+  const c = state.value.counts
+  const out = []
+  if (!c.staffs) out.push({ key: 'staffs', label: 'Teachers not imported yet', to: '/import', action: 'Import' })
+  if (!c.students) out.push({ key: 'students', label: 'Students not imported yet', to: '/import', action: 'Import' })
+  if (c.students && !c.students_with_surveys) out.push({ key: 'surveys', label: 'Surveys not assigned yet', to: '/surveys', action: 'Assign' })
+  return out
+})
+
+// Kept for the handoff panel's gap links.
+const gaps = computed(() => [...configGaps.value, ...pendingData.value])
+
+const stepDef = computed(() => STEPS.find(s => s.key === currentStep.value))
+
+/**
+ * Required steps are satisfied by LIVE counts, not by ticking a box.
+ * `state` is refreshed by verifyRequirement() when the step opens and after
+ * returning from the tab that does the work.
+ */
+const requirementMet = computed(() => {
+  const key = stepDef.value?.requires
+  if (!key) return true
+  return (state.value?.counts?.[key] || 0) > 0
 })
 
 const canContinue = computed(() => {
@@ -332,11 +482,43 @@ const canContinue = computed(() => {
     if (check.value.similar?.length && !form.dupeAcknowledged) return false
     return true
   }
+  // Manual structure entry can advance on the composed class list, because
+  // the wizard writes those classes itself on Continue.
   if (currentStep.value === 'new.structure' && form.structureRoute === 'manual') {
-    return previewClasses.value.length > 0
+    return previewClasses.value.length > 0 || requirementMet.value
   }
+  if (stepDef.value?.required) return requirementMet.value
   return true
 })
+
+const REQUIREMENT_LABELS = {
+  classes: 'at least one class',
+  subjects: 'at least one subject',
+  terms: 'at least one term',
+}
+
+const blockedReason = computed(() => {
+  const key = stepDef.value?.requires
+  if (!key || requirementMet.value) return ''
+  return `This school needs ${REQUIREMENT_LABELS[key] || key} before you can continue. ` +
+    'Importing students without it writes rows that no class-scoped feature can see. ' +
+    'Add it in the linked tab, then press Re-check.'
+})
+
+const verifying = ref(false)
+
+/** Re-read live counts so a required step reflects work done in another tab. */
+async function verifyRequirement() {
+  if (!form.id.trim()) return
+  verifying.value = true
+  try {
+    state.value = await schoolStateRemote({ schoolId: form.id.trim() })
+  } catch (e) {
+    error.value = e.message || 'Could not check the school configuration.'
+  } finally {
+    verifying.value = false
+  }
+}
 
 // ── Run lifecycle ───────────────────────────────────────────────────────────
 async function begin() {
@@ -346,6 +528,9 @@ async function begin() {
 async function resume(runId) {
   await wizard.load(runId)
   if (run.value?.school_id) { form.id = run.value.school_id; await loadState() }
+  // A run resumed straight onto a required step must reflect live counts, or
+  // Continue looks broken until the user finds Re-check.
+  await maybeVerify()
 }
 async function discard(runId) {
   await wizard.load(runId)
@@ -387,7 +572,16 @@ async function loadState() {
 }
 
 // ── Step actions ────────────────────────────────────────────────────────────
-async function onGo(key) { caption.value = ''; await wizard.goTo(key) }
+async function onGo(key) {
+  caption.value = ''
+  await wizard.goTo(key)
+  await maybeVerify()
+}
+
+/** Refresh live counts whenever a required step becomes current. */
+async function maybeVerify() {
+  if (STEPS.find(x => x.key === currentStep.value)?.required) await verifyRequirement()
+}
 async function onBack() {
   caption.value = ''
   const prev = STEPS[Math.max(0, currentIndex.value - 1)]
@@ -407,8 +601,31 @@ async function onNext() {
     const summary = await commitStep(key)
     if (summary === false) return
     if (key === 'new.review') {
+      // Finishing with teachers/students/surveys outstanding is a SUCCESS.
+      // The outstanding list is recorded on the school itself so the setup
+      // page can show what is still awaited, months later, without needing
+      // the wizard run.
+      const outstanding = pendingData.value.map(g => g.key)
+      try {
+        await setDoc(rootSchoolDoc(form.id.trim()), {
+          setup_completed_at: serverTimestamp(),
+          setup_completed_by: auth.currentUser?.email || 'unknown',
+          setup_outstanding: outstanding,
+        }, { merge: true })
+      } catch (e) {
+        // Never let a bookkeeping write fail the finish itself.
+        console.error('Could not record setup status on the school', e)
+      }
       await wizard.finish(summary)
-      toast.add({ severity: 'success', summary: 'School setup complete', detail: summary, life: 5000 })
+      emit('school-created', form.id.trim())
+      toast.add({
+        severity: 'success',
+        summary: outstanding.length ? 'Configured — awaiting school data' : 'School setup complete',
+        detail: outstanding.length
+          ? `Ready to use. Still to come: ${outstanding.join(', ')}. Add anytime from Import.`
+          : summary,
+        life: 6000,
+      })
     }
     caption.value = captionFor(key)
     await wizard.completeStep(key, summary)

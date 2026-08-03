@@ -418,13 +418,18 @@ const toast = useToast()
 const STEPS = [
   { key: 'reset.select', label: 'School & current state',
     blurb: 'Pick the school and see what it holds today. Nothing is modified in this step.' },
-  { key: 'reset.archive', label: 'Archive',
+  // REQUIRED, and not negotiable: the archive is the only thing that makes a
+  // reset recoverable, and reset_execute refuses without a verified one.
+  { key: 'reset.archive', label: 'Archive', required: true,
     blurb: 'Copies students, classes, sheet entries and survey responses to a location the teacher and student apps never read, then verifies the copy by row count. Required before anything can be changed.' },
   { key: 'reset.choose', label: 'Choose what to reset',
     blurb: 'Each change is opted into individually. Anything not ticked is left exactly as it is.' },
+  // The ONLY skippable step in this wizard. Marking leavers can wait; the
+  // archive and the preview cannot.
   { key: 'reset.roster', label: 'Roster update', optional: true,
+    skipLabel: 'Skip — leavers can be marked later',
     blurb: 'Mark students who have left. New intake is imported after the reset, once classes reflect the new session.' },
-  { key: 'reset.preview', label: 'Preview & confirm',
+  { key: 'reset.preview', label: 'Preview & confirm', required: true,
     blurb: 'An itemized list of every change, produced by the same code that will perform it. Confirmation requires typing the school id.' },
   { key: 'reset.execute', label: 'Execute',
     blurb: 'Applies the changes in batches, with progress and a full run log. A dry run produces the same plan and log without writing.' },

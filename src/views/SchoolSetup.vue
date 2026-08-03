@@ -38,6 +38,22 @@
           :disabled="!!resetTargetSchoolId"
           filter
         />
+        <!-- What this school is still waiting on, recorded by the New School
+             wizard when it finished. Finishing with these outstanding is a
+             success state, so the chip is neutral, not a warning.
+
+             NOTE: this lives here rather than on the Schools page, because
+             that page reads operations/ops/schools — the ops CRM tree, a
+             DIFFERENT id space from the root schools/ tree these wizards
+             configure, with no link between them. Putting the chip there
+             would mean guessing which CRM row matches. -->
+        <span v-if="outstandingForSelected.length"
+              class="px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-600 flex items-center gap-1"
+              :title="`Configured and usable. Awaiting: ${outstandingForSelected.join(', ')}`">
+          <i class="pi pi-clock" style="font-size:10px"></i>
+          Awaiting {{ outstandingForSelected.join(', ') }}
+        </span>
+
         <!-- While a reset run is active the page selector follows it and is
              frozen. A destructive flow must never be able to show one school
              at the top of the page and act on another. -->
@@ -163,6 +179,13 @@ const activeTab = ref('overview')
  * NAVODAYA while the header reads TEST_SCHOOL, which is what happened once.
  */
 const resetTargetSchoolId = ref(null)
+
+/** Outstanding school data for the selected school, recorded at wizard finish. */
+const outstandingForSelected = computed(() => {
+  const s = selectedSchoolObject.value
+  if (!s?.setup_completed_at) return []
+  return Array.isArray(s.setup_outstanding) ? s.setup_outstanding : []
+})
 
 function onResetTarget(schoolId) {
   resetTargetSchoolId.value = schoolId || null

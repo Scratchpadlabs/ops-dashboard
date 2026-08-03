@@ -43,6 +43,8 @@
                   :title="summaryOf(s.key)">{{ summaryOf(s.key) }}</span>
             <span v-else-if="s.optional" class="block text-[11px]"
                   :class="s.key === currentStep ? 'text-slate-400' : 'text-slate-300'">Optional</span>
+            <span v-else-if="s.required" class="block text-[11px]"
+                  :class="s.key === currentStep ? 'text-amber-300' : 'text-amber-600'">Required</span>
           </span>
         </div>
       </button>
@@ -64,7 +66,13 @@
             <h3 class="text-base font-bold text-slate-900">{{ step?.label }}</h3>
             <span v-if="step?.optional"
                   class="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-500">
-              Optional — skip for now
+              Optional — can be done later
+            </span>
+            <!-- Required steps say so. A step that silently refuses to advance
+                 reads as a broken button. -->
+            <span v-else-if="step?.required"
+                  class="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-700">
+              Required
             </span>
           </div>
           <!-- Plain-language explanation of what this step does and why it
@@ -84,11 +92,19 @@
 
         <div v-if="error" class="mt-4 text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{{ error }}</div>
 
+        <!-- Why Continue is disabled. Without this a required step looks like
+             a broken button rather than an unmet condition. -->
+        <div v-if="step?.required && !canContinue && blockedReason"
+             class="mt-4 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+          <i class="pi pi-info-circle text-xs mr-1"></i>{{ blockedReason }}
+        </div>
+
         <div class="flex items-center gap-2 mt-5 pt-4 border-t border-slate-100">
           <Button v-if="currentIndex > 0" label="Back" icon="pi pi-arrow-left" text size="small"
             :disabled="busy" @click="$emit('back')" />
           <div class="ml-auto flex gap-2">
-            <Button v-if="step?.optional" label="Skip for now" text size="small"
+            <Button v-if="step?.optional" :label="step.skipLabel || 'Skip for now'"
+              icon="pi pi-clock" text size="small"
               :disabled="busy" @click="$emit('skip')" />
             <slot name="actions">
               <Button :label="isLast ? 'Finish' : 'Continue'" :icon="isLast ? 'pi pi-check' : 'pi pi-arrow-right'"
@@ -127,6 +143,9 @@ const props = defineProps({
   error: { type: String, default: '' },
   busy: { type: Boolean, default: false },
   canContinue: { type: Boolean, default: true },
+  // Shown when a REQUIRED step cannot advance, so the disabled Continue
+  // button is explained rather than merely dead.
+  blockedReason: { type: String, default: '' },
 })
 defineEmits(['go', 'back', 'next', 'skip', 'exit'])
 
