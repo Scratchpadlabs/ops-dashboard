@@ -49,7 +49,7 @@ from reset_rules import (
 )
 from class_resolver import (
     build_school_context, resolve_class, distinct_class_values, CONF_HIGH,
-    CONF_MEDIUM,
+    CONF_MEDIUM, looks_like_sentinel,
 )
 from promotion import (
     ACTION_PROMOTE, ACTION_GRADUATE, plan_fingerprint, plan_to_csv,
@@ -162,14 +162,20 @@ def school_state(req: https_fn.CallableRequest):
     # Class figures go through the shared resolver, not a raw classId read, so
     # step 1 of the wizard shows the same numbers the promotion step will.
     ctx = _resolution_context(ref)
-    resolved_ids, unresolved = set(), 0
+    resolved_ids, unresolved, excluded = set(), 0, 0
     for s in students:
         r = resolve_class(s, ctx)
-        if r.get("canonical_class_id"):
+        if r.get("excluded"):
+            # Deliberately parked outside the app. Not a class, and not a
+            # problem — it must not appear in the class list or the
+            # unresolved count.
+            excluded += 1
+        elif r.get("canonical_class_id"):
             resolved_ids.add(r["canonical_class_id"])
         else:
             unresolved += 1
     counts["unresolved_classes"] = unresolved
+    counts["excluded_students"] = excluded
 
     return {
         "school": {**(snap.to_dict() or {}), "id": snap.id},
@@ -177,6 +183,7 @@ def school_state(req: https_fn.CallableRequest):
         "class_ids": sorted(resolved_ids),
         "resolution": {
             "unresolved_students": unresolved,
+            "excluded_students": excluded,
             "distinct_values": len(distinct_class_values(students)),
             "configured_classes": len(ctx["class_ids"]),
             "class_map_entries": len(ctx["class_map"]),
@@ -607,16 +614,30 @@ def scan_classes(req: https_fn.CallableRequest):
             "label": resolved.get("label"),
             "source": (existing or {}).get("source"),
             "confirmed_by": (existing or {}).get("confirmed_by"),
+            "excluded": bool((existing or {}).get("excluded")),
+            # A SUGGESTION only. Students parked on a meaningless class value
+            # so they cannot reach the app are a real convention here, but
+            # auto-excluding on a name match would hide a genuine class called
+            # e.g. "Sample House" from anyone who never opened this screen.
+            "suggest_exclude": (
+                not existing
+                and resolved.get("canonical_class_id") is None
+                and looks_like_sentinel(raw)
+            ),
         })
 
     rows.sort(key=lambda r: (r["grade_ordinal"] if r["grade_ordinal"] is not None else 99,
                               str(r["section"]), str(r["raw_value"])))
-    unresolved = sum(1 for r in rows if r["grade_ordinal"] is None)
+    unresolved = sum(1 for r in rows
+                     if r["grade_ordinal"] is None and not r["excluded"])
+    suggested = sum(1 for r in rows if r.get("suggest_exclude"))
     return {
         "rows": rows,
         "student_count": len(students),
         "distinct_count": len(rows),
         "unresolved_count": unresolved,
+        "suggested_exclusions": suggested,
+        "excluded_count": sum(1 for r in rows if r["excluded"]),
         "configured_classes": sorted(ctx["class_ids"]),
         "notation": ctx["notation"],
         "separator": ctx["separator"],
@@ -660,9 +681,13 @@ def save_class_map(req: https_fn.CallableRequest):
             # A Firestore doc id cannot contain "/" and cannot be empty; the
             # raw value is kept intact in the document body regardless.
             doc_id = raw.replace("/", "∕")[:1500]
+            excluded = bool(row.get("excluded"))
             batch.set(ref.collection("class_map").document(doc_id), {
                 "raw_value": raw,
-                "canonical_class_id": row.get("canonical_class_id"),
+                # An excluded value maps to no class by definition; storing a
+                # canonical id alongside excluded=True would be contradictory.
+                "excluded": excluded,
+                "canonical_class_id": None if excluded else row.get("canonical_class_id"),
                 "grade_token": row.get("grade_token"),
                 "grade_canonical": row.get("grade_canonical"),
                 "grade_ordinal": row.get("grade_ordinal"),
@@ -683,7 +708,9 @@ def save_class_map(req: https_fn.CallableRequest):
             for row in rows:
                 canon = row.get("grade_canonical")
                 raw = str(row.get("raw_value") or "")
-                if not canon or not raw:
+                # Exclusions are a per-school parking convention, not a grade
+                # spelling — sharing them would teach other schools nonsense.
+                if not canon or not raw or row.get("excluded"):
                     continue
                 db.collection("import_aliases").document(
                     f"grade::{raw.lower().replace('/', '_')[:200]}"
@@ -729,11 +756,13 @@ def class_health(req: https_fn.CallableRequest):
                         "error": str(e)})
             continue
 
-        confident = 0
+        confident = excluded = 0
         unmapped_labels = {}
         for s in students:
             r = resolve_class(s, ctx)
-            if r["grade_ordinal"] is not None and r["confidence"] in (CONF_HIGH, CONF_MEDIUM):
+            if r.get("excluded"):
+                excluded += 1
+            elif r["grade_ordinal"] is not None and r["confidence"] in (CONF_HIGH, CONF_MEDIUM):
                 confident += 1
             else:
                 key = r.get("label") or "(no class field)"
@@ -748,8 +777,11 @@ def class_health(req: https_fn.CallableRequest):
             "students": total,
             "distinct_class_values": len(distinct_class_values(students)),
             "resolved": confident,
-            "unmapped": total - confident,
-            "pct_resolved": round(confident / total * 100, 1) if total else 100.0,
+            "excluded": excluded,
+            "unmapped": total - confident - excluded,
+            # Excluded students are deliberately parked, so they count as
+            # accounted-for rather than dragging the percentage down.
+            "pct_resolved": round((confident + excluded) / total * 100, 1) if total else 100.0,
             "configured_classes": len(ctx["class_ids"]),
             "class_map_entries": len(ctx["class_map"]),
             "has_confirmed_map": confirmed > 0,
@@ -762,6 +794,7 @@ def class_health(req: https_fn.CallableRequest):
         "schools": len(out),
         "students": sum(r.get("students", 0) for r in out),
         "resolved": sum(r.get("resolved", 0) for r in out),
+        "excluded": sum(r.get("excluded", 0) for r in out),
         "unmapped": sum(r.get("unmapped", 0) for r in out),
         "schools_needing_attention": sum(1 for r in out if r.get("unmapped")),
     }

@@ -282,6 +282,23 @@ A test in each function folder (`tests/test_shared_sync.py`) fails on drift,
 so a stale copy cannot reach production silently. Editing the copy instead of
 `functions/shared/` is the mistake to avoid — the sync overwrites it.
 
+### Students deliberately parked outside the app
+
+Some students carry a meaningless class value ("Sample", "sample_middle") so
+they cannot reach the app. That is an intentional convention, not broken data,
+and it must not stop a reset — 153 students across the estate were in this
+state when the resolver was built.
+
+Mark those values as **Exclude** in the Class Map tab. Excluded students are
+then reported as `unchanged / excluded from the app by class value`: never
+promoted, never counted as unmapped, and they do not trigger the hard block.
+
+Exclusion is ALWAYS a confirmed decision. `scan_classes` will *suggest* it for
+values that look like parking sentinels (sample/test/demo/dummy…), but nothing
+is excluded until someone ticks the box — otherwise a genuine class called
+"Sample House" would silently vanish. Exclusions are also never shared to
+`import_aliases`: they are per-school parking values, not grade spellings.
+
 ### Verifying the estate before and after
 
 ```

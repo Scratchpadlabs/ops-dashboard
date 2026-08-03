@@ -23,6 +23,14 @@
         </div>
       </div>
 
+      <div v-if="scan_?.suggested_exclusions" class="mt-3 text-sm text-slate-700 bg-slate-100 rounded-lg px-3 py-2">
+        {{ scan_.suggested_exclusions }} value(s) look like parking values used to keep a
+        student out of the app. They are <b>not</b> excluded automatically — review and tick
+        Exclude for the ones that are.
+        <Button label="Tick all suggested" text size="small" class="ml-1"
+          @click="applySuggestedExclusions" />
+      </div>
+
       <div v-if="scan_?.unresolved_count" class="mt-3 text-sm text-amber-800 bg-amber-50 rounded-lg px-3 py-2">
         <i class="pi pi-exclamation-triangle text-xs mr-1"></i>
         {{ scan_.unresolved_count }} value(s) could not be resolved automatically.
@@ -65,6 +73,7 @@
               <th class="text-left font-medium px-3 py-2">Section</th>
               <th class="text-left font-medium px-3 py-2">Resolves to</th>
               <th class="text-left font-medium px-3 py-2">Confidence</th>
+              <th class="text-center font-medium px-3 py-2">Exclude</th>
             </tr>
           </thead>
           <tbody>
@@ -78,21 +87,31 @@
               <td class="px-3 py-2 text-xs text-slate-500">{{ r.field || '—' }}</td>
               <td class="px-3 py-2 text-right tabular-nums text-slate-600">{{ r.student_count }}</td>
               <td class="px-3 py-2">
-                <Select v-model="r.grade_ordinal" :options="GRADE_OPTIONS"
+                <Select v-if="!r.excluded" v-model="r.grade_ordinal" :options="GRADE_OPTIONS"
                   optionLabel="label" optionValue="value" class="w-36" size="small"
                   placeholder="Set grade" @change="markDirty(r)" />
+                <span v-else class="text-xs text-slate-400 italic">not a class</span>
               </td>
               <td class="px-3 py-2">
-                <InputText v-model="r.section" class="w-28" size="small"
+                <InputText v-if="!r.excluded" v-model="r.section" class="w-28" size="small"
                   placeholder="—" @input="markDirty(r)" />
+                <span v-else class="text-xs text-slate-400">—</span>
               </td>
               <td class="px-3 py-2 font-mono text-xs">
-                <span v-if="targetOf(r)" class="text-slate-800">{{ targetOf(r) }}</span>
+                <span v-if="r.excluded" class="text-slate-400 italic">excluded from the app</span>
+                <span v-else-if="targetOf(r)" class="text-slate-800">{{ targetOf(r) }}</span>
                 <span v-else class="text-red-600">{{ r.label || 'unresolved' }}</span>
               </td>
               <td class="px-3 py-2">
                 <span class="px-2 py-0.5 rounded-full text-[11px] font-semibold"
                   :class="confidenceTone(r)">{{ confidenceLabel(r) }}</span>
+              </td>
+              <!-- Students parked on a meaningless class value so they cannot
+                   reach the app. Marking the value here stops them blocking a
+                   reset, without pretending they belong to a grade. -->
+              <td class="px-3 py-2 text-center">
+                <Checkbox :modelValue="r.excluded" binary
+                  @update:modelValue="v => setExcluded(r, v)" />
               </td>
             </tr>
           </tbody>
@@ -155,7 +174,8 @@ const dirtyCount = computed(() => rows.value.filter(r => r._dirty).length)
 
 const visibleRows = computed(() =>
   onlyUnresolved.value
-    ? rows.value.filter(r => r.grade_ordinal === null || r.grade_ordinal === undefined)
+    ? rows.value.filter(r => !r.excluded
+        && (r.grade_ordinal === null || r.grade_ordinal === undefined))
     : rows.value)
 
 const summaryTiles = computed(() => {
@@ -175,12 +195,14 @@ const summaryTiles = computed(() => {
 
 /** What this row will resolve to once saved, in the school's own notation. */
 function targetOf(r) {
+  if (r.excluded) return null
   if (r.grade_ordinal === null || r.grade_ordinal === undefined) return null
   const token = ordinalToToken(r.grade_ordinal, scan_.value?.notation || 'roman')
   return composeClassId(token, (r.section || '').trim(), scan_.value?.separator || '_')
 }
 
 function confidenceLabel(r) {
+  if (r.excluded) return 'excluded'
   if (r._dirty) return 'edited'
   if (r.source === 'confirmed') return 'confirmed'
   if (r.grade_ordinal === null || r.grade_ordinal === undefined) return 'unresolved'
@@ -189,6 +211,7 @@ function confidenceLabel(r) {
 
 function confidenceTone(r) {
   const l = confidenceLabel(r)
+  if (l === 'excluded') return 'bg-slate-200 text-slate-600'
   if (l === 'confirmed') return 'bg-emerald-100 text-emerald-700'
   if (l === 'edited') return 'bg-amber-100 text-amber-700'
   if (l === 'unresolved') return 'bg-red-100 text-red-700'
@@ -197,6 +220,20 @@ function confidenceTone(r) {
 }
 
 function markDirty(r) { r._dirty = true }
+
+/**
+ * Excluding a value means "this is not a class" — so any grade/section on the
+ * row is cleared rather than left to contradict the flag.
+ */
+function setExcluded(r, value) {
+  r.excluded = value
+  if (value) { r.grade_ordinal = null; r.section = '' }
+  r._dirty = true
+}
+
+function applySuggestedExclusions() {
+  rows.value.forEach(r => { if (r.suggest_exclude && !r.excluded) setExcluded(r, true) })
+}
 
 async function scan() {
   scanning.value = true
@@ -218,6 +255,7 @@ async function save() {
   try {
     const payload = rows.value.filter(r => r._dirty).map(r => ({
       raw_value: r.raw_value,
+      excluded: !!r.excluded,
       canonical_class_id: targetOf(r),
       grade_token: ordinalToToken(r.grade_ordinal, scan_.value?.notation || 'roman'),
       grade_canonical: gradeCanonicalFor(r.grade_ordinal),

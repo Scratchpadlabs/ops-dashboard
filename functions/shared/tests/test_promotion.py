@@ -193,3 +193,63 @@ def test_fingerprint_changes_when_a_student_is_added():
     before = build_promotion_plan([st("a", "I_A")], ctx)
     after = build_promotion_plan([st("a", "I_A"), st("b", "I_A")], ctx)
     assert plan_fingerprint(before) != plan_fingerprint(after)
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# EXCLUDED STUDENTS
+#
+# Some students are parked on a deliberately meaningless class value so they
+# cannot reach the app — confirmed as an intentional convention across the
+# live estate (153 students at the time of writing). That is a KNOWN state,
+# and treating it as broken data would block a reset on nearly every school.
+# ══════════════════════════════════════════════════════════════════════════
+
+def ctx_excluding(*raw_values, class_ids=ROMAN_SCHOOL):
+    return build_school_context(class_ids, class_map={
+        v: {"excluded": True, "source": "confirmed"} for v in raw_values})
+
+
+def test_excluded_students_do_not_block_the_run():
+    """The whole point. Without this, six 'Sample' rows stop a reset for a
+    1,949-student school."""
+    ctx = ctx_excluding("Sample")
+    plan = build_promotion_plan([st("s1", "I_A"), st("s2", "Sample")], ctx)
+    s = summarize(plan)
+    assert s["can_proceed"] is True
+    assert s["counts"][ACTION_BLOCKED] == 0
+
+
+def test_excluded_students_are_left_alone_not_promoted():
+    ctx = ctx_excluding("Sample")
+    plan = build_promotion_plan([st("s2", "Sample")], ctx)
+    assert plan[0]["action"] == ACTION_UNCHANGED
+    assert plan[0]["reason"] == "excluded from the app by class value"
+    assert plan[0]["to"] is None
+
+
+def test_excluded_count_is_reported_separately_from_other_unchanged():
+    """'unchanged' must not read as one undifferentiated bucket — an inactive
+    student and a parked student are different things."""
+    ctx = ctx_excluding("Sample")
+    plan = build_promotion_plan(
+        [st("s1", "Sample"), st("s2", "I_A", isActive=False), st("s3", "I_A")], ctx)
+    s = summarize(plan)
+    assert s["counts"][ACTION_UNCHANGED] == 2
+    assert s["excluded_count"] == 1
+
+
+def test_an_unconfirmed_sentinel_still_blocks():
+    """Exclusion is only ever a confirmed decision. A value that merely LOOKS
+    like a parking value is still blocked until someone says so — otherwise a
+    real class named 'Sample House' would be silently dropped."""
+    ctx = build_school_context(ROMAN_SCHOOL)
+    plan = build_promotion_plan([st("s1", "Sample")], ctx)
+    assert plan[0]["action"] == ACTION_BLOCKED
+
+
+def test_excluded_students_still_appear_in_the_plan_exactly_once():
+    ctx = ctx_excluding("Sample", "sample_middle")
+    students = [st("a", "I_A"), st("b", "Sample"), st("c", "sample_middle")]
+    plan = build_promotion_plan(students, ctx)
+    assert len(plan) == 3
+    assert summarize(plan)["total"] == 3

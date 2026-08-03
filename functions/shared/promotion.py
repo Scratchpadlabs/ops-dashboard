@@ -8,8 +8,9 @@ Every student lands in exactly one bucket, and every bucket carries a reason:
 
     promote   — target class exists (or section mapping resolves it)
     graduate  — at the school's highest configured grade; marked inactive
-    unchanged — deliberately excluded (already inactive, or a recorded
-                "leave these alone" decision)
+    unchanged — deliberately excluded: already inactive, parked on an
+                excluded class value so they cannot reach the app, or a
+                recorded "leave these alone" decision
     blocked   — cannot be resolved or has no target class. NEVER written.
                 A run containing blocked students cannot proceed until a human
                 resolves them, because a reset that clears survey inboxes
@@ -21,7 +22,7 @@ second implementation to drift.
 """
 
 from class_resolver import (  # noqa: F401  (re-exported for callers)
-    GRADUATED, CONF_NONE, resolve_class, build_school_context,
+    GRADUATED, EXCLUDED, CONF_NONE, resolve_class, build_school_context,
     ordinal_to_token, compose_class_id, describe_unresolved,
 )
 
@@ -89,6 +90,13 @@ def build_promotion_plan(students, ctx, section_map=None, leave_unchanged_ids=No
             rows.append(_row(sid, s, raw, resolved, None, ACTION_UNCHANGED,
                              "already inactive"))
             continue
+        # Parked on a confirmed exclusion value. A known state, so it must
+        # never block the run — but it is not promoted either, because the
+        # student is deliberately outside the app.
+        if resolved.get("excluded"):
+            rows.append(_row(sid, s, raw, resolved, None, ACTION_UNCHANGED,
+                             "excluded from the app by class value"))
+            continue
         if sid in leave:
             rows.append(_row(sid, s, raw, resolved, None, ACTION_UNCHANGED,
                              "explicitly left unchanged"))
@@ -124,6 +132,10 @@ def summarize(plan):
     for r in plan:
         counts[r["action"]] = counts.get(r["action"], 0) + 1
 
+    excluded = sum(1 for r in plan
+                   if r["action"] == ACTION_UNCHANGED
+                   and r.get("reason") == "excluded from the app by class value")
+
     blocked_reasons = {}
     for r in plan:
         if r["action"] != ACTION_BLOCKED:
@@ -137,6 +149,9 @@ def summarize(plan):
     return {
         "total": len(plan),
         "counts": counts,
+        # Surfaced separately so "unchanged" does not read as one
+        # undifferentiated bucket in the preview.
+        "excluded_count": excluded,
         "blocked_reasons": sorted(blocked_reasons.values(), key=lambda x: -x["count"]),
         "can_proceed": counts[ACTION_BLOCKED] == 0,
     }

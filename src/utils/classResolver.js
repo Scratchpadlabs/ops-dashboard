@@ -24,6 +24,21 @@ export const CONF_NONE = 'none'
 
 export const GRADUATED = '__graduated__'
 
+// Some students are parked on a deliberately meaningless class value so they
+// cannot reach the app. A KNOWN state, not broken data: it must not block a
+// reset and must not be promoted either. Mirrors class_resolver.py.
+export const EXCLUDED = '__excluded__'
+
+// Values that LOOK like a parking sentinel. Used only to PROPOSE exclusion in
+// the review UI — never to exclude automatically, or a genuine class called
+// "Sample House" would vanish for anyone who never opened that screen.
+const SENTINEL_HINTS = ['sample', 'test', 'demo', 'dummy', 'placeholder', 'temp', 'xxx']
+
+export function looksLikeSentinel(raw) {
+  const text = norm(raw)
+  return !!text && SENTINEL_HINTS.some(h => text.includes(h))
+}
+
 const PRE_PRIMARY_ORDINALS = { 'Pre-Nursery': -3, Nursery: -2, LKG: -1, UKG: 0 }
 
 export const CLASS_ID_FIELDS = ['classId', 'currentClassId', 'class_id', 'classID',
@@ -242,6 +257,19 @@ export function resolveClass(student, context = null) {
   // A confirmed class_map entry is the school's own answer and outranks
   // anything this module can infer.
   const entry = ctx.classMap[raw] || ctx.classMap[norm(raw)]
+
+  // Confirmed parking value: resolved with high confidence to EXCLUDED so the
+  // promotion engine leaves the student alone rather than blocking the run.
+  if (entry?.excluded) {
+    return {
+      raw, rawField: field, gradeToken: null, gradeCanonical: null,
+      gradeOrdinal: null, section: '', canonicalClassId: EXCLUDED,
+      excluded: true, confidence: CONF_HIGH,
+      reason: 'excluded from the app by class value',
+      label: `${raw} (excluded)`, fromMap: entry.source || 'confirmed',
+    }
+  }
+
   if (entry?.canonical_class_id) {
     return {
       raw, rawField: field,

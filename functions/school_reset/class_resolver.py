@@ -55,6 +55,33 @@ PRE_PRIMARY_ORDINALS = {"Pre-Nursery": -3, "Nursery": -2, "LKG": -1, "UKG": 0}
 
 GRADUATED = "__graduated__"
 
+# Some students are parked on a deliberately meaningless class value so they
+# cannot reach the app. That is a KNOWN state, not broken data: it must not
+# block a reset, and it must not be silently promoted either. A class_map
+# entry with excluded=True marks the value; those students are reported
+# separately and left alone.
+EXCLUDED = "__excluded__"
+
+# Values that LOOK like a parking sentinel. Used only to PROPOSE exclusion in
+# the scan review — never to exclude automatically. Auto-excluding on a name
+# match would hide a real class called "Sample House" from someone who never
+# looked at the review screen.
+SENTINEL_HINTS = ("sample", "test", "demo", "dummy", "placeholder", "temp", "xxx")
+
+
+def looks_like_sentinel(raw):
+    """Whether a raw value resembles a deliberate parking value.
+
+    A suggestion for the review UI. The answer is only ever acted on after a
+    human confirms it, which is why a loose substring match is acceptable here
+    and would not be anywhere else.
+    """
+    text = _norm(raw)
+    if not text:
+        return False
+    return any(h in text for h in SENTINEL_HINTS)
+
+
 CONF_HIGH = "high"      # exact match, or a human-confirmed class_map entry
 CONF_MEDIUM = "medium"  # parsed cleanly but with an inferred split
 CONF_LOW = "low"        # parsed, but the split is ambiguous
@@ -346,6 +373,19 @@ def resolve_class(student, context=None):
     # A confirmed class_map entry is the school's own answer and outranks
     # anything this module can infer.
     entry = ctx["class_map"].get(raw) or ctx["class_map"].get(_norm(raw))
+
+    # Confirmed as a parking value: a known, deliberate state. Resolved with
+    # high confidence to EXCLUDED, so the promotion engine leaves the student
+    # alone instead of blocking the whole run on them.
+    if entry and entry.get("excluded"):
+        return {
+            "raw": raw, "raw_field": field, "grade_token": None,
+            "grade_canonical": None, "grade_ordinal": None, "section": "",
+            "canonical_class_id": EXCLUDED, "excluded": True,
+            "confidence": CONF_HIGH, "reason": "excluded from the app by class value",
+            "label": f'{raw} (excluded)', "from_map": entry.get("source", "confirmed"),
+        }
+
     if entry and entry.get("canonical_class_id"):
         return {
             "raw": raw, "raw_field": field,
