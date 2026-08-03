@@ -65,6 +65,8 @@
         <Tab value="co-scholastic">Co-Scholastic</Tab>
         <Tab value="remarks">Remarks</Tab>
         <Tab value="months">Months</Tab>
+        <Tab value="class-map">Class Map</Tab>
+        <Tab value="class-health">Class Health</Tab>
         <Tab value="structure">Propose Structure</Tab>
         <Tab value="knowledge-base">Knowledge Base</Tab>
         <Tab value="sheets-status">Sheets Status</Tab>
@@ -90,6 +92,8 @@
         <TabPanel value="co-scholastic"><CoScholasticTab :school-id="selectedSchoolId" /></TabPanel>
         <TabPanel value="remarks"><RemarksTab :school-id="selectedSchoolId" /></TabPanel>
         <TabPanel value="months"><MonthsTab :school-id="selectedSchoolId" /></TabPanel>
+        <TabPanel value="class-map"><ClassMapTab :school-id="selectedSchoolId" /></TabPanel>
+        <TabPanel value="class-health"><ClassHealthTab /></TabPanel>
         <TabPanel value="structure"><StructureTab :school-id="selectedSchoolId" /></TabPanel>
         <TabPanel value="knowledge-base"><KnowledgeBaseTab /></TabPanel>
         <TabPanel value="sheets-status"><SheetsStatusTab :school-id="selectedSchoolId" /></TabPanel>
@@ -130,6 +134,8 @@ import CloneSchoolTab from '../components/school-setup/CloneSchoolTab.vue'
 import TemplatesTab from '../components/school-setup/TemplatesTab.vue'
 import StructureTab from '../components/school-setup/StructureTab.vue'
 import KnowledgeBaseTab from '../components/school-setup/KnowledgeBaseTab.vue'
+import ClassMapTab from '../components/school-setup/ClassMapTab.vue'
+import ClassHealthTab from '../components/school-setup/ClassHealthTab.vue'
 import NewSchoolWizard from '../components/school-setup/NewSchoolWizard.vue'
 import ResetSchoolWizard from '../components/school-setup/ResetSchoolWizard.vue'
 

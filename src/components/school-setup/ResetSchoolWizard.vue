@@ -170,25 +170,81 @@
             {{ preview.write_estimate }} record writes in total.
           </div>
 
-          <div v-if="preview.unmapped_count" class="text-sm text-amber-800 bg-amber-50 rounded px-2.5 py-2">
-            {{ preview.unmapped_count }} student(s) have a class the promotion rules do not recognize.
-            They will be left unchanged. Review them before continuing.
+          <!-- HARD BLOCK (task item 13). While any student is unresolvable the
+               confirm field and Continue are both withheld: a reset that clears
+               survey inboxes while promoting nobody is the failure this exists
+               to prevent. The only ways forward are fixing the class map or
+               recording an explicit decision to leave those students alone. -->
+          <div v-if="preview.unmapped_count" class="rounded-lg border border-red-200 bg-red-50 px-3 py-2.5">
+            <div class="text-sm font-semibold text-red-800">
+              <i class="pi pi-ban text-xs mr-1"></i>
+              Blocked — {{ preview.unmapped_count }} of {{ preview.total_students }} students
+              have a class that cannot be resolved
+            </div>
+            <p class="text-sm text-red-700 mt-1">
+              This reset cannot run until every student resolves. Nothing has been changed.
+            </p>
+            <div class="mt-2 space-y-1">
+              <div v-for="b in preview.blocked_reasons" :key="b.label"
+                class="text-xs font-mono bg-white border border-red-200 rounded px-2 py-1">
+                {{ b.label }} <span class="text-red-500">× {{ b.count }}</span>
+                <span v-if="b.sample?.length" class="text-slate-400">
+                  — e.g. {{ b.sample.map(x => x.name || x.id).slice(0, 3).join(', ') }}
+                </span>
+              </div>
+            </div>
+            <div class="flex items-center gap-2 mt-3">
+              <Button label="Fix the class map" icon="pi pi-wrench" size="small"
+                @click="openTab('class-map')" />
+              <Button :label="`Leave these ${preview.unmapped_count} unchanged`"
+                icon="pi pi-forward" size="small" outlined severity="secondary"
+                @click="leaveBlockedUnchanged" />
+            </div>
+            <p class="text-[11px] text-red-500 mt-2">
+              Leaving them unchanged is recorded on the run as a deliberate decision.
+            </p>
           </div>
+
+          <div v-if="form.leaveUnchangedIds.length"
+               class="text-xs text-slate-600 bg-slate-100 rounded px-2.5 py-1.5">
+            {{ form.leaveUnchangedIds.length }} student(s) recorded as deliberately left
+            unchanged.
+            <button class="underline ml-1" @click="clearLeaveUnchanged">undo</button>
+          </div>
+
           <div v-if="preview.missing_target_classes?.length" class="text-sm text-amber-800 bg-amber-50 rounded px-2.5 py-2">
             These target classes do not exist yet:
             <span class="font-mono">{{ preview.missing_target_classes.join(', ') }}</span>.
-            Students promoted into them will reference a class that is not configured. Create the
-            classes first, or those students will not appear in class lists.
+            Create them first, or remap those sections.
           </div>
 
-          <div v-if="preview.sample" class="text-xs text-slate-500">
-            <div v-for="(rows, kind) in preview.sample" :key="kind">
-              <template v-if="rows.length">
-                <b class="text-slate-600">{{ kind }}</b> (first {{ rows.length }}):
-                <span v-for="r in rows.slice(0, 6)" :key="r.id" class="font-mono mr-2">
-                  {{ r.from }}→{{ r.to === '__graduated__' ? 'inactive' : r.to }}
-                </span>
-              </template>
+          <!-- Every bucket is expandable (item 11). -->
+          <div v-if="preview.bucket_totals" class="grid grid-cols-4 gap-2">
+            <button v-for="(count, action) in preview.bucket_totals" :key="action"
+              type="button"
+              class="rounded-lg px-2.5 py-2 text-left border transition-colors"
+              :class="[bucketTone(action), openBucket === action ? 'ring-2 ring-slate-300' : '']"
+              @click="openBucket = openBucket === action ? null : action">
+              <div class="text-[11px] capitalize text-slate-500">{{ action }}</div>
+              <div class="text-base font-bold tabular-nums">{{ count }}</div>
+            </button>
+          </div>
+
+          <div v-if="openBucket && preview.sample?.[openBucket]?.length"
+               class="border border-slate-200 rounded-lg max-h-56 overflow-auto">
+            <div v-for="r in preview.sample[openBucket]" :key="r.id"
+              class="flex items-center gap-2 px-2.5 py-1 border-b border-slate-50 last:border-0 text-xs">
+              <span class="text-slate-700 flex-1 cell-truncate">{{ r.name || r.id }}</span>
+              <span class="font-mono text-slate-500">
+                {{ r.from || r.from_label }}
+                <template v-if="r.to">→ {{ r.to === '__graduated__' ? 'inactive' : r.to }}</template>
+              </span>
+              <span v-if="r.reason" class="text-amber-600 cell-truncate max-w-56">{{ r.reason }}</span>
+            </div>
+            <div v-if="preview.bucket_totals[openBucket] > preview.sample[openBucket].length"
+                 class="px-2.5 py-1.5 text-[11px] text-slate-400">
+              Showing {{ preview.sample[openBucket].length }} of
+              {{ preview.bucket_totals[openBucket] }} — the dry run downloads every row.
             </div>
           </div>
 
@@ -199,7 +255,7 @@
             Left unchanged: {{ preview.kept.join(', ') }}.
           </div>
 
-          <div class="pt-2 border-t border-slate-100">
+          <div v-if="preview.can_proceed" class="pt-2 border-t border-slate-100">
             <label class="form-label">Type the school id to confirm: <span class="font-mono">{{ form.schoolId }}</span></label>
             <InputText v-model="form.confirmText" class="w-72 font-mono" placeholder="school id" />
           </div>
@@ -284,6 +340,7 @@ import {
 } from '../../firebase/schoolCollections.js'
 import {
   schoolStateRemote, archiveSchoolRemote, resetPreviewRemote, resetExecuteRemote,
+  downloadReport,
 } from '../../utils/api.js'
 
 const emit = defineEmits(['open-tab'])
@@ -362,6 +419,7 @@ const preview = ref(null)
 const result = ref(null)
 const runDoc = ref(null)
 const rosterSearch = ref('')
+const openBucket = ref(null)
 
 const busy = ref(false)
 const error = ref('')
@@ -374,6 +432,9 @@ let unsubRun = null
 
 const form = reactive({
   schoolId: null, archiveLabel: '', confirmText: '', dryRun: false,
+  // Recorded decision from the hard block: these students are knowingly
+  // skipped, which is the only alternative to fixing the class map.
+  leaveUnchangedIds: [],
   options: { promote: true, clear_inbox: true, clear_reports: true,
               clear_sheets: false },
   removeIds: [], postDone: {},
@@ -381,6 +442,38 @@ const form = reactive({
 
 function labelFor(key) { return STEPS.find(s => s.key === key)?.label || key }
 function openTab(to) { emit('open-tab', to) }
+
+const BUCKET_TONES = {
+  promote: 'border-emerald-200 bg-emerald-50 text-emerald-800',
+  graduate: 'border-blue-200 bg-blue-50 text-blue-800',
+  unchanged: 'border-slate-200 bg-slate-50 text-slate-700',
+  blocked: 'border-red-200 bg-red-50 text-red-800',
+}
+function bucketTone(action) { return BUCKET_TONES[action] || BUCKET_TONES.unchanged }
+
+/**
+ * Record the explicit "leave these students alone" decision (item 13). It is
+ * stored on the run and replayed into the plan, so the audit trail shows the
+ * choice rather than a silently smaller roster.
+ */
+function leaveBlockedUnchanged() {
+  const blocked = preview.value?.sample?.blocked || []
+  const total = preview.value?.unmapped_count || 0
+  if (blocked.length < total) {
+    error.value = `Only ${blocked.length} of ${total} blocked students were returned in the ` +
+      'sample, so they cannot all be skipped from here. Fix the class map instead — ' +
+      'it resolves every one of them at once.'
+    return
+  }
+  form.leaveUnchangedIds = blocked.map(r => r.id)
+  error.value = ''
+  runPreview()
+}
+
+function clearLeaveUnchanged() {
+  form.leaveUnchangedIds = []
+  runPreview()
+}
 
 const filteredRoster = computed(() => {
   const q = rosterSearch.value.trim().toLowerCase()
@@ -406,7 +499,8 @@ const canContinue = computed(() => {
     case 'reset.select': return !!form.schoolId && !!state.value
     case 'reset.archive': return !!archive.value?.verified
     case 'reset.choose': return Object.values(form.options).some(Boolean)
-    case 'reset.preview': return !!preview.value && form.confirmText.trim() === form.schoolId
+    case 'reset.preview': return !!preview.value && preview.value.can_proceed
+      && form.confirmText.trim() === form.schoolId
     case 'reset.execute': return !!result.value
     default: return true
   }
@@ -482,8 +576,13 @@ async function runPreview() {
   try {
     preview.value = await resetPreviewRemote({
       schoolId: form.schoolId,
-      options: { ...form.options, remove_ids: form.removeIds },
+      options: {
+        ...form.options,
+        remove_ids: form.removeIds,
+        leave_unchanged_ids: form.leaveUnchangedIds,
+      },
     })
+    openBucket.value = preview.value?.unmapped_count ? 'blocked' : null
   } catch (e) {
     error.value = e.message || 'The preview could not be built.'
   } finally {
@@ -501,9 +600,17 @@ async function runExecute() {
     result.value = await resetExecuteRemote({
       schoolId: form.schoolId, confirmSchoolId: form.confirmText.trim(),
       archiveId: archive.value?.archive_id, runId,
-      options: { ...form.options, remove_ids: form.removeIds },
+      options: {
+        ...form.options,
+        remove_ids: form.removeIds,
+        leave_unchanged_ids: form.leaveUnchangedIds,
+      },
       dryRun: form.dryRun,
+      // The server recomputes the plan and refuses if this no longer matches,
+      // so a roster that moved since the preview cannot be reset silently.
+      planFingerprint: preview.value?.plan_fingerprint || '',
     })
+    if (result.value?.csv) downloadReport(result.value.csv)
   } catch (e) {
     error.value = e.message || 'The reset failed. See the run log for what completed.'
   } finally {

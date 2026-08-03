@@ -19,143 +19,31 @@ archiving is mandatory and why every operation here is expressed as an
 explicit, itemized diff rather than an implied side effect.
 """
 
-# Grade progression. Mirrors the ordering in
-# functions/assign_survey/survey_rules.py and src/utils/structureInference.js —
-# one sequence, three places that must agree.
-PRE_PRIMARY = ["Pre-Nursery", "Nursery", "LKG", "UKG"]
-ROMAN = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"]
-NUMERIC = [str(n) for n in range(1, 13)]
-
-_ROMAN_UPPER = {r.upper(): i for i, r in enumerate(ROMAN)}
-_PRE_UPPER = {p.upper(): i for i, p in enumerate(PRE_PRIMARY)}
-
-GRADUATED = "__graduated__"
-
-
-def split_class_id(class_id):
-    """'I_Diamond' -> ('I', 'Diamond'). A class id with no separator is all
-    grade and no section."""
-    raw = str(class_id or "")
-    grade, sep, section = raw.partition("_")
-    return (grade.strip(), section.strip()) if sep else (raw.strip(), "")
-
-
-def next_grade(grade):
-    """The grade a student moves into, preserving the school's own notation.
-
-    Returns (next_grade, is_graduating). A school writing roman numerals keeps
-    getting roman numerals back; a school writing '7' gets '8'. Mixing the two
-    would silently create a second set of classes alongside the real ones.
-
-    The last grade in a sequence graduates rather than promoting — there is
-    nothing above XII, and inventing a XIII class would be worse than saying
-    so. Pre-primary flows into the primary sequence in the school's notation
-    (UKG -> I or 1), which is the one place the notation has to be inferred;
-    it follows whatever the rest of that school's classes use, decided by the
-    caller via `numeric_hint`.
-    """
-    g = str(grade or "").strip()
-    if not g:
-        return None, False
-
-    upper = g.upper()
-    if upper in _PRE_UPPER:
-        i = _PRE_UPPER[upper]
-        if i + 1 < len(PRE_PRIMARY):
-            return PRE_PRIMARY[i + 1], False
-        return None, False   # UKG: resolved by promote_class_id with the hint
-
-    if upper in _ROMAN_UPPER:
-        i = _ROMAN_UPPER[upper]
-        return (ROMAN[i + 1], False) if i + 1 < len(ROMAN) else (None, True)
-
-    if g.isdigit():
-        n = int(g)
-        if 1 <= n < 12:
-            return str(n + 1), False
-        if n == 12:
-            return None, True
-
-    # Unrecognized grade: never guess. The caller reports it as unmapped so a
-    # human decides, rather than silently promoting a student into nothing.
-    return None, False
+# ── Class resolution and promotion now live in ONE place ────────────────────
+# functions/shared/class_resolver.py + promotion.py, mirrored into this folder
+# by tools/sync_shared.py (gcloud uploads only `--source .`).
+#
+# What used to be here — split_class_id, next_grade, promote_class_id,
+# school_uses_numeric_grades, build_promotion_plan — was the second of three
+# independent class parsers in this repo, and the one with the narrowest
+# reading of the data: it split class ids on "_" and nothing else, and read
+# only the `classId` field. A school writing "1-B", or one whose roster came
+# from the import pipeline (which writes `currentClassId`), had 100% of its
+# students reported as "class the promotion rules do not recognize" —
+# observed on NAVODAYA CENTRAL SCHOOL, 650 of 650.
+#
+# Nothing about promotion is decided in this module any more.
+from class_resolver import (  # noqa: F401
+    GRADUATED, build_school_context, resolve_class,
+)
+from promotion import (
+    ACTION_PROMOTE, ACTION_GRADUATE, ACTION_UNCHANGED, ACTION_BLOCKED,
+    build_promotion_plan, summarize, plan_fingerprint, plan_to_csv,  # noqa: F401
+)
 
 
-def promote_class_id(class_id, numeric_school=False):
-    """Target class id for one class, preserving section.
-
-    Returns (new_class_id_or_None, is_graduating, reason_or_None).
-    """
-    grade, section = split_class_id(class_id)
-    if not grade:
-        return None, False, "no grade in class id"
-
-    if grade.strip().upper() == "UKG":
-        nxt = "1" if numeric_school else "I"
-        return (f"{nxt}_{section}" if section else nxt), False, None
-
-    nxt, graduating = next_grade(grade)
-    if graduating:
-        return None, True, None
-    if not nxt:
-        return None, False, f"unrecognized grade '{grade}'"
-    return (f"{nxt}_{section}" if section else nxt), False, None
-
-
-def school_uses_numeric_grades(class_ids):
-    """Whether this school writes '1'..'12' rather than roman numerals.
-
-    Decides only the UKG -> first-grade hop, where the notation can't be read
-    off the source value. Ties go to roman, matching the observed class ids
-    ('I_Diamond').
-    """
-    numeric = roman = 0
-    for cid in class_ids or []:
-        grade, _ = split_class_id(cid)
-        if grade.isdigit():
-            numeric += 1
-        elif grade.upper() in _ROMAN_UPPER:
-            roman += 1
-    return numeric > roman
-
-
-def build_promotion_plan(students, existing_class_ids, inbox_field="surveyInbox"):
-    """Per-student promotion mapping.
-
-    Returns {promoted, graduating, unmapped, missing_target_classes} where
-    each entry is {id, name, from, to, reason}. `missing_target_classes` is
-    the set of target class ids the school does not have yet — promoting into
-    a class that doesn't exist would strand those students, so the preview
-    surfaces it rather than the execute step discovering it.
-    """
-    existing = set(existing_class_ids or [])
-    numeric = school_uses_numeric_grades(existing)
-
-    promoted, graduating, unmapped = [], [], []
-    missing_targets = set()
-
-    for s in students:
-        cid = s.get("classId") or ""
-        entry = {"id": s.get("id"), "name": s.get("name") or s.get("id"), "from": cid}
-        target, grads, reason = promote_class_id(cid, numeric)
-        if grads:
-            graduating.append({**entry, "to": GRADUATED, "reason": None})
-        elif target:
-            promoted.append({**entry, "to": target, "reason": None})
-            if target not in existing:
-                missing_targets.add(target)
-        else:
-            unmapped.append({**entry, "to": None, "reason": reason or "no class"})
-
-    return {
-        "promoted": promoted,
-        "graduating": graduating,
-        "unmapped": unmapped,
-        "missing_target_classes": sorted(missing_targets),
-    }
-
-
-def build_reset_diff(students, options, existing_class_ids=None, inbox_field="surveyInbox"):
+def build_reset_diff(students, options, existing_class_ids=None,
+                     inbox_field="surveyInbox", class_map=None):
     """The itemized diff shown before anything is written.
 
     `options` are explicit booleans — nothing is implied. Every count here is
@@ -164,7 +52,20 @@ def build_reset_diff(students, options, existing_class_ids=None, inbox_field="su
     effect trains people to ignore it.
     """
     opts = options or {}
-    plan = build_promotion_plan(students, existing_class_ids, inbox_field) if opts.get("promote") else None
+    ctx = build_school_context(existing_class_ids, class_map=class_map)
+
+    # ONE resolved roster per run (task item 12). `students` is passed in
+    # already read, and every count below is derived from THAT list — there is
+    # no second query anywhere in this function, and none may be added. The
+    # promotion plan covers every student, including the ones no option
+    # touches, so the buckets always sum to the roster.
+    plan = build_promotion_plan(
+        students, ctx,
+        section_map=opts.get("section_map"),
+        leave_unchanged_ids=opts.get("leave_unchanged_ids"),
+    )
+    plan_summary = summarize(plan)
+    promoting = bool(opts.get("promote"))
 
     inbox_to_clear = [s for s in students if s.get(inbox_field)] if opts.get("clear_inbox") else []
     reports_to_detach = [s for s in students if s.get("reports")] if opts.get("clear_reports") else []
@@ -173,16 +74,39 @@ def build_reset_diff(students, options, existing_class_ids=None, inbox_field="su
         wanted = set(opts["remove_ids"])
         to_remove = [s for s in students if s.get("id") in wanted]
 
+    counts = plan_summary["counts"]
     diff = {
         "total_students": len(students),
-        "promote": bool(opts.get("promote")),
-        "promoted_count": len(plan["promoted"]) if plan else 0,
-        "graduating_count": len(plan["graduating"]) if plan else 0,
-        "unmapped_count": len(plan["unmapped"]) if plan else 0,
-        "missing_target_classes": plan["missing_target_classes"] if plan else [],
+        "promote": promoting,
+        "promoted_count": counts[ACTION_PROMOTE] if promoting else 0,
+        "graduating_count": counts[ACTION_GRADUATE] if promoting else 0,
+        "unmapped_count": counts[ACTION_BLOCKED] if promoting else 0,
+        "unchanged_count": counts[ACTION_UNCHANGED] if promoting else 0,
+        "blocked_reasons": plan_summary["blocked_reasons"] if promoting else [],
+        # The hard block from item 13. Promotion cannot run while any student
+        # is unresolvable: a reset that clears survey inboxes while promoting
+        # nobody is the exact outcome this engine exists to prevent. The only
+        # ways forward are a class_map fix or an explicit, recorded decision
+        # to leave those students alone.
+        "can_proceed": (not promoting) or plan_summary["can_proceed"],
+        "missing_target_classes": sorted({
+            r["reason"].split("'")[1] for r in plan
+            if r["action"] == ACTION_BLOCKED and r.get("reason")
+            and "does not exist" in r["reason"] and "'" in r["reason"]
+        }) if promoting else [],
+        # Denominators, so the preview can never again read as two different
+        # counts of the same roster. "195 of 650" is unambiguous where a bare
+        # "195" alongside a bare "650" was not.
+        "inbox_total": sum(1 for s in students if s.get(inbox_field)),
+        "reports_total": sum(1 for s in students if s.get("reports")),
         "inbox_cleared_count": len(inbox_to_clear),
         "reports_detached_count": len(reports_to_detach),
         "removed_count": len(to_remove),
+        "resolution": {
+            "notation": ctx["notation"],
+            "configured_classes": len(ctx["class_ids"]),
+            "class_map_entries": len(ctx["class_map"]),
+        },
         "clear_sheets": bool(opts.get("clear_sheets")),
         # NOTE: there is deliberately no reset_operations / reset_receivables
         # option. Those checklists live in the ops CRM tree
@@ -199,6 +123,11 @@ def build_reset_diff(students, options, existing_class_ids=None, inbox_field="su
                   "operations & data-receivable checklists (ops CRM)"],
     }
     diff["plan"] = plan
+    # The digest of the per-student decisions. reset_execute recomputes the
+    # plan and compares this; a roster that moved between preview and confirm
+    # changes the digest and the run is refused rather than applying something
+    # the user never saw (item 14).
+    diff["plan_fingerprint"] = plan_fingerprint(plan) if promoting else None
     diff["write_estimate"] = (
         diff["promoted_count"] + diff["graduating_count"]
         + diff["inbox_cleared_count"] + diff["reports_detached_count"]

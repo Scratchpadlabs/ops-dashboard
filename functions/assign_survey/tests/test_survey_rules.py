@@ -391,9 +391,17 @@ def test_snake_case_variant_is_honoured():
 
 def test_grade_and_section_compose_into_one_key():
     """Both conventions must land on the SAME group key, or a school using
-    separate fields renders as a different set of rows."""
-    assert resolve_class_key({"grade": "I", "section": "Diamond"}) == ("I_Diamond", "grade")
-    assert resolve_class_key({"clazz": "II", "sec": "Ruby"}) == ("II_Ruby", "clazz")
+    separate fields renders as a different set of rows.
+
+    The source field now names BOTH contributing fields ("grade+section")
+    rather than just the grade one. class_field_report exists to make a
+    future "everything is (no class)" diagnosable from the response alone,
+    and naming only half the source defeats that.
+    """
+    assert resolve_class_key({"grade": "I", "section": "Diamond"}) == ("I_Diamond", "grade+section")
+    assert resolve_class_key({"clazz": "II", "sec": "Ruby"}) == ("II_Ruby", "clazz+sec")
+    # Grade alone still reports the single field it came from.
+    assert resolve_class_key({"grade": "V"}) == ("V", "grade")
 
 
 def test_grade_without_a_section_still_groups_by_grade():

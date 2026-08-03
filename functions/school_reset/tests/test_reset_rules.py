@@ -22,108 +22,20 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import pytest
 
 from reset_rules import (
-    GRADUATED, next_grade, promote_class_id, split_class_id,
-    school_uses_numeric_grades, build_promotion_plan, build_reset_diff,
-    verify_archive, slugify_school_id, validate_school_id, find_similar_schools,
+    build_reset_diff, verify_archive, slugify_school_id, validate_school_id,
+    find_similar_schools,
 )
+
+# Grade progression, class parsing and the promotion plan itself moved to
+# functions/shared (class_resolver.py, promotion.py) and are tested there
+# against a much wider fixture set — see functions/shared/tests/. What remains
+# here is what this module still decides: the itemized reset diff.
 
 
 def st(sid, class_id, **kw):
     return {"id": sid, "name": sid.upper(), "classId": class_id, **kw}
 
 
-# ────────────────────────────── grade progression ──────────────────────────
-@pytest.mark.parametrize("grade,expected", [
-    ("Pre-Nursery", "Nursery"), ("Nursery", "LKG"), ("LKG", "UKG"),
-    ("I", "II"), ("II", "III"), ("XI", "XII"),
-    ("1", "2"), ("7", "8"), ("11", "12"),
-])
-def test_next_grade_moves_one_step(grade, expected):
-    assert next_grade(grade)[0] == expected
-
-
-def test_top_grade_graduates_rather_than_inventing_one():
-    """There is no XIII. Inventing one would be worse than saying so."""
-    assert next_grade("XII") == (None, True)
-    assert next_grade("12") == (None, True)
-
-
-def test_unrecognized_grades_are_reported_not_guessed():
-    assert next_grade("Batch Alpha") == (None, False)
-    assert next_grade("") == (None, False)
-    assert next_grade(None) == (None, False)
-
-
-def test_promotion_preserves_the_schools_own_notation():
-    """A roman-numeral school must keep getting roman numerals. Mixing
-    notations would create a second set of classes beside the real ones."""
-    assert promote_class_id("I_Diamond")[0] == "II_Diamond"
-    assert promote_class_id("VII_A")[0] == "VIII_A"
-    assert promote_class_id("1_A", numeric_school=True)[0] == "2_A"
-    assert promote_class_id("7_Ruby", numeric_school=True)[0] == "8_Ruby"
-
-
-def test_ukg_hops_into_the_notation_the_school_actually_uses():
-    """The one hop where the notation can't be read off the source value."""
-    assert promote_class_id("UKG_Rose", numeric_school=False)[0] == "I_Rose"
-    assert promote_class_id("UKG_Rose", numeric_school=True)[0] == "1_Rose"
-
-
-def test_top_class_graduates_with_no_target():
-    target, grads, _ = promote_class_id("XII_A")
-    assert target is None and grads is True
-
-
-def test_unmapped_class_returns_a_reason_not_a_guess():
-    target, grads, reason = promote_class_id("Batch_Alpha")
-    assert target is None and grads is False
-    assert "unrecognized" in reason
-
-
-def test_class_id_without_a_section():
-    assert split_class_id("V") == ("V", "")
-    assert promote_class_id("V")[0] == "VI"
-
-
-def test_notation_detection():
-    assert school_uses_numeric_grades(["1_A", "2_A", "10_B"]) is True
-    assert school_uses_numeric_grades(["I_A", "II_A"]) is False
-    # A tie falls to roman, matching the observed class ids.
-    assert school_uses_numeric_grades(["1_A", "I_A"]) is False
-    assert school_uses_numeric_grades([]) is False
-
-
-# ──────────────────────────────── promotion plan ───────────────────────────
-ROSTER = [
-    st("s1", "I_Diamond"), st("s2", "I_Diamond"),
-    st("s3", "XII_A"),
-    st("s4", "Batch_Alpha"),
-    st("s5", "UKG_Rose"),
-]
-CLASSES = ["I_Diamond", "II_Diamond", "XII_A", "UKG_Rose", "I_Rose"]
-
-
-def test_plan_splits_promoted_graduating_and_unmapped():
-    plan = build_promotion_plan(ROSTER, CLASSES)
-    assert [p["id"] for p in plan["promoted"]] == ["s1", "s2", "s5"]
-    assert [g["id"] for g in plan["graduating"]] == ["s3"]
-    assert [u["id"] for u in plan["unmapped"]] == ["s4"]
-    assert plan["graduating"][0]["to"] == GRADUATED
-
-
-def test_plan_flags_target_classes_the_school_does_not_have():
-    """Promoting into a class that doesn't exist would strand those students,
-    so it surfaces in the PREVIEW rather than during execution."""
-    plan = build_promotion_plan([st("s1", "V_Pearl")], ["V_Pearl"])
-    assert plan["missing_target_classes"] == ["VI_Pearl"]
-
-
-def test_plan_reports_no_missing_targets_when_classes_exist():
-    plan = build_promotion_plan([st("s1", "I_Diamond")], ["I_Diamond", "II_Diamond"])
-    assert plan["missing_target_classes"] == []
-
-
-# ───────────────────────────────── reset diff ──────────────────────────────
 def test_diff_counts_only_students_that_would_actually_change():
     """A preview that overstates its effect trains people to ignore it: a
     student with an empty inbox is not counted under 'inbox cleared'."""
@@ -147,7 +59,10 @@ def test_diff_reports_zero_for_options_not_selected():
     assert diff["reports_detached_count"] == 0
     assert diff["removed_count"] == 0
     assert diff["write_estimate"] == 0
-    assert diff["plan"] is None
+    # The plan is now always built — every student appears in it exactly once,
+    # even when no option is selected — so the buckets can be shown alongside
+    # the counts and can never disagree with them.
+    assert len(diff["plan"]) == len(roster)
 
 
 def test_diff_separates_graduating_from_promoted():

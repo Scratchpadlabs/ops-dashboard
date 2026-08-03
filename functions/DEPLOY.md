@@ -231,6 +231,76 @@ Two new top-level collections, both in `firestore.rules`:
 list on the `schools/{schoolId}/{collection}/{docId}` rule, so the audit log
 can be read but not forged from the client.
 
+### scan_classes + save_class_map + class_health (universal class resolution)
+
+Three more callables in the SAME `functions/school_reset` folder, so they
+deploy from the same source directory:
+
+```
+cd ~/ops-dashboard/functions/school_reset
+
+gcloud functions deploy scan_classes \
+  --gen2 --runtime python312 --region asia-south1 \
+  --source . --entry-point scan_classes \
+  --trigger-http --allow-unauthenticated --project clarified-1501 \
+  --memory 1024MB --timeout 300s --max-instances 3
+
+gcloud functions deploy save_class_map \
+  --gen2 --runtime python312 --region asia-south1 \
+  --source . --entry-point save_class_map \
+  --trigger-http --allow-unauthenticated --project clarified-1501 \
+  --memory 512MB --timeout 120s --max-instances 3
+
+gcloud functions deploy class_health \
+  --gen2 --runtime python312 --region asia-south1 \
+  --source . --entry-point class_health \
+  --trigger-http --allow-unauthenticated --project clarified-1501 \
+  --memory 1024MB --timeout 540s --max-instances 2
+```
+
+- `scan_classes` — resolves every DISTINCT class value in a school's roster
+  and proposes grade + section per value. READ-ONLY. Returns a few dozen rows
+  even for a 3000-student school.
+- `save_class_map` — the only writer. Writes to `schools/{id}/class_map`
+  only, never to a student document, and stamps `confirmed_by`/`confirmed_at`.
+  Also feeds confirmed grade corrections back to `import_aliases` so the next
+  school with the same odd value resolves without anyone confirming it again.
+- `class_health` — read-only resolution report across every active school;
+  the in-app twin of `tools/class_inventory.py`.
+
+**IMPORTANT — `functions/shared` is mirrored, not imported.** `gcloud
+functions deploy --source .` uploads one folder, so `class_resolver.py`,
+`promotion.py` and `education_kb.json` are COPIES kept in step by
+`tools/sync_shared.py`. Before deploying, always:
+
+```
+python3 tools/sync_shared.py            # copy canonical -> function folders
+python3 tools/sync_shared.py --check    # verify (exit 1 on drift)
+```
+
+A test in each function folder (`tests/test_shared_sync.py`) fails on drift,
+so a stale copy cannot reach production silently. Editing the copy instead of
+`functions/shared/` is the mistake to avoid — the sync overwrites it.
+
+### Verifying the estate before and after
+
+```
+pip install --quiet google-cloud-firestore
+python3 tools/class_inventory.py --project clarified-1501            # all schools
+python3 tools/class_inventory.py --project clarified-1501 --school NAVODAYA
+```
+
+Read-only; it constructs no write path at all. Prints the per-school field
+inventory (which class fields exist and sample values) and the class-health
+table (how many students resolve, how many are unmapped, whether a confirmed
+class map exists).
+
+Cross-language drift between `class_resolver.py` and `classResolver.js`:
+
+```
+python3 tools/check_resolver_parity.py && node tools/check_resolver_parity.mjs
+```
+
 ### What the reset deliberately CANNOT do
 The Operations and Data-Receivable checklists are **not** resettable from this
 wizard, and this is not an oversight. They live in the ops CRM tree

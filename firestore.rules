@@ -95,6 +95,19 @@ service cloud.firestore {
       allow read, write: if isOpsAdmin();
     }
 
+    // Per-school class map (schools/{id}/class_map): the confirmed mapping from
+    // whatever a school's roster actually says ("1-B", "STD I - B", "LKG-Winner")
+    // to a grade ordinal + section. Every feature that needs a student's class
+    // consults it.
+    //
+    // No rule is added here ON PURPOSE. Read is already covered by the
+    // schools/{schoolId}/{collection}/{docId} rule above, and 'class_map' is
+    // deliberately NOT in that rule's writable-collection list: the only writer
+    // is save_class_map via the Admin SDK, which bypasses these rules. Granting
+    // client writes would let the browser edit the mapping that promotion,
+    // grouping and reporting all trust — without the confirmed_by/confirmed_at
+    // provenance the callable stamps on every row.
+
     // Setup wizard runs (New School / Reset School): top-level progress docs
     // written by the browser as each step completes, so closing the tab
     // mid-setup loses nothing. Not scoped under a school because the New

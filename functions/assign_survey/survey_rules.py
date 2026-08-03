@@ -166,8 +166,12 @@ def class_sort_key(class_id):
     """('I_Diamond') -> (1, 'diamond', 'i_diamond'). Grade first, then
     section, with the raw id as a final tiebreak so ordering is stable."""
     raw = str(class_id or "")
-    grade, _, section = raw.partition("_")
-    return (grade_order(grade), section.strip().lower(), raw.lower())
+    parsed = parse_class_value(raw)
+    ordinal = parsed["grade_ordinal"]
+    # Unresolvable values sort last but stay stable among themselves, so an
+    # odd class is visible at the end of the list rather than scattered.
+    return (ordinal if ordinal is not None else 99,
+            (parsed["section"] or "").lower(), raw.lower())
 
 
 def student_sort_key(student):
@@ -176,7 +180,8 @@ def student_sort_key(student):
     breaking the comparison."""
     roll = str((student or {}).get("rollNo") or "").strip()
     roll_num = (0, int(roll)) if roll.isdigit() else (1, 0)
-    return (class_sort_key((student or {}).get("classId")), roll_num, roll.lower(),
+    raw, _ = raw_class_value(student or {})
+    return (class_sort_key(raw), roll_num, roll.lower(),
             str((student or {}).get("name") or "").lower())
 
 
@@ -293,50 +298,37 @@ def in_active_window(survey, now):
 #   - currentClassId   what THIS repo's own import pipeline writes
 #                      (src/composables/useImport.js buildStudentsPlan)
 #   - grade + section  as separate fields, needing composition
-# Reading only `classId` put every student of an affected school into
-# "(no class)", which is what this resolver fixes. "(no class)" is now
-# reserved for a student that genuinely carries none of these.
-CLASS_ID_FIELDS = ("classId", "currentClassId", "class_id", "classID", "classid")
-GRADE_FIELDS = ("grade", "clazz", "standard", "std", "class")
-SECTION_FIELDS = ("section", "sec", "division", "div")
+# Class resolution is NOT decided here. It lives in the shared resolver
+# (functions/shared/class_resolver.py, mirrored into this folder by
+# tools/sync_shared.py) so surveys, promotion, import review and reports all
+# read a student's class the same way. This module previously had its own
+# copy — one of three in the repo — and the three disagreed.
+from class_resolver import (  # noqa: E402
+    CLASS_ID_FIELDS, GRADE_FIELDS, SECTION_FIELDS,  # noqa: F401 (re-exported)
+    raw_class_value, parse_class_value,
+)
 
 NO_CLASS = "(no class)"
-
-
-def _first_nonempty(doc, fields):
-    for f in fields:
-        v = doc.get(f)
-        if v is None:
-            continue
-        v = str(v).strip()
-        if v:
-            return v, f
-    return None, None
 
 
 def resolve_class_key(student):
     """(class_key, source_field) for one student doc.
 
-    A direct class-id field wins. Failing that, a grade+section pair is
-    composed into the same "GRADE_SECTION" shape the class ids use, so both
-    conventions land on ONE group key and a school using either renders
-    identically. A grade with no section still groups by grade rather than
-    collapsing to "(no class)" — a partially-populated roster is far more
-    useful grouped by grade than dumped in one bucket.
+    Grouping deliberately keys on the RAW value rather than the canonical
+    class id: a school whose roster says "1-B" should group under "1-B", not
+    under a normalized form nobody there recognizes. Resolution is still what
+    orders and promotes those groups.
+
+    "(no class)" is reserved for a student genuinely carrying no class field —
+    an unrecognized value groups under itself, because collapsing it into one
+    bucket is what hid a whole school's roster once already.
     """
     if not isinstance(student, dict):
         return NO_CLASS, None
-
-    value, field = _first_nonempty(student, CLASS_ID_FIELDS)
-    if value:
-        return value, field
-
-    grade, gfield = _first_nonempty(student, GRADE_FIELDS)
-    if grade:
-        section, _ = _first_nonempty(student, SECTION_FIELDS)
-        return (f"{grade}_{section}" if section else grade), gfield
-
-    return NO_CLASS, None
+    raw, field = raw_class_value(student)
+    if raw in (None, ""):
+        return NO_CLASS, None
+    return raw, field
 
 
 def class_field_report(students):

@@ -217,12 +217,41 @@ export async function resetPreviewRemote({ schoolId, options }) {
 
 // confirmSchoolId must equal schoolId — checked server-side, not just in the
 // dialog — and archiveId must point at an archive the server can re-verify.
+// planFingerprint is the digest the preview returned. The server recomputes
+// the plan and refuses if it no longer matches — a roster that moved between
+// preview and confirm must not be reset against a plan nobody saw.
 export async function resetExecuteRemote({
-  schoolId, confirmSchoolId, archiveId, runId, options, dryRun,
+  schoolId, confirmSchoolId, archiveId, runId, options, dryRun, planFingerprint,
 }) {
   const res = await resetExecuteCallable({
-    schoolId, confirmSchoolId, archiveId, runId, options, dryRun,
+    schoolId, confirmSchoolId, archiveId, runId, options, dryRun, planFingerprint,
   })
+  return res.data
+}
+
+// ── Class map + class health (universal class resolution) ─────────────────
+// scan_classes and class_health are READ-ONLY: they resolve what is already
+// there and write nothing. save_class_map is the only writer, and it writes
+// only to schools/{id}/class_map — never to a student document.
+const scanClassesCallable = httpsCallable(functions, 'scan_classes', { timeout: 300_000 })
+const saveClassMapCallable = httpsCallable(functions, 'save_class_map', { timeout: 120_000 })
+const classHealthCallable = httpsCallable(functions, 'class_health', { timeout: 540_000 })
+
+export async function scanClassesRemote({ schoolId }) {
+  const res = await scanClassesCallable({ schoolId })
+  return res.data
+}
+
+// shareAliases feeds confirmed corrections back to the shared dictionary so
+// the next school with the same odd value resolves without anyone confirming
+// it again.
+export async function saveClassMapRemote({ schoolId, rows, shareAliases = true }) {
+  const res = await saveClassMapCallable({ schoolId, rows, shareAliases })
+  return res.data
+}
+
+export async function classHealthRemote() {
+  const res = await classHealthCallable({})
   return res.data
 }
 
