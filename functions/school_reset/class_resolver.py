@@ -113,9 +113,17 @@ _ORDINAL_SUFFIX = re.compile(r"^(\d{1,2})(?:st|nd|rd|th)$", re.IGNORECASE)
 
 
 def _tokens(raw):
-    cleaned = _PREFIX_RE.sub("", str(raw or "").strip())
-    cleaned = _SEPARATORS.sub(" ", cleaned)
-    return [t for t in cleaned.split() if t]
+    """Split a raw class value into grade/section tokens.
+
+    ORDER MATTERS: separators are normalized to spaces BEFORE the prefix is
+    stripped. Underscore is a word character, so the \\b in _PREFIX_RE does not
+    fire between "e" and "_" — stripping first left "grade_II_A" with its
+    prefix intact and made it unresolvable. Observed on two live schools,
+    1,836 students between them. Normalizing separators first turns it into
+    "grade II A", which the prefix rule then handles like any other spelling.
+    """
+    cleaned = _SEPARATORS.sub(" ", str(raw or "").strip())
+    return [t for t in _PREFIX_RE.sub("", cleaned).split() if t]
 
 
 def parse_class_value(raw):
@@ -354,6 +362,17 @@ def resolve_class(student, context=None):
 
     parsed = parse_class_value(raw)
     if parsed["grade_ordinal"] is None:
+        # Last resort, and only with EVIDENCE: a glued alphabetic value like
+        # "VB" could be roman V + section B, or a programme name. We accept the
+        # split only when the composed id matches a class the school actually
+        # has configured — that is the school's own data confirming the
+        # reading, not this module guessing. Without a match it stays
+        # unresolved and goes to the class map like anything else.
+        split = _split_glued_with_evidence(raw, ctx)
+        if split:
+            return {"raw": raw, "raw_field": field, **split,
+                    "canonical_class_id": split["_canonical"],
+                    "label": split["_canonical"]}
         return {"raw": raw, "raw_field": field, **parsed,
                 "canonical_class_id": None,
                 "label": describe_unresolved(raw, field)}
@@ -369,6 +388,42 @@ def resolve_class(student, context=None):
             "confidence": confidence,
             "canonical_class_id": canonical,
             "label": canonical}
+
+
+def _split_glued_with_evidence(raw, ctx):
+    """Split a glued value like "VB" ONLY if the result names a real class.
+
+    parse_class_value deliberately refuses these, because "IB" is as likely to
+    be a programme name as roman I + section B, and a wrong split puts a whole
+    roster in the wrong grade. Here we have something it doesn't: the school's
+    configured class list. If exactly one split lands on a class that exists,
+    that is the school confirming the reading.
+
+    Ambiguity still loses — two candidate splits both matching means we cannot
+    tell, so neither is used.
+    """
+    text = str(raw or "").strip()
+    if not text or not text.isalnum() or not ctx.get("class_id_set"):
+        return None
+
+    hits = []
+    for i in range(1, len(text)):
+        head, tail = text[:i], text[i:]
+        entry = GRADE_INDEX.get(_norm(head))
+        if not entry:
+            continue
+        canonical = compose_class_id(head, tail, ctx.get("separator", "_"))
+        if canonical in ctx["class_id_set"]:
+            canon, ordinal = entry
+            hits.append({
+                "grade_token": head, "grade_canonical": canon,
+                "grade_ordinal": ordinal, "section": tail,
+                "confidence": CONF_MEDIUM,
+                "reason": f"split matched configured class {canonical!r}",
+                "_canonical": canonical,
+            })
+
+    return hits[0] if len(hits) == 1 else None
 
 
 def distinct_class_values(students):

@@ -68,9 +68,16 @@ const SEPARATORS = /[_\-/,:.|]+/g
 const DIGIT_ALPHA = /^(\d{1,2})\s*([A-Za-z][A-Za-z0-9 ]*)$/
 const ORDINAL_SUFFIX = /^(\d{1,2})(?:st|nd|rd|th)$/i
 
+/**
+ * ORDER MATTERS, and must match class_resolver.py's _tokens: separators are
+ * normalized to spaces BEFORE the prefix is stripped. Underscore is a word
+ * character, so the \b in PREFIX_RE does not fire between "e" and "_" —
+ * stripping first left "grade_II_A" with its prefix intact and unresolvable.
+ * 1,836 live students were affected.
+ */
 function tokens(raw) {
-  const cleaned = String(raw ?? '').trim().replace(PREFIX_RE, '').replace(SEPARATORS, ' ')
-  return cleaned.split(/\s+/).filter(Boolean)
+  const cleaned = String(raw ?? '').trim().replace(SEPARATORS, ' ')
+  return cleaned.replace(PREFIX_RE, '').split(/\s+/).filter(Boolean)
 }
 
 const BLANK = {

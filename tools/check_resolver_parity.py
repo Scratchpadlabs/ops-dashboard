@@ -29,6 +29,20 @@ PARSE_CASES = [
     "IX-A", "X A", "XII Rose", "Class-1-B", "1/B", "1 B",
     "Batch Alpha", "", "   ", "1st Std", "LKG", "lkg", "L K G", "kg1", "KG 2",
     "VIII_Emerald", "VI-Sunflower", "Standard 4 - C", "cls 7 D",
+    # Real values from the live estate (tools/class_inventory.py, 20 schools,
+    # 11,617 students). The grade_*_* family was 1,836 unresolved students and
+    # is the reason both implementations reorder separator/prefix handling.
+    "grade_I_A", "grade_I_B", "grade_I_C", "grade_II_A", "grade_II_B",
+    "grade_II_C", "grade_III_A", "grade_III_B", "grade_III_C", "grade_IV_A",
+    "grade_IV_B", "grade_IV_C", "grade_IV_D", "grade_VII_A", "grade_VII_B",
+    "grade_VII_C", "grade_VII_D", "grade_X_A",
+    # Must stay UNRESOLVED in both languages — seed rows, opaque ids and
+    # stage names. A split brain here would file real students beside fake.
+    "Sample", "sample", "SampleClass", "Sample Class", "sample_middle",
+    "Sample Class I", "Sample_Class_I", "Sample Class II",
+    "sakc0001", "sccs1944", "ssse0001", "sss0001",
+    "en6l4KUFWa3IDnWmai44", "Mm0WAY2kGmDlDwJJaGHK",
+    "foundation", "middle", "prep", "Smr_Sr_A", "Smr_Jr_A", "VB",
 ]
 
 NOTATION_CASES = [

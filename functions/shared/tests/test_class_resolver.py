@@ -235,3 +235,93 @@ def test_non_underscore_formats_are_no_longer_unmapped(raw):
     p = parse_class_value(raw)
     assert p["grade_ordinal"] == 1, f"{raw!r} still unmapped: {p}"
     assert p["section"] == "B"
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# REAL VALUES FROM THE LIVE ESTATE (task item 18)
+#
+# Pulled from tools/class_inventory.py across all 20 schools, 11,617 students.
+# These are not invented — every string below appears in production.
+# ══════════════════════════════════════════════════════════════════════════
+
+@pytest.mark.parametrize("raw,ordinal,section", [
+    # The single biggest failure in the estate: 1,836 students across two
+    # schools. The prefix was stripped BEFORE separators were normalized, and
+    # \b does not fire between "e" and "_" because underscore is a word
+    # character — so "grade" survived as a token and nothing resolved.
+    ("grade_I_A", 1, "A"), ("grade_I_B", 1, "B"), ("grade_I_C", 1, "C"),
+    ("grade_II_A", 2, "A"), ("grade_II_B", 2, "B"), ("grade_II_C", 2, "C"),
+    ("grade_III_A", 3, "A"), ("grade_III_B", 3, "B"), ("grade_III_C", 3, "C"),
+    ("grade_IV_A", 4, "A"), ("grade_IV_B", 4, "B"), ("grade_IV_C", 4, "C"),
+    ("grade_IV_D", 4, "D"),
+    ("grade_VII_A", 7, "A"), ("grade_VII_B", 7, "B"), ("grade_VII_C", 7, "C"),
+    ("grade_VII_D", 7, "D"), ("grade_X_A", 10, "A"),
+])
+def test_real_grade_prefixed_underscore_values(raw, ordinal, section):
+    p = parse_class_value(raw)
+    assert p["grade_ordinal"] == ordinal, f"{raw!r} -> {p}"
+    assert p["section"] == section
+
+
+@pytest.mark.parametrize("raw", [
+    # Seed/test rows scattered through nearly every school. These must NOT
+    # resolve — inventing a grade for them would file real students beside
+    # fake ones. They are handled by the class map or the explicit
+    # leave-unchanged decision.
+    "Sample", "sample", "SampleClass", "Sample Class", "sample_middle",
+    "Sample Class I", "Sample_Class_I", "Sample Class II",
+    # Opaque ids written into the class field — student ids and Firestore doc
+    # ids. Genuinely broken data; guessing at them would be worse than
+    # reporting them.
+    "sakc0001", "sakc0193", "sccs0001", "sccs1944", "ssse0001", "sss0001",
+    "en6l4KUFWa3IDnWmai44", "Mm0WAY2kGmDlDwJJaGHK",
+    # Stage names rather than grades — a real convention at one school, and
+    # exactly what the per-school class map exists to resolve.
+    "foundation", "middle", "prep",
+    # Junior/Senior section naming at another school.
+    "Smr_Sr_A", "Smr_Jr_A",
+])
+def test_real_unresolvable_values_are_reported_not_guessed(raw):
+    """Item 5: these must come back unresolved WITH their raw value, so the
+    UI can say what needs confirming instead of rendering a bare arrow."""
+    p = parse_class_value(raw)
+    assert p["grade_ordinal"] is None, f"{raw!r} should not resolve: {p}"
+    assert describe_unresolved(raw, "currentClassId").endswith("(unrecognized)")
+
+
+def test_sample_rows_do_not_collide_with_real_grades():
+    """'Sample Class I' contains a valid roman numeral. It must still not
+    resolve — a leading token that isn't a grade means the value isn't one."""
+    assert parse_class_value("Sample Class I")["grade_ordinal"] is None
+    assert parse_class_value("Sample Class II")["grade_ordinal"] is None
+
+
+def test_glued_value_resolves_only_against_a_configured_class():
+    """GK Gurukul has one student in "VB". Roman V + section B is a plausible
+    reading, but only the school's own class list can confirm it."""
+    with_class = build_school_context(["V_A", "V_B", "VI_A"])
+    r = resolve_class({"currentClassId": "VB"}, with_class)
+    assert r["canonical_class_id"] == "V_B"
+    assert r["grade_ordinal"] == 5
+
+    # Same value, no such class configured -> stays unresolved rather than
+    # being split on a hunch.
+    without = build_school_context(["I_A", "II_A"])
+    assert resolve_class({"currentClassId": "VB"}, without)["canonical_class_id"] is None
+
+
+def test_glued_split_refuses_when_two_readings_both_match():
+    """Ambiguity loses. If more than one split names a real class we cannot
+    tell which the school meant, so neither is used."""
+    ctx = build_school_context(["I_XA", "IX_A"])
+    assert resolve_class({"currentClassId": "IXA"}, ctx)["canonical_class_id"] is None
+
+
+def test_the_import_pipeline_field_is_what_the_estate_actually_uses():
+    """Every unmapped value in the inventory came from currentClassId, not
+    classId. The old promotion code read classId alone, which is why one
+    school reported 650 of 650 unrecognized."""
+    ctx = build_school_context(["II_A"])
+    r = resolve_class({"currentClassId": "grade_II_A"}, ctx)
+    assert r["raw_field"] == "currentClassId"
+    assert r["grade_ordinal"] == 2
