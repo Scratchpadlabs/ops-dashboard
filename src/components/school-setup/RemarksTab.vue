@@ -32,7 +32,7 @@
           </template>
         </Column>
       </DataTable>
-      <div v-if="!categories.length" class="text-center text-sm text-slate-400 py-8">No remark categories yet</div>
+      <ConfigEmptyState v-if="!categories.length" label="Remark categories" collection="remark_categories" />
     </div>
 
     <!-- ── Category Dialog ──────────────────────────────────────────────── -->
@@ -130,6 +130,8 @@ import ProgressSpinner from 'primevue/progressspinner'
 import ConfirmDialog from 'primevue/confirmdialog'
 
 import { schoolCollection, schoolDoc, rootSchoolsCollection } from '../../firebase/schoolCollections.js'
+import ConfigEmptyState from './ConfigEmptyState.vue'
+import { guardedSetDoc, guardedUpdateDoc, SchemaViolation } from '../../schemas/guardedWrite.js'
 import { db } from '../../firebase/config'
 import { auth } from '../../firebase/config'
 
@@ -181,7 +183,7 @@ async function saveCategory() {
   savingCategory.value = true
   try {
     if (editingCategory.value) {
-      await updateDoc(schoolDoc(props.schoolId, 'remark_categories', editingCategory.value.id), {
+      await guardedUpdateDoc('remark_categories', schoolDoc(props.schoolId, 'remark_categories', editingCategory.value.id), {
         label: categoryForm.label.trim(),
         updated_at: serverTimestamp(), updated_by: auth.currentUser?.email || 'unknown',
       })
@@ -196,7 +198,7 @@ async function saveCategory() {
     toast.add({ severity: 'success', summary: 'Saved', life: 2000 })
     await loadCategories()
   } catch (e) {
-    categoryFormError.value = 'Something went wrong. Try again.'
+    categoryFormError.value = e instanceof SchemaViolation ? e.userMessage : 'Something went wrong. Try again.'
   } finally {
     savingCategory.value = false
   }
@@ -285,14 +287,14 @@ async function saveRemarks() {
   savingRemarks.value = true
   try {
     const remarks = workingRemarks.value.map((r, i) => ({ key: r.key, text: r.text.trim(), type: r.type, order: i + 1 }))
-    await updateDoc(schoolDoc(props.schoolId, 'remark_categories', activeCategory.value.id), {
+    await guardedUpdateDoc('remark_categories', schoolDoc(props.schoolId, 'remark_categories', activeCategory.value.id), {
       remarks, updated_at: serverTimestamp(), updated_by: auth.currentUser?.email || 'unknown',
     })
     remarksDialogVisible.value = false
     toast.add({ severity: 'success', summary: 'Saved', life: 2000 })
     await loadCategories()
   } catch (e) {
-    remarksFormError.value = 'Something went wrong. Try again.'
+    remarksFormError.value = e instanceof SchemaViolation ? e.userMessage : 'Something went wrong. Try again.'
   } finally {
     savingRemarks.value = false
   }

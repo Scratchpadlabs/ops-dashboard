@@ -314,8 +314,38 @@ def match_value(raw, alias_type, valid_canon_to_display, aliases):
 # real data instead of guesswork.
 STUDENT_HEADER_ALIASES = {
     "sr_no": ["sno", "sr no", "s.no", "serial", "serial no", "serial number", "sl no"],
-    "adm_no": ["adm no", "admission no", "admission number", "gr no", "gr. no",
-               "gr number", "general register no", "gen reg no"],
+    "adm_no": ["adm no", "admission no", "admission number",
+               "admission no/reference code", "admission no / reference code",
+               "reference code", "admission reference"],
+    # Decision (Sid, 2026-08-04): GR/EMIS/STS stays its OWN field rather than
+    # collapsing into adm_no. They are different registers and a school can
+    # quote either, so merging them loses which one a number came from.
+    "gr_emis_sts": ["gr/emis/sts", "gr / emis / sts", "gr emis sts", "gr no",
+                    "gr. no", "gr number", "general register no", "gen reg no",
+                    "emis", "emis no", "sts", "sts no", "udise", "udise no"],
+    # PII, persisted by explicit decision — see BANNED_KEYS in main.py.
+    "aadhaar": ["aadhaar", "aadhar", "aadhaar no", "aadhar no", "aadhaar number",
+                "aadhar number", "student aadhaar number", "student aadhar number",
+                "uid", "uid no"],
+    # Review-only: parsed and shown so nothing vanishes silently, but NOT
+    # written to the student document (no field for them in the real schema).
+    "father_mobile": ["father mobile", "father mobile no", "father mobile number",
+                       "fathers mobile", "father's mobile", "father contact",
+                       "father phone"],
+    "father_email": ["father email", "father emailid", "father email id",
+                      "fathers email", "father's email"],
+    "mother_mobile": ["mother mobile", "mother mobile no", "mother mobile number",
+                       "mothers mobile", "mother's mobile", "mother contact",
+                       "mother phone"],
+    "mother_email": ["mother email", "mother emailid", "mother email id",
+                      "mothers email", "mother's email"],
+    "branch_name": ["branch", "branch name"],
+    "board": ["board", "education board"],
+    "enrollment_code": ["enrollment code", "enrolment code", "enrollment no",
+                         "enrolment no", "enrollment number"],
+    "date_of_admission": ["date of admission", "admission date", "doa"],
+    "status": ["status", "student status"],
+    "using_transport": ["using transport", "transport", "bus", "uses transport"],
     "student_name": ["name", "student name", "students name", "name of student",
                       "name of the student", "full name", "child name", "childs name"],
     "grade": ["class", "grade", "std", "standard"],
@@ -326,7 +356,8 @@ STUDENT_HEADER_ALIASES = {
     "father_name": ["father name", "father's name", "fathers name", "father"],
     "mother_name": ["mother name", "mother's name", "mothers name", "mother"],
     "contact": ["contact", "mobile", "phone", "sms mobile", "contact no",
-                "contact number", "mobile no", "mobile number", "phone no"],
+                "contact number", "mobile no", "mobile number", "phone no",
+                "mobilenumber", "mobile number primary", "primary mobile"],
     # "address" is intentionally recognized here (so header-scoring correctly
     # identifies the header row and doesn't waste an "unmapped column" slot
     # on it) but deliberately EXCLUDED from STUDENT_SCHEMA_KEYS below — main.
@@ -341,9 +372,25 @@ STUDENT_HEADER_ALIASES = {
     "email": ["email", "e-mail", "email id", "email address"],
 }
 
+# Everything the parser will carry through to Review. Being here does NOT mean
+# a field reaches Firestore — src/schemas/studentMapping.js decides that, and
+# most of these are deliberately review-only (see REVIEW_ONLY_STUDENT_KEYS).
 STUDENT_SCHEMA_KEYS = ["grade", "section", "roll_no", "student_name", "gender",
-                        "dob", "sr_no", "adm_no", "mother_name", "father_name",
-                        "contact", "email", "city"]
+                        "dob", "sr_no", "adm_no", "gr_emis_sts", "aadhaar",
+                        "mother_name", "father_name", "contact", "email", "city",
+                        "father_mobile", "father_email", "mother_mobile",
+                        "mother_email", "branch_name", "board", "enrollment_code",
+                        "date_of_admission", "status", "using_transport"]
+
+# Parsed and shown in Review so an operator can see the file was read
+# correctly, but never written to a student document — the real schema has no
+# home for them. Surfaced in the UI as an explicit mapping decision rather
+# than dropped in silence.
+REVIEW_ONLY_STUDENT_KEYS = ["father_mobile", "father_email", "mother_mobile",
+                             "mother_email", "branch_name", "board",
+                             "enrollment_code", "date_of_admission", "status",
+                             "using_transport", "sr_no", "roll_no",
+                             "mother_name", "father_name", "city", "address"]
 STUDENT_REQUIRED_FIELD = "student_name"
 
 

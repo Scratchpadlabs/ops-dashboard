@@ -14,7 +14,7 @@
           :loading="loading" @click="run" />
       </div>
 
-      <div v-if="data" class="grid grid-cols-5 gap-2 mt-4">
+      <div v-if="data" class="grid grid-cols-7 gap-2 mt-4">
         <div v-for="t in tiles" :key="t.label" class="rounded-lg px-3 py-2.5" :class="t.tone">
           <div class="text-xs text-slate-500">{{ t.label }}</div>
           <div class="text-lg font-bold" :class="t.textTone">{{ t.value }}</div>
@@ -83,6 +83,39 @@
                   </div>
                 </td>
               </tr>
+              <!-- WHY each value is bad, not just that it is. "student IDs in
+                   currentClassId" and "grade with no section" need completely
+                   different fixes, and both read as plain "unmapped" above.
+                   Read-only: nothing here repairs anything. -->
+              <tr v-if="s.integrity?.length" class="border-t border-slate-50">
+                <td colspan="7" class="px-4 py-2 bg-red-50/40">
+                  <div class="text-[11px] font-semibold text-red-700 mb-1.5">
+                    Bad currentClassId values already in Firestore — fix through the normal UI
+                  </div>
+                  <div v-for="issue in s.integrity" :key="issue.reason" class="mb-1.5 last:mb-0">
+                    <div class="text-[11px] text-slate-700">
+                      <span class="font-semibold tabular-nums">{{ issue.count }}</span>
+                      × <span class="font-mono">{{ issue.reason }}</span>
+                      <span class="text-slate-500"> — {{ issue.message }}</span>
+                    </div>
+                    <div class="flex flex-wrap gap-1 mt-0.5 ml-3">
+                      <span v-for="sm in issue.samples" :key="sm.studentId"
+                        class="px-1.5 py-0.5 rounded bg-white border border-slate-200 text-[10px] font-mono">
+                        {{ sm.studentId }}: {{ sm.value || '(empty)' }}
+                      </span>
+                    </div>
+                  </div>
+                </td>
+              </tr>
+              <tr v-if="s.missing_config?.length" class="border-t border-slate-50">
+                <td colspan="7" class="px-4 py-2 bg-amber-50/50">
+                  <div class="text-[11px] text-amber-800">
+                    <span class="font-semibold">Not set up:</span>
+                    {{ s.missing_config.length }} config collection(s) empty —
+                    <span class="font-mono">{{ s.missing_config.join(', ') }}</span>
+                  </div>
+                </td>
+              </tr>
               <tr v-if="s.error" class="border-t border-slate-50">
                 <td colspan="7" class="px-4 py-2 text-xs text-red-600 bg-red-50/50">{{ s.error }}</td>
               </tr>
@@ -121,6 +154,12 @@ const tiles = computed(() => {
     { label: 'Need attention', value: t.schools_needing_attention,
       tone: t.schools_needing_attention ? 'bg-amber-50' : 'bg-emerald-50',
       textTone: t.schools_needing_attention ? 'text-amber-700' : 'text-emerald-700' },
+    { label: 'Bad class IDs', value: t.students_with_bad_class_id ?? 0,
+      tone: t.students_with_bad_class_id ? 'bg-red-50' : 'bg-emerald-50',
+      textTone: t.students_with_bad_class_id ? 'text-red-700' : 'text-emerald-700' },
+    { label: 'Not set up', value: t.schools_missing_config ?? 0,
+      tone: t.schools_missing_config ? 'bg-amber-50' : 'bg-emerald-50',
+      textTone: t.schools_missing_config ? 'text-amber-700' : 'text-emerald-700' },
   ]
 })
 

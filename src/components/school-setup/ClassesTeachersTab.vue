@@ -32,7 +32,7 @@
           </tr>
         </tbody>
       </table>
-      <div v-if="!classes.length" class="text-center text-sm text-slate-400 py-10">No classes yet — click "Add Section" to create one.</div>
+      <ConfigEmptyState v-if="!classes.length" label="Classes" collection="classes" />
     </div>
 
     <!-- ── Section Editor Dialog ────────────────────────────────────────── -->
@@ -152,6 +152,7 @@ import ProgressSpinner from 'primevue/progressspinner'
 import ConfirmDialog from 'primevue/confirmdialog'
 
 import { schoolCollection, schoolDoc } from '../../firebase/schoolCollections.js'
+import ConfigEmptyState from './ConfigEmptyState.vue'
 import { auth } from '../../firebase/config'
 import { regenerateStudentsSchemaClassOptions } from '../../utils/schoolSetupHelpers.js'
 import KbClassifiedInput from '../shared/KbClassifiedInput.vue'

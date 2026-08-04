@@ -91,7 +91,7 @@
           </template>
         </Column>
       </DataTable>
-      <div v-if="!months.length" class="text-center text-sm text-slate-400 py-8">No months yet</div>
+      <ConfigEmptyState v-if="!months.length" label="Months" collection="months" />
     </div>
 
     <!-- ── Add/Edit Month Dialog ────────────────────────────────────────── -->
@@ -182,8 +182,10 @@ import Select from 'primevue/select'
 import ProgressSpinner from 'primevue/progressspinner'
 import ConfirmDialog from 'primevue/confirmdialog'
 import CsvImportDialog from './CsvImportDialog.vue'
+import ConfigEmptyState from './ConfigEmptyState.vue'
 
 import { schoolCollection, schoolDoc } from '../../firebase/schoolCollections.js'
+import { guardedSetDoc, guardedUpdateDoc, SchemaViolation } from '../../schemas/guardedWrite.js'
 import { db } from '../../firebase/config'
 import { auth } from '../../firebase/config'
 import { toCsv, downloadCsv } from '../../utils/csv.js'
@@ -256,7 +258,7 @@ async function saveMonth() {
     if (editingMonth.value) {
       payload.updated_at = serverTimestamp()
       payload.updated_by = auth.currentUser?.email || 'unknown'
-      await updateDoc(schoolDoc(props.schoolId, 'months', editingMonth.value.id), payload)
+      await guardedUpdateDoc('months', schoolDoc(props.schoolId, 'months', editingMonth.value.id), payload)
     } else {
       payload.created_at = serverTimestamp()
       payload.created_by = auth.currentUser?.email || 'unknown'
@@ -266,7 +268,7 @@ async function saveMonth() {
     toast.add({ severity: 'success', summary: 'Saved', life: 2000 })
     await loadMonths()
   } catch (e) {
-    formError.value = 'Something went wrong. Try again.'
+    formError.value = e instanceof SchemaViolation ? e.userMessage : 'Something went wrong. Try again.'
   } finally {
     saving.value = false
   }
@@ -274,7 +276,7 @@ async function saveMonth() {
 
 async function updateWorkingDays(month, value) {
   try {
-    await updateDoc(schoolDoc(props.schoolId, 'months', month.id), {
+    await guardedUpdateDoc('months', schoolDoc(props.schoolId, 'months', month.id), {
       workingDays: value, updated_at: serverTimestamp(), updated_by: auth.currentUser?.email || 'unknown',
     })
     month.workingDays = value

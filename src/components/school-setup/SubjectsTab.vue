@@ -57,7 +57,7 @@
           </DataTable>
         </div>
       </div>
-      <div v-if="!subjects.length" class="text-center text-sm text-slate-400 py-10 bg-white rounded-xl border border-slate-200">No subjects yet</div>
+      <ConfigEmptyState v-if="!subjects.length" label="Subjects" collection="subjects" />
     </div>
 
     <!-- ── Add/Edit Subject Dialog ──────────────────────────────────────── -->
@@ -227,9 +227,11 @@ import Select from 'primevue/select'
 import ProgressSpinner from 'primevue/progressspinner'
 import ConfirmDialog from 'primevue/confirmdialog'
 import CsvImportDialog from './CsvImportDialog.vue'
+import ConfigEmptyState from './ConfigEmptyState.vue'
 import KbClassifiedInput from '../shared/KbClassifiedInput.vue'
 
 import { schoolCollection, schoolDoc, rootSchoolsCollection } from '../../firebase/schoolCollections.js'
+import { guardedSetDoc, guardedUpdateDoc, SchemaViolation } from '../../schemas/guardedWrite.js'
 import { db, auth } from '../../firebase/config'
 import { toCsv, downloadCsv } from '../../utils/csv.js'
 import { useEducationKB } from '../../composables/useEducationKB.js'
@@ -462,18 +464,18 @@ async function saveSubject() {
       updated_by: auth.currentUser?.email || 'unknown',
     }
     if (editingSubject.value) {
-      await updateDoc(schoolDoc(props.schoolId, 'subjects', editingSubject.value.id), payload)
+      await guardedUpdateDoc('subjects', schoolDoc(props.schoolId, 'subjects', editingSubject.value.id), payload)
     } else {
       payload.id = form.id.trim()
       payload.created_at = serverTimestamp()
       payload.created_by = auth.currentUser?.email || 'unknown'
-      await setDoc(schoolDoc(props.schoolId, 'subjects', form.id.trim()), payload)
+      await guardedSetDoc('subjects', schoolDoc(props.schoolId, 'subjects', form.id.trim()), payload, { merge: false })
     }
     dialogVisible.value = false
     toast.add({ severity: 'success', summary: 'Saved', life: 2000 })
     await loadSubjects()
   } catch (e) {
-    formError.value = 'Something went wrong. Try again.'
+    formError.value = e instanceof SchemaViolation ? e.userMessage : 'Something went wrong. Try again.'
   } finally {
     saving.value = false
   }

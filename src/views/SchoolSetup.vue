@@ -130,7 +130,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, provide } from 'vue'
 import { useRouter } from 'vue-router'
 import { getDocs, query, orderBy, limit, setDoc, serverTimestamp } from 'firebase/firestore'
 import Select from 'primevue/select'
@@ -247,6 +247,10 @@ function throttledActivity() {
 // ops CRM's operations/ops/schools used elsewhere in this dashboard. ────────
 const schools = ref([])
 const loadingSchools = ref(false)
+// Lets a config tab's empty state send the user somewhere useful without
+// threading an emit through every tab component.
+provide('goToSetupTab', (tab) => { activeTab.value = tab })
+
 const selectedSchoolId = ref(null)
 const creatingTestSchool = ref(false)
 
