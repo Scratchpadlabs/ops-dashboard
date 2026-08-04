@@ -40,8 +40,9 @@
                 <span
                   v-if="data.area"
                   class="px-2 py-0.5 rounded-full text-xs font-semibold"
-                  :class="data.area === 'Co-Scholastic' ? 'bg-violet-100 text-violet-700' : 'bg-blue-50 text-blue-700'"
-                >{{ data.area }}</span>
+                  :class="isCoScholasticArea(data.area) ? 'bg-amber-100 text-amber-700' : 'bg-blue-50 text-blue-700'"
+                  v-tooltip="isCoScholasticArea(data.area) ? 'Misfiled: Co-Scholastic records belong in co_scholastic_activities. Run scripts/migrate-co-scholastic-subjects.mjs to move it.' : ''"
+                >{{ data.area }}{{ isCoScholasticArea(data.area) ? ' ⚠' : '' }}</span>
                 <span v-else class="text-xs text-slate-300" v-tooltip="'Not classified — open the subject and let the knowledge base categorize it'">—</span>
               </template>
             </Column>
@@ -60,12 +61,16 @@
     </div>
 
     <!-- ── Add/Edit Subject Dialog ──────────────────────────────────────── -->
-    <Dialog v-model:visible="dialogVisible" :header="editingSubject ? 'Edit Subject' : 'Add Subject'" modal :style="{ width: '640px' }">
+    <Dialog v-model:visible="dialogVisible" :header="dialogHeader" modal :style="{ width: '640px' }">
       <div class="space-y-4 pt-2">
         <div class="grid grid-cols-2 gap-4">
-          <div>
+          <div v-if="!isCoScholasticForm">
             <label class="form-label">Grade *</label>
             <InputText v-model="form.grade" class="w-full" placeholder="e.g. III" :disabled="!!editingSubject" />
+          </div>
+          <div v-else>
+            <label class="form-label">Term *</label>
+            <Select v-model="form.termId" :options="terms" optionLabel="name" optionValue="id" placeholder="Select a term" class="w-full" />
           </div>
           <div>
             <label class="form-label">Name *</label>
@@ -79,13 +84,56 @@
             />
           </div>
         </div>
+
         <div>
-          <label class="form-label">Doc ID</label>
-          <InputText v-model="form.id" class="w-full font-mono text-sm" :disabled="!!editingSubject" />
-          <p class="text-xs text-slate-400 mt-1">Auto-slugged from grade + name — editable until first save, locked after.</p>
+          <label class="form-label">Area *</label>
+          <Select v-model="form.area" :options="AREA_OPTIONS" placeholder="Not classified" showClear class="w-full" :disabled="!!editingSubject" />
+          <p class="text-xs text-slate-400 mt-1">
+            Set automatically by the knowledge base from the name — override it here if that's wrong.
+          </p>
+        </div>
+
+        <div v-if="isCoScholasticForm" class="rounded-lg bg-violet-50 border border-violet-100 px-3 py-2 text-xs text-violet-700">
+          Co-Scholastic entries are term-wide activities — this will be saved to
+          <span class="font-mono">co_scholastic_activities</span>, not <span class="font-mono">subjects</span>.
+        </div>
+
+        <div v-if="isCoScholasticForm" class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="form-label">Entry Type *</label>
+            <Select v-model="form.entryType" :options="entryTypeOptions" optionLabel="label" optionValue="value" class="w-full" />
+          </div>
+          <div>
+            <label class="form-label">Max Marks *</label>
+            <InputNumber v-model="form.maxMarks" class="w-full" :min="1" />
+          </div>
+          <div>
+            <label class="form-label">Grading Scale{{ form.entryType === 'grade' || form.conversionType === 'marks_to_grade' ? ' *' : '' }}</label>
+            <Select v-model="form.gradingScaleId" :options="scales" optionLabel="name" optionValue="id" showClear class="w-full" />
+          </div>
+          <div>
+            <label class="form-label">Conversion Type *</label>
+            <Select v-model="form.conversionType" :options="conversionTypeOptions" optionLabel="label" optionValue="value" class="w-full" />
+          </div>
+          <div v-if="form.conversionType === 'sum_up' || form.conversionType === 'sum_down'">
+            <label class="form-label">Conversion Factor *</label>
+            <InputNumber v-model="form.conversionFactor" class="w-full" :min="0.01" :maxFractionDigits="2" />
+          </div>
+          <div>
+            <label class="form-label">Order *</label>
+            <InputNumber v-model="form.order" class="w-full" :min="1" />
+          </div>
         </div>
 
         <div>
+          <label class="form-label">Doc ID</label>
+          <InputText v-model="form.id" class="w-full font-mono text-sm" :disabled="!!editingSubject" />
+          <p class="text-xs text-slate-400 mt-1">
+            {{ isCoScholasticForm ? 'Auto-slugged from term + name — editable until first save, locked after.' : 'Auto-slugged from grade + name — editable until first save, locked after.' }}
+          </p>
+        </div>
+
+        <div v-if="!isCoScholasticForm">
           <div class="flex items-center justify-between mb-2">
             <label class="form-label mb-0">Curricular Goals</label>
             <div class="flex gap-2">
@@ -119,7 +167,7 @@
       </div>
       <template #footer>
         <Button label="Cancel" text @click="dialogVisible = false" />
-        <Button :label="editingSubject ? 'Save Changes' : 'Add Subject'" :loading="saving" @click="saveSubject" />
+        <Button :label="editingSubject ? 'Save Changes' : (isCoScholasticForm ? 'Add Activity' : 'Add Subject')" :loading="saving" @click="saveSubject" />
       </template>
     </Dialog>
 
@@ -166,6 +214,7 @@
 <script setup>
 import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { getDocs, setDoc, updateDoc, query, orderBy, serverTimestamp, writeBatch } from 'firebase/firestore'
+import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
 
 import Button from 'primevue/button'
@@ -173,6 +222,7 @@ import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
+import InputNumber from 'primevue/inputnumber'
 import Select from 'primevue/select'
 import ProgressSpinner from 'primevue/progressspinner'
 import ConfirmDialog from 'primevue/confirmdialog'
@@ -184,12 +234,60 @@ import { db, auth } from '../../firebase/config'
 import { toCsv, downloadCsv } from '../../utils/csv.js'
 import { useEducationKB } from '../../composables/useEducationKB.js'
 import { SUBJECT, COSCHOLASTIC, classify as classifyValue } from '../../utils/educationKB.js'
+import { checkEnteredMarksCoScholastic, isCoScholasticArea, slugify as slugifyText } from '../../utils/assessmentHelpers.js'
 
 const props = defineProps({ schoolId: { type: String, default: null } })
+const confirm = useConfirm()
 const toast = useToast()
 
 const subjects = ref([])
 const loading = ref(false)
+
+// ── Co-Scholastic routing ────────────────────────────────────────────────
+// `area` is not just a label — it decides the collection. The KB classifies
+// the name (areaFor / onNameClassified below); "Co-Scholastic" means a
+// term-wide activity, which belongs in co_scholastic_activities with that
+// collection's schema (see CoScholasticTab), NOT in subjects.
+const AREA_SCHOLASTIC = 'Scholastic'
+const AREA_CO_SCHOLASTIC = 'Co-Scholastic'
+const AREA_OPTIONS = [AREA_SCHOLASTIC, AREA_CO_SCHOLASTIC]
+
+// Applied when the form or a CSV row leaves a co-scholastic field blank.
+const CO_DEFAULTS = { entryType: 'marks', maxMarks: 10, conversionType: 'none', conversionFactor: null, gradingScaleId: null }
+
+const entryTypeOptions = [{ label: 'Marks', value: 'marks' }, { label: 'Grade', value: 'grade' }]
+const conversionTypeOptions = [
+  { label: 'None', value: 'none' },
+  { label: 'Marks → Grade', value: 'marks_to_grade' },
+  { label: 'Sum Up', value: 'sum_up' },
+  { label: 'Sum Down', value: 'sum_down' },
+]
+
+const terms = ref([])
+const scales = ref([])
+const coActivities = ref([])
+
+async function loadCoScholasticContext() {
+  if (!props.schoolId) { terms.value = []; scales.value = []; coActivities.value = []; return }
+  try {
+    const [tSnap, gSnap, aSnap] = await Promise.all([
+      getDocs(schoolCollection(props.schoolId, 'terms')),
+      getDocs(schoolCollection(props.schoolId, 'grading_scales')),
+      getDocs(schoolCollection(props.schoolId, 'co_scholastic_activities')),
+    ])
+    terms.value = tSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+    scales.value = gSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+    coActivities.value = aSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+  } catch (e) {
+    console.error('Could not load terms/scales/co-scholastic activities', e)
+  }
+}
+
+// Co-scholastic activities are ordered within a term — a new one lands last.
+function nextCoOrder(termId) {
+  const inTerm = coActivities.value.filter(a => a.termId === termId)
+  return inTerm.length ? Math.max(...inTerm.map(a => a.order || 0)) + 1 : 1
+}
 
 function parseGrade(id) {
   return (id || '').split('_')[0] || '?'
@@ -226,7 +324,21 @@ const dialogVisible = ref(false)
 const editingSubject = ref(null)
 const saving = ref(false)
 const formError = ref('')
-const form = reactive({ grade: '', name: '', id: '', goals: [], area: '', name_original: '' })
+const form = reactive({
+  grade: '', name: '', id: '', goals: [], area: '', name_original: '',
+  termId: null, entryType: CO_DEFAULTS.entryType, maxMarks: CO_DEFAULTS.maxMarks,
+  gradingScaleId: null, conversionType: CO_DEFAULTS.conversionType, conversionFactor: null, order: 1,
+})
+
+// Only ever true while *adding*. Editing an existing subjects doc keeps the
+// plain subject form and keeps writing to subjects — moving an already-filed
+// doc between collections is the migration script's job, not a side effect of
+// an edit (scripts/migrate-co-scholastic-subjects.mjs).
+const isCoScholasticForm = computed(() => !editingSubject.value && isCoScholasticArea(form.area))
+const dialogHeader = computed(() => {
+  if (editingSubject.value) return 'Edit Subject'
+  return isCoScholasticForm.value ? 'Add Co-Scholastic Activity' : 'Add Subject'
+})
 
 // The knowledge base decides scholastic vs co-scholastic; the subject doc
 // records it as `area` so the import parser's core-subject coverage check
@@ -247,8 +359,21 @@ function slugify(grade, name) {
   return `${grade.trim()}_${cleanName}`
 }
 
-watch([() => form.grade, () => form.name], () => {
-  if (!editingSubject.value) form.id = slugify(form.grade || '', form.name || '')
+// Doc ID convention differs per target: `{Grade}_{Name}` for subjects,
+// `{termId}_{Name}` for co_scholastic_activities (matches CoScholasticTab).
+watch([() => form.area, () => form.grade, () => form.name, () => form.termId], () => {
+  if (editingSubject.value) return
+  form.id = isCoScholasticForm.value
+    ? (form.termId ? `${form.termId}_${slugifyText(form.name)}` : '')
+    : slugify(form.grade || '', form.name || '')
+})
+
+// Default the term (when unambiguous) and the order the moment the KB — or the
+// user — flips this into a co-scholastic record.
+watch([() => form.area, () => form.termId], () => {
+  if (editingSubject.value || !isCoScholasticForm.value) return
+  if (!form.termId && terms.value.length === 1) form.termId = terms.value[0].id
+  if (form.termId) form.order = nextCoOrder(form.termId)
 })
 
 function goalsFromDoc(doc) {
@@ -265,7 +390,10 @@ function goalsToDoc(goals) {
 
 function openAddSubject() {
   editingSubject.value = null
-  Object.assign(form, { grade: '', name: '', id: '', goals: [], area: '', name_original: '' })
+  Object.assign(form, {
+    grade: '', name: '', id: '', goals: [], area: '', name_original: '',
+    termId: terms.value.length === 1 ? terms.value[0].id : null, ...CO_DEFAULTS, order: 1,
+  })
   formError.value = ''
   dialogVisible.value = true
 }
@@ -285,8 +413,19 @@ function addGoal() {
 }
 
 function validateSubject() {
-  if (!form.grade.trim()) return 'Grade is required'
   if (!form.name.trim()) return 'Name is required'
+  if (isCoScholasticForm.value) {
+    if (!terms.value.length) return 'This school has no terms yet — add one in Terms & Scales first'
+    if (!form.termId) return 'Term is required for Co-Scholastic activities'
+    if (!form.maxMarks || form.maxMarks <= 0) return 'Max marks must be greater than 0'
+    if (form.conversionType !== 'none' && form.conversionType !== 'marks_to_grade' && !form.conversionFactor) return 'Conversion factor is required for this conversion type'
+    if ((form.conversionType === 'marks_to_grade' || form.entryType === 'grade') && !form.gradingScaleId) return 'Grading scale is required'
+    if (!form.order || form.order <= 0) return 'Order must be greater than 0'
+    if (!form.id.trim()) return 'Doc ID is required'
+    if (coActivities.value.some(a => a.id === form.id.trim())) return 'A co-scholastic activity with this ID already exists — edit it in the Co-Scholastic tab'
+    return ''
+  }
+  if (!form.grade.trim()) return 'Grade is required'
   if (!form.id.trim()) return 'Doc ID is required'
   if (!editingSubject.value && subjects.value.some(s => s.id === form.id.trim())) return 'A subject with this ID already exists'
   return ''
@@ -297,6 +436,23 @@ async function saveSubject() {
   if (formError.value) return
   saving.value = true
   try {
+    // Area "Co-Scholastic" ⇒ a term-wide activity, written to
+    // co_scholastic_activities in that collection's shape — never to subjects.
+    if (isCoScholasticForm.value) {
+      await setDoc(schoolDoc(props.schoolId, 'co_scholastic_activities', form.id.trim()), {
+        name: form.name.trim(), termId: form.termId, entryType: form.entryType, maxMarks: form.maxMarks,
+        gradingScaleId: form.gradingScaleId || null, conversionType: form.conversionType,
+        conversionFactor: form.conversionFactor || null, order: form.order,
+        ...(form.name_original ? { name_original: form.name_original } : {}),
+        updated_at: serverTimestamp(), updated_by: auth.currentUser?.email || 'unknown',
+        created_at: serverTimestamp(), created_by: auth.currentUser?.email || 'unknown',
+      }, { merge: true })
+      dialogVisible.value = false
+      toast.add({ severity: 'success', summary: 'Saved to Co-Scholastic', detail: 'Manage it in the Co-Scholastic tab', life: 3000 })
+      await loadCoScholasticContext()
+      return
+    }
+
     const payload = {
       name: form.name.trim(),
       area: form.area || areaFor(form.name),
@@ -377,32 +533,148 @@ function copyGoalsFromSchool() {
 // Curricular goals aren't included — they're a nested goal→competencies
 // structure that doesn't flatten cleanly into a row; use the goals editor
 // (or "copy from" actions) for those. CSV covers grade/name/id only.
-const SUBJECT_CSV_COLUMNS = ['grade', 'name', 'id']
+// `area` routes each row. It's optional: left blank, the knowledge base
+// classifies the name (areaFor), same as it always has — the difference is
+// that a Co-Scholastic verdict now decides the *collection*, not just a label.
+// The trailing columns apply to co-scholastic rows only.
+const SUBJECT_CSV_COLUMNS = ['grade', 'name', 'id', 'area', 'termId', 'order', 'entryType', 'maxMarks', 'gradingScaleId', 'conversionType', 'conversionFactor']
 const importVisible = ref(false)
 
-async function classifyImportRow(raw) {
-  const grade = (raw.grade || '').trim()
-  const name = (raw.name || '').trim()
-  if (!grade) return { raw, _status: 'ERROR', _reason: 'Missing grade' }
-  if (!name) return { raw, _status: 'ERROR', _reason: 'Missing name' }
-  const id = (raw.id || '').trim() || slugify(grade, name)
-  const existing = subjects.value.find(s => s.id === id)
-  return { raw, id, _status: existing ? 'UPDATE' : 'CREATE', payload: { name, area: areaFor(name) } }
+function classifyCoScholasticRow(raw, name, areaSource) {
+  if (!terms.value.length) return { raw, _status: 'ERROR', _reason: 'School has no terms — add one in Terms & Scales first' }
+  // Only safe to infer the term when there's exactly one; otherwise the row
+  // has to name it rather than have us guess which term it belongs to.
+  const termId = (raw.termId || '').trim() || (terms.value.length === 1 ? terms.value[0].id : '')
+  if (!termId) return { raw, _status: 'ERROR', _reason: `${areaSource} is Co-Scholastic but school has multiple terms — add a termId column` }
+  if (!terms.value.some(t => t.id === termId)) return { raw, _status: 'ERROR', _reason: `Unknown termId "${termId}"` }
+
+  const entryType = (raw.entryType || '').trim() || CO_DEFAULTS.entryType
+  if (!['marks', 'grade'].includes(entryType)) return { raw, _status: 'ERROR', _reason: 'entryType must be "marks" or "grade"' }
+
+  const maxMarksRaw = (raw.maxMarks ?? '').toString().trim()
+  const maxMarks = maxMarksRaw ? Number(maxMarksRaw) : CO_DEFAULTS.maxMarks
+  if (!maxMarks || Number.isNaN(maxMarks) || maxMarks <= 0) return { raw, _status: 'ERROR', _reason: 'maxMarks must be a number greater than 0' }
+
+  const conversionType = (raw.conversionType || '').trim() || CO_DEFAULTS.conversionType
+  if (!['none', 'marks_to_grade', 'sum_up', 'sum_down'].includes(conversionType)) return { raw, _status: 'ERROR', _reason: 'conversionType must be none/marks_to_grade/sum_up/sum_down' }
+
+  const conversionFactorRaw = (raw.conversionFactor ?? '').toString().trim()
+  const conversionFactor = conversionFactorRaw ? Number(conversionFactorRaw) : null
+  if (conversionType !== 'none' && conversionType !== 'marks_to_grade' && !conversionFactor) return { raw, _status: 'ERROR', _reason: 'conversionFactor is required for this conversionType' }
+
+  const gradingScaleId = (raw.gradingScaleId || '').trim() || null
+  if ((conversionType === 'marks_to_grade' || entryType === 'grade') && !gradingScaleId) return { raw, _status: 'ERROR', _reason: 'gradingScaleId is required' }
+  if (gradingScaleId && !scales.value.some(s => s.id === gradingScaleId)) return { raw, _status: 'ERROR', _reason: `Unknown gradingScaleId "${gradingScaleId}"` }
+
+  const orderRaw = (raw.order ?? '').toString().trim()
+  const order = orderRaw ? Number(orderRaw) : null
+  if (orderRaw && (!order || Number.isNaN(order) || order <= 0)) return { raw, _status: 'ERROR', _reason: 'order must be a number greater than 0' }
+
+  const id = (raw.id || '').trim() || `${termId}_${slugifyText(name)}`
+  const existing = coActivities.value.find(a => a.id === id)
+  const sensitiveChange = !!existing && (maxMarks !== existing.maxMarks || entryType !== existing.entryType)
+  const notes = [`${areaSource} Co-Scholastic → co_scholastic_activities`]
+  if (order === null) notes.push('order auto-assigned')
+  if (sensitiveChange) notes.push('changes maxMarks/entryType — entered-marks check runs on confirm')
+  return {
+    raw, id, _target: 'co_scholastic_activities',
+    _status: existing ? 'UPDATE' : 'CREATE',
+    // order stays null when unspecified — runImport appends it to the term.
+    payload: { name, termId, order, entryType, maxMarks, gradingScaleId, conversionType, conversionFactor },
+    _sensitiveChange: sensitiveChange,
+    _warning: notes.join('; '),
+  }
 }
 
-async function runImport(validRows) {
-  for (let i = 0; i < validRows.length; i += 450) {
-    const chunk = validRows.slice(i, i + 450)
+async function classifyImportRow(raw) {
+  const name = (raw.name || '').trim()
+  if (!name) return { raw, _status: 'ERROR', _reason: 'Missing name' }
+
+  // An explicit area column wins; otherwise fall back to the KB, exactly as
+  // before. Either way, Co-Scholastic changes the destination collection.
+  const explicitArea = (raw.area || '').trim()
+  const area = explicitArea || areaFor(name)
+  if (isCoScholasticArea(area)) {
+    return classifyCoScholasticRow(raw, name, explicitArea ? 'area column' : 'knowledge base says')
+  }
+
+  const grade = (raw.grade || '').trim()
+  if (!grade) return { raw, _status: 'ERROR', _reason: 'Missing grade' }
+  const id = (raw.id || '').trim() || slugify(grade, name)
+  const existing = subjects.value.find(s => s.id === id)
+  return { raw, id, _target: 'subjects', _status: existing ? 'UPDATE' : 'CREATE', payload: { name, area } }
+}
+
+async function writeImportChunks(rows, collectionName) {
+  for (let i = 0; i < rows.length; i += 450) {
+    const chunk = rows.slice(i, i + 450)
     const batch = writeBatch(db)
     chunk.forEach(r => {
       const payload = { ...r.payload, updated_at: serverTimestamp(), updated_by: auth.currentUser?.email || 'unknown' }
-      if (r._status === 'CREATE') { payload.id = r.id; payload.created_at = serverTimestamp(); payload.created_by = auth.currentUser?.email || 'unknown' }
-      batch.set(schoolDoc(props.schoolId, 'subjects', r.id), payload, { merge: true })
+      if (r._status === 'CREATE') {
+        // co_scholastic_activities docs carry no `id` field (see spec §2).
+        if (collectionName === 'subjects') payload.id = r.id
+        payload.created_at = serverTimestamp()
+        payload.created_by = auth.currentUser?.email || 'unknown'
+      }
+      batch.set(schoolDoc(props.schoolId, collectionName, r.id), payload, { merge: true })
     })
     await batch.commit()
   }
-  toast.add({ severity: 'success', summary: 'Imported', detail: `${validRows.length} row(s)`, life: 2500 })
+}
+
+async function runImport(validRows) {
+  const coRows = validRows.filter(r => r._target === 'co_scholastic_activities')
+  const subjectRows = validRows.filter(r => r._target !== 'co_scholastic_activities')
+
+  // Same gate as the Co-Scholastic tab: lowering maxMarks or flipping
+  // entryType on an activity teachers have already entered marks against can
+  // invalidate those values.
+  const sensitiveRows = coRows.filter(r => r._sensitiveChange)
+  if (sensitiveRows.length) {
+    const termIds = Array.from(new Set(sensitiveRows.map(r => r.payload.termId)))
+    const checks = await Promise.all(termIds.map(t => checkEnteredMarksCoScholastic(props.schoolId, t).catch(() => 'error')))
+    if (checks.includes('error')) {
+      toast.add({ severity: 'error', summary: 'Error', detail: 'Could not verify entered marks — aborting.', life: 4000 })
+      return false
+    }
+    if (checks.some(Boolean)) {
+      const proceed = await new Promise(resolve => {
+        confirm.require({
+          message: `Teachers may have already entered co-scholastic marks. ${sensitiveRows.length} changed row(s) (${sensitiveRows.map(r => r.payload.name).join(', ')}) may invalidate those values. Continue anyway?`,
+          header: 'Entered marks exist', icon: 'pi pi-exclamation-triangle',
+          rejectLabel: 'Cancel', acceptLabel: 'Continue anyway', acceptClass: 'p-button-danger',
+          accept: () => resolve(true), reject: () => resolve(false),
+        })
+      })
+      if (!proceed) return false
+    }
+  }
+
+  // Fill in `order` for rows that didn't specify one, appending to each term's
+  // existing list and keeping rows within one file distinct.
+  const nextByTerm = new Map()
+  for (const r of coRows) {
+    const termId = r.payload.termId
+    if (!nextByTerm.has(termId)) nextByTerm.set(termId, nextCoOrder(termId))
+    if (r.payload.order == null) {
+      r.payload.order = nextByTerm.get(termId)
+      nextByTerm.set(termId, r.payload.order + 1)
+    } else {
+      nextByTerm.set(termId, Math.max(nextByTerm.get(termId), r.payload.order + 1))
+    }
+  }
+
+  await writeImportChunks(subjectRows, 'subjects')
+  await writeImportChunks(coRows, 'co_scholastic_activities')
+
+  const detail = coRows.length
+    ? `${subjectRows.length} subject(s), ${coRows.length} co-scholastic activity(ies)`
+    : `${subjectRows.length} row(s)`
+  toast.add({ severity: 'success', summary: 'Imported', detail, life: 3500 })
   await loadSubjects()
+  if (coRows.length) await loadCoScholasticContext()
+  return true
 }
 
 // Scholastic/Co-Scholastic straight from the shared knowledge base. Only a
@@ -420,20 +692,24 @@ function downloadSample() {
   const existingGrades = Array.from(new Set(subjects.value.map(s => parseGrade(s.id))))
   const g1 = existingGrades[0] || 'III'
   const g2 = existingGrades[1] || 'IV'
+  const termId = terms.value[0]?.id || 'term1'
   const sample = [
+    // area left blank — the knowledge base classifies these from the name.
     { grade: g1, name: 'English', id: '' },
     { grade: g1, name: 'Maths', id: '' },
     { grade: g2, name: 'Science', id: '' },
+    // Co-Scholastic rows ignore `grade` and go to co_scholastic_activities.
+    { grade: '', name: 'Art & Craft', id: '', area: AREA_CO_SCHOLASTIC, termId, order: 1, entryType: 'marks', maxMarks: 10, gradingScaleId: '', conversionType: 'none', conversionFactor: '' },
   ]
   downloadCsv('subjects_sample.csv', toCsv(sample, SUBJECT_CSV_COLUMNS))
 }
 function exportCsv() {
-  const rows = subjects.value.map(s => ({ grade: parseGrade(s.id), name: s.name, id: s.id }))
+  const rows = subjects.value.map(s => ({ grade: parseGrade(s.id), name: s.name, id: s.id, area: s.area || '' }))
   downloadCsv(`subjects_${props.schoolId}.csv`, toCsv(rows, SUBJECT_CSV_COLUMNS))
 }
 
-watch(() => props.schoolId, loadSubjects)
-onMounted(() => { loadSubjects(); loadOtherSchools(); loadKB() })
+watch(() => props.schoolId, () => { loadSubjects(); loadCoScholasticContext() })
+onMounted(() => { loadSubjects(); loadCoScholasticContext(); loadOtherSchools(); loadKB() })
 </script>
 
 <style scoped>
