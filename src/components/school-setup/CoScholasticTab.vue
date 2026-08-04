@@ -22,7 +22,13 @@
       :on-confirm="runImport"
     />
 
-    <div v-if="!selectedTermId" class="text-center text-sm text-slate-400 py-10 bg-white rounded-xl border border-slate-200">
+    <!-- No terms at all is a different state from "pick a term": the school
+         has never been set up, and assessments cannot exist without a term. -->
+    <ConfigEmptyState
+      v-if="!terms.length" label="Co-Scholastic activities" collection="co_scholastic_activities"
+      blocked-by="Add a term in Terms &amp; Scales" blocked-tab="terms-scales"
+    />
+    <div v-else-if="!selectedTermId" class="text-center text-sm text-slate-400 py-10 bg-white rounded-xl border border-slate-200">
       Select a term to view or create activities.
     </div>
     <div v-else-if="loading" class="flex items-center justify-center py-10">
@@ -163,9 +169,11 @@ import Select from 'primevue/select'
 import ProgressSpinner from 'primevue/progressspinner'
 import ConfirmDialog from 'primevue/confirmdialog'
 import CsvImportDialog from './CsvImportDialog.vue'
+import ConfigEmptyState from './ConfigEmptyState.vue'
 import KbClassifiedInput from '../shared/KbClassifiedInput.vue'
 
 import { schoolCollection, schoolDoc } from '../../firebase/schoolCollections.js'
+import { guardedSetDoc, guardedUpdateDoc, MODE_UPDATE, SchemaViolation } from '../../schemas/guardedWrite.js'
 import { db, auth } from '../../firebase/config'
 import { checkEnteredMarksCoScholastic, slugify } from '../../utils/assessmentHelpers.js'
 import { toCsv, downloadCsv } from '../../utils/csv.js'
@@ -310,13 +318,14 @@ async function saveActivity() {
       payload.created_at = serverTimestamp()
       payload.created_by = auth.currentUser?.email || 'unknown'
     }
-    await setDoc(schoolDoc(props.schoolId, 'co_scholastic_activities', docId), payload, { merge: true })
+    await guardedSetDoc('co_scholastic_activities', schoolDoc(props.schoolId, 'co_scholastic_activities', docId), payload,
+      { mode: editingActivity.value ? MODE_UPDATE : undefined })
     dialogVisible.value = false
     toast.add({ severity: 'success', summary: 'Saved', life: 2000 })
     await loadActivities()
   } catch (e) {
     console.error(e)
-    formError.value = 'Something went wrong. Try again.'
+    formError.value = e instanceof SchemaViolation ? e.userMessage : 'Something went wrong. Try again.'
   } finally {
     saving.value = false
   }

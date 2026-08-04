@@ -86,6 +86,31 @@
             <Button label="Source Files" icon="pi pi-file" size="small" outlined @click="sourceFilesVisible = true" />
           </div>
         </div>
+        <!-- Nothing the file carried may disappear without being named. Two
+             separate cases, deliberately distinguished: a column the parser
+             could not map to any field at all, and a column it mapped fine but
+             the student schema has no home for. Both used to vanish silently. -->
+        <div v-if="(job.unmapped_headers || []).length || reviewOnlyPresent.length"
+             class="mt-3 border-t border-slate-100 pt-3">
+          <div class="text-xs font-semibold text-slate-600 mb-1.5">Columns not written to the student record</div>
+          <div v-if="(job.unmapped_headers || []).length" class="mb-1.5">
+            <div class="text-[11px] text-slate-500 mb-1">Not recognized — no field matches this header:</div>
+            <div class="flex flex-wrap gap-1">
+              <span v-for="h in job.unmapped_headers" :key="h"
+                class="px-2 py-0.5 rounded bg-red-50 border border-red-100 text-[11px] font-mono text-red-700">{{ h }}</span>
+            </div>
+          </div>
+          <div v-if="reviewOnlyPresent.length">
+            <div class="text-[11px] text-slate-500 mb-1">Read and shown below, but the student schema has no field for them:</div>
+            <div class="flex flex-wrap gap-1">
+              <span v-for="c in reviewOnlyPresent" :key="c"
+                class="px-2 py-0.5 rounded bg-amber-50 border border-amber-100 text-[11px] font-mono text-amber-800">{{ colLabel(c) }}</span>
+            </div>
+          </div>
+          <p class="text-[11px] text-slate-400 mt-1.5">
+            Adding a field for any of these is a schema decision — say so and it gets added deliberately, not guessed.
+          </p>
+        </div>
         <div v-if="(job.class_level_flags || []).length" class="mt-3 border-t border-slate-100 pt-3">
           <div class="text-xs font-semibold text-amber-600 mb-1">Class-level flags</div>
           <div v-for="(f, i) in job.class_level_flags" :key="i" class="text-xs text-slate-500">{{ f }}</div>
@@ -215,6 +240,27 @@
           <i class="pi pi-exclamation-triangle mr-1"></i>{{ plan.summary.suggestionsPending }} row(s) have a pending suggestion — resolve them in the table above before committing (they'll be skipped otherwise).
         </div>
         <div v-if="plan.summary.errors" class="bg-red-50 text-red-600 rounded-lg px-3 py-2 text-sm">{{ plan.summary.errors }} skipped (errors)</div>
+
+        <!-- The name split is a guess the file cannot settle (surname-first is
+             common in this estate), so it is shown before it is written rather
+             than discovered in Firestore afterwards. -->
+        <div v-if="nameSplitPreview.length" class="rounded-lg border border-slate-200 px-3 py-2">
+          <div class="text-xs font-semibold text-slate-600 mb-1">Name split — firstName / lastName</div>
+          <div class="text-[11px] text-slate-500 space-y-0.5 max-h-24 overflow-auto">
+            <div v-for="(p, i) in nameSplitPreview" :key="i">
+              <span class="font-mono">{{ p.name }}</span>
+              <span class="text-slate-400"> → </span>
+              <span class="font-mono">{{ p.firstName }}</span> / <span class="font-mono">{{ p.lastName || '(none)' }}</span>
+            </div>
+          </div>
+        </div>
+
+        <div v-if="planNotes.length" class="rounded-lg bg-amber-50 px-3 py-2">
+          <div class="text-xs font-semibold text-amber-800 mb-1">{{ planNotes.length }} row(s) with notes</div>
+          <div class="text-[11px] text-amber-700 space-y-0.5 max-h-24 overflow-auto">
+            <div v-for="(n, i) in planNotes" :key="i">{{ n }}</div>
+          </div>
+        </div>
         <div v-if="plan.summary.changed" class="flex items-center gap-2 pt-1">
           <Checkbox v-model="overwriteExisting" binary inputId="overwrite" />
           <label for="overwrite" class="text-sm text-slate-600">Overwrite the {{ plan.summary.changed }} changed record(s) with the imported values</label>
@@ -293,7 +339,10 @@ function throttledActivity() {
 }
 
 const COLUMNS = {
-  students: ['grade', 'section', 'roll_no', 'student_name', 'gender', 'dob', 'sr_no', 'adm_no', 'mother_name', 'father_name', 'contact', 'email', 'city'],
+  students: ['grade', 'section', 'roll_no', 'student_name', 'gender', 'dob', 'sr_no', 'adm_no',
+             'gr_emis_sts', 'aadhaar', 'mother_name', 'father_name', 'contact', 'email', 'city',
+             'father_mobile', 'father_email', 'mother_mobile', 'mother_email', 'branch_name',
+             'board', 'enrollment_code', 'date_of_admission', 'status', 'using_transport'],
   teachers: ['teacher_name', 'email', 'class_teacher_of', 'subject', 'grade', 'section'],
   subjects: ['stream', 'grade_band', 'subject', 'area'],
   assessments: ['stream', 'grade_band', 'assessment', 'date_start', 'date_end', 'instructional_days', 'syllabus_covered', 'exam_syllabus', 'max_written', 'activity_weight', 'total', 'duration'],
@@ -312,7 +361,11 @@ const ESSENTIAL_COLUMNS = {
   assessments: ['grade_band', 'assessment', 'date_start', 'date_end', 'max_written', 'total'],
 }
 
-const LABELS = { roll_no: 'Roll No', student_name: 'Name', dob: 'DOB', sr_no: 'Sr No', adm_no: 'Adm No', mother_name: 'Mother', father_name: 'Father', teacher_name: 'Teacher', class_teacher_of: 'Class Teacher Of', grade_band: 'Grade Band', date_start: 'Start', date_end: 'End', instructional_days: 'Inst. Days', syllabus_covered: 'Syllabus Covered', exam_syllabus: 'Exam Syllabus', max_written: 'Max Written', activity_weight: 'Activity Wt', total: 'Total', duration: 'Duration' }
+const LABELS = { roll_no: 'Roll No', student_name: 'Name', dob: 'DOB', sr_no: 'Sr No', adm_no: 'Adm No',
+  gr_emis_sts: 'GR/EMIS/STS', aadhaar: 'Aadhaar', father_mobile: 'Father Mobile', father_email: 'Father Email',
+  mother_mobile: 'Mother Mobile', mother_email: 'Mother Email', branch_name: 'Branch', board: 'Board',
+  enrollment_code: 'Enrollment Code', date_of_admission: 'Date of Admission', using_transport: 'Transport',
+  mother_name: 'Mother', father_name: 'Father', teacher_name: 'Teacher', class_teacher_of: 'Class Teacher Of', grade_band: 'Grade Band', date_start: 'Start', date_end: 'End', instructional_days: 'Inst. Days', syllabus_covered: 'Syllabus Covered', exam_syllabus: 'Exam Syllabus', max_written: 'Max Written', activity_weight: 'Activity Wt', total: 'Total', duration: 'Duration' }
 function colLabel(c) { return LABELS[c] || c.charAt(0).toUpperCase() + c.slice(1) }
 
 // Only section (students, teachers) and subject (teachers) go through
@@ -327,7 +380,22 @@ const rows = ref([])
 const schoolName = ref('')
 let unsubJob = null, unsubRows = null
 
-const allColumns = computed(() => COLUMNS[job.value?.entity] || [])
+// A fixed list silently swallowed any column the parser learned to read but
+// this file had not been told about — the bug where uploading a 24-column
+// roster showed 13 columns and the rest vanished. The declared order below is
+// preserved for readability, then ANY other key present on a row is appended,
+// so a newly mapped field appears in Review without a second edit here.
+const allColumns = computed(() => {
+  const declared = COLUMNS[job.value?.entity] || []
+  const seen = new Set(declared)
+  const extra = []
+  for (const r of rows.value) {
+    for (const k of Object.keys(r.data || {})) {
+      if (!seen.has(k)) { seen.add(k); extra.push(k) }
+    }
+  }
+  return [...declared, ...extra]
+})
 const showAllColumns = ref(false)
 // Columns carrying a flag or a pending suggestion are always shown, whatever
 // the toggle says — hiding the column a reviewer needs to act on would make
@@ -346,6 +414,13 @@ const columns = computed(() => {
   return allColumns.value.filter(c => essential.has(c) || flaggedColumns.value.has(c))
 })
 const hiddenColumnCount = computed(() => allColumns.value.length - columns.value.length)
+// Review-only fields that ACTUALLY have a value somewhere in this job. Listing
+// the whole static set would cry wolf on files that never carried them.
+const reviewOnlyPresent = computed(() => {
+  const declared = job.value?.review_only_fields || []
+  return declared.filter(f => rows.value.some(r => String(r.data?.[f] ?? '').trim()))
+})
+
 const tableRows = computed(() => rows.value.map(r => ({
   _id: r.id, _flags: r.flags || [], _fixes: r.fixes || [], _suggestions: r.suggestions || [],
   _excluded: !!r.excluded, ...r.data,
@@ -563,6 +638,22 @@ watch(sourceFilesVisible, async (visible) => {
 const terms = ref([])
 const selectedTermId = ref(null)
 const plan = ref(null)
+
+// Surfaced in the commit dialog: the derived name split and any per-row notes
+// (dropped source columns, unreadable dates) that buildStudentsPlan attached.
+const nameSplitPreview = computed(() => (plan.value?.items || [])
+  .filter(i => i.derived && i.payload?.name)
+  .slice(0, 25)
+  .map(i => ({ name: i.payload.name, firstName: i.derived.firstName, lastName: i.derived.lastName })))
+
+const planNotes = computed(() => {
+  const seen = new Map()
+  for (const i of plan.value?.items || []) {
+    for (const n of i.notes || []) seen.set(n, (seen.get(n) || 0) + 1)
+  }
+  return Array.from(seen.entries()).map(([note, count]) => count > 1 ? `${note} (${count} rows)` : note)
+})
+
 const commitConfirmVisible = ref(false)
 const committing = ref(false)
 const overwriteExisting = ref(false)

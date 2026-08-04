@@ -38,3 +38,13 @@ export async function checkEnteredMarksCoScholastic(schoolId, termId) {
 export function slugify(text) {
   return (text || '').trim().replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_|_$/g, '')
 }
+
+// A subject's `area` tag decides which collection it belongs in: anything that
+// normalises to "coscholastic" is a co_scholastic_activities doc, not a
+// subjects doc. Imported data spells it every which way ("Co-Scholastic",
+// "co scholastic", "CO_SCHOLASTIC"), so compare on letters only.
+// NOTE: scripts/migrate-co-scholastic-subjects.mjs repeats this rule — keep
+// the two in sync (it runs under firebase-admin and can't import this file).
+export function isCoScholasticArea(area) {
+  return (area ?? '').toString().toLowerCase().replace(/[^a-z]/g, '') === 'coscholastic'
+}

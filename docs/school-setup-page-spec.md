@@ -110,6 +110,8 @@ Admins/principals: no assignments map → see everything (verify how the app dis
 - Create: pick grade + name → ID auto-slugged `{Grade}_{Name}`; editable before first save, locked after.
 - Curricular goals editor: list of goals, each with a list of competencies (maps of goal-text → [competency texts]). Support "copy goals from another subject" and "copy from another school" (reads the same subjectId or a chosen subject in another school doc).
 - `topics` shown read-only.
+- **`area` routes the write, it is not just a label.** Area `Co-Scholastic` (matched on letters only, so `co scholastic`/`CO_SCHOLASTIC` count) means the record is a term-wide activity: both the Add form and the CSV import write it to `co_scholastic_activities` with that collection's schema (§3.6), never to `subjects`. The form swaps Grade for Term and collects entryType/maxMarks/gradingScaleId/conversionType/conversionFactor/order; the CSV defaults them (`marks` / 10 / null / `none` / null / appended to the term) and requires an explicit `termId` unless the school has exactly one term. Doc ID follows the co-scholastic convention `{termId}_{NameSlug}`.
+- Editing an existing subject always stays in `subjects` — the Area select is locked. Docs written to `subjects` before this routing existed are flagged in the table and moved by `scripts/migrate-co-scholastic-subjects.mjs` (dry-run by default, CSV review log, `--delete-source` to remove the originals).
 
 ### 3.4 Classes & Teachers
 - Grid: rows = grade (`clazz`), columns = sections; cell click opens section editor.

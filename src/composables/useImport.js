@@ -23,6 +23,9 @@ import {
 } from '../firebase/schoolCollections.js'
 import { startProcessImport, commitImportRemote } from '../utils/api.js'
 import { classify, GRADE } from '../utils/educationKB.js'
+import { validateDoc, formatErrors } from '../schemas/schoolSchema.js'
+import { validateCurrentClassId } from '../schemas/currentClassId.js'
+import { mapImportRowToStudent } from '../schemas/studentMapping.js'
 
 // ── Grade normalization — delegates to the shared education knowledge base
 // (src/utils/educationKB.js), which is seeded from the very same
@@ -262,12 +265,26 @@ export async function buildCommitPlan(job, rows, options = {}) {
   throw new Error(`Unknown entity: ${job.entity}`)
 }
 
+/**
+ * Existing docs come back with Firestore Timestamps while a freshly mapped
+ * payload holds a Date, and `phoneNo` is a number on both sides. Comparing
+ * those raw made every row read as UPDATE_CHANGED, so normalize to a
+ * comparable primitive first.
+ */
+function comparable(v) {
+  if (v === null || v === undefined) return ''
+  if (v instanceof Date) return v.toISOString().slice(0, 10)
+  if (typeof v?.toDate === 'function') return v.toDate().toISOString().slice(0, 10)
+  return typeof v === 'object' ? JSON.stringify(v) : String(v)
+}
+
 function fieldsEqual(a, b, keys) {
-  return keys.every(k => (a?.[k] ?? '') === (b?.[k] ?? ''))
+  return keys.every(k => comparable(a?.[k]) === comparable(b?.[k]))
 }
 
 async function buildStudentsPlan(schoolId, rows) {
   const { classLookup } = await loadClassLookup(schoolId)
+  const classIds = Array.from(new Set(classLookup.values()))
   // One fetch for the whole existing roster instead of a getDoc per row —
   // matters at the 1000+ row scale imports are sized for.
   const existingSnap = await getDocs(schoolCollection(schoolId, 'students'))
@@ -292,18 +309,35 @@ async function buildStudentsPlan(schoolId, rows) {
     usedIds.set(docId, dupeCount)
     if (dupeCount > 1) docId = `${docId}_${dupeCount}`
 
-    const payload = {
-      name: d.student_name || '', gender: d.gender || '', dob: d.dob || '',
-      srNo: d.sr_no || '', admNo: d.adm_no || '', motherName: d.mother_name || '', fatherName: d.father_name || '',
-      contactNumber: d.contact || '', rollNo: d.roll_no || '', email: d.email || '', city: d.city || '',
-      currentClassId: classId,
+    // Mapped, not copied: source columns the student schema has no home for
+    // are dropped and reported rather than written into fields nothing reads.
+    const { payload, dropped, warnings } = mapImportRowToStudent(d, { classId })
+
+    // The class value is the one field where live data is genuinely broken,
+    // so it is checked on its own terms as well as by the schema.
+    const classCheck = validateCurrentClassId(payload.currentClassId, { studentId: docId, classIds })
+    if (!classCheck.ok) {
+      items.push({ row, status: 'ERROR', reason: classCheck.message })
+      continue
     }
+
+    const check = validateDoc('students', payload)
+    if (!check.ok) {
+      items.push({ row, status: 'ERROR', reason: `Does not match the student schema — ${formatErrors(check.errors)}` })
+      continue
+    }
+
+    const notes = [...warnings]
+    if (classCheck.severity === 'warning') notes.push(classCheck.message)
+    if (dropped.length) notes.push(`no field in the student schema for: ${dropped.join(', ')} — not saved`)
+
+    const item = { row, docId, payload, notes, derived: { firstName: payload.firstName, lastName: payload.lastName } }
     const existing = existingById.get(docId)
     if (!existing) {
-      items.push({ row, status: 'CREATE', docId, payload })
+      items.push({ ...item, status: 'CREATE' })
     } else {
       const same = fieldsEqual(existing, payload, Object.keys(payload))
-      items.push({ row, status: same ? 'UPDATE_UNCHANGED' : 'UPDATE_CHANGED', docId, payload })
+      items.push({ ...item, status: same ? 'UPDATE_UNCHANGED' : 'UPDATE_CHANGED' })
     }
   }
   return summarize('students', items)

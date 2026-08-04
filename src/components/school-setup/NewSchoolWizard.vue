@@ -122,11 +122,46 @@
           <p class="text-xs text-slate-400">Every grade gets every section. Fine-tune individual classes later in Classes &amp; Teachers.</p>
         </div>
 
-        <div v-else-if="form.structureRoute === 'import'" class="text-sm text-slate-600 bg-slate-50 rounded-lg px-3 py-2.5">
-          Structure will be proposed from a staged student import.
-          Run the import first, then use <b>Propose Structure</b> — it derives grades and sections
-          from the roster and shows a reviewable proposal.
-          <router-link to="/import" class="text-violet-600 underline ml-1">Open Import</router-link>
+        <div v-else-if="form.structureRoute === 'import'" class="space-y-2">
+          <div class="flex items-end gap-2">
+            <div class="flex-1">
+              <label class="form-label">Staged student file</label>
+              <Select v-model="importJobId" :options="importJobs" optionLabel="label" optionValue="id"
+                placeholder="Pick an uploaded student file" class="w-full"
+                :loading="loadingJobs" @update:modelValue="scanImportJob" />
+            </div>
+            <Button label="Rescan" icon="pi pi-refresh" size="small" outlined
+              :disabled="!importJobId" :loading="scanning" @click="scanImportJob(importJobId)" />
+          </div>
+
+          <p v-if="!importJobs.length && !loadingJobs" class="text-xs text-slate-500">
+            No student file staged for this school yet.
+            <router-link to="/import" class="text-violet-600 underline">Upload one</router-link> —
+            you do not need any classes configured first.
+          </p>
+
+          <div v-if="importScan" class="text-xs text-slate-500">
+            Scanned {{ importScan.rowsScanned }} row(s) · {{ importScan.grades.length }} grade(s)
+            <span v-if="importScan.rowsWithoutGrade" class="text-amber-600">
+              · {{ importScan.rowsWithoutGrade }} row(s) had no readable grade
+            </span>
+          </div>
+
+          <div v-if="derivedClasses.length" class="border border-slate-200 rounded-lg divide-y divide-slate-100 max-h-64 overflow-auto">
+            <label v-for="c in derivedClasses" :key="c.docId"
+              class="flex items-center gap-2 px-3 py-1.5 text-sm cursor-pointer hover:bg-slate-50">
+              <Checkbox v-model="c.accepted" binary />
+              <span class="font-mono text-xs w-28">{{ c.docId }}</span>
+              <span class="text-xs text-slate-400">{{ c.studentCount }} student(s)</span>
+              <span v-if="c.sectionInferred"
+                class="text-[10px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-700"
+                v-tooltip="'No section in the file for this grade — defaulted to ' + c.section + '. Edit later in Classes &amp; Teachers.'">
+                section assumed
+              </span>
+            </label>
+          </div>
+
+          <div v-if="importError" class="text-sm text-red-500 bg-red-50 rounded-lg px-3 py-2">{{ importError }}</div>
         </div>
 
         <div v-else class="text-sm text-slate-600 bg-slate-50 rounded-lg px-3 py-2.5">
@@ -294,8 +329,8 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
-import { setDoc, getDoc, serverTimestamp, writeBatch } from 'firebase/firestore'
+import { ref, reactive, computed, watch, onMounted } from 'vue'
+import { setDoc, getDoc, getDocs, query, where, serverTimestamp, writeBatch } from 'firebase/firestore'
 import { useToast } from 'primevue/usetoast'
 import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
@@ -308,10 +343,13 @@ import ProgressSpinner from 'primevue/progressspinner'
 import WizardShell from '../wizard/WizardShell.vue'
 import { useWizardRun } from '../../composables/useWizardRun.js'
 import { captionFor } from '../../utils/wizardCaptions.js'
-import { rootSchoolDoc, schoolDoc } from '../../firebase/schoolCollections.js'
+import {
+  rootSchoolDoc, schoolDoc, stagingImportsCollection, stagingImportRowsCollection,
+} from '../../firebase/schoolCollections.js'
 import { db, auth } from '../../firebase/config'
 import { checkNewSchoolRemote, schoolStateRemote } from '../../utils/api.js'
 import { slugifySchoolId } from '../../utils/wizardHelpers.js'
+import { deriveClassStructure } from '../../utils/deriveClasses.js'
 import {
   STUDENT_COLUMNS, TEACHER_COLUMNS, studentTemplateCsv, teacherTemplateCsv, downloadCsv,
 } from '../../utils/importTemplates.js'
@@ -423,10 +461,83 @@ function downloadTeacherTemplate() {
 }
 
 const previewClasses = computed(() => {
+  // Derived from an uploaded file — the whole point of this route is that no
+  // classes exist yet, so nothing here consults Firestore.
+  if (form.structureRoute === 'import') {
+    return derivedClasses.value.filter(c => c.accepted).map(c => c.docId)
+  }
   if (form.structureRoute !== 'manual') return []
   const sections = form.sections.split(',').map(s => s.trim()).filter(Boolean)
   if (!form.grades.length || !sections.length) return []
   return form.grades.flatMap(g => sections.map(s => `${g}_${s}`))
+})
+
+// ── "From a student file" ───────────────────────────────────────────────────
+// Reads the staged rows directly and scans the grade/section columns. It does
+// NOT go through buildCommitPlan: that validates every row against configured
+// classes, which is exactly the circular dependency this step exists to break.
+const importJobs = ref([])
+const importJobId = ref(null)
+const importScan = ref(null)
+const derivedClasses = ref([])
+const loadingJobs = ref(false)
+const scanning = ref(false)
+const importError = ref('')
+
+async function loadImportJobs() {
+  const sid = run.value?.school_id
+  if (!sid) return
+  loadingJobs.value = true
+  importError.value = ''
+  try {
+    const snap = await getDocs(query(stagingImportsCollection(), where('school_id', '==', sid)))
+    importJobs.value = snap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .filter(j => j.entity === 'students')
+      .sort((a, b) => (b.created_at?.seconds || 0) - (a.created_at?.seconds || 0))
+      .map(j => ({
+        id: j.id,
+        label: `${(j.source_files || []).map(f => f.name).join(', ') || j.id} · ${j.row_count ?? '?'} rows · ${j.status}`,
+      }))
+    if (importJobs.value.length === 1) {
+      importJobId.value = importJobs.value[0].id
+      await scanImportJob(importJobId.value)
+    }
+  } catch (e) {
+    console.error(e)
+    importError.value = 'Could not list staged imports.'
+  } finally {
+    loadingJobs.value = false
+  }
+}
+
+async function scanImportJob(jobId) {
+  if (!jobId) return
+  scanning.value = true
+  importError.value = ''
+  try {
+    const snap = await getDocs(stagingImportRowsCollection(jobId))
+    // Excluded rows are still scanned: a row excluded for a missing NAME still
+    // tells us its class exists.
+    const rows = snap.docs.map(d => d.data()?.data || {})
+    const scan = deriveClassStructure(rows)
+    importScan.value = scan
+    derivedClasses.value = scan.classes
+    if (!scan.classes.length) {
+      importError.value = scan.rowsScanned
+        ? 'No grade values could be read from this file — check it has a class/grade column.'
+        : 'That staged import has no rows.'
+    }
+  } catch (e) {
+    console.error(e)
+    importError.value = 'Could not read the staged import.'
+  } finally {
+    scanning.value = false
+  }
+}
+
+watch(() => form.structureRoute, (route) => {
+  if (route === 'import' && !importJobs.value.length) loadImportJobs()
 })
 
 /**
@@ -482,9 +593,10 @@ const canContinue = computed(() => {
     if (check.value.similar?.length && !form.dupeAcknowledged) return false
     return true
   }
-  // Manual structure entry can advance on the composed class list, because
-  // the wizard writes those classes itself on Continue.
-  if (currentStep.value === 'new.structure' && form.structureRoute === 'manual') {
+  // Manual entry and "from a student file" both compose a class list the
+  // wizard writes itself on Continue, so either can advance on that list.
+  // 'template' still defers to another screen and keeps the old gate.
+  if (currentStep.value === 'new.structure' && form.structureRoute !== 'template') {
     return previewClasses.value.length > 0 || requirementMet.value
   }
   if (stepDef.value?.required) return requirementMet.value
@@ -675,10 +787,14 @@ async function commitStep(key) {
 
   if (key === 'new.structure') {
     const sid = run.value?.school_id
-    if (form.structureRoute !== 'manual') {
-      return form.structureRoute === 'import' ? 'From student import' : 'From template'
-    }
+    // 'import' now produces a real class list (previewClasses), so it writes
+    // like the manual route. Only 'template' still defers to another screen.
+    if (form.structureRoute === 'template') return 'From template'
     const classes = previewClasses.value
+    if (form.structureRoute === 'import' && !classes.length) {
+      error.value = 'Pick a staged student file and accept at least one class first.'
+      return false
+    }
     for (let i = 0; i < classes.length; i += 400) {
       const batch = writeBatch(db)
       for (const cid of classes.slice(i, i + 400)) {

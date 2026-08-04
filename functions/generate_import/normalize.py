@@ -205,10 +205,44 @@ def clean_gender(raw):
 # -------------------------------------------------------------------- dob ---
 _EXCEL_EPOCH = datetime(1899, 12, 30)
 
+# Text-month dates ("16 Jan 2024", "28 Dec 2022"). Real rosters use these
+# constantly — Hillgreen's export is entirely in this format — and every one
+# of them used to fall through to "unparseable".
+_MONTH_NAMES = {
+    "jan": 1, "january": 1, "feb": 2, "february": 2, "mar": 3, "march": 3,
+    "apr": 4, "april": 4, "may": 5, "jun": 6, "june": 6, "jul": 7, "july": 7,
+    "aug": 8, "august": 8, "sep": 9, "sept": 9, "september": 9,
+    "oct": 10, "october": 10, "nov": 11, "november": 11, "dec": 12, "december": 12,
+}
+
+
+def _month_from_name(token):
+    """'Jan' / 'JANUARY' / 'Sept.' -> 1..12, or None.
+
+    Matched against the known names only — never a bare 3-letter prefix of an
+    arbitrary word, so a stray column value cannot masquerade as a month.
+    """
+    t = re.sub(r"[^a-z]", "", (token or "").lower())
+    return _MONTH_NAMES.get(t)
+
+
+# "16 Jan 2024", "16-Jan-24", "16th January 2024"
+_DMY_TEXT_RE = re.compile(
+    r"^(\d{1,2})(?:st|nd|rd|th)?[\s\-/.,]+([A-Za-z]{3,9})\.?[\s\-/.,]+(\d{2,4})$", re.I)
+# "Jan 16 2024", "January 16, 2024" — same components, month first. Which
+# number is the day is never ambiguous here: the month is spelled out.
+_MDY_TEXT_RE = re.compile(
+    r"^([A-Za-z]{3,9})\.?[\s\-/.,]+(\d{1,2})(?:st|nd|rd|th)?[\s\-/.,]+(\d{2,4})$", re.I)
+
+
+def _two_digit_year(y):
+    return y + (2000 if y < 50 else 1900) if y < 100 else y
+
 
 def parse_dob_flexible(raw):
-    """Accepts dd/mm/yyyy, dd-mm-yyyy, dd.mm.yyyy, yyyy-mm-dd, Excel serial
-    numbers, and datetime/date objects; normalizes to canonical YYYY-MM-DD.
+    """Accepts dd/mm/yyyy, dd-mm-yyyy, dd.mm.yyyy, yyyy-mm-dd, text months
+    ("16 Jan 2024", "January 16, 2024"), Excel serial numbers, and
+    datetime/date objects; normalizes to canonical YYYY-MM-DD.
     Ambiguous dd/mm-vs-mm/dd cells (both readings valid, e.g. 04/05/2020)
     accept the Indian dd/mm reading and return a low-severity warning.
     Unparseable -> ('', warning); caller keeps the row with dob blank.
@@ -257,6 +291,24 @@ def parse_dob_flexible(raw):
             return "", f"unparseable date of birth: '{text}'"
         try:
             return date(y, month, day).isoformat(), warn
+        except ValueError:
+            return "", f"unparseable date of birth: '{text}'"
+
+    # Text months. Tried after the numeric forms so nothing above changes
+    # behaviour; unambiguous by construction because the month is a word.
+    for pattern, order in ((_DMY_TEXT_RE, "dmy"), (_MDY_TEXT_RE, "mdy")):
+        m = pattern.match(text)
+        if not m:
+            continue
+        if order == "dmy":
+            day, month_token, y = int(m.group(1)), m.group(2), int(m.group(3))
+        else:
+            month_token, day, y = m.group(1), int(m.group(2)), int(m.group(3))
+        month = _month_from_name(month_token)
+        if month is None:
+            break
+        try:
+            return date(_two_digit_year(y), month, day).isoformat(), None
         except ValueError:
             return "", f"unparseable date of birth: '{text}'"
 
@@ -314,8 +366,38 @@ def match_value(raw, alias_type, valid_canon_to_display, aliases):
 # real data instead of guesswork.
 STUDENT_HEADER_ALIASES = {
     "sr_no": ["sno", "sr no", "s.no", "serial", "serial no", "serial number", "sl no"],
-    "adm_no": ["adm no", "admission no", "admission number", "gr no", "gr. no",
-               "gr number", "general register no", "gen reg no"],
+    "adm_no": ["adm no", "admission no", "admission number",
+               "admission no/reference code", "admission no / reference code",
+               "reference code", "admission reference"],
+    # Decision (Sid, 2026-08-04): GR/EMIS/STS stays its OWN field rather than
+    # collapsing into adm_no. They are different registers and a school can
+    # quote either, so merging them loses which one a number came from.
+    "gr_emis_sts": ["gr/emis/sts", "gr / emis / sts", "gr emis sts", "gr no",
+                    "gr. no", "gr number", "general register no", "gen reg no",
+                    "emis", "emis no", "sts", "sts no", "udise", "udise no"],
+    # PII, persisted by explicit decision — see BANNED_KEYS in main.py.
+    "aadhaar": ["aadhaar", "aadhar", "aadhaar no", "aadhar no", "aadhaar number",
+                "aadhar number", "student aadhaar number", "student aadhar number",
+                "uid", "uid no"],
+    # Review-only: parsed and shown so nothing vanishes silently, but NOT
+    # written to the student document (no field for them in the real schema).
+    "father_mobile": ["father mobile", "father mobile no", "father mobile number",
+                       "fathers mobile", "father's mobile", "father contact",
+                       "father phone"],
+    "father_email": ["father email", "father emailid", "father email id",
+                      "fathers email", "father's email"],
+    "mother_mobile": ["mother mobile", "mother mobile no", "mother mobile number",
+                       "mothers mobile", "mother's mobile", "mother contact",
+                       "mother phone"],
+    "mother_email": ["mother email", "mother emailid", "mother email id",
+                      "mothers email", "mother's email"],
+    "branch_name": ["branch", "branch name"],
+    "board": ["board", "education board"],
+    "enrollment_code": ["enrollment code", "enrolment code", "enrollment no",
+                         "enrolment no", "enrollment number"],
+    "date_of_admission": ["date of admission", "admission date", "doa"],
+    "status": ["status", "student status"],
+    "using_transport": ["using transport", "transport", "bus", "uses transport"],
     "student_name": ["name", "student name", "students name", "name of student",
                       "name of the student", "full name", "child name", "childs name"],
     "grade": ["class", "grade", "std", "standard"],
@@ -326,7 +408,8 @@ STUDENT_HEADER_ALIASES = {
     "father_name": ["father name", "father's name", "fathers name", "father"],
     "mother_name": ["mother name", "mother's name", "mothers name", "mother"],
     "contact": ["contact", "mobile", "phone", "sms mobile", "contact no",
-                "contact number", "mobile no", "mobile number", "phone no"],
+                "contact number", "mobile no", "mobile number", "phone no",
+                "mobilenumber", "mobile number primary", "primary mobile"],
     # "address" is intentionally recognized here (so header-scoring correctly
     # identifies the header row and doesn't waste an "unmapped column" slot
     # on it) but deliberately EXCLUDED from STUDENT_SCHEMA_KEYS below — main.
@@ -341,9 +424,25 @@ STUDENT_HEADER_ALIASES = {
     "email": ["email", "e-mail", "email id", "email address"],
 }
 
+# Everything the parser will carry through to Review. Being here does NOT mean
+# a field reaches Firestore — src/schemas/studentMapping.js decides that, and
+# most of these are deliberately review-only (see REVIEW_ONLY_STUDENT_KEYS).
 STUDENT_SCHEMA_KEYS = ["grade", "section", "roll_no", "student_name", "gender",
-                        "dob", "sr_no", "adm_no", "mother_name", "father_name",
-                        "contact", "email", "city"]
+                        "dob", "sr_no", "adm_no", "gr_emis_sts", "aadhaar",
+                        "mother_name", "father_name", "contact", "email", "city",
+                        "father_mobile", "father_email", "mother_mobile",
+                        "mother_email", "branch_name", "board", "enrollment_code",
+                        "date_of_admission", "status", "using_transport"]
+
+# Parsed and shown in Review so an operator can see the file was read
+# correctly, but never written to a student document — the real schema has no
+# home for them. Surfaced in the UI as an explicit mapping decision rather
+# than dropped in silence.
+REVIEW_ONLY_STUDENT_KEYS = ["father_mobile", "father_email", "mother_mobile",
+                             "mother_email", "branch_name", "board",
+                             "enrollment_code", "date_of_admission", "status",
+                             "using_transport", "sr_no", "roll_no",
+                             "mother_name", "father_name", "city", "address"]
 STUDENT_REQUIRED_FIELD = "student_name"
 
 

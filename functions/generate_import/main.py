@@ -71,9 +71,15 @@ from normalize import (
     extract_grade_tokens, clean_name, clean_email, EMAIL_DOMAIN_FIXES, _EMAIL_RE,
     FUZZY_THRESHOLD, fuzzy_best_match, match_value,
     STUDENT_HEADER_ALIASES, STUDENT_SCHEMA_KEYS, STUDENT_REQUIRED_FIELD,
+    REVIEW_ONLY_STUDENT_KEYS,
 )
 import education_kb as kb
 from tabular_parser import parse_tabular_file
+# Mirrored from functions/shared/ by tools/sync_shared.py — see that script for
+# why these are copies rather than imports.
+from school_schema import (
+    validate_doc, format_errors, validate_current_class_id, coerce_wire_payload,
+)
 
 # Must run at module load, not lazily inside a handler: the on_call framework
 # verifies the caller's Firebase Auth ID token BEFORE our function body ever
@@ -159,7 +165,16 @@ SCHEMAS = {
     },
 }
 
-BANNED_KEYS = {"aadhaar", "sssm_id", "sssm", "caste", "category", "religion", "address"}
+# Fields the extractor must never pull out of a source file (golden rule 3).
+#
+# "aadhaar" was removed from this set on 2026-08-04 by an explicit decision to
+# persist it on the student document. NOTE the consequence, which the ban was
+# protecting against: firestore.rules grants
+#   match /schools/{schoolId}/{collection}/{docId} { allow read: if isAuthenticated(); }
+# so every student document is readable by ANY signed-in user of the teacher
+# and student apps — the write path being ops-admin-only does not narrow that.
+# Restricting who can READ Aadhaar needs a rules change, not a code change.
+BANNED_KEYS = {"sssm_id", "sssm", "caste", "category", "religion", "address"}
 
 # ------------------------------------------------------------- preprocess ---
 def xlsx_to_tsv(raw: bytes) -> str:
@@ -538,7 +553,19 @@ def _flag(field, message, severity="warning"):
     is "warning": recoverable, kept, surfaced for human review."""
     return {"field": field, "message": message, "severity": severity}
 
-def validate_students(rows, class_lookup, sections_by_grade):
+def _already_flagged(existing, field):
+    """True if the parser already reported something about this cell.
+
+    tabular_parser blanks a cell it cannot read and reports why
+    ("unparseable date of birth: '16 Jan 2024'"). Without this check the
+    row-level pass then sees the blank and adds "missing date of birth" —
+    two messages, one failure, and the second one is actively wrong: the
+    file DID have a date. Same collision applies to gender and contact.
+    """
+    return any(f.get("field") == field for f in (existing or []))
+
+
+def validate_students(rows, class_lookup, sections_by_grade, existing_flags=None):
     flags_by_row = [[] for _ in rows]
     seen_names = {}
     dobs_by_grade = {}
@@ -549,9 +576,13 @@ def validate_students(rows, class_lookup, sections_by_grade):
             flags_by_row[i].append(_flag("student_name", "missing student name", severity="error"))
         if not r.get("grade", "").strip():
             flags_by_row[i].append(_flag("grade", "missing grade"))
+        prior = (existing_flags or [None] * len(rows))[i] if existing_flags else []
         dob_raw = r.get("dob", "").strip()
         if not dob_raw:
-            flags_by_row[i].append(_flag("dob", "missing date of birth"))
+            # Only "missing" when the cell really was empty — a cell the
+            # parser rejected has already said so, in more useful words.
+            if not _already_flagged(prior, "dob"):
+                flags_by_row[i].append(_flag("dob", "missing date of birth"))
         else:
             d = parse_dob(dob_raw)
             if d is None:
@@ -559,9 +590,9 @@ def validate_students(rows, class_lookup, sections_by_grade):
             else:
                 parsed_dobs[i] = d
                 dobs_by_grade.setdefault(r.get("grade", ""), []).append(d)
-        if not r.get("gender", "").strip():
+        if not r.get("gender", "").strip() and not _already_flagged(prior, "gender"):
             flags_by_row[i].append(_flag("gender", "missing gender"))
-        if not r.get("contact", "").strip():
+        if not r.get("contact", "").strip() and not _already_flagged(prior, "contact"):
             flags_by_row[i].append(_flag("contact", "missing contact number"))
 
         key = (normalize_grade(r.get("grade")), normalize_section(r.get("section")),
@@ -967,7 +998,9 @@ def process_import(req: https_fn.CallableRequest):
 
         cleaned_data = [c["data"] for c in cleaned]
         if entity == "students":
-            validation_flags = validate_students(cleaned_data, cfg["class_lookup"], cfg["sections_by_grade"])
+            validation_flags = validate_students(
+                cleaned_data, cfg["class_lookup"], cfg["sections_by_grade"],
+                existing_flags=[c["flags"] for c in cleaned])
             class_level_flags = []
         elif entity == "teachers":
             validation_flags = validate_teachers(
@@ -1027,6 +1060,13 @@ def process_import(req: https_fn.CallableRequest):
             "file_summaries": job_diag["file_summaries"],
             "parse_warnings": job_diag["warnings"][:500],
             "parse_errors": job_diag["errors"][:500],
+            # Source columns the parser saw but could not map to any field.
+            # Previously only logged to import_unknown_headers (invisible to
+            # the operator), so a column the file carried simply vanished from
+            # Review with nothing said. Now surfaced on the job so the review
+            # screen can name every dropped column.
+            "unmapped_headers": sorted(job_diag["unmapped_headers"])[:100],
+            "review_only_fields": REVIEW_ONLY_STUDENT_KEYS if entity == "students" else [],
             "completed_at": firestore.SERVER_TIMESTAMP,
         }, merge=True)
 
@@ -1181,6 +1221,16 @@ def commit_import(req: https_fn.CallableRequest):
         writable = [it for it in items if it.get("status") == "CREATE"
                     or (it.get("status") == "UPDATE_CHANGED" and overwrite_existing)]
 
+        # THE GATE. This function writes with the Admin SDK, which bypasses
+        # Firestore security rules entirely, and _commit_simple used to write
+        # the browser's payload verbatim. The dashboard validates too, but a
+        # stale tab or a hand-made call would sail straight past that; nothing
+        # malformed gets into a school's tree from here.
+        #
+        # Per-row, not all-or-nothing: valid rows commit and rejected ones come
+        # back with a reason, matching how the import preview already behaves.
+        writable, rejected = _validate_writable(entity, writable)
+
         if entity in ("students", "subjects"):
             _commit_simple(db, school_ref.collection(entity), writable, email)
         elif entity == "assessments":
@@ -1191,14 +1241,61 @@ def commit_import(req: https_fn.CallableRequest):
         job_ref.set({
             "status": "committed", "committed_at": firestore.SERVER_TIMESTAMP,
             "committed_by": email,
+            "rejected": rejected,
         }, merge=True)
 
-        return {"written": len(writable), "skipped": len(items) - len(writable)}
+        return {"written": len(writable), "skipped": len(items) - len(writable),
+                "rejected": rejected}
 
     except https_fn.HttpsError:
         raise
     except Exception as e:
         raise https_fn.HttpsError(https_fn.FunctionsErrorCode.INTERNAL, str(e))
+
+
+# The import entity name and the collection it lands in are not always the
+# same word — "teachers" writes into staffs, "assessments" into assessments.
+_ENTITY_COLLECTION = {
+    "students": "students", "subjects": "subjects",
+    "assessments": "assessments", "teachers": "staffs",
+}
+
+
+def _validate_writable(entity, writable):
+    """Split rows into (accepted, rejected) against the shared schema.
+
+    `teachers` is skipped: _commit_teachers builds its own staff document from
+    assignment fields rather than carrying a payload, so there is nothing here
+    to validate against a doc shape. It is gated by the same ops-admin check
+    as everything else.
+    """
+    collection = _ENTITY_COLLECTION.get(entity)
+    if not collection or entity == "teachers":
+        return writable, []
+
+    accepted, rejected = [], []
+    for item in writable:
+        doc_id = item.get("docId") or ""
+        payload = coerce_wire_payload(collection, item.get("payload") or {})
+
+        if collection == "students":
+            cls = validate_current_class_id(payload.get("currentClassId"), student_id=doc_id)
+            if not cls["ok"]:
+                rejected.append({"docId": doc_id, "reason": cls["message"]})
+                continue
+
+        result = validate_doc(collection, payload)
+        if not result["ok"]:
+            rejected.append({"docId": doc_id,
+                             "reason": f"does not match the {collection} schema — "
+                                       f"{format_errors(result['errors'])}"})
+            continue
+
+        # Carry the coerced payload forward — the ISO string the browser sent
+        # is now a real datetime, which is what must reach Firestore.
+        accepted.append({**item, "payload": payload})
+
+    return accepted, rejected
 
 
 def _commit_simple(db, collection_ref, writable, email):
