@@ -1,148 +1,153 @@
 /**
  * Derive a class list from raw student-file rows — standalone.
  *
- * WHY THIS IS SEPARATE FROM structureInference.js
- * The New School wizard's "From a student file" route exists precisely for a
- * school that has NO classes yet. Anything that diffs against configured
- * classes is therefore circular here: you cannot use existing classes to
- * work out what the classes should be. So this module:
+ * WHY THIS EXISTS
+ * The New School wizard's "From a student file" route is for a school that has
+ * NO classes yet. Anything that diffs against configured classes is therefore
+ * circular: you cannot use existing classes to work out what the classes
+ * should be. The Import commit path does exactly that — useImport.js's
+ * buildStudentsPlan rejects every row with "Class-section not configured for
+ * this school" when the class lookup is empty — which is why this route
+ * cannot go through it.
  *
- *   - takes ONLY raw rows, never Firestore state
- *   - runs no commit-time validation (no "class-section not configured",
- *     no class lookup, no section resolver) — those all check against
- *     configuration that by definition does not exist yet
- *   - proposes, never writes
+ * So this module takes ONLY raw rows, never Firestore state, runs no
+ * commit-time validation, and proposes rather than writes.
  *
- * It is a distinct-values scan of the grade and section columns, nothing more.
- * Grade normalization goes through the shared education knowledge base so a
- * class proposed here matches the class a later import will resolve to —
- * that is the one thing that must NOT diverge.
+ * PARSING IS NOT REIMPLEMENTED HERE. Grade/section parsing is delegated to
+ * utils/classResolver.js — the shared resolver mirrored by
+ * functions/shared/class_resolver.py. This repo has already deleted two
+ * independent class parsers for getting it wrong; this module must not become
+ * a third. It adds only the aggregation and ID rules on top.
  */
-import { classify, GRADE } from './educationKB.js'
+import { parseClassValue } from './classResolver.js'
 
-/** Same rule as structureInference.normGrade — keep them identical. */
-export function normGrade(raw) {
-  const s = String(raw ?? '').trim()
-  if (!s) return ''
-  const r = classify(s, { expect: GRADE })
-  return r.type === GRADE && r.canonical ? r.canonical : s.toUpperCase()
+/**
+ * Board/affiliation tokens are stripped from every ID.
+ *
+ * Hillgreen's Section column reads "SCI_CBSE_A" — the board is baked into the
+ * section. A board belongs on the school document, never inside a class or
+ * section identifier: it is the same for every class in the school, so it adds
+ * no information and permanently couples the ID to an affiliation that can
+ * change. "SCI_CBSE_A" therefore becomes "SCI_A".
+ */
+export const BOARD_TOKENS = [
+  'CBSE', 'ICSE', 'ISC', 'SSC', 'HSC', 'IB', 'IGCSE', 'CIE', 'NIOS', 'STATE',
+]
+
+const BOARD_SET = new Set(BOARD_TOKENS)
+
+/** Split on separators, drop board tokens, rejoin. */
+export function stripBoardTokens(value) {
+  const parts = String(value ?? '').trim().split(/[_\-/\s]+/).filter(Boolean)
+  const kept = parts.filter(p => !BOARD_SET.has(p.toUpperCase()))
+  // All-board input ("CBSE") would otherwise vanish — keep the original then.
+  return (kept.length ? kept : parts).join('_')
 }
 
+/** Section as it will appear in an ID: board stripped, upper-cased. */
 export function normSection(raw) {
-  return String(raw ?? '').trim().toUpperCase()
-}
-
-// Ordering for display: pre-primary first, then numeric/roman grades.
-const PRE_PRIMARY = { 'PRE-NURSERY': -4, PRENURSERY: -4, NURSERY: -3, LKG: -2, UKG: -1 }
-const ROMAN = { I: 1, II: 2, III: 3, IV: 4, V: 5, VI: 6, VII: 7, VIII: 8, IX: 9, X: 10, XI: 11, XII: 12 }
-
-export function gradeOrder(grade) {
-  const g = String(grade || '').trim().toUpperCase()
-  if (g in PRE_PRIMARY) return PRE_PRIMARY[g]
-  if (g in ROMAN) return ROMAN[g]
-  if (/^\d+$/.test(g)) return parseInt(g, 10)
-  return 999
+  return stripBoardTokens(raw).toUpperCase()
 }
 
 /**
  * Section used when the file gives a grade but no section at all.
  *
  * Common for pre-primary — a school with one Nursery class often leaves the
- * column blank. structureInference DROPS these rows outright ("a grade with
- * no section can't become a class doc"), which is why Nursery/LKG/UKG went
- * missing from proposals. Here the grade is kept and the section is defaulted,
- * marked `sectionInferred` so the wizard can show it was assumed rather than
- * read — the operator confirms or edits before anything is written.
+ * column blank. structureInference DROPS those rows ("a grade with no section
+ * can't become a class doc"), which is why Nursery/LKG/UKG went missing from
+ * proposals. Here the grade is kept and the section defaulted, flagged
+ * `sectionInferred` so the wizard shows it was assumed rather than read.
  */
 export const DEFAULT_SECTION = 'A'
 
-/**
- * @param {Array<Object>} rows  raw staged row data ({grade, section, ...})
- * @param {Object} [opts]
- * @param {string[]} [opts.gradeFields]    column names to try, in order
- * @param {string[]} [opts.sectionFields]
- * @returns {{classes: Array, grades: string[], rowsScanned: number,
- *            rowsWithoutGrade: number, sectionsFound: string[]}}
- */
+/** Ordering key, via the shared resolver so pre-primary sorts correctly. */
+export function gradeOrder(gradeToken) {
+  const p = parseClassValue(gradeToken)
+  return p.gradeOrdinal === null ? 999 : p.gradeOrdinal
+}
+
 export function deriveClassStructure(rows = [], opts = {}) {
   const gradeFields = opts.gradeFields || ['grade', 'clazz', 'class', 'standard', 'std', 'class_name']
   const sectionFields = opts.sectionFields || ['section', 'sec', 'division', 'div', 'class_section']
 
-  const agg = new Map()          // `${grade}|${section}` -> {grade, section, studentCount}
-  const gradesSeen = new Set()
-  const sectionsSeen = new Set()
-  let rowsWithoutGrade = 0
-
-  // Column names are matched case- and separator-insensitively: real exports
-  // write "Class", "Section", "CLASS", "class_name" for the same thing.
+  // Column names matched case- and separator-insensitively: real exports write
+  // "Class", "Section", "CLASS", "class_name" for the same thing.
   const keyOf = (k) => String(k).toLowerCase().replace(/[^a-z]/g, '')
   const pick = (row, fields) => {
     if (!row) return ''
-    const wanted = fields.map(keyOf)
-    for (const w of wanted) {
+    for (const want of fields.map(keyOf)) {
       for (const [k, v] of Object.entries(row)) {
-        if (keyOf(k) !== w) continue
+        if (keyOf(k) !== want) continue
         if (v !== null && v !== undefined && String(v).trim()) return String(v).trim()
       }
     }
     return ''
   }
 
-  // Canonical form GROUPS ("III" and "3" are one grade); the school's own
-  // spelling LABELS. The KB canonicalises roman to numeric, so labelling with
-  // the canonical form would rename a "III" file's classes to "3_A" — every
-  // school in the estate writes III_A. Group by canonical, label by the most
-  // common raw token actually seen.
-  const tokenCounts = new Map()   // canonical -> Map(rawToken -> count)
+  const agg = new Map()
+  const sectionsSeen = new Set()
+  let rowsWithoutGrade = 0
 
   for (const row of rows) {
     const rawGrade = pick(row, gradeFields)
-    const grade = normGrade(rawGrade)
-    if (!grade) { rowsWithoutGrade++; continue }
-    gradesSeen.add(grade)
+    if (!rawGrade) { rowsWithoutGrade++; continue }
 
-    // Kept as written — 'Nursery' must not become 'NURSERY'.
-    const token = String(rawGrade).trim()
-    if (!tokenCounts.has(grade)) tokenCounts.set(grade, new Map())
-    const tc = tokenCounts.get(grade)
-    tc.set(token, (tc.get(token) || 0) + 1)
+    // The resolver strips the "Grade " prefix and keeps the school's own
+    // notation: "Grade VI" -> gradeToken "VI", canonical "6". Labelling with
+    // the canonical form would rename a roman school's classes to "6_A".
+    const parsed = parseClassValue(rawGrade)
+    if (parsed.gradeOrdinal === null) { rowsWithoutGrade++; continue }
 
-    const rawSection = pick(row, sectionFields)
-    const section = normSection(rawSection)
+    const gradeToken = parsed.gradeToken
+
+    // A stream in the grade cell ("Grade XI Science") comes back as the
+    // resolver's `section`. Kept in the ID by decision — XI Science and XI
+    // Commerce are genuinely different classes — and placed before the
+    // section so IDs read grade → stream → section.
+    const stream = stripBoardTokens(parsed.section)
+    const section = normSection(pick(row, sectionFields))
     if (section) sectionsSeen.add(section)
 
-    const key = `${grade}|${section}`
+    const key = `${parsed.gradeCanonical}|${stream.toUpperCase()}|${section}`
     if (!agg.has(key)) {
-      agg.set(key, { grade, section, rawSection, studentCount: 0 })
+      agg.set(key, {
+        gradeToken, gradeCanonical: parsed.gradeCanonical, stream, section,
+        studentCount: 0, tokenCounts: new Map(),
+      })
     }
-    agg.get(key).studentCount++
+    const bucket = agg.get(key)
+    bucket.studentCount++
+    bucket.tokenCounts.set(gradeToken, (bucket.tokenCounts.get(gradeToken) || 0) + 1)
   }
 
-  // A grade seen BOTH with and without a section means some rows just left the
-  // column blank — those belong to the real sections, not to an invented one,
-  // so the sectionless bucket is folded away rather than becoming "Nursery_A"
-  // alongside a genuine "Nursery_B".
-  const gradesWithSection = new Set(
-    Array.from(agg.values()).filter(v => v.section).map(v => v.grade))
-
-  /** The spelling this file uses most often for a grade. */
-  const labelFor = (canonical) => {
-    const tc = tokenCounts.get(canonical)
-    if (!tc || !tc.size) return canonical
-    return Array.from(tc.entries()).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0][0]
-  }
+  // A grade+stream seen BOTH with and without a section means some rows just
+  // left the column blank — those belong to the real sections, not to an
+  // invented one, so the sectionless bucket is folded away rather than
+  // becoming "Nursery_A" beside a genuine "Nursery_B".
+  const withSection = new Set(
+    Array.from(agg.values()).filter(v => v.section)
+      .map(v => `${v.gradeCanonical}|${v.stream.toUpperCase()}`))
 
   const classes = []
   for (const v of agg.values()) {
-    if (!v.section && gradesWithSection.has(v.grade)) continue
+    if (!v.section && withSection.has(`${v.gradeCanonical}|${v.stream.toUpperCase()}`)) continue
     const sectionInferred = !v.section
     const section = v.section || DEFAULT_SECTION
-    const label = labelFor(v.grade)
+    // Most common spelling this file uses for the grade.
+    const label = Array.from(v.tokenCounts.entries())
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0][0]
+    // "Play Group" is a legitimate grade token but must not put a space in an
+    // ID next to underscore separators — "Play Group_A" reads as a typo.
+    // The human-readable form stays on `grade`; only the ID is normalised.
+    const idToken = (t) => String(t).trim().replace(/\s+/g, '_')
+    const docId = [idToken(label), v.stream && idToken(v.stream), section]
+      .filter(Boolean).join('_')
     classes.push({
       grade: label,
-      gradeCanonical: v.grade,
+      gradeCanonical: v.gradeCanonical,
+      stream: v.stream || '',
       section,
-      docId: `${label}_${section}`,
+      docId,
       studentCount: v.studentCount,
       sectionInferred,
       accepted: true,
@@ -150,11 +155,16 @@ export function deriveClassStructure(rows = [], opts = {}) {
   }
 
   classes.sort((a, b) =>
-    gradeOrder(a.grade) - gradeOrder(b.grade) || a.section.localeCompare(b.section))
+    gradeOrder(a.grade) - gradeOrder(b.grade)
+    || a.stream.localeCompare(b.stream)
+    || a.section.localeCompare(b.section))
+
+  const gradeSeq = []
+  for (const c of classes) if (!gradeSeq.includes(c.grade)) gradeSeq.push(c.grade)
 
   return {
     classes,
-    grades: Array.from(gradesSeen).sort((a, b) => gradeOrder(a) - gradeOrder(b)).map(labelFor),
+    grades: gradeSeq,
     sectionsFound: Array.from(sectionsSeen).sort(),
     rowsScanned: rows.length,
     rowsWithoutGrade,

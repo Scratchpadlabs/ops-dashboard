@@ -24,14 +24,12 @@ fs.mkdirSync(TMP, { recursive: true })
 const seed = fs.readFileSync(path.join(ROOT, 'functions/generate_import/education_kb.json'), 'utf8')
 fs.writeFileSync(path.join(TMP, 'seed.json'), seed)
 
-let kb = fs.readFileSync(path.join(ROOT, 'src/utils/educationKB.js'), 'utf8')
-kb = kb.replace(/import SEED from ['"][^'"]+['"]/,
-  `const SEED = JSON.parse(fs.readFileSync('${path.join(TMP, 'seed.json')}','utf8'))\nimport fs from 'node:fs'`)
-fs.writeFileSync(path.join(TMP, 'educationKB.js'), kb)
-
-let derive = fs.readFileSync(path.join(ROOT, 'src/utils/deriveClasses.js'), 'utf8')
-derive = derive.replace(/from ['"]\.\/educationKB\.js['"]/, `from './educationKB.js'`)
-fs.writeFileSync(path.join(TMP, 'deriveClasses.js'), derive)
+let cr = fs.readFileSync(path.join(ROOT, 'src/utils/classResolver.js'), 'utf8')
+cr = cr.replace(/import SEED from ['"][^'"]+['"]/,
+  `import fs from 'node:fs'\nconst SEED = JSON.parse(fs.readFileSync('${path.join(TMP, 'seed.json')}','utf8'))`)
+fs.writeFileSync(path.join(TMP, 'classResolver.js'), cr)
+fs.writeFileSync(path.join(TMP, 'deriveClasses.js'),
+  fs.readFileSync(path.join(ROOT, 'src/utils/deriveClasses.js'), 'utf8'))
 
 const { deriveClassStructure } = await import(path.join(TMP, 'deriveClasses.js'))
 
@@ -81,6 +79,20 @@ for (let g = 1; g <= 12; g++) {
   const found = ids.some(id => id === `${g}_A` || id === `${roman}_A`)
   check(`grade ${g} section A proposed`, found, ids)
 }
+
+// ── the real-file shapes: "Grade VI" prefix, board tokens, streams ─────────
+const real = deriveClassStructure([
+  { Class: 'Grade VI', Section: 'EINSTEIN' },
+  { Class: 'Grade XI Science', Section: 'SCI_CBSE_A' },
+  { Class: 'Grade XII Commerce', Section: 'COM_CBSE_C' },
+  { Class: 'Play Group', Section: 'A' },
+])
+const realIds = real.classes.map(c => c.docId)
+check('"Grade VI" -> VI_EINSTEIN, prefix stripped', realIds.includes('VI_EINSTEIN'), realIds)
+check('stream kept in the ID', realIds.includes('XI_Science_SCI_A'), realIds)
+check('board token stripped from the section', !realIds.some(id => /CBSE/i.test(id)), realIds)
+check('no whitespace in any ID', !realIds.some(id => /\s/.test(id)), realIds)
+check('grade order correct (Play Group first)', real.classes[0].grade === 'Play Group', realIds)
 
 check('lowercase section folds into the same class',
   out.classes.filter(c => c.section === 'A' && (c.grade === '1' || c.grade === 'I')).length === 1)
