@@ -553,7 +553,19 @@ def _flag(field, message, severity="warning"):
     is "warning": recoverable, kept, surfaced for human review."""
     return {"field": field, "message": message, "severity": severity}
 
-def validate_students(rows, class_lookup, sections_by_grade):
+def _already_flagged(existing, field):
+    """True if the parser already reported something about this cell.
+
+    tabular_parser blanks a cell it cannot read and reports why
+    ("unparseable date of birth: '16 Jan 2024'"). Without this check the
+    row-level pass then sees the blank and adds "missing date of birth" —
+    two messages, one failure, and the second one is actively wrong: the
+    file DID have a date. Same collision applies to gender and contact.
+    """
+    return any(f.get("field") == field for f in (existing or []))
+
+
+def validate_students(rows, class_lookup, sections_by_grade, existing_flags=None):
     flags_by_row = [[] for _ in rows]
     seen_names = {}
     dobs_by_grade = {}
@@ -564,9 +576,13 @@ def validate_students(rows, class_lookup, sections_by_grade):
             flags_by_row[i].append(_flag("student_name", "missing student name", severity="error"))
         if not r.get("grade", "").strip():
             flags_by_row[i].append(_flag("grade", "missing grade"))
+        prior = (existing_flags or [None] * len(rows))[i] if existing_flags else []
         dob_raw = r.get("dob", "").strip()
         if not dob_raw:
-            flags_by_row[i].append(_flag("dob", "missing date of birth"))
+            # Only "missing" when the cell really was empty — a cell the
+            # parser rejected has already said so, in more useful words.
+            if not _already_flagged(prior, "dob"):
+                flags_by_row[i].append(_flag("dob", "missing date of birth"))
         else:
             d = parse_dob(dob_raw)
             if d is None:
@@ -574,9 +590,9 @@ def validate_students(rows, class_lookup, sections_by_grade):
             else:
                 parsed_dobs[i] = d
                 dobs_by_grade.setdefault(r.get("grade", ""), []).append(d)
-        if not r.get("gender", "").strip():
+        if not r.get("gender", "").strip() and not _already_flagged(prior, "gender"):
             flags_by_row[i].append(_flag("gender", "missing gender"))
-        if not r.get("contact", "").strip():
+        if not r.get("contact", "").strip() and not _already_flagged(prior, "contact"):
             flags_by_row[i].append(_flag("contact", "missing contact number"))
 
         key = (normalize_grade(r.get("grade")), normalize_section(r.get("section")),
@@ -982,7 +998,9 @@ def process_import(req: https_fn.CallableRequest):
 
         cleaned_data = [c["data"] for c in cleaned]
         if entity == "students":
-            validation_flags = validate_students(cleaned_data, cfg["class_lookup"], cfg["sections_by_grade"])
+            validation_flags = validate_students(
+                cleaned_data, cfg["class_lookup"], cfg["sections_by_grade"],
+                existing_flags=[c["flags"] for c in cleaned])
             class_level_flags = []
         elif entity == "teachers":
             validation_flags = validate_teachers(

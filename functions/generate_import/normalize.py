@@ -205,10 +205,44 @@ def clean_gender(raw):
 # -------------------------------------------------------------------- dob ---
 _EXCEL_EPOCH = datetime(1899, 12, 30)
 
+# Text-month dates ("16 Jan 2024", "28 Dec 2022"). Real rosters use these
+# constantly — Hillgreen's export is entirely in this format — and every one
+# of them used to fall through to "unparseable".
+_MONTH_NAMES = {
+    "jan": 1, "january": 1, "feb": 2, "february": 2, "mar": 3, "march": 3,
+    "apr": 4, "april": 4, "may": 5, "jun": 6, "june": 6, "jul": 7, "july": 7,
+    "aug": 8, "august": 8, "sep": 9, "sept": 9, "september": 9,
+    "oct": 10, "october": 10, "nov": 11, "november": 11, "dec": 12, "december": 12,
+}
+
+
+def _month_from_name(token):
+    """'Jan' / 'JANUARY' / 'Sept.' -> 1..12, or None.
+
+    Matched against the known names only — never a bare 3-letter prefix of an
+    arbitrary word, so a stray column value cannot masquerade as a month.
+    """
+    t = re.sub(r"[^a-z]", "", (token or "").lower())
+    return _MONTH_NAMES.get(t)
+
+
+# "16 Jan 2024", "16-Jan-24", "16th January 2024"
+_DMY_TEXT_RE = re.compile(
+    r"^(\d{1,2})(?:st|nd|rd|th)?[\s\-/.,]+([A-Za-z]{3,9})\.?[\s\-/.,]+(\d{2,4})$", re.I)
+# "Jan 16 2024", "January 16, 2024" — same components, month first. Which
+# number is the day is never ambiguous here: the month is spelled out.
+_MDY_TEXT_RE = re.compile(
+    r"^([A-Za-z]{3,9})\.?[\s\-/.,]+(\d{1,2})(?:st|nd|rd|th)?[\s\-/.,]+(\d{2,4})$", re.I)
+
+
+def _two_digit_year(y):
+    return y + (2000 if y < 50 else 1900) if y < 100 else y
+
 
 def parse_dob_flexible(raw):
-    """Accepts dd/mm/yyyy, dd-mm-yyyy, dd.mm.yyyy, yyyy-mm-dd, Excel serial
-    numbers, and datetime/date objects; normalizes to canonical YYYY-MM-DD.
+    """Accepts dd/mm/yyyy, dd-mm-yyyy, dd.mm.yyyy, yyyy-mm-dd, text months
+    ("16 Jan 2024", "January 16, 2024"), Excel serial numbers, and
+    datetime/date objects; normalizes to canonical YYYY-MM-DD.
     Ambiguous dd/mm-vs-mm/dd cells (both readings valid, e.g. 04/05/2020)
     accept the Indian dd/mm reading and return a low-severity warning.
     Unparseable -> ('', warning); caller keeps the row with dob blank.
@@ -257,6 +291,24 @@ def parse_dob_flexible(raw):
             return "", f"unparseable date of birth: '{text}'"
         try:
             return date(y, month, day).isoformat(), warn
+        except ValueError:
+            return "", f"unparseable date of birth: '{text}'"
+
+    # Text months. Tried after the numeric forms so nothing above changes
+    # behaviour; unambiguous by construction because the month is a word.
+    for pattern, order in ((_DMY_TEXT_RE, "dmy"), (_MDY_TEXT_RE, "mdy")):
+        m = pattern.match(text)
+        if not m:
+            continue
+        if order == "dmy":
+            day, month_token, y = int(m.group(1)), m.group(2), int(m.group(3))
+        else:
+            month_token, day, y = m.group(1), int(m.group(2)), int(m.group(3))
+        month = _month_from_name(month_token)
+        if month is None:
+            break
+        try:
+            return date(_two_digit_year(y), month, day).isoformat(), None
         except ValueError:
             return "", f"unparseable date of birth: '{text}'"
 

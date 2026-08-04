@@ -305,3 +305,47 @@ def test_bad_contact_never_excludes_a_row(cell):
 def test_clean_phone_contract_is_documented_as_non_blocking():
     """The docstring is the contract other code relies on — keep them together."""
     assert "never blocks the row" in clean_phone.__doc__
+
+
+# ── text-month dates ────────────────────────────────────────────────────────
+# Real rosters are full of these; every one used to come back "unparseable"
+# and then get double-reported as "missing" by the row-level pass.
+@pytest.mark.parametrize("raw,expected", [
+    ("16 Jan 2024", "2024-01-16"),
+    ("28 Dec 2022", "2022-12-28"),
+    ("16-Jan-2024", "2024-01-16"),
+    ("16/Jan/2024", "2024-01-16"),
+    ("16th January 2024", "2024-01-16"),
+    ("1 Sept 2020", "2020-09-01"),
+    ("01 SEP 2020", "2020-09-01"),
+    ("9 Aug 2019", "2019-08-09"),
+    ("16 Jan 24", "2024-01-16"),
+    ("16 Jan 99", "1999-01-16"),
+    # Month-first is unambiguous too — the month is a word, so the day is
+    # whichever number is left.
+    ("January 16, 2024", "2024-01-16"),
+    ("Jan 16 2024", "2024-01-16"),
+])
+def test_text_month_dob_parses(raw, expected):
+    value, warn = parse_dob_flexible(raw)
+    assert value == expected
+    assert warn is None          # a readable date is not a warning
+
+
+@pytest.mark.parametrize("raw", ["31 Feb 2024", "32 Jan 2024", "0 Jan 2024"])
+def test_impossible_text_month_dob_still_rejected(raw):
+    value, warn = parse_dob_flexible(raw)
+    assert value == "" and "unparseable" in warn
+
+
+def test_word_that_is_not_a_month_is_not_guessed():
+    """'Marathi' starts with 'Mar' — it must not become March."""
+    value, warn = parse_dob_flexible("16 Marathi 2024")
+    assert value == "" and "unparseable" in warn
+
+
+def test_numeric_dates_are_unchanged_by_text_month_support():
+    assert parse_dob_flexible("2020-06-05") == ("2020-06-05", None)
+    value, warn = parse_dob_flexible("05/06/2020")
+    assert value == "2020-06-05" and "ambiguous" in warn
+    assert parse_dob_flexible("25/12/2019") == ("2019-12-25", None)
