@@ -286,3 +286,22 @@ def test_teacher_shaped_file_never_crashes_deterministic_student_parser():
     included = [r for r in result["rows"] if not r.get("excluded")]
     if not included:
         assert result["errors"]
+
+
+# ── contact is NEVER blocking ───────────────────────────────────────────────
+# A missing or unreadable phone number must degrade to a soft flag, exactly
+# like any other incomplete field. It must never exclude the row or stop the
+# commit — only `student_name` does that.
+@pytest.mark.parametrize("cell", ["", "   ", "N/A", "-", "call the office",
+                                   "phone: none", "0000", "abcd"])
+def test_bad_contact_never_excludes_a_row(cell):
+    value, warn = clean_phone(cell)
+    assert value == ""                     # nothing usable extracted
+    if cell.strip():
+        assert warn                        # ...but it IS reported
+    assert "error" not in (warn or "").lower()
+
+
+def test_clean_phone_contract_is_documented_as_non_blocking():
+    """The docstring is the contract other code relies on — keep them together."""
+    assert "never blocks the row" in clean_phone.__doc__

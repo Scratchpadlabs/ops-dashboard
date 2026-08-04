@@ -46,7 +46,7 @@
             </template>
           </Column>
         </DataTable>
-        <div v-if="!terms.length" class="text-center text-sm text-slate-400 py-8">No terms yet</div>
+        <ConfigEmptyState v-if="!terms.length" label="Terms" collection="terms" />
       </div>
     </div>
 
@@ -82,7 +82,7 @@
             </template>
           </Column>
         </DataTable>
-        <div v-if="!scales.length" class="text-center text-sm text-slate-400 py-8">No grading scales yet</div>
+        <ConfigEmptyState v-if="!scales.length" label="Grading scales" collection="grading_scales" />
       </div>
     </div>
 
@@ -210,8 +210,10 @@ import ToggleButton from 'primevue/togglebutton'
 import ProgressSpinner from 'primevue/progressspinner'
 import ConfirmDialog from 'primevue/confirmdialog'
 import CsvImportDialog from './CsvImportDialog.vue'
+import ConfigEmptyState from './ConfigEmptyState.vue'
 
 import { schoolCollection, schoolDoc } from '../../firebase/schoolCollections.js'
+import { guardedSetDoc, guardedUpdateDoc, SchemaViolation } from '../../schemas/guardedWrite.js'
 import { db, auth } from '../../firebase/config'
 import { slugify } from '../../utils/assessmentHelpers.js'
 import { parseCsv, toCsv, downloadCsv, readFileAsText } from '../../utils/csv.js'
@@ -289,20 +291,20 @@ async function saveTerm() {
     if (editingTerm.value) {
       payload.updated_at = serverTimestamp()
       payload.updated_by = auth.currentUser?.email || 'unknown'
-      await updateDoc(schoolDoc(props.schoolId, 'terms', editingTerm.value.id), payload)
+      await guardedUpdateDoc('terms', schoolDoc(props.schoolId, 'terms', editingTerm.value.id), payload)
     } else {
       payload.created_at = serverTimestamp()
       payload.created_by = auth.currentUser?.email || 'unknown'
       // Deterministic slug ID (matching subjects/classes/assessments) so CSV
       // import can match this doc by ID rather than always creating a duplicate.
       const id = `${slugify(termForm.name)}_${slugify(termForm.academicYear)}`
-      await setDoc(schoolDoc(props.schoolId, 'terms', id), payload, { merge: true })
+      await guardedSetDoc('terms', schoolDoc(props.schoolId, 'terms', id), payload)
     }
     termDialogVisible.value = false
     toast.add({ severity: 'success', summary: 'Saved', life: 2000 })
     await loadTerms()
   } catch (e) {
-    termFormError.value = 'Something went wrong. Try again.'
+    termFormError.value = e instanceof SchemaViolation ? e.userMessage : 'Something went wrong. Try again.'
   } finally {
     savingTerm.value = false
   }
@@ -433,18 +435,18 @@ async function saveScale() {
     if (editingScale.value) {
       payload.updated_at = serverTimestamp()
       payload.updated_by = auth.currentUser?.email || 'unknown'
-      await updateDoc(schoolDoc(props.schoolId, 'grading_scales', editingScale.value.id), payload)
+      await guardedUpdateDoc('grading_scales', schoolDoc(props.schoolId, 'grading_scales', editingScale.value.id), payload)
     } else {
       payload.created_at = serverTimestamp()
       payload.created_by = auth.currentUser?.email || 'unknown'
       const id = slugify(scaleForm.name)
-      await setDoc(schoolDoc(props.schoolId, 'grading_scales', id), payload, { merge: true })
+      await guardedSetDoc('grading_scales', schoolDoc(props.schoolId, 'grading_scales', id), payload)
     }
     scaleDialogVisible.value = false
     toast.add({ severity: 'success', summary: 'Saved', life: 2000 })
     await loadScales()
   } catch (e) {
-    scaleFormError.value = 'Something went wrong. Try again.'
+    scaleFormError.value = e instanceof SchemaViolation ? e.userMessage : 'Something went wrong. Try again.'
   } finally {
     savingScale.value = false
   }

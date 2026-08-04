@@ -22,7 +22,13 @@
       :on-confirm="runImport"
     />
 
-    <div v-if="!selectedTermId" class="text-center text-sm text-slate-400 py-10 bg-white rounded-xl border border-slate-200">
+    <!-- No terms at all is a different state from "pick a term": the school
+         has never been set up, and assessments cannot exist without a term. -->
+    <ConfigEmptyState
+      v-if="!terms.length" label="Assessments" collection="assessments"
+      blocked-by="Add a term in Terms &amp; Scales" blocked-tab="terms-scales"
+    />
+    <div v-else-if="!selectedTermId" class="text-center text-sm text-slate-400 py-10 bg-white rounded-xl border border-slate-200">
       Select a term to view or create assessments.
     </div>
     <div v-else-if="loading" class="flex items-center justify-center py-10">
@@ -278,6 +284,7 @@ import Textarea from 'primevue/textarea'
 import ProgressSpinner from 'primevue/progressspinner'
 import ConfirmDialog from 'primevue/confirmdialog'
 import CsvImportDialog from './CsvImportDialog.vue'
+import ConfigEmptyState from './ConfigEmptyState.vue'
 
 import { schoolCollection, schoolDoc } from '../../firebase/schoolCollections.js'
 import { db } from '../../firebase/config'

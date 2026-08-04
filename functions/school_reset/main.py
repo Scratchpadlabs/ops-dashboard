@@ -44,6 +44,7 @@ import firebase_admin
 from firebase_admin import firestore
 from firebase_functions import https_fn, options
 
+from school_schema import validate_current_class_id
 from reset_rules import (
     build_reset_diff, verify_archive, find_similar_schools, validate_school_id,
 )
@@ -65,6 +66,18 @@ INBOX_FIELD = "surveyInbox"
 # remarks, months, staffs) is deliberately NOT archived: a reset never touches
 # it, so copying it would imply otherwise.
 ARCHIVED_COLLECTIONS = ["students", "classes", "smart_sheet_entries"]
+
+# Config a school needs before the teacher app has anything to show. Absent in
+# every school except SAMARTH as of 2026-08-04 (AUDIT.md §1) — reported by
+# class_health so "not set up" is visible without opening Firestore.
+CONFIG_COLLECTIONS = ["terms", "grading_scales", "subjects", "classes",
+                      "assessments", "co_scholastic_activities",
+                      "remark_categories", "months"]
+
+
+def _has_any_doc(collection_ref):
+    """One doc, id only — cheapest possible existence probe."""
+    return any(True for _ in collection_ref.limit(1).stream())
 
 
 def _require_ops_admin(req):
@@ -779,10 +792,37 @@ def class_health(req: https_fn.CallableRequest):
                 key = r.get("label") or "(no class field)"
                 unmapped_labels[key] = unmapped_labels.get(key, 0) + 1
 
+        # Data-integrity pass: WHY a value is bad, not just that it is. A count
+        # of "unmapped" does not tell you that A K CSchool has student IDs in
+        # currentClassId while Aravali has grade-only values — those need
+        # completely different fixes. Read-only; nothing here writes or repairs.
+        integrity = {}
+        integrity_samples = {}
+        for s in students:
+            v = validate_current_class_id(s.get("currentClassId"), student_id=s.get("id"))
+            if v["ok"] and not v["reason"]:
+                continue
+            reason = v["reason"]
+            integrity[reason] = integrity.get(reason, 0) + 1
+            bucket = integrity_samples.setdefault(reason, {"message": v["message"], "samples": []})
+            if len(bucket["samples"]) < 5:
+                bucket["samples"].append({"studentId": s.get("id"),
+                                          "value": s.get("currentClassId")})
+
+        missing_config = [c for c in CONFIG_COLLECTIONS
+                          if not _has_any_doc(ref.collection(c))]
+
         confirmed = sum(1 for v in ctx["class_map"].values()
                         if v.get("source") == "confirmed")
         total = len(students)
         out.append({
+            "integrity": [
+                {"reason": r, "count": n,
+                 "message": integrity_samples[r]["message"],
+                 "samples": integrity_samples[r]["samples"]}
+                for r, n in sorted(integrity.items(), key=lambda x: -x[1])
+            ],
+            "missing_config": missing_config,
             "school_id": school.id,
             "name": sdata.get("name") or school.id,
             "students": total,
@@ -808,5 +848,8 @@ def class_health(req: https_fn.CallableRequest):
         "excluded": sum(r.get("excluded", 0) for r in out),
         "unmapped": sum(r.get("unmapped", 0) for r in out),
         "schools_needing_attention": sum(1 for r in out if r.get("unmapped")),
+        "schools_missing_config": sum(1 for r in out if r.get("missing_config")),
+        "students_with_bad_class_id": sum(
+            sum(i["count"] for i in r.get("integrity", [])) for r in out),
     }
     return {"schools": out, "totals": totals}
