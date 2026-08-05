@@ -255,6 +255,37 @@
           </div>
         </div>
 
+        <!-- Inferred subject assignments are NOT the same as an explicit
+             subject list from the file, and must not read as one: a school
+             with subject specialists (common Grade VI up) has to spot and
+             correct these. -->
+        <div v-if="inferredSubjectRows.length" class="rounded-lg bg-violet-50 border border-violet-100 px-3 py-2">
+          <div class="text-xs font-semibold text-violet-800 mb-1">
+            <i class="pi pi-info-circle mr-1"></i>
+            {{ inferredSubjectRows.length }} teacher row(s): subjects inferred from class assignment — verify
+          </div>
+          <p class="text-[11px] text-violet-700 mb-1">
+            These rows had no subject in the file. Each is being given every subject configured for its
+            grade. Correct them in Classes &amp; Teachers if the school uses subject specialists.
+          </p>
+          <div class="text-[11px] text-violet-700 space-y-0.5 max-h-24 overflow-auto">
+            <div v-for="(r, i) in inferredSubjectRows.slice(0, 20)" :key="i">
+              <span class="font-mono">{{ r.classId }}</span> — {{ r.name }}
+              <span class="text-violet-500">({{ r.count }} subject(s))</span>
+            </div>
+          </div>
+        </div>
+
+        <div v-if="noSubjectRows.length" class="rounded-lg bg-red-50 border border-red-100 px-3 py-2">
+          <div class="text-xs font-semibold text-red-700 mb-1">
+            {{ noSubjectRows.length }} teacher row(s) still have no subjects
+          </div>
+          <p class="text-[11px] text-red-600">
+            Their grade has nothing configured in the Subjects tab yet, so there was nothing to infer.
+            They commit with class-level access only; assign subjects manually afterwards.
+          </p>
+        </div>
+
         <div v-if="planNotes.length" class="rounded-lg bg-amber-50 px-3 py-2">
           <div class="text-xs font-semibold text-amber-800 mb-1">{{ planNotes.length }} row(s) with notes</div>
           <div class="text-[11px] text-amber-700 space-y-0.5 max-h-24 overflow-auto">
@@ -645,6 +676,21 @@ const nameSplitPreview = computed(() => (plan.value?.items || [])
   .filter(i => i.derived && i.payload?.name)
   .slice(0, 25)
   .map(i => ({ name: i.payload.name, firstName: i.derived.firstName, lastName: i.derived.lastName })))
+
+const inferredSubjectRows = computed(() => (plan.value?.items || [])
+  .filter(i => i.subjectsInferred)
+  .map(i => ({
+    classId: i.classId,
+    name: i.staffBase?.name || i.row?.data?.teacher_name || '(unnamed)',
+    count: (i.subjectIds || []).length,
+  })))
+
+// Rows that ended up with no subjects at all — the grade has none configured,
+// so the default had nothing to offer. Reported separately from the inferred
+// ones because the fix is different: configure the grade's subjects first.
+const noSubjectRows = computed(() => (plan.value?.items || [])
+  .filter(i => i.status !== 'ERROR' && i.status !== 'SUGGESTION_PENDING'
+    && i.classId && !(i.subjectIds || []).length))
 
 const planNotes = computed(() => {
   const seen = new Map()

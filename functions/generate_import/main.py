@@ -1357,14 +1357,25 @@ def _commit_teachers(staffs_ref, writable, email):
                 class_ids = list(d.get("classIds") or [])
         class_id_set = set(class_ids)
         for item in group["adds"]:
-            subject_id = item.get("subjectId")
-            if not subject_id:
-                continue
+            # subjectIds is the list the planner builds — one entry for an
+            # explicit subject cell, every subject of the grade when the cell
+            # was blank and the default was inferred. subjectId remains the
+            # fallback so a stale client (or a replayed job) still commits.
+            subject_ids = [s for s in (item.get("subjectIds") or []) if s]
+            if not subject_ids and item.get("subjectId"):
+                subject_ids = [item["subjectId"]]
             class_id = item.get("classId")
-            existing = set(assignments.get(class_id) or [])
-            existing.add(subject_id)
-            assignments[class_id] = list(existing)
+            if not class_id:
+                continue
+            # A class with no subjects still grants class-level access
+            # (attendance, remarks, co-scholastic all key off classIds), so the
+            # class is recorded even when the subject list is empty.
             class_id_set.add(class_id)
+            if not subject_ids:
+                continue
+            existing = set(assignments.get(class_id) or [])
+            existing.update(subject_ids)
+            assignments[class_id] = sorted(existing)
 
         payload = {
             "assignments": assignments, "classIds": list(class_id_set),

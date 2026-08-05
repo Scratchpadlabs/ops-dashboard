@@ -162,6 +162,28 @@ export async function loadSectionsByGrade(schoolId) {
   return byGrade
 }
 
+/**
+ * grade -> [subjectId] for every subject configured in the Subjects tab.
+ *
+ * Backs the teacher-import default: a teacher row with a class but no subject
+ * gets every subject of that grade. Separate from loadSubjectLookup (which is
+ * keyed by name, for matching an explicit subject cell) because this one needs
+ * the whole set for a grade, not a lookup by name.
+ */
+export async function loadSubjectIdsByGrade(schoolId) {
+  const snap = await getDocs(schoolCollection(schoolId, 'subjects'))
+  const byGrade = new Map()
+  snap.docs.forEach(d => {
+    if (!d.id.includes('_')) return          // ungraded subject (e.g. "AAM")
+    const grade = normalizeGrade(d.id.split('_')[0])
+    if (!grade) return
+    if (!byGrade.has(grade)) byGrade.set(grade, [])
+    if (!byGrade.get(grade).includes(d.id)) byGrade.get(grade).push(d.id)
+  })
+  for (const list of byGrade.values()) list.sort()
+  return byGrade
+}
+
 export async function loadSubjectsByGrade(schoolId) {
   const snap = await getDocs(schoolCollection(schoolId, 'subjects'))
   const byGrade = new Map() // grade -> [display subject name, ...]
@@ -346,6 +368,7 @@ async function buildStudentsPlan(schoolId, rows) {
 async function buildTeachersPlan(schoolId, rows) {
   const { classLookup } = await loadClassLookup(schoolId)
   const subjectLookup = await loadSubjectLookup(schoolId)
+  const subjectIdsByGrade = await loadSubjectIdsByGrade(schoolId)
   const { byEmail, byName } = await loadStaffLookup(schoolId)
   const items = []
   const pendingNewStaff = new Map() // name/email key -> synthetic staff record, so repeat rows for a not-yet-created teacher resolve to the same one
@@ -372,6 +395,21 @@ async function buildTeachersPlan(schoolId, rows) {
       continue
     }
 
+    // No subject cell, but a real class: default to every subject configured
+    // for that grade rather than leaving the teacher with none. This is an
+    // INFERENCE, not something the file said — subjectsInferred marks it so the
+    // review screen can show it separately from an explicit subject list.
+    // Schools with subject specialists (common from Grade VI up) need to
+    // correct these, which is only possible if they are visibly distinct.
+    const gradeSubjectIds = subjectIdsByGrade.get(normalizeGrade(d.grade)) || []
+    const subjectsInferred = !subject && gradeSubjectIds.length > 0
+    const subjectIds = subject ? [subjectId] : gradeSubjectIds
+    const inferenceNote = subjectsInferred
+      ? `subjects inferred from class assignment — verify (${gradeSubjectIds.length} subject(s) of grade ${d.grade})`
+      : (!subject && !gradeSubjectIds.length
+          ? `no subjects configured for grade ${d.grade} — assign manually in Classes & Teachers`
+          : '')
+
     const emailKey = (d.email || '').trim().toLowerCase()
     const nameKey = (d.teacher_name || '').trim().toLowerCase()
     let staff = (emailKey && byEmail.get(emailKey)) || byName.get(nameKey)
@@ -391,18 +429,26 @@ async function buildTeachersPlan(schoolId, rows) {
     }
 
     items.push({
-      row, status: isNewStaff ? 'CREATE' : (subjectId ? 'UPDATE_CHANGED' : 'UPDATE_UNCHANGED'),
-      staffId: staff.id, staffIsNew: isNewStaff, classId, subjectId, classTeacherOf: d.class_teacher_of || '',
+      row, status: isNewStaff ? 'CREATE' : (subjectIds.length ? 'UPDATE_CHANGED' : 'UPDATE_UNCHANGED'),
+      staffId: staff.id, staffIsNew: isNewStaff, classId,
+      // subjectId kept for the single explicit case; subjectIds is what the
+      // commit actually writes.
+      subjectId, subjectIds, subjectsInferred,
+      notes: inferenceNote ? [inferenceNote] : [],
+      classTeacherOf: d.class_teacher_of || '',
       staffBase: staff,
     })
   }
 
   // Re-derive real UPDATE_CHANGED / UPDATE_UNCHANGED for existing staff by
-  // checking whether (classId, subjectId) is already in their assignments.
+  // checking whether every (classId, subjectId) pair is already assigned.
+  // Unchanged only when the assignment adds nothing new.
   for (const item of items) {
     if (item.status === 'ERROR' || item.staffIsNew) continue
-    const existing = item.staffBase.assignments?.[item.classId] || []
-    item.status = item.subjectId && existing.includes(item.subjectId) ? 'UPDATE_UNCHANGED' : 'UPDATE_CHANGED'
+    const existing = new Set(item.staffBase.assignments?.[item.classId] || [])
+    const adds = (item.subjectIds || []).filter(Boolean)
+    item.status = adds.length && adds.every(id => existing.has(id))
+      ? 'UPDATE_UNCHANGED' : 'UPDATE_CHANGED'
   }
 
   return summarize('teachers', items)
@@ -503,7 +549,8 @@ export async function commitImport(job, plan, { overwriteExisting } = {}) {
   const items = plan.entity === 'teachers'
     ? nonError.map(i => ({
         status: i.status, staffId: i.staffId, staffIsNew: i.staffIsNew,
-        classId: i.classId, subjectId: i.subjectId,
+        classId: i.classId, subjectId: i.subjectId, subjectIds: i.subjectIds || [],
+        subjectsInferred: !!i.subjectsInferred,
         staffBase: { name: i.staffBase?.name || '', email: i.staffBase?.email || '' },
       }))
     : nonError.map(i => ({ status: i.status, docId: i.docId, payload: i.payload }))
