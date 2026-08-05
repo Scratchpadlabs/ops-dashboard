@@ -92,6 +92,36 @@ CONF_NONE = "none"      # not resolvable — never promoted, always reported
 CLASS_ID_FIELDS = ("classId", "currentClassId", "class_id", "classID", "classid",
                    "className", "class_name")
 GRADE_FIELDS = ("grade", "clazz", "standard", "std", "class", "Grade", "Class")
+# Board/affiliation tokens, stripped from every section and class identifier.
+#
+# Hillgreen's teacher file writes sections as "SCI_CBSE_A" while its configured
+# classes use "SCI_A" — the same section with the board baked in. A board is
+# identical for every class in a school, so it carries no information in an
+# identifier while permanently coupling it to an affiliation that can change.
+# Stripping here means both spellings resolve to the same class instead of the
+# teacher row being flagged "not in school config".
+#
+# Twin of BOARD_TOKENS / stripBoardTokens in classResolver.js.
+BOARD_TOKENS = ("CBSE", "ICSE", "ISC", "SSC", "HSC", "IB", "IGCSE", "CIE",
+                "NIOS", "STATE")
+
+_BOARD_SET = frozenset(BOARD_TOKENS)
+_SECTION_SPLIT_RE = re.compile(r"[_\-/\s]+")
+
+
+def strip_board_tokens(value):
+    """Split on separators, drop board tokens, rejoin with underscores."""
+    parts = [p for p in _SECTION_SPLIT_RE.split(str(value or "").strip()) if p]
+    kept = [p for p in parts if p.upper() not in _BOARD_SET]
+    # An all-board value ("CBSE") would otherwise vanish — keep it as-is.
+    return "_".join(kept if kept else parts)
+
+
+def normalize_section_value(raw):
+    """THE section normalization: board stripped, upper-cased."""
+    return strip_board_tokens(raw).upper()
+
+
 SECTION_FIELDS = ("section", "sec", "division", "div", "Section")
 
 

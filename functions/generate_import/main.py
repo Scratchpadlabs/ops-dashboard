@@ -660,10 +660,30 @@ def validate_teachers(rows, class_lookup, sections_by_grade, subject_names_by_gr
         # NOTE: deliberately NOT flagging multiple teachers assigned to the
         # same (subject, grade, section) — golden rule 2, that's valid.
 
+    # A teacher with no subject anywhere in the file is not necessarily a
+    # problem: the usual meaning is "takes everything for that class". The row
+    # gets every subject configured for its grade (see buildStudentsPlan's twin
+    # in useImport.js buildTeachersPlan), so the flag says what WILL happen and
+    # asks for verification rather than reporting an absence.
+    #
+    # It stays a flag, not silence, because a school with subject specialists —
+    # common from Grade VI up — must be able to find and correct these.
     for tkey, idxs in by_teacher.items():
-        if all(not rows[i].get("subject", "").strip() for i in idxs):
-            for i in idxs:
-                flags_by_row[i].append(_flag("subject", "teacher has zero subject assignments"))
+        if not all(not rows[i].get("subject", "").strip() for i in idxs):
+            continue
+        for i in idxs:
+            grade = normalize_grade(rows[i].get("grade"))
+            available = subject_names_by_grade.get(grade)
+            if available:
+                flags_by_row[i].append(_flag(
+                    "subject",
+                    f"subjects inferred from class assignment — verify "
+                    f"({len(available)} subject(s) configured for grade {grade})"))
+            else:
+                flags_by_row[i].append(_flag(
+                    "subject",
+                    f"no subjects configured for grade {grade or '?'} — "
+                    "assign manually after configuring the Subjects tab"))
 
     return flags_by_row
 

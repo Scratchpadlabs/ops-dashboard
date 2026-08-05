@@ -41,6 +41,37 @@ export function looksLikeSentinel(raw) {
 
 const PRE_PRIMARY_ORDINALS = { 'Pre-Nursery': -3, Nursery: -2, LKG: -1, UKG: 0 }
 
+/**
+ * Board/affiliation tokens, stripped from every section and class identifier.
+ *
+ * Hillgreen's teacher file writes sections as "SCI_CBSE_A" while its configured
+ * classes use "SCI_A" — the same section with the board baked in. A board is
+ * identical for every class in a school, so it carries no information in an
+ * identifier while permanently coupling it to an affiliation that can change.
+ * Stripping here means both spellings resolve to the same class instead of the
+ * teacher row being flagged "not in school config".
+ *
+ * Twin of BOARD_TOKENS / strip_board_tokens in class_resolver.py.
+ */
+export const BOARD_TOKENS = [
+  'CBSE', 'ICSE', 'ISC', 'SSC', 'HSC', 'IB', 'IGCSE', 'CIE', 'NIOS', 'STATE',
+]
+
+const BOARD_SET = new Set(BOARD_TOKENS)
+
+/** Split on separators, drop board tokens, rejoin with underscores. */
+export function stripBoardTokens(value) {
+  const parts = String(value ?? '').trim().split(/[_\-/\s]+/).filter(Boolean)
+  const kept = parts.filter(p => !BOARD_SET.has(p.toUpperCase()))
+  // An all-board value ("CBSE") would otherwise vanish — keep it as-is.
+  return (kept.length ? kept : parts).join('_')
+}
+
+/** THE section normalization: board stripped, upper-cased. */
+export function normalizeSectionValue(raw) {
+  return stripBoardTokens(raw).toUpperCase()
+}
+
 export const CLASS_ID_FIELDS = ['classId', 'currentClassId', 'class_id', 'classID',
   'classid', 'className', 'class_name']
 export const GRADE_FIELDS = ['grade', 'clazz', 'standard', 'std', 'class', 'Grade', 'Class']

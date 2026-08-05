@@ -19,35 +19,11 @@
  * independent class parsers for getting it wrong; this module must not become
  * a third. It adds only the aggregation and ID rules on top.
  */
-import { parseClassValue } from './classResolver.js'
+import {
+  parseClassValue, stripBoardTokens, normalizeSectionValue as normSection,
+} from './classResolver.js'
 
-/**
- * Board/affiliation tokens are stripped from every ID.
- *
- * Hillgreen's Section column reads "SCI_CBSE_A" — the board is baked into the
- * section. A board belongs on the school document, never inside a class or
- * section identifier: it is the same for every class in the school, so it adds
- * no information and permanently couples the ID to an affiliation that can
- * change. "SCI_CBSE_A" therefore becomes "SCI_A".
- */
-export const BOARD_TOKENS = [
-  'CBSE', 'ICSE', 'ISC', 'SSC', 'HSC', 'IB', 'IGCSE', 'CIE', 'NIOS', 'STATE',
-]
-
-const BOARD_SET = new Set(BOARD_TOKENS)
-
-/** Split on separators, drop board tokens, rejoin. */
-export function stripBoardTokens(value) {
-  const parts = String(value ?? '').trim().split(/[_\-/\s]+/).filter(Boolean)
-  const kept = parts.filter(p => !BOARD_SET.has(p.toUpperCase()))
-  // All-board input ("CBSE") would otherwise vanish — keep the original then.
-  return (kept.length ? kept : parts).join('_')
-}
-
-/** Section as it will appear in an ID: board stripped, upper-cased. */
-export function normSection(raw) {
-  return stripBoardTokens(raw).toUpperCase()
-}
+export { stripBoardTokens, normSection }
 
 /**
  * Section used when the file gives a grade but no section at all.

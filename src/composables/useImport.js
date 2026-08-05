@@ -23,6 +23,7 @@ import {
 } from '../firebase/schoolCollections.js'
 import { startProcessImport, commitImportRemote } from '../utils/api.js'
 import { classify, GRADE } from '../utils/educationKB.js'
+import { normalizeSectionValue } from '../utils/classResolver.js'
 import { validateDoc, formatErrors } from '../schemas/schoolSchema.js'
 import { validateCurrentClassId } from '../schemas/currentClassId.js'
 import { mapImportRowToStudent } from '../schemas/studentMapping.js'
@@ -42,8 +43,11 @@ export function normalizeGrade(g) {
   const r = classify(s, { expect: GRADE })
   return r.type === GRADE && r.canonical ? r.canonical : s.toUpperCase()
 }
+// Board tokens stripped, so a teacher row's "SCI_CBSE_A" resolves to the same
+// class as the configured "SCI_A". One rule, shared with the Cloud Function's
+// normalize_section and the wizard's class derivation.
 export function normalizeSection(s) {
-  return (s || '').trim().toUpperCase()
+  return normalizeSectionValue(s)
 }
 
 function slugPart(s) {

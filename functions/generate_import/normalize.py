@@ -18,6 +18,8 @@ Jr-KG spelling list, and one subject alias dictionary in the codebase.
 """
 import difflib
 import re
+
+from class_resolver import normalize_section_value
 from datetime import date, datetime, timedelta
 
 import education_kb as kb
@@ -54,7 +56,14 @@ def normalize_grade(g):
 
 
 def normalize_section(s):
-    return (s or "").strip().upper()
+    """Upper-cased, with board tokens stripped.
+
+    "SCI_CBSE_A" and "SCI_A" are the same section — the teacher file writes one
+    spelling and the configured class the other. Delegates to the shared
+    resolver so the import pipeline, the wizard's class derivation and the
+    Cloud Function all agree on what a section is.
+    """
+    return normalize_section_value(s)
 
 
 def canonicalize(s):
