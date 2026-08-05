@@ -241,6 +241,26 @@
         </div>
         <div v-if="plan.summary.errors" class="bg-red-50 text-red-600 rounded-lg px-3 py-2 text-sm">{{ plan.summary.errors }} skipped (errors)</div>
 
+        <!-- The planner always knew WHY each row was skipped; until now the
+             dialog showed only the count, which is useless when the count is
+             every row in the file. -->
+        <div v-if="blockedReasons.length" class="rounded-lg border border-red-100 bg-red-50 px-3 py-2">
+          <div class="text-xs font-semibold text-red-700 mb-1">Why they were skipped</div>
+          <div class="text-[11px] text-red-700 space-y-1 max-h-40 overflow-auto">
+            <div v-for="(b, i) in blockedReasons" :key="i">
+              <span class="font-semibold">{{ b.count }} row(s):</span> {{ b.reason }}
+            </div>
+          </div>
+        </div>
+
+        <!-- Nothing is writable, so "Confirm Commit" would be a no-op button
+             the operator presses and learns nothing from. -->
+        <div v-if="!plan.summary.create && !plan.summary.changed && !plan.summary.unchanged"
+             class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
+          Nothing would be written — every included row was skipped. Fix the causes above and re-run the plan;
+          committing now would do nothing.
+        </div>
+
         <!-- The name split is a guess the file cannot settle (surname-first is
              common in this estate), so it is shown before it is written rather
              than discovered in Firestore afterwards. -->
@@ -698,6 +718,27 @@ const planNotes = computed(() => {
     for (const n of i.notes || []) seen.set(n, (seen.get(n) || 0) + 1)
   }
   return Array.from(seen.entries()).map(([note, count]) => count > 1 ? `${note} (${count} rows)` : note)
+})
+
+/**
+ * Why the skipped rows were skipped, grouped by reason.
+ *
+ * The planner has always produced a per-row `reason` for every ERROR, and
+ * nothing ever rendered it — the dialog said "57 skipped (errors)" and stopped
+ * there, which is unactionable when the count is every row in the file.
+ * Grouped rather than listed per row: one broken assumption typically fails
+ * hundreds of rows with the same sentence.
+ */
+const blockedReasons = computed(() => {
+  const seen = new Map()
+  for (const i of plan.value?.items || []) {
+    if (i.status !== 'ERROR' && i.status !== 'SUGGESTION_PENDING') continue
+    const r = i.reason || 'Unknown reason'
+    seen.set(r, (seen.get(r) || 0) + 1)
+  }
+  return Array.from(seen.entries())
+    .map(([reason, count]) => ({ reason, count }))
+    .sort((a, b) => b.count - a.count)
 })
 
 const commitConfirmVisible = ref(false)

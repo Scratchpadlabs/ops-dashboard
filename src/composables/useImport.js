@@ -138,6 +138,30 @@ async function loadClassLookup(schoolId) {
   return { classLookup, subjectsByClass }
 }
 
+/**
+ * Why a (grade, section) missed classLookup, in words an operator can act on.
+ *
+ * "Class-section not configured for this school." was the entire message, on
+ * every one of the rows, with no indication of what was looked for or what
+ * exists — so a school whose Classes collection is simply empty looked exactly
+ * like one section being misspelled. Both are common and the fixes are
+ * completely different, so the message has to tell them apart.
+ */
+function describeClassMiss(classLookup, rawGrade, rawSection) {
+  if (classLookup.size === 0) {
+    return 'School Setup has no classes configured at all — set up the class structure before importing.'
+  }
+  const grade = normalizeGrade(rawGrade)
+  const section = normalizeSection(rawSection)
+  const sameGrade = [...classLookup.keys()]
+    .filter(k => k.split('|')[0] === grade)
+    .map(k => k.split('|')[1] || '(no section)')
+  const looked = `looked for grade "${grade}" section "${section || '(none)'}"`
+  return sameGrade.length
+    ? `Class-section not configured — ${looked}. Grade "${grade}" has: ${sameGrade.sort().join(', ')}.`
+    : `Class-section not configured — ${looked}, and grade "${grade}" has no classes at all in School Setup.`
+}
+
 async function loadSubjectLookup(schoolId) {
   const snap = await getDocs(schoolCollection(schoolId, 'subjects'))
   const subjectLookup = new Map() // `${normGrade}|${normName}` -> subjectId
@@ -326,7 +350,7 @@ async function buildStudentsPlan(schoolId, rows) {
     }
     const classId = classLookup.get(`${normalizeGrade(d.grade)}|${normalizeSection(d.section)}`)
     if (!classId) {
-      items.push({ row, status: 'ERROR', reason: 'Class-section not configured for this school — fix and re-stage, or add the section in School Setup first.' })
+      items.push({ row, status: 'ERROR', reason: describeClassMiss(classLookup, d.grade, d.section) })
       continue
     }
     const base = slugPart(d.roll_no) || slugPart(d.student_name) || 'student'
@@ -390,7 +414,7 @@ async function buildTeachersPlan(schoolId, rows) {
       continue
     }
     if (!classId) {
-      items.push({ row, status: 'ERROR', reason: 'Class-section not configured for this school.' })
+      items.push({ row, status: 'ERROR', reason: describeClassMiss(classLookup, d.grade, d.section) })
       continue
     }
     const subjectId = subject ? subjectLookup.get(`${normalizeGrade(d.grade)}|${subject.toLowerCase()}`) : null
