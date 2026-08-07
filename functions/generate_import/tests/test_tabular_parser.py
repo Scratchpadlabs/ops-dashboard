@@ -349,3 +349,43 @@ def test_numeric_dates_are_unchanged_by_text_month_support():
     value, warn = parse_dob_flexible("05/06/2020")
     assert value == "2020-06-05" and "ambiguous" in warn
     assert parse_dob_flexible("25/12/2019") == ("2019-12-25", None)
+
+
+# ── Trailing parentheticals in header cells ────────────────────────────────
+# Hillgreen's roster labels the column 'GR / EMIS / STS (unique No.)'. The
+# alias 'gr / emis / sts' is an exact prefix of it, but the qualifier dragged
+# the fuzzy ratio to 0.688 — under the 0.84 threshold — so the column was
+# reported as unmapped and a field the school asked to persist was dropped.
+def test_trailing_parenthetical_in_header_still_maps():
+    from tabular_parser import _match_field, _strip_parenthetical
+    from normalize import build_alias_lookup, canonicalize, STUDENT_HEADER_ALIASES
+    lookup = build_alias_lookup(STUDENT_HEADER_ALIASES)
+    assert _match_field(canonicalize("GR / EMIS / STS (unique No.)"), lookup) == "gr_emis_sts"
+    assert _match_field(canonicalize("Date Of Birth (DD/MM/YYYY)"), lookup) == "dob"
+    assert _strip_parenthetical("gr/emis/sts(uniqueno)") == "gr/emis/sts"
+
+
+def test_header_that_is_only_a_parenthetical_is_left_alone():
+    """Stripping must never empty the string — there'd be nothing to match on,
+    and '' would collide with every blank header cell."""
+    from tabular_parser import _strip_parenthetical
+    assert _strip_parenthetical("(unused)") == "(unused)"
+
+
+def test_parenthetical_fallback_cannot_override_a_full_match():
+    """The bare form is a fallback, not a competitor: a header whose full text
+    already matches must keep that field."""
+    from tabular_parser import _match_field
+    from normalize import build_alias_lookup, canonicalize, STUDENT_HEADER_ALIASES
+    lookup = build_alias_lookup(STUDENT_HEADER_ALIASES)
+    assert _match_field(canonicalize("Mobile Number"), lookup) == "contact"
+    assert _match_field(canonicalize("Admission No/Reference Code"), lookup) == "adm_no"
+
+
+def test_unrelated_parenthetical_header_stays_unmapped():
+    """'Category' has no home in the student schema and must not be coerced
+    into one just because stripping made it shorter."""
+    from tabular_parser import _match_field
+    from normalize import build_alias_lookup, canonicalize, STUDENT_HEADER_ALIASES
+    lookup = build_alias_lookup(STUDENT_HEADER_ALIASES)
+    assert _match_field(canonicalize("Category (residential)"), lookup) is None

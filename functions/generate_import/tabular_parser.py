@@ -283,6 +283,52 @@ def _join_header_rows(row1, row2):
     return joined
 
 
+_PARENTHETICAL_RE = re.compile(r"\([^)]*\)")
+
+
+def _strip_parenthetical(canon):
+    """'gr/emis/sts(uniqueno)' -> 'gr/emis/sts'.
+
+    Source headers routinely carry a trailing qualifier the alias list has no
+    reason to enumerate — '(unique No.)', '(if any)', '(DD/MM/YYYY)'. It is
+    dead weight for matching but not for scoring: Hillgreen's
+    'GR / EMIS / STS (unique No.)' fuzzy-matched its own alias at 0.688,
+    under the 0.84 threshold, so a field the school explicitly asked to keep
+    was dropped as an unmapped column.
+
+    Returns `canon` unchanged when stripping would empty it — a header that is
+    nothing but a parenthetical has no bare form to match on.
+    """
+    out = _PARENTHETICAL_RE.sub("", canon).strip()
+    return out or canon
+
+
+def _match_field(canon, alias_lookup):
+    """Canonicalized header text -> schema field, or None.
+
+    Exact first, then fuzzy, then both again without a trailing parenthetical.
+    Ordered so the bare form is only ever a fallback: it can rescue a header
+    the full form missed, never override one the full form already matched.
+    """
+    field = alias_lookup.get(canon)
+    if field is not None:
+        return field
+    candidate, ratio = fuzzy_best_match(canon, {c: c for c in alias_lookup})
+    if candidate and ratio >= 0.84:
+        return alias_lookup[candidate]
+
+    bare = _strip_parenthetical(canon)
+    if bare == canon:
+        return None
+    field = alias_lookup.get(bare)
+    if field is not None:
+        return field
+    candidate, ratio = fuzzy_best_match(bare, {c: c for c in alias_lookup})
+    if candidate and ratio >= 0.84:
+        return alias_lookup[candidate]
+    return None
+
+
 def _score_header_row(row, alias_lookup):
     col_map, labels, unmapped = {}, [], []
     used_fields = set()
@@ -292,12 +338,7 @@ def _score_header_row(row, alias_lookup):
         labels.append(text)
         if not text:
             continue
-        canon = canonicalize(text)
-        field = alias_lookup.get(canon)
-        if field is None:
-            candidate, ratio = fuzzy_best_match(canon, {c: c for c in alias_lookup})
-            if candidate and ratio >= 0.84:
-                field = alias_lookup[candidate]
+        field = _match_field(canonicalize(text), alias_lookup)
         if field is None or field in used_fields:
             if text:
                 unmapped.append(text)
