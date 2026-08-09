@@ -59,7 +59,9 @@ import { parseCsv, toCsv, downloadCsv, readFileAsText } from '../../utils/csv.js
 const props = defineProps({
   title: { type: String, required: true },
   columnKeys: { type: Array, required: true },
-  // async (rawRowObject) => { _status: 'CREATE'|'UPDATE'|'ERROR', _reason?, _warning?, raw, ...anything the tab needs }
+  // async (rawRowObject, rowIndex) => { _status: 'CREATE'|'UPDATE'|'ERROR', _reason?, _warning?, raw, ...anything the tab needs }
+  // rowIndex is 0 for the first row of each newly-picked file — use it to reset
+  // any state the classifier carries across rows.
   classifyRow: { type: Function, required: true },
   // async (validRows) => void | false — validRows are CREATE/UPDATE only. Return false to keep the dialog open (e.g. user cancelled a safety confirm).
   onConfirm: { type: Function, required: true },
@@ -86,8 +88,12 @@ async function onFileChange(e) {
     const text = await readFileAsText(file)
     const { rows: rawRows } = parseCsv(text)
     const classified = []
-    for (const raw of rawRows) {
-      classified.push(await props.classifyRow(raw))
+    // The row index is passed so a classifier that carries state across rows
+    // (remarks checks each key against the ones earlier rows claimed) can tell
+    // a fresh file from a continuation. Existing classifiers take one argument
+    // and ignore it.
+    for (const [i, raw] of rawRows.entries()) {
+      classified.push(await props.classifyRow(raw, i))
     }
     rows.value = classified
   } catch (err) {

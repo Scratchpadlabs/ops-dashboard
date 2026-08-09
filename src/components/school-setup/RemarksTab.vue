@@ -3,10 +3,20 @@
     <div class="flex items-center justify-between mb-3">
       <div class="text-sm font-bold text-slate-900">Remark Categories</div>
       <div class="flex gap-2">
+        <Button label="Import CSV" icon="pi pi-upload" size="small" outlined @click="importVisible = true" />
+        <Button label="Sample CSV" icon="pi pi-download" size="small" text @click="downloadSample" />
         <Button label="Copy from another school" icon="pi pi-copy" size="small" outlined @click="openCopyDialog" />
         <Button label="Add Category" icon="pi pi-plus" size="small" @click="openAddCategory" />
       </div>
     </div>
+
+    <CsvImportDialog
+      v-model:visible="importVisible"
+      title="Import Remarks CSV"
+      :column-keys="REMARK_CSV_COLUMNS"
+      :classify-row="classifyRow"
+      :on-confirm="runImport"
+    />
 
     <div v-if="loading" class="flex items-center justify-center py-10">
       <ProgressSpinner style="width:28px;height:28px" />
@@ -14,6 +24,12 @@
     <div v-else class="bg-white rounded-xl border border-slate-200 overflow-hidden">
       <DataTable :value="categories" size="small" stripedRows>
         <Column field="order" header="#" style="width:50px" />
+        <Column header="Grade band" style="width:140px">
+          <template #body="{ data }">
+            <span v-if="bandOf(data)" class="px-2 py-0.5 rounded-full text-xs font-semibold bg-violet-50 text-violet-700">{{ bandOf(data) }}</span>
+            <span v-else class="text-xs text-slate-300" v-tooltip="'No band prefix on the document ID — applies to all grades'">all grades</span>
+          </template>
+        </Column>
         <Column field="label" header="Category">
           <template #body="{ data }">
             <div class="font-medium text-sm text-slate-900">{{ data.label }}</div>
@@ -131,7 +147,12 @@ import ConfirmDialog from 'primevue/confirmdialog'
 
 import { schoolCollection, schoolDoc, rootSchoolsCollection } from '../../firebase/schoolCollections.js'
 import ConfigEmptyState from './ConfigEmptyState.vue'
-import { guardedSetDoc, guardedUpdateDoc, SchemaViolation } from '../../schemas/guardedWrite.js'
+import CsvImportDialog from './CsvImportDialog.vue'
+import { toCsv, downloadCsv } from '../../utils/csv.js'
+import {
+  REMARK_CSV_COLUMNS, makeRemarkRowClassifier, groupRemarkRows, bandOfId, sampleRemarkRows,
+} from '../../utils/remarksImport.js'
+import { guardedSetDoc, guardedUpdateDoc, guardedBatchSet, SchemaViolation } from '../../schemas/guardedWrite.js'
 import { db } from '../../firebase/config'
 import { auth } from '../../firebase/config'
 
@@ -357,6 +378,50 @@ async function copyRemarkBank() {
   } finally {
     copying.value = false
   }
+}
+
+// ── CSV import ─────────────────────────────────────────────────────────────
+// Row classification, grouping and the key-collision rules live in
+// utils/remarksImport.js so tools/check_remarks_import.mjs can exercise them
+// without a browser. See that file's header for why remark keys must stay
+// unique school-wide.
+const importVisible = ref(false)
+const bandOf = cat => bandOfId(cat?.id)
+
+// The classifier is stateful across the rows of one file, so it must be built
+// once per file rather than per row — rebuilding it would reset the set of
+// keys earlier rows already claimed and let collisions through.
+let activeClassifier = null
+function classifyRow(raw, index) {
+  if (index === 0) activeClassifier = makeRemarkRowClassifier(categories.value)
+  return activeClassifier(raw, index)
+}
+
+async function runImport(validRows) {
+  const groups = groupRemarkRows(validRows, categories.value)
+  const batch = writeBatch(db)
+  for (const g of groups) {
+    // guardedBatchSet, not batch.set — it validates against the
+    // remark_categories schema and throws before anything is staged, so one
+    // malformed group cannot land a half-written batch.
+    guardedBatchSet(batch, 'remark_categories', schoolDoc(props.schoolId, 'remark_categories', g.docId), {
+      label: g.label, order: g.order, remarks: g.remarks,
+      ...(g.isNew ? { created_at: serverTimestamp(), created_by: auth.currentUser?.email || 'unknown' }
+                  : { updated_at: serverTimestamp(), updated_by: auth.currentUser?.email || 'unknown' }),
+    }, { merge: true })
+  }
+  await batch.commit()
+  toast.add({
+    severity: 'success', summary: 'Imported',
+    detail: `${validRows.length} remark(s) across ${groups.length} categor${groups.length === 1 ? 'y' : 'ies'}`,
+    life: 3000,
+  })
+  await loadCategories()
+  return true
+}
+
+function downloadSample() {
+  downloadCsv('remarks_sample.csv', toCsv(sampleRemarkRows(), REMARK_CSV_COLUMNS))
 }
 
 watch(() => props.schoolId, loadCategories)
