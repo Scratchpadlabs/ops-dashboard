@@ -46,8 +46,32 @@ export function categoryDocId(band, category) {
 }
 
 function keyNumber(key) {
-  const m = /^r(\d+)$/.exec(key || '')
+  // Tolerates a band prefix, so auto-allocation keeps counting past
+  // `foundational_r8` and not just `r8`.
+  const m = /(?:^|_)r(\d+)$/.exec(key || '')
   return m ? parseInt(m[1], 10) : 0
+}
+
+/**
+ * The key as STORED, which is what remarks_sheets entries will hold.
+ *
+ * Real remark banks reuse keys across bands — Hillgreen's file has `gr1`
+ * meaning three different things in Foundational, Preparatory and Middle, each
+ * namespace internally consistent. Entries store the bare key with no band, so
+ * resolving `gr1` correctly would depend on the reader going class → grade →
+ * band → that band's categories. Prefixing the band into the key removes that
+ * dependency entirely: the stored key is unambiguous on its own, whichever way
+ * the reader looks it up.
+ *
+ * The full slugified band is used rather than an initial — `f` would collide
+ * between "Foundational" and "Foundation". Deterministic, so re-importing the
+ * same file produces the same keys, and already-prefixed keys are left alone so
+ * an export → re-import round trip is stable.
+ */
+export function effectiveRemarkKey(band, key) {
+  const prefix = slugPart(band).toLowerCase()
+  if (!prefix || !key) return key
+  return key.toLowerCase().startsWith(`${prefix}_`) ? key : `${prefix}_${key}`
 }
 
 /**
@@ -111,13 +135,22 @@ export function makeRemarkRowClassifier(categories) {
 
     // A blank key is allocated from the school-wide sequence rather than
     // rejected — the same rule RemarksTab's nextRemarkKey() follows.
-    let key = (raw.remark_key || '').trim()
+    const authoredKey = (raw.remark_key || '').trim()
+    let key = authoredKey
     if (!key) {
       autoKeyCounter += 1
       key = `r${autoKeyCounter}`
       notes.push(`key auto-assigned (${key})`)
     } else {
       autoKeyCounter = Math.max(autoKeyCounter, keyNumber(key))
+    }
+
+    // Everything from here on works with the STORED key — the one that lands in
+    // remarks_sheets entries — so the collision checks guard what is actually
+    // written, not what the file happened to type.
+    key = effectiveRemarkKey(band, key)
+    if (authoredKey && key !== authoredKey) {
+      notes.push(`key stored as "${key}" — band prefixed so it stays unique school-wide`)
     }
 
     const dbOwner = existingKeyOwners().get(key)
@@ -189,15 +222,22 @@ export function groupRemarkRows(validRows, categories) {
   return out
 }
 
-/** Rows for the Sample CSV button — the format the importer expects. */
+/**
+ * Rows for the Sample CSV button — shaped after Hillgreen's real remark bank.
+ *
+ * Deliberately reuses `gr1` across bands, exactly as a real bank does, so the
+ * sample demonstrates the band-prefixing rather than hiding it behind keys that
+ * happen not to collide.
+ */
 export function sampleRemarkRows() {
   return [
-    { grade_band: 'Foundational', category: 'Discipline', category_order: 1, remark_key: 'r1', remark_order: 1, text: 'Follows classroom routines happily', type: 'positive' },
-    { grade_band: 'Foundational', category: 'Discipline', category_order: 1, remark_key: 'r2', remark_order: 2, text: 'Needs frequent reminders to settle down', type: 'negative' },
-    { grade_band: 'Foundational', category: 'Participation', category_order: 2, remark_key: 'r3', remark_order: 1, text: 'Joins group activities eagerly', type: 'positive' },
-    { grade_band: 'Preparatory', category: 'Discipline', category_order: 1, remark_key: 'r4', remark_order: 1, text: 'Respects classroom rules consistently', type: 'positive' },
-    { grade_band: 'Preparatory', category: 'Discipline', category_order: 1, remark_key: 'r5', remark_order: 2, text: 'Is often distracted during lessons', type: 'negative' },
-    { grade_band: 'Middle', category: 'Academic Effort', category_order: 1, remark_key: 'r6', remark_order: 1, text: 'Submits work on time and to a high standard', type: 'positive' },
-    { grade_band: 'Middle', category: 'Academic Effort', category_order: 1, remark_key: 'r7', remark_order: 2, text: 'Rushes through written work', type: 'negative' },
+    { grade_band: 'Foundational', category: 'General Remarks', category_order: 1, remark_key: 'gr1', remark_order: 1, text: 'Enjoys learning new things', type: 'positive' },
+    { grade_band: 'Foundational', category: 'General Remarks', category_order: 1, remark_key: 'gr2', remark_order: 2, text: 'Encouraged to pay more attention in class', type: 'negative' },
+    { grade_band: 'Foundational', category: 'Physical Development', category_order: 2, remark_key: 'phys1', remark_order: 1, text: 'Practices basic hygiene habits like washing hands before and after meals.', type: 'positive' },
+    { grade_band: 'Foundational', category: 'Physical Development', category_order: 2, remark_key: 'phys2', remark_order: 2, text: 'Still developing awareness of basic safety rules.', type: 'negative' },
+    { grade_band: 'Preparatory', category: 'General Remarks', category_order: 1, remark_key: 'gr1', remark_order: 1, text: 'Always submits work on time', type: 'positive' },
+    { grade_band: 'Preparatory', category: 'General Remarks', category_order: 1, remark_key: 'gr2', remark_order: 2, text: 'Encouraged to finish work on time', type: 'negative' },
+    { grade_band: 'Middle', category: 'General Remarks', category_order: 1, remark_key: 'gr1', remark_order: 1, text: 'Regular in submissions', type: 'positive' },
+    { grade_band: 'Middle', category: 'General Remarks', category_order: 1, remark_key: 'gr2', remark_order: 2, text: 'Encouraged to improve time management', type: 'negative' },
   ]
 }

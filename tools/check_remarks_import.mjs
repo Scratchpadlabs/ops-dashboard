@@ -15,24 +15,45 @@ ok('spaces slugified', r[0].docId==='Middle_Academic_Effort', r[0].docId)
 
 console.log('=== the key invariant ===')
 r=run([R({grade_band:'Foundational',category:'Discipline',text:'a',remark_key:'r1'}),
-       R({grade_band:'Middle',category:'Discipline',text:'b',remark_key:'r1'})])
-ok('same key, two categories in file -> ERROR', r[1]._status==='ERROR', JSON.stringify(r[1]._reason))
+       R({grade_band:'Foundational',category:'Conduct',text:'b',remark_key:'r1'})])
+ok('same key, two categories in one band -> ERROR', r[1]._status==='ERROR', JSON.stringify(r[1]._reason))
 ok('   ...and the first row survives', r[0]._status==='CREATE')
 r=run([R({grade_band:'F',category:'D',text:'a',remark_key:'r1'}),
        R({grade_band:'F',category:'D',text:'b',remark_key:'r1'})])
 ok('same key twice in one category -> ERROR', r[1]._status==='ERROR', JSON.stringify(r[1]._reason))
-const db=[{id:'Middle_Discipline',order:1,remarks:[{key:'r7',text:'old',type:'positive',order:1}]}]
-r=run([R({grade_band:'Foundational',category:'Discipline',text:'a',remark_key:'r7'})], db)
+const db=[{id:'Middle_Discipline',order:1,remarks:[{key:'middle_r7',text:'old',type:'positive',order:1}]}]
+r=run([R({grade_band:'Middle',category:'Conduct',text:'a',remark_key:'r7'})], db)
 ok('key owned by another category in DB -> ERROR', r[0]._status==='ERROR', JSON.stringify(r[0]._reason))
 r=run([R({grade_band:'Middle',category:'Discipline',text:'new',remark_key:'r7'})], db)
 ok('same key in its OWN category -> UPDATE, not error', r[0]._status==='UPDATE', r[0]._reason)
 ok('   ...and says it replaces the text', /replaces the existing text/.test(r[0]._warning||''), r[0]._warning)
+r=run([R({category:'Legacy',text:'x',remark_key:'r1'})], [{id:'Legacy',order:1,remarks:[{key:'r1',text:'old',type:'positive',order:1}]}])
+ok('bandless import still matches legacy unprefixed keys', r[0]._status==='UPDATE' && /replaces the existing/.test(r[0]._warning||''), JSON.stringify([r[0]._status,r[0]._warning]))
+
+console.log('=== band-prefixed keys (real Hillgreen bank reuses gr1 across bands) ===')
+r=run([R({grade_band:'Foundational',category:'General Remarks',remark_key:'gr1',text:'Enjoys learning new things'}),
+       R({grade_band:'Preparatory',category:'General Remarks',remark_key:'gr1',text:'Always submit work on time'}),
+       R({grade_band:'Middle',category:'General Remarks',remark_key:'gr1',text:'Regular in submissions'})])
+ok('same authored key in 3 bands -> no error', r.every(x=>x._status!=='ERROR'), JSON.stringify(r.map(x=>x._reason)))
+ok('stored keys are distinct', new Set(r.map(x=>x.remark.key)).size===3, JSON.stringify(r.map(x=>x.remark.key)))
+ok('prefix is the slugified band', r[0].remark.key==='foundational_gr1', r[0].remark.key)
+ok('rewrite is disclosed on the row', /band prefixed/.test(r[0]._warning||''), r[0]._warning)
+r=run([R({grade_band:'Foundational',category:'A',remark_key:'foundational_gr1',text:'x'})])
+ok('already-prefixed key is not double-prefixed', r[0].remark.key==='foundational_gr1', r[0].remark.key)
+r=run([R({category:'A',remark_key:'gr1',text:'x'})])
+ok('no band -> key left exactly as authored', r[0].remark.key==='gr1', r[0].remark.key)
+r=run([R({grade_band:'Foundational',category:'A',remark_key:'gr1',text:'x'}),
+       R({grade_band:'Foundational',category:'B',remark_key:'gr1',text:'y'})])
+ok('collision WITHIN one band is still rejected', r[1]._status==='ERROR', JSON.stringify(r[1]._reason))
+const dbP=[{id:'Middle_General_Remarks',order:1,remarks:[{key:'middle_gr1',text:'old',type:'positive',order:1}]}]
+r=run([R({grade_band:'Middle',category:'General Remarks',remark_key:'gr1',text:'new'})], dbP)
+ok('re-import matches the stored prefixed key', r[0]._status==='UPDATE' && /replaces the existing text/.test(r[0]._warning||''), JSON.stringify([r[0]._status,r[0]._warning]))
 
 console.log('=== auto key allocation ===')
 r=run([R({grade_band:'F',category:'D',text:'a'}), R({grade_band:'F',category:'D',text:'b'})], db)
-ok('auto keys continue past the DB max (r7)', r[0].remark.key==='r8'&&r[1].remark.key==='r9', r.map(x=>x.remark?.key).join(','))
+ok('auto keys continue past the DB max (r7)', r[0].remark.key==='f_r8'&&r[1].remark.key==='f_r9', r.map(x=>x.remark?.key).join(','))
 r=run([R({grade_band:'F',category:'D',text:'a',remark_key:'r20'}), R({grade_band:'F',category:'D',text:'b'})])
-ok('auto key skips past an explicit higher key', r[1].remark.key==='r21', r[1].remark?.key)
+ok('auto key skips past an explicit higher key', r[1].remark.key==='f_r21', r[1].remark?.key)
 
 console.log('=== validation ===')
 ok('missing category', run([R({text:'a'})])[0]._reason==='Missing category')
@@ -52,17 +73,17 @@ const g=groupRemarkRows(rows.filter(x=>x._status!=='ERROR'), [])
 ok('one doc per (band, category)', g.length===2, JSON.stringify(g.map(x=>x.docId)))
 const found=g.find(x=>x.docId==='Foundational_Discipline')
 ok('rows grouped into one remarks array', found.remarks.length===2)
-ok('remark_order respected', found.remarks[0].key==='r2'&&found.remarks[1].key==='r1', JSON.stringify(found.remarks.map(x=>x.key)))
+ok('remark_order respected', found.remarks[0].key==='foundational_r2'&&found.remarks[1].key==='foundational_r1', JSON.stringify(found.remarks.map(x=>x.key)))
 ok('order renumbered 1..n', found.remarks.every((x,i)=>x.order===i+1))
 ok('category_order used as doc order', found.order===1, found.order)
 
 const db2=[{id:'Middle_Discipline',order:5,remarks:[
-  {key:'r7',text:'keep me',type:'positive',order:1},{key:'r8',text:'old text',type:'positive',order:2}]}]
+  {key:'middle_r7',text:'keep me',type:'positive',order:1},{key:'middle_r8',text:'old text',type:'positive',order:2}]}]
 const rows2=run([R({grade_band:'Middle',category:'Discipline',remark_key:'r8',text:'new text',type:'negative',remark_order:'1'})], db2)
 const g2=groupRemarkRows(rows2.filter(x=>x._status!=='ERROR'), db2)[0]
-ok('untouched existing remark is KEPT', g2.remarks.some(x=>x.key==='r7'&&x.text==='keep me'), JSON.stringify(g2.remarks))
-ok('mentioned remark is REPLACED', g2.remarks.find(x=>x.key==='r8').text==='new text')
-ok('replaced remark keeps its key', g2.remarks.filter(x=>x.key==='r8').length===1)
+ok('untouched existing remark is KEPT', g2.remarks.some(x=>x.key==='middle_r7'&&x.text==='keep me'), JSON.stringify(g2.remarks))
+ok('mentioned remark is REPLACED', g2.remarks.find(x=>x.key==='middle_r8').text==='new text')
+ok('replaced remark keeps its key', g2.remarks.filter(x=>x.key==='middle_r8').length===1)
 ok('existing doc order preserved when file omits it', g2.order===5, g2.order)
 
 console.log(`\n${pass} passed, ${fail} failed`)
