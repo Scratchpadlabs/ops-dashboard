@@ -130,7 +130,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, provide } from 'vue'
+import { ref, computed, onMounted, provide, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { getDocs, query, orderBy, limit, setDoc, serverTimestamp } from 'firebase/firestore'
 import Select from 'primevue/select'
@@ -143,7 +143,7 @@ import TabPanels from 'primevue/tabpanels'
 import TabPanel from 'primevue/tabpanel'
 
 import { useStepUpAuth } from '../composables/useStepUpAuth.js'
-import { rootSchoolsCollection, rootSchoolDoc } from '../firebase/schoolCollections.js'
+import { rootSchoolsCollection, rootSchoolDoc, schoolCollection } from '../firebase/schoolCollections.js'
 import { activeYear } from '../composables/useAcademicYear.js'
 import { auth } from '../firebase/config'
 import TermsScalesTab from '../components/school-setup/TermsScalesTab.vue'
@@ -180,12 +180,49 @@ const activeTab = ref('overview')
  */
 const resetTargetSchoolId = ref(null)
 
-/** Outstanding school data for the selected school, recorded at wizard finish. */
+/**
+ * Outstanding school data for the selected school.
+ *
+ * `setup_outstanding` is written ONCE, at wizard finish, and never recomputed —
+ * so a school that has since had its teachers and students imported still
+ * advertised "Awaiting staffs, students" indefinitely, with the real rows
+ * sitting in Firestore. The recorded array is now only the starting list; each
+ * entry is re-checked against the collection it names and dropped once that
+ * collection has anything in it.
+ *
+ * `surveys` is not a school subcollection and has no cheap emptiness check
+ * here, so it is left as recorded rather than guessed at.
+ */
+const outstandingLive = ref(null)   // null = not checked yet, fall back to the record
+
 const outstandingForSelected = computed(() => {
   const s = selectedSchoolObject.value
   if (!s?.setup_completed_at) return []
-  return Array.isArray(s.setup_outstanding) ? s.setup_outstanding : []
+  const recorded = Array.isArray(s.setup_outstanding) ? s.setup_outstanding : []
+  return outstandingLive.value ?? recorded
 })
+
+async function refreshOutstanding() {
+  outstandingLive.value = null
+  const s = selectedSchoolObject.value
+  const recorded = Array.isArray(s?.setup_outstanding) ? s.setup_outstanding : []
+  if (!s?.setup_completed_at || !recorded.length) return
+  try {
+    const checks = await Promise.all(recorded.map(async key => {
+      if (key === 'surveys') return key
+      // limit(1) — this only asks "is it still empty?", never counts the rows.
+      const snap = await getDocs(query(schoolCollection(s.id, key), limit(1)))
+      return snap.empty ? key : null
+    }))
+    outstandingLive.value = checks.filter(Boolean)
+  } catch (e) {
+    // A failed check must not invent progress — fall back to what was recorded.
+    console.error('Could not re-check outstanding school data', e)
+    outstandingLive.value = null
+  }
+}
+
+watch(selectedSchoolObject, refreshOutstanding, { immediate: true })
 
 function onResetTarget(schoolId) {
   resetTargetSchoolId.value = schoolId || null
