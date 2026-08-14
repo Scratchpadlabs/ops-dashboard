@@ -255,6 +255,29 @@ export async function classHealthRemote() {
   return res.data
 }
 
+// ── AAP remarks (Awareness / Sensitivity / Creativity) ────────────────────
+// Server-side for the usual reason plus a stronger one: this is an OpenAI
+// call per student PER SUBJECT, deliberately paced, for a whole class — a run
+// that a browser tab has no business owning. Same 540s ceiling as the other
+// long callables, matching the function's own timeout_sec.
+//
+// The payload is snake_case where the rest of this file is camelCase: the
+// function reads school_id / class_id / student_ids literally (see
+// functions/generate_aap_remarks/main.py), so the mapping happens here rather
+// than leaking that spelling into the page.
+//
+// `studentIds` is the regenerate-one-student path — the ONLY way to force a
+// remark that is already approved to be written again. Omitted entirely for a
+// whole-class run so the function applies its skip-approved rule.
+const generateAapRemarksCallable = httpsCallable(functions, 'generate_aap_remarks', { timeout: 540_000 })
+
+export async function generateAapRemarksRemote({ schoolId, classId, studentIds }) {
+  const payload = { school_id: schoolId, class_id: classId }
+  if (studentIds?.length) payload.student_ids = studentIds
+  const res = await generateAapRemarksCallable(payload)
+  return res.data
+}
+
 export function downloadReport({ filename, mime, content_base64 }) {
   const bytes = Uint8Array.from(atob(content_base64), c => c.charCodeAt(0))
   downloadBlob(new Blob([bytes], { type: mime }), filename)

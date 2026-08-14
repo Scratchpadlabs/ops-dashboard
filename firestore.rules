@@ -50,6 +50,34 @@ service cloud.firestore {
     // which the authenticated-read rule above already covers, and it never
     // writes a survey document at all.
 
+    // AAP remarks: schools/{id}/students/{studentId}/aap_remarks/{subject}.
+    // A level deeper than the rule above can reach ({collection} matches ONE
+    // segment), so without this the review screen cannot read a remark, let
+    // alone edit one.
+    //
+    // Write is granted to ops admins on purpose, unlike the generated data
+    // elsewhere in this file: reviewing a remark — rewriting the comment,
+    // flipping approved / needs_review — is a direct client write by design.
+    // Generation itself is generate_aap_remarks through the Admin SDK, which
+    // bypasses these rules. Delete is not granted: a remark is superseded by
+    // regenerating it, never removed from the dashboard.
+    match /schools/{schoolId}/students/{studentId}/aap_remarks/{subject} {
+      allow read: if isAuthenticated();
+      allow create, update: if isOpsAdmin();
+    }
+
+    // schools/{id}/aap_jobs/{jobId} — the generator's own progress record,
+    // which the dashboard polls for the progress bar. No rule is added here
+    // ON PURPOSE: read is already covered by the schools/{schoolId}/
+    // {collection}/{docId} rule above, and 'aap_jobs' is deliberately absent
+    // from that rule's writable-collection list, so a run log can be read but
+    // not forged or amended from a browser.
+    //
+    // The shared `aap_framework` collection (the Stage x Subject descriptor
+    // rubric, seeded by tools/migrate_aap_framework.py) gets no rule either —
+    // only the Cloud Function reads it, via the Admin SDK. The deny-all rule
+    // at the bottom is the correct answer for the client.
+
     // Sheets Status (Phase 5) only toggles isFrozen / deletes empty stray docs
     // on existing smart_sheet_entries — never creates sheets (teacher app
     // find-or-creates those). Scoped separately since this collection is

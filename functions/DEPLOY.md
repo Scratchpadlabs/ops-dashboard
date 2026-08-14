@@ -1,5 +1,100 @@
 # Cloud Functions — Deploy Guide
 
+## generate_aap_remarks (AAP report-card remarks)
+
+Backs the **AAP Remarks** page (`/aap-remarks`, ops-admin only, same step-up
+password gate as School Setup). One callable: for a class, it resolves each
+student's Beginner/Proficient/Advanced level per subject from the AAP survey
+responses (survey ids prefixed `zzz`), looks the descriptor text up in the
+shared `aap_framework` collection, and writes a 40-55 word comment to
+`schools/{id}/students/{sid}/aap_remarks/{subject}`.
+
+Server-side because it is an OpenAI call per student **per subject**,
+deliberately paced — a whole class is minutes of work that must not depend on
+a browser tab staying open. The page calls it via
+`generateAapRemarksRemote` (`src/utils/api.js`), which maps its camelCase
+arguments onto the `school_id` / `class_id` / `student_ids` the function
+actually reads.
+
+What the dashboard does NOT use this function for: editing a comment and
+flipping `approved` / `needs_review` are direct client writes to the remark
+doc (see firestore.rules). The function is only ever called to generate text.
+
+### Files needed in the folder:
+- main.py ✅
+- requirements.txt ✅
+
+### Seed the framework first (once, and after any framework.csv change):
+```
+pip install --quiet google-cloud-firestore
+python3 tools/migrate_aap_framework.py "/path/to/AAP REMARKS/framework.csv"
+```
+`aap_framework` is shared by every school — one doc per Stage x Subject, id
+`{Stage}_{Subject}`. A subject missing from it is SKIPPED silently by the
+function (no comment is written for it), so if a class comes back with fewer
+remarks than expected, check this collection before suspecting the survey
+data. The script's service-account path and project id are hardcoded at the
+top of the file — it runs from an operator's machine, not from CI.
+
+### Deploy:
+```
+cd functions/generate_aap_remarks
+
+gcloud functions deploy generate_aap_remarks \
+  --gen2 --runtime python312 --region asia-south1 \
+  --source . --entry-point generate_aap_remarks \
+  --trigger-http --allow-unauthenticated --project clarified-1501 \
+  --memory 512MB --timeout 540s --max-instances 3 \
+  --set-secrets OPENAI_API_KEY=OPENAI_API_KEY:latest
+```
+Same `OPENAI_API_KEY` Secret Manager secret as process_import — see that
+section for how to create it. As with the other callables here, the flags
+above (not the `@https_fn.on_call(...)` decorator arguments) are what actually
+size the Cloud Run resource, since this repo deploys with plain `gcloud`.
+
+### firestore.rules
+One new rule: `schools/{id}/students/{studentId}/aap_remarks/{subject}` —
+authenticated read, ops-admin create/update, no delete. It is needed because
+the generic `schools/{schoolId}/{collection}/{docId}` rule matches exactly one
+segment and cannot reach a remark. `aap_jobs` (the progress doc the page polls
+during a run) and `aap_framework` are deliberately left with no client write
+path at all — both are written only through the Admin SDK.
+
+### Known gaps — read before relying on this in production
+
+1. **No caller check.** Every other callable in this repo verifies `req.auth`
+   against the `OPS_ADMIN_EMAILS` allowlist before doing anything;
+   `generate_aap_remarks` verifies nothing. Combined with
+   `--allow-unauthenticated` (required for callables at the IAM layer), any
+   signed-in user of any app on this Firebase project — including a teacher —
+   can invoke it, spend OpenAI credit, and overwrite unapproved remarks. The
+   `/aap-remarks` page is ops-admin-only, but that is a UI gate, not a
+   security boundary. Adding `_require_ops_admin(req)` at the top of the
+   handler, as `assign_survey` and `commit_import` do, needs a redeploy.
+2. **Progress can only be followed indirectly.** The callable returns its
+   `jobId` when the run FINISHES, so the id is useless for a live progress
+   bar. The page instead watches `aap_jobs` for the newest job on that class
+   that wasn't there when the button was pressed (`watchNewJob` in
+   `useAapRemarks.js`). Writing the job doc id into the response early, or
+   accepting a client-generated job id like `assign_survey` does with `runId`,
+   would let this be a plain document listener.
+3. **`totalStudents` / `processedStudents` count student x SUBJECT records**,
+   not students. The page labels them "remarks" for that reason.
+4. **Stage is derived from the grade token, not from the class doc.**
+   `GRADE_TO_STAGE` in main.py maps NURSERY-II to Foundation, III-V to
+   Preparatory and VI-XII to Middle, and falls back to Preparatory for a grade
+   it doesn't recognise (a school writing "1"/"2" instead of "I"/"II" hits that
+   fallback for every class). Class docs carry their own `stage` field, which
+   is the school's own answer to the same question — worth reconciling before
+   a school with unusual grade tokens runs this.
+5. **The gender assumption in main.py's docstring is now confirmed** and can
+   be struck: student docs carry `gender`, canonicalised to `Male` / `Female`
+   by the import pipeline (`clean_gender` in generate_import/normalize.py) and
+   declared in `src/schemas/schoolSchema.js`. Note the silent default though —
+   a student whose gender is blank or unrecognised is written about as "She".
+
+---
+
 ## generate_pending_letter (v2: compose dialog, draft/render modes)
 
 PDF per school listing outstanding pending items from the Data Receivable
