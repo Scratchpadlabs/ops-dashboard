@@ -62,15 +62,17 @@ path at all — both are written only through the Admin SDK.
 
 ### Known gaps — read before relying on this in production
 
-1. **No caller check.** Every other callable in this repo verifies `req.auth`
-   against the `OPS_ADMIN_EMAILS` allowlist before doing anything;
-   `generate_aap_remarks` verifies nothing. Combined with
-   `--allow-unauthenticated` (required for callables at the IAM layer), any
-   signed-in user of any app on this Firebase project — including a teacher —
-   can invoke it, spend OpenAI credit, and overwrite unapproved remarks. The
-   `/aap-remarks` page is ops-admin-only, but that is a UI gate, not a
-   security boundary. Adding `_require_ops_admin(req)` at the top of the
-   handler, as `assign_survey` and `commit_import` do, needs a redeploy.
+1. **The caller check is in the source but NOT in the deployed revision.**
+   `_require_ops_admin(req)` was added after the first deploy, so until the
+   command above is run again, production still accepts any signed-in user of
+   any app on this project — teachers included — who can then spend OpenAI
+   credit and overwrite unapproved remarks. `--allow-unauthenticated` only
+   lets the request reach the function at the IAM layer, and the
+   `/aap-remarks` page being ops-admin-only is a UI gate, not a boundary.
+   **Redeploy before this is used on a real school.** Verify afterwards by
+   calling it as a non-admin: the run should fail with PERMISSION_DENIED
+   ("Not authorized to generate AAP remarks") and write no job doc. Runs from
+   the new revision record their caller as `startedBy` on the job doc.
 2. **Progress can only be followed indirectly.** The callable returns its
    `jobId` when the run FINISHES, so the id is useless for a live progress
    bar. The page instead watches `aap_jobs` for the newest job on that class
@@ -87,11 +89,12 @@ path at all — both are written only through the Admin SDK.
    fallback for every class). Class docs carry their own `stage` field, which
    is the school's own answer to the same question — worth reconciling before
    a school with unusual grade tokens runs this.
-5. **The gender assumption in main.py's docstring is now confirmed** and can
-   be struck: student docs carry `gender`, canonicalised to `Male` / `Female`
-   by the import pipeline (`clean_gender` in generate_import/normalize.py) and
-   declared in `src/schemas/schoolSchema.js`. Note the silent default though —
-   a student whose gender is blank or unrecognised is written about as "She".
+5. **Gender is confirmed** — the field is `gender`, canonicalised to `Male` /
+   `Female` by the import pipeline (`clean_gender` in
+   generate_import/normalize.py) and declared in `src/schemas/schoolSchema.js`.
+   Recorded in main.py's docstring now, in place of the open question that was
+   there. Note the silent default it flags: a student whose gender is blank or
+   unrecognised is written about as "She".
 
 ---
 
