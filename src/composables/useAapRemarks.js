@@ -47,9 +47,10 @@ export const TRAITS = ['awareness', 'sensitivity', 'creativity']
 export const MIN_WORDS = 40
 export const MAX_WORDS = 55
 
-export function countWords(text) {
-  return String(text || '').trim().split(/\s+/).filter(Boolean).length
-}
+// Defined in utils/aapExport.js and re-exported here for the editor's word
+// counter. It lives there so the export module has no Firebase import and can
+// be checked by tools/check_aap_export.mjs.
+export { countWords } from '../utils/aapExport.js'
 
 export function useAapRemarks() {
   const schools = ref([])
