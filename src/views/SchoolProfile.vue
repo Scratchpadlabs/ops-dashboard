@@ -1248,7 +1248,7 @@ async function deleteDocument(docEntry) {
 function defaultPhase1() {
   return [
     { id: 'whatsapp_group',  label: 'Create WhatsApp Group',                    done: false, comment: '', date: '' },
-    { id: 'onboarding_doc',  label: 'Onboarding Doc Sent',                      done: false, comment: '', date: '' },
+    { id: 'onboarding_doc',  label: 'School Setup Guide Sent',                  done: false, comment: '', date: '' },
     { id: 'data_entry',      label: 'Data Entry Mode',                          done: false, comment: '', date: '', type: 'select', options: ['Smartsheets', 'LMS'], value: '' },
     { id: 'academic_call',   label: 'Academic Structure & Calculation Call',    done: false, comment: '', date: '' },
   ]
@@ -1305,6 +1305,42 @@ function freshOperations() {
     terms:              defaultTerms(2),
     final_term:         defaultFinalTerm(),
   }
+}
+
+/**
+ * Checklist labels that have been RENAMED since schools started recording
+ * against them, keyed by the item id.
+ *
+ * Every school's operations document stores its own copy of each item —
+ * label included — and the page renders what is stored, so renaming a label
+ * in the defaults above only ever reaches schools created afterwards. Without
+ * this pass, "School Setup Guide Sent" would appear for new schools while
+ * every existing one still read "Onboarding Doc Sent".
+ *
+ * The id is the identity and never changes: it is what carryOver and the
+ * legacy migration match on, so renaming one would orphan the done/date/
+ * comment already recorded against it.
+ *
+ * Applied on load rather than written back on its own: the repaired object is
+ * what saveOperations persists the next time anything on the page is touched.
+ */
+const RENAMED_LABELS = {
+  onboarding_doc: 'School Setup Guide Sent',
+  inclusion: 'HPW Inclusion',       // was corrected before this map existed
+}
+
+function applyRenamedLabels(ops) {
+  const lists = [
+    ops.phase1, ops.phase2, ops.final_term,
+    ...(ops.terms || []).map(t => t.items),
+  ]
+  for (const items of lists) {
+    for (const item of items || []) {
+      const renamed = RENAMED_LABELS[item?.id]
+      if (renamed) item.label = renamed
+    }
+  }
+  return ops
 }
 
 // Carry done/comment/date from a legacy item into a new default item.
@@ -1370,9 +1406,7 @@ async function loadOperations() {
     if (snap.exists()) {
       const data = snap.data()
       if (data.phase1) {
-        // Fix label on docs migrated before the HPW correction.
-        ;(data.terms || []).forEach(t => (t.items || []).forEach(i => { if (i.id === 'inclusion') i.label = 'HPW Inclusion' }))
-        operations.value = data
+        operations.value = applyRenamedLabels(data)
       } else {
         // Legacy structure — migrate once and persist.
         const migrated = migrateOperations(data)
