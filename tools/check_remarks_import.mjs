@@ -1,4 +1,6 @@
-import { makeRemarkRowClassifier, groupRemarkRows } from '../src/utils/remarksImport.js'
+import {
+  makeRemarkRowClassifier, groupRemarkRows, sampleRemarkRows, REMARK_CSV_COLUMNS,
+} from '../src/utils/remarksImport.js'
 let pass=0, fail=0
 const ok=(name,cond,extra='')=>{ cond?pass++:fail++; console.log(`  ${cond?'ok  ':'FAIL'} ${name}${cond?'':'  <-- '+extra}`) }
 const run=(rows,cats=[])=>{ const c=makeRemarkRowClassifier(cats); return rows.map((r,i)=>c(r,i)) }
@@ -85,6 +87,68 @@ ok('untouched existing remark is KEPT', g2.remarks.some(x=>x.key==='middle_r7'&&
 ok('mentioned remark is REPLACED', g2.remarks.find(x=>x.key==='middle_r8').text==='new text')
 ok('replaced remark keeps its key', g2.remarks.filter(x=>x.key==='middle_r8').length===1)
 ok('existing doc order preserved when file omits it', g2.order===5, g2.order)
+
+console.log('=== class_ids scoping ===')
+const CLASSES=['III_A','III_B','IV_A']
+const runC=(rows,cats=[])=>{ const c=makeRemarkRowClassifier(cats,CLASSES); return rows.map((r,i)=>c(r,i)) }
+const groupOf=(rows,cats=[])=>groupRemarkRows(rows.filter(x=>x._status!=='ERROR'),cats)[0]
+
+let c=runC([R({category:'Discipline',text:'a',remark_key:'r1',class_ids:'III_A; III_B'})])
+ok('ids parsed off a semicolon list', c[0]._status!=='ERROR', JSON.stringify(c[0]._reason))
+ok('   ...and reach the group', JSON.stringify(groupOf(c).classIds)==='["III_A","III_B"]', JSON.stringify(groupOf(c).classIds))
+
+c=runC([R({category:'Discipline',text:'a',remark_key:'r1',class_ids:'III_A,IV_A|III_B'})])
+ok('comma and pipe separate too', JSON.stringify(groupOf(c).classIds)==='["III_A","IV_A","III_B"]', JSON.stringify(groupOf(c).classIds))
+
+c=runC([R({category:'Discipline',text:'a',remark_key:'r1',class_ids:''})])
+ok('blank does NOT write classIds at all', !('classIds' in groupOf(c)), JSON.stringify(groupOf(c).classIds))
+
+c=runC([R({category:'Discipline',text:'a',remark_key:'r1',class_ids:'all'})])
+ok('"all" writes an empty array (widen to every class)',
+  'classIds' in groupOf(c) && groupOf(c).classIds.length===0, JSON.stringify(groupOf(c).classIds))
+ok('   ...and says so on the row', /widened to every class/.test(c[0]._warning||''), c[0]._warning)
+
+c=runC([R({category:'Discipline',text:'a',remark_key:'r1',class_ids:'III_C'})])
+ok('an unknown class id is an ERROR, not a silent scope-to-nobody',
+  c[0]._status==='ERROR'&&/not a class/.test(c[0]._reason), JSON.stringify(c[0]._reason))
+ok('   ...naming the offending value', /III_C/.test(c[0]._reason||''), c[0]._reason)
+
+// Without a known-class list (caller could not load them) the check is skipped
+// rather than rejecting everything.
+const cNoList=makeRemarkRowClassifier([])
+ok('unvalidated when the class list is unknown',
+  cNoList(R({category:'D',text:'a',remark_key:'r1',class_ids:'ANYTHING'}),0)._status!=='ERROR')
+
+c=runC([R({category:'Discipline',text:'a',remark_key:'r1',class_ids:'III_A'}),
+        R({category:'Discipline',text:'b',remark_key:'r2',class_ids:'III_B'})])
+ok('rows of one category disagreeing -> union', JSON.stringify(groupOf(c).classIds)==='["III_A","III_B"]', JSON.stringify(groupOf(c).classIds))
+ok('   ...and the disagreement is flagged', /differs from an earlier row/.test(c[1]._warning||''), c[1]._warning)
+
+c=runC([R({category:'Discipline',text:'a',remark_key:'r1',class_ids:'III_A'}),
+        R({category:'Discipline',text:'b',remark_key:'r2',class_ids:''})])
+ok('a blank row does not widen a category its siblings scoped',
+  JSON.stringify(groupOf(c).classIds)==='["III_A"]', JSON.stringify(groupOf(c).classIds))
+
+c=runC([R({category:'Discipline',text:'a',remark_key:'r1',class_ids:'III_A'}),
+        R({category:'Discipline',text:'b',remark_key:'r2',class_ids:'all'})])
+ok('"all" anywhere in the group wins outright', groupOf(c).classIds.length===0, JSON.stringify(groupOf(c).classIds))
+
+c=runC([R({grade_band:'Foundational',category:'Discipline',text:'a',remark_key:'r1',class_ids:'III_A'}),
+        R({grade_band:'Middle',category:'Discipline',text:'b',remark_key:'r2',class_ids:'IV_A'})])
+const both=groupRemarkRows(c.filter(x=>x._status!=='ERROR'),[])
+ok('scope stays with its own category doc',
+  both.find(x=>x.docId==='Foundational_Discipline').classIds[0]==='III_A'
+  && both.find(x=>x.docId==='Middle_Discipline').classIds[0]==='IV_A',
+  JSON.stringify(both.map(x=>[x.docId,x.classIds])))
+
+console.log('=== sample CSV stays importable ===')
+const sample=sampleRemarkRows()
+const sampleRows=(() => { const cl=makeRemarkRowClassifier([],['III_A','III_B']); return sample.map((r,i)=>cl(r,i)) })()
+ok('every sample row classifies without error',
+  sampleRows.every(r=>r._status!=='ERROR'), JSON.stringify(sampleRows.filter(r=>r._status==='ERROR').map(r=>r._reason)))
+ok('sample demonstrates all three class_ids states',
+  sample.some(r=>r.class_ids==='') && sample.some(r=>r.class_ids==='all') && sample.some(r=>/III_A/.test(r.class_ids)))
+ok('class_ids is a declared column', REMARK_CSV_COLUMNS.includes('class_ids'), JSON.stringify(REMARK_CSV_COLUMNS))
 
 console.log(`\n${pass} passed, ${fail} failed`)
 process.exit(fail?1:0)

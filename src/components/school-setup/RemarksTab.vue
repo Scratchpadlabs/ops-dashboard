@@ -457,7 +457,10 @@ const bandOf = cat => bandOfId(cat?.id)
 // keys earlier rows already claimed and let collisions through.
 let activeClassifier = null
 function classifyRow(raw, index) {
-  if (index === 0) activeClassifier = makeRemarkRowClassifier(categories.value)
+  // classOptions gives the classifier the school's real class ids, so a
+  // typo'd class_ids cell is rejected in the preview rather than scoping a
+  // category to a class that does not exist.
+  if (index === 0) activeClassifier = makeRemarkRowClassifier(categories.value, classOptions.value)
   return activeClassifier(raw, index)
 }
 
@@ -470,6 +473,11 @@ async function runImport(validRows) {
     // malformed group cannot land a half-written batch.
     guardedBatchSet(batch, 'remark_categories', schoolDoc(props.schoolId, 'remark_categories', g.docId), {
       label: g.label, order: g.order, remarks: g.remarks,
+      // Only when the file said something about scope — `classIds` absent from
+      // the group means the column was blank, and writing it anyway would
+      // unscope a category someone narrowed in the UI. Sorted here because
+      // grade-aware ordering lives with this component, not in the pure module.
+      ...('classIds' in g ? { classIds: [...g.classIds].sort(compareClassIds) } : {}),
       ...(g.isNew ? { created_at: serverTimestamp(), created_by: auth.currentUser?.email || 'unknown' }
                   : { updated_at: serverTimestamp(), updated_by: auth.currentUser?.email || 'unknown' }),
     }, { merge: true })

@@ -27,8 +27,39 @@
 
 export const REMARK_CSV_COLUMNS = [
   'grade_band', 'category', 'category_order', 'remark_key', 'remark_order', 'text', 'type',
+  'class_ids',
 ]
 export const REMARK_TYPES = ['positive', 'negative']
+
+/** Written in a class_ids cell to mean "every class", i.e. classIds: []. */
+export const ALL_CLASSES = 'all'
+
+/**
+ * class_ids describes the CATEGORY, not the remark — the field lives on the
+ * category document — so every row of a category is really repeating the same
+ * value. Three states, and the difference between the first two matters:
+ *
+ *   blank   the file did not say. classIds is left ALONE on write, so an
+ *           import of new remark text cannot silently unscope a category
+ *           someone narrowed in the UI.
+ *   "all"   said explicitly. Writes [] — the only way a CSV can widen a
+ *           category back to every class.
+ *   ids     one or more class doc ids, separated by ; , or |
+ *
+ * @returns {{ specified: boolean, all: boolean, ids: string[], unknown: string[] }}
+ */
+export function parseClassIds(cell, knownClassIds = []) {
+  const text = String(cell ?? '').trim()
+  if (!text) return { specified: false, all: false, ids: [], unknown: [] }
+  if (text.toLowerCase() === ALL_CLASSES) return { specified: true, all: true, ids: [], unknown: [] }
+
+  const parts = text.split(/[;,|]/).map(p => p.trim()).filter(Boolean)
+  const known = new Set(knownClassIds)
+  // Checked against the school's real classes when they are known: a typo here
+  // scopes the category to nobody at all, and nothing downstream would say so.
+  const unknown = known.size ? parts.filter(p => !known.has(p)) : []
+  return { specified: true, all: false, ids: parts, unknown }
+}
 
 export function slugPart(s) {
   return (s || '').trim().replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_|_$/g, '')
@@ -75,7 +106,9 @@ export function effectiveRemarkKey(band, key) {
 }
 
 /**
- * @param {Array} categories  current remark_categories docs ({id, order, remarks})
+ * @param {Array} categories       current remark_categories docs ({id, order, remarks})
+ * @param {Array} knownClassIds    the school's class doc ids, for validating
+ *                                 class_ids. Omit to skip that check.
  * @returns {(raw: Object, index: number) => Object} classifier for CsvImportDialog
  *
  * Stateful across rows on purpose: a key claimed by an earlier row of the same
@@ -83,8 +116,9 @@ export function effectiveRemarkKey(band, key) {
  * file is exactly as damaging as one against the database. `index === 0`
  * marks a freshly-picked file and resets that state.
  */
-export function makeRemarkRowClassifier(categories) {
+export function makeRemarkRowClassifier(categories, knownClassIds = []) {
   let claimedKeys = new Map()   // key -> docId claiming it in THIS file
+  let classScopes = new Map()   // docId -> the class_ids an earlier row gave it
   let autoKeyCounter = 0
 
   const existingKeyOwners = () => {
@@ -105,6 +139,7 @@ export function makeRemarkRowClassifier(categories) {
   return function classifyRemarkRow(raw, index) {
     if (index === 0) {
       claimedKeys = new Map()
+      classScopes = new Map()
       autoKeyCounter = highestKeyNumber()
     }
 
@@ -132,6 +167,26 @@ export function makeRemarkRowClassifier(categories) {
 
     const docId = categoryDocId(band, category)
     const notes = []
+
+    const scope = parseClassIds(raw.class_ids, knownClassIds)
+    if (scope.unknown.length) {
+      return {
+        raw, _status: 'ERROR',
+        _reason: `class_ids ${scope.unknown.map(c => `"${c}"`).join(', ')} `
+          + `${scope.unknown.length === 1 ? 'is not a class' : 'are not classes'} in this school`,
+      }
+    }
+    if (scope.specified) {
+      // Rows of one category are repeating a single category-level value, so a
+      // row that disagrees with an earlier one is worth saying out loud — the
+      // write takes the union, which is not what a typo intended.
+      const signature = scope.all ? ALL_CLASSES : [...scope.ids].sort().join(',')
+      const seen = classScopes.get(docId)
+      if (seen === undefined) classScopes.set(docId, signature)
+      else if (seen !== signature) {
+        notes.push(`class_ids differs from an earlier row of "${docId}" (${seen || 'blank'}) — the category will apply to both sets`)
+      }
+    }
 
     // A blank key is allocated from the school-wide sequence rather than
     // rejected — the same rule RemarksTab's nextRemarkKey() follows.
@@ -171,12 +226,14 @@ export function makeRemarkRowClassifier(categories) {
       notes.push('replaces the existing text for this key')
     }
     if (!band) notes.push('no grade band — category applies to all grades')
+    if (scope.all) notes.push('class_ids "all" — category widened to every class')
 
     return {
       raw,
       _status: existing ? 'UPDATE' : 'CREATE',
       _warning: notes.join('; ') || undefined,
       docId, band, label: category, categoryOrder,
+      classScope: scope,
       remark: { key, text, type, order: remarkOrder },
     }
   }
@@ -195,11 +252,25 @@ export function groupRemarkRows(validRows, categories) {
   const byDoc = new Map()
   for (const r of validRows) {
     if (!byDoc.has(r.docId)) {
-      byDoc.set(r.docId, { docId: r.docId, label: r.label, order: r.categoryOrder, remarks: [] })
+      byDoc.set(r.docId, {
+        docId: r.docId, label: r.label, order: r.categoryOrder, remarks: [],
+        classIdsSpecified: false, allClasses: false, classIds: [],
+      })
     }
     const g = byDoc.get(r.docId)
     if (g.order == null && r.categoryOrder != null) g.order = r.categoryOrder
     g.remarks.push(r.remark)
+
+    // Class scope is a property of the CATEGORY, so it is accumulated over the
+    // group. "all" anywhere wins outright; otherwise the ids union, in
+    // first-seen order (the caller sorts — grade-aware ordering lives with the
+    // component, and this module stays free of that dependency).
+    const scope = r.classScope
+    if (scope?.specified) {
+      g.classIdsSpecified = true
+      if (scope.all) g.allClasses = true
+      for (const id of scope.ids) if (!g.classIds.includes(id)) g.classIds.push(id)
+    }
   }
 
   let nextOrder = categories.length ? Math.max(...categories.map(c => c.order || 0)) : 0
@@ -217,6 +288,9 @@ export function groupRemarkRows(validRows, categories) {
       label: g.label,
       order: g.order ?? existing?.order ?? (nextOrder += 1),
       remarks: merged.map((r, i) => ({ key: r.key, text: r.text, type: r.type, order: i + 1 })),
+      // Present ONLY when the file said something. Absent means the caller must
+      // not write classIds at all, leaving any existing scoping untouched.
+      ...(g.classIdsSpecified ? { classIds: g.allClasses ? [] : g.classIds } : {}),
     })
   }
   return out
@@ -228,16 +302,23 @@ export function groupRemarkRows(validRows, categories) {
  * Deliberately reuses `gr1` across bands, exactly as a real bank does, so the
  * sample demonstrates the band-prefixing rather than hiding it behind keys that
  * happen not to collide.
+ *
+ * class_ids is shown in all three of its states — blank on most rows, a
+ * specific pair on one category, and the literal "all" — because the
+ * difference between "blank" (leave the scoping alone) and "all" (widen to
+ * every class) is the one thing about this column worth demonstrating.
  */
 export function sampleRemarkRows() {
   return [
-    { grade_band: 'Foundational', category: 'General Remarks', category_order: 1, remark_key: 'gr1', remark_order: 1, text: 'Enjoys learning new things', type: 'positive' },
-    { grade_band: 'Foundational', category: 'General Remarks', category_order: 1, remark_key: 'gr2', remark_order: 2, text: 'Encouraged to pay more attention in class', type: 'negative' },
-    { grade_band: 'Foundational', category: 'Physical Development', category_order: 2, remark_key: 'phys1', remark_order: 1, text: 'Practices basic hygiene habits like washing hands before and after meals.', type: 'positive' },
-    { grade_band: 'Foundational', category: 'Physical Development', category_order: 2, remark_key: 'phys2', remark_order: 2, text: 'Still developing awareness of basic safety rules.', type: 'negative' },
-    { grade_band: 'Preparatory', category: 'General Remarks', category_order: 1, remark_key: 'gr1', remark_order: 1, text: 'Always submits work on time', type: 'positive' },
-    { grade_band: 'Preparatory', category: 'General Remarks', category_order: 1, remark_key: 'gr2', remark_order: 2, text: 'Encouraged to finish work on time', type: 'negative' },
-    { grade_band: 'Middle', category: 'General Remarks', category_order: 1, remark_key: 'gr1', remark_order: 1, text: 'Regular in submissions', type: 'positive' },
-    { grade_band: 'Middle', category: 'General Remarks', category_order: 1, remark_key: 'gr2', remark_order: 2, text: 'Encouraged to improve time management', type: 'negative' },
+    { grade_band: 'Foundational', category: 'General Remarks', category_order: 1, remark_key: 'gr1', remark_order: 1, text: 'Enjoys learning new things', type: 'positive', class_ids: '' },
+    { grade_band: 'Foundational', category: 'General Remarks', category_order: 1, remark_key: 'gr2', remark_order: 2, text: 'Encouraged to pay more attention in class', type: 'negative', class_ids: '' },
+    { grade_band: 'Foundational', category: 'Physical Development', category_order: 2, remark_key: 'phys1', remark_order: 1, text: 'Practices basic hygiene habits like washing hands before and after meals.', type: 'positive', class_ids: '' },
+    { grade_band: 'Foundational', category: 'Physical Development', category_order: 2, remark_key: 'phys2', remark_order: 2, text: 'Still developing awareness of basic safety rules.', type: 'negative', class_ids: '' },
+    { grade_band: 'Preparatory', category: 'General Remarks', category_order: 1, remark_key: 'gr1', remark_order: 1, text: 'Always submits work on time', type: 'positive', class_ids: 'all' },
+    { grade_band: 'Preparatory', category: 'General Remarks', category_order: 1, remark_key: 'gr2', remark_order: 2, text: 'Encouraged to finish work on time', type: 'negative', class_ids: 'all' },
+    { grade_band: 'Preparatory', category: 'Socio-Emotional Development', category_order: 2, remark_key: 'sed1', remark_order: 1, text: 'Recognizes and expresses emotions using words or gestures.', type: 'positive', class_ids: 'III_A; III_B' },
+    { grade_band: 'Preparatory', category: 'Socio-Emotional Development', category_order: 2, remark_key: 'sed2', remark_order: 2, text: 'Still learning to name what they are feeling.', type: 'negative', class_ids: 'III_A; III_B' },
+    { grade_band: 'Middle', category: 'General Remarks', category_order: 1, remark_key: 'gr1', remark_order: 1, text: 'Regular in submissions', type: 'positive', class_ids: '' },
+    { grade_band: 'Middle', category: 'General Remarks', category_order: 1, remark_key: 'gr2', remark_order: 2, text: 'Encouraged to improve time management', type: 'negative', class_ids: '' },
   ]
 }
