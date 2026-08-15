@@ -32,8 +32,11 @@ python3 tools/migrate_aap_framework.py "/path/to/AAP REMARKS/framework.csv"
 `aap_framework` is shared by every school — one doc per Stage x Subject, id
 `{Stage}_{Subject}`. A subject missing from it is SKIPPED silently by the
 function (no comment is written for it), so if a class comes back with fewer
-remarks than expected, check this collection before suspecting the survey
-data. The script's service-account path and project id are hardcoded at the
+remarks than expected — or with none at all — check this collection before
+suspecting the survey data. The script ends with the two things that make a
+row unreachable: the Stage spellings it wrote (only `Foundation`,
+`Preparatory` and `Middle` are ever looked up) and the exact Subject Names,
+which have to match the subject token in the survey response doc ids. The script's service-account path and project id are hardcoded at the
 top of the file — it runs from an operator's machine, not from CI.
 
 ### Deploy:
