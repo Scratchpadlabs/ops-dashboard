@@ -1,0 +1,174 @@
+# Build and deploy the teacher + student apps for ONE school, to ONE Hosting site.
+#
+# This workflow lives in ops-dashboard on purpose. The teacher repo
+# (Scratchpad-Labs/scratchpad_teacher) is treated as READ-ONLY: nothing here
+# ever commits to it. That constraint is why this exists at all rather than
+# dispatching the teacher repo's own deploy.yml — that workflow resolves its
+# target from schools.json / .firebaserc / firebase.json, and adding a school
+# there means committing to the teacher repo.
+#
+# Instead we check the teacher repo out, build it with the school's id injected
+# at build time (VITE_SCHOOL_ID / --dart-define=SCHOOL_ID, exactly as the teacher
+# repo's own CI does), and deploy with a firebase.json GENERATED IN THE RUNNER.
+# That generated config uses hosting."site" rather than hosting."target", which
+# addresses a Hosting site directly and needs no .firebaserc target alias.
+#
+# The generated file overwrites teacher/firebase.json inside the ephemeral
+# checkout. It is never committed and never pushed — the runner is thrown away.
+#
+# Normally invoked by the `hosting_provision` Cloud Function via the GitHub
+# workflow_dispatch API, but it is safe to run by hand from the Actions tab.
+
+name: Deploy School (teacher + student)
+
+on:
+  workflow_dispatch:
+    inputs:
+      school_id:
+        description: 'Firestore school doc id, e.g. Samartha_International_School'
+        required: true
+      site_id:
+        description: 'Firebase Hosting site id to deploy to, e.g. samartha-international'
+        required: true
+      teacher_ref:
+        description: 'Branch/tag/SHA of scratchpad_teacher to build'
+        required: false
+        default: 'main'
+      student_ref:
+        description: 'Branch/tag/SHA of scratchpad_student to build'
+        required: false
+        default: 'main'
+
+# One deploy per site at a time. Two concurrent runs against the same site race
+# on the Hosting release and the loser silently wins nothing useful.
+concurrency:
+  group: deploy-school-${{ inputs.site_id }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout teacher app (read-only)
+        uses: actions/checkout@v4
+        with:
+          repository: Scratchpad-Labs/scratchpad_teacher
+          ref: ${{ inputs.teacher_ref }}
+          token: ${{ secrets.CROSS_REPO_PAT }}
+          path: teacher
+          persist-credentials: false
+
+      - name: Checkout student app (read-only)
+        uses: actions/checkout@v4
+        with:
+          repository: Scratchpad-Labs/scratchpad_student
+          ref: ${{ inputs.student_ref }}
+          token: ${{ secrets.CROSS_REPO_PAT }}
+          path: student
+          persist-credentials: false
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Build student app
+        working-directory: student
+        run: |
+          flutter pub get
+          flutter build web --release \
+            --base-href=/student/ \
+            --dart-define=SCHOOL_ID="${{ inputs.school_id }}"
+
+      # Vite copies public/ into dist/, so the Flutter build has to land here
+      # BEFORE `pnpm build` runs. Same ordering as the teacher repo's own CI.
+      - name: Stage student build into teacher public/
+        run: |
+          mkdir -p teacher/public/student
+          cp -R student/build/web/* teacher/public/student/
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install pnpm
+        run: npm install -g pnpm@8
+
+      - name: Install teacher dependencies
+        working-directory: teacher
+        run: pnpm install --frozen-lockfile
+
+      - name: Build teacher app
+        working-directory: teacher
+        env:
+          VITE_SCHOOL_ID: ${{ inputs.school_id }}
+        run: pnpm build
+
+      # Runner-only config. Overwrites the checked-out firebase.json so that
+      # `firebase deploy` targets exactly one site, with the same two rewrites
+      # the teacher repo ships (student subpath first, SPA fallback second —
+      # order matters, the catch-all would otherwise swallow /student/**).
+      - name: Generate ephemeral firebase.json
+        env:
+          SITE_ID: ${{ inputs.site_id }}
+        run: |
+          # Built with python rather than a heredoc so the site id is inserted
+          # as JSON data and can never be interpreted as shell or break quoting.
+          python3 - <<'PY'
+          import json, os
+          cfg = {
+              "hosting": {
+                  "site": os.environ["SITE_ID"],
+                  "public": "dist",
+                  "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+                  "rewrites": [
+                      {"source": "/student/**", "destination": "/student/index.html"},
+                      {"source": "**", "destination": "/index.html"},
+                  ],
+              }
+          }
+          with open("teacher/firebase.json", "w") as fh:
+              json.dump(cfg, fh, indent=2)
+          print("firebase.json ->", json.dumps(cfg))
+          PY
+
+      - name: Verify build output exists
+        run: |
+          test -f teacher/dist/index.html || { echo "::error::teacher/dist/index.html missing"; exit 1; }
+          test -f teacher/dist/student/index.html || { echo "::error::student build missing from dist"; exit 1; }
+
+      - name: Install Firebase CLI
+        run: npm install -g firebase-tools
+
+      - name: Write service account credentials
+        run: |
+          printf '%s' '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > "${{ runner.temp }}/firebase-sa.json"
+
+      - name: Deploy to Hosting site ${{ inputs.site_id }}
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/firebase-sa.json
+        working-directory: teacher
+        run: |
+          firebase deploy \
+            --only hosting \
+            --project clarified-1501 \
+            --non-interactive \
+            --message "ops-dashboard: ${{ inputs.school_id }}"
+
+      - name: Remove credentials
+        if: always()
+        run: rm -f "${{ runner.temp }}/firebase-sa.json"
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### Deploy ${{ inputs.school_id }}"
+            echo ""
+            echo "- Site: \`${{ inputs.site_id }}\`"
+            echo "- Teacher ref: \`${{ inputs.teacher_ref }}\`"
+            echo "- Student ref: \`${{ inputs.student_ref }}\`"
+            echo "- URL: https://${{ inputs.site_id }}.web.app"
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -97,6 +97,7 @@
         <Tab value="sheets-status">Sheets Status</Tab>
         <Tab value="clone-school">Clone School</Tab>
         <Tab value="templates">Templates</Tab>
+        <Tab value="publish"><i class="pi pi-cloud-upload text-xs mr-1.5"></i>Publish</Tab>
       </TabList>
       <TabPanels>
         <!-- The wizards pick their own school (New School creates one, Reset
@@ -124,6 +125,7 @@
         <TabPanel value="sheets-status"><SheetsStatusTab :school-id="selectedSchoolId" /></TabPanel>
         <TabPanel value="clone-school"><CloneSchoolTab :school-id="selectedSchoolId" :school="selectedSchoolObject" /></TabPanel>
         <TabPanel value="templates"><TemplatesTab :school-id="selectedSchoolId" /></TabPanel>
+        <TabPanel value="publish"><PublishTab :school-id="selectedSchoolId" /></TabPanel>
       </TabPanels>
     </Tabs>
   </div>
@@ -157,6 +159,7 @@ import OverviewTab from '../components/school-setup/OverviewTab.vue'
 import SheetsStatusTab from '../components/school-setup/SheetsStatusTab.vue'
 import CloneSchoolTab from '../components/school-setup/CloneSchoolTab.vue'
 import TemplatesTab from '../components/school-setup/TemplatesTab.vue'
+import PublishTab from '../components/school-setup/PublishTab.vue'
 import StructureTab from '../components/school-setup/StructureTab.vue'
 import KnowledgeBaseTab from '../components/school-setup/KnowledgeBaseTab.vue'
 import ClassMapTab from '../components/school-setup/ClassMapTab.vue'
