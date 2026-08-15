@@ -193,6 +193,11 @@ export const SCHOOL_SCHEMAS = {
       label: f(STRING),
       order: f(NUMBER, { min: 1 }),
       remarks: f(ARRAY, { minLength: 1 }),
+      // Which classes this category applies to, e.g. ["III_A"]. OPTIONAL, and
+      // absent or empty means every class — the grade-band prefix on the
+      // document ID was the older, coarser way of saying the same thing, and
+      // categories predating this field must keep working untouched.
+      classIds: opt(ARRAY),
     },
     check(doc, errors) {
       const remarks = Array.isArray(doc.remarks) ? doc.remarks : []

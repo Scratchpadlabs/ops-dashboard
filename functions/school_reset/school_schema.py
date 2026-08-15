@@ -229,7 +229,16 @@ SCHOOL_SCHEMAS = {
     },
     "remark_categories": {
         "label": "Remark categories",
-        "fields": {"label": _f(STRING), "order": _f(NUMBER, min=1), "remarks": _f(ARRAY, minLength=1)},
+        "fields": {
+            "label": _f(STRING),
+            "order": _f(NUMBER, min=1),
+            "remarks": _f(ARRAY, minLength=1),
+            # Which classes this category applies to, e.g. ["III_A"]. OPTIONAL,
+            # and absent or empty means every class -- the grade-band prefix on
+            # the document ID was the older, coarser way of saying the same
+            # thing, and categories predating this field must keep working.
+            "classIds": _opt(ARRAY),
+        },
         "check": _check_remark_categories,
     },
     "months": {

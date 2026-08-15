@@ -36,6 +36,18 @@
             <div class="text-xs text-slate-400">{{ (data.remarks || []).length }} remark(s)</div>
           </template>
         </Column>
+        <!-- classIds narrows a category to particular sections. Empty or
+             absent means every class, which is what every category written
+             before this field existed means. -->
+        <Column header="Classes" style="width:220px">
+          <template #body="{ data }">
+            <div v-if="(data.classIds || []).length" class="flex flex-wrap gap-1">
+              <span v-for="classId in data.classIds" :key="classId"
+                    class="px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700">{{ classId }}</span>
+            </div>
+            <span v-else class="text-xs text-slate-300" v-tooltip="'No classIds on the document — applies to every class'">all classes</span>
+          </template>
+        </Column>
         <Column header="" style="width:170px">
           <template #body="{ data, index }">
             <div class="flex gap-1 justify-end">
@@ -57,6 +69,21 @@
         <div>
           <label class="form-label">Label *</label>
           <InputText v-model="categoryForm.label" class="w-full" placeholder="e.g. Discipline" />
+        </div>
+        <div>
+          <label class="form-label">Classes</label>
+          <MultiSelect
+            v-model="categoryForm.classIds"
+            :options="classOptions"
+            placeholder="All classes"
+            class="w-full"
+            :loading="loadingClasses"
+            filter display="chip" :maxSelectedLabels="4"
+          />
+          <p class="text-xs text-slate-400 mt-1">
+            Leave empty for every class. Choosing classes limits this category to those
+            sections only.
+          </p>
         </div>
         <div v-if="categoryFormError" class="text-sm text-red-500 bg-red-50 rounded-lg px-3 py-2">{{ categoryFormError }}</div>
       </div>
@@ -142,6 +169,7 @@ import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
 import ToggleButton from 'primevue/togglebutton'
 import Select from 'primevue/select'
+import MultiSelect from 'primevue/multiselect'
 import ProgressSpinner from 'primevue/progressspinner'
 import ConfirmDialog from 'primevue/confirmdialog'
 
@@ -152,6 +180,7 @@ import { toCsv, downloadCsv } from '../../utils/csv.js'
 import {
   REMARK_CSV_COLUMNS, makeRemarkRowClassifier, groupRemarkRows, bandOfId, sampleRemarkRows,
 } from '../../utils/remarksImport.js'
+import { compareClassIds } from '../../composables/useSurveys.js'
 import { guardedSetDoc, guardedUpdateDoc, guardedBatchSet, SchemaViolation } from '../../schemas/guardedWrite.js'
 import { db } from '../../firebase/config'
 import { auth } from '../../firebase/config'
@@ -177,16 +206,40 @@ async function loadCategories() {
   }
 }
 
+// ── Classes, for the classIds picker ───────────────────────────────────────
+// The class DOC IDs are what classIds holds ("III_A"), so the picker offers
+// exactly those rather than a label that would have to be mapped back.
+const classOptions = ref([])
+const loadingClasses = ref(false)
+
+async function loadClassOptions() {
+  if (!props.schoolId) { classOptions.value = []; return }
+  loadingClasses.value = true
+  try {
+    const snap = await getDocs(schoolCollection(props.schoolId, 'classes'))
+    classOptions.value = snap.docs
+      .filter(d => d.data().isActive !== false)
+      .map(d => d.id)
+      .sort(compareClassIds)
+  } catch (e) {
+    console.error('Could not load classes', e)
+    classOptions.value = []
+  } finally {
+    loadingClasses.value = false
+  }
+}
+
 // ── Category CRUD ──────────────────────────────────────────────────────────
 const categoryDialogVisible = ref(false)
 const editingCategory = ref(null)
 const savingCategory = ref(false)
 const categoryFormError = ref('')
-const categoryForm = reactive({ label: '' })
+const categoryForm = reactive({ label: '', classIds: [] })
 
 function openAddCategory() {
   editingCategory.value = null
   categoryForm.label = ''
+  categoryForm.classIds = []
   categoryFormError.value = ''
   categoryDialogVisible.value = true
 }
@@ -194,6 +247,9 @@ function openAddCategory() {
 function openEditCategory(cat) {
   editingCategory.value = cat
   categoryForm.label = cat.label || ''
+  // Copied, not referenced: cancelling the dialog must leave the loaded
+  // category exactly as it was.
+  categoryForm.classIds = [...(cat.classIds || [])]
   categoryFormError.value = ''
   categoryDialogVisible.value = true
 }
@@ -203,15 +259,19 @@ async function saveCategory() {
   categoryFormError.value = ''
   savingCategory.value = true
   try {
+    // Written on every save, empty array included: clearing the picker has to
+    // be able to widen a category back to every class, which a field that is
+    // only written when non-empty could never do.
+    const classIds = [...categoryForm.classIds].sort(compareClassIds)
     if (editingCategory.value) {
       await guardedUpdateDoc('remark_categories', schoolDoc(props.schoolId, 'remark_categories', editingCategory.value.id), {
-        label: categoryForm.label.trim(),
+        label: categoryForm.label.trim(), classIds,
         updated_at: serverTimestamp(), updated_by: auth.currentUser?.email || 'unknown',
       })
     } else {
       const nextOrder = categories.value.length ? Math.max(...categories.value.map(c => c.order || 0)) + 1 : 1
       await addDoc(schoolCollection(props.schoolId, 'remark_categories'), {
-        label: categoryForm.label.trim(), order: nextOrder, remarks: [],
+        label: categoryForm.label.trim(), order: nextOrder, remarks: [], classIds,
         created_at: serverTimestamp(), created_by: auth.currentUser?.email || 'unknown',
       })
     }
@@ -363,6 +423,10 @@ async function copyRemarkBank() {
         return { key: `r${nextKeyNum}`, text: r.text, type: r.type, order: i + 1 }
       })
       const newCatRef = doc(schoolCollection(props.schoolId, 'remark_categories'))
+      // classIds is deliberately NOT copied: it names the SOURCE school's
+      // class docs, which may not exist here and would silently scope the
+      // category to nothing. Copied categories arrive applying to every class,
+      // and can be narrowed afterwards.
       batch.set(newCatRef, {
         label: data.label, order: catOrder, remarks,
         created_at: serverTimestamp(), created_by: auth.currentUser?.email || 'unknown',
@@ -424,8 +488,13 @@ function downloadSample() {
   downloadCsv('remarks_sample.csv', toCsv(sampleRemarkRows(), REMARK_CSV_COLUMNS))
 }
 
-watch(() => props.schoolId, loadCategories)
-onMounted(loadCategories)
+function loadAll() {
+  loadCategories()
+  loadClassOptions()
+}
+
+watch(() => props.schoolId, loadAll)
+onMounted(loadAll)
 </script>
 
 <style scoped>

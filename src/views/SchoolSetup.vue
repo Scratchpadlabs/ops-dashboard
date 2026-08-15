@@ -222,7 +222,11 @@ async function refreshOutstanding() {
   }
 }
 
-watch(selectedSchoolObject, refreshOutstanding, { immediate: true })
+// NOTE: the watcher that drives refreshOutstanding is registered at the BOTTOM
+// of this file, after selectedSchoolObject is declared. Registering it here —
+// where this code reads most naturally — passes the computed as an argument
+// before its `const` has initialised, which throws a ReferenceError during
+// setup and renders the whole page blank.
 
 function onResetTarget(schoolId) {
   resetTargetSchoolId.value = schoolId || null
@@ -335,6 +339,10 @@ async function createTestSchool() {
     creatingTestSchool.value = false
   }
 }
+
+// Registered here rather than beside refreshOutstanding: selectedSchoolObject
+// has to exist before it can be watched (see the note above that function).
+watch(selectedSchoolObject, refreshOutstanding, { immediate: true })
 
 onMounted(loadSchools)
 </script>
