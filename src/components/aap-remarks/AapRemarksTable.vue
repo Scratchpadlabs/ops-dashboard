@@ -10,12 +10,44 @@
         {{ visibleRemarkCount }} of {{ totalRemarkCount }} remarks · {{ approvedCount }} approved
       </span>
       <span v-if="saving" class="text-xs text-slate-400"><i class="pi pi-spin pi-spinner text-xs mr-1"></i>saving…</span>
+      <Button
+        v-if="selectableRows.length"
+        :label="allSelected ? 'Clear selection' : `Select all ${selectableRows.length} shown`"
+        size="small" text class="ml-auto" @click="toggleSelectAll"
+      />
+    </div>
+
+    <!-- Bulk action bar — same idiom as the survey drill-down's. Acts on the
+         SHOWN selection, so "needs review only" plus select-all is how a whole
+         review queue gets approved in one go. -->
+    <div v-if="selectedKeys.size"
+         class="flex items-center gap-2 mb-3 flex-wrap bg-slate-900 text-white rounded-lg px-3 py-2">
+      <span class="text-sm font-semibold">
+        {{ selectedKeys.size }} remark{{ selectedKeys.size === 1 ? '' : 's' }} selected
+      </span>
+      <Button label="Approve" icon="pi pi-check" size="small" :loading="saving"
+              @click="applyBulk(STATUS_APPROVED)" />
+      <Button label="Mark needs review" icon="pi pi-clock" size="small" severity="secondary"
+              :loading="saving" @click="applyBulk(STATUS_NEEDS_REVIEW)" />
+      <Button label="Clear" size="small" text class="!text-slate-300 ml-auto" @click="clearSelection" />
     </div>
 
     <!-- `scrollable` gives the table its own x/y scroll container, which is
          what keeps a 7-column table from widening the page (style.css §2). -->
     <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
       <DataTable :value="rows" dataKey="key" size="small" :rowClass="rowClass" scrollable scrollHeight="560px">
+        <!-- Hand-rolled rather than DataTable's selectionMode: a placeholder
+             row for a student with no remarks has nothing to approve, and the
+             built-in column has no way to leave one row's checkbox out. -->
+        <Column style="width:44px">
+          <template #body="{ data }">
+            <Checkbox
+              v-if="!data.empty" :modelValue="selectedKeys.has(data.key)" binary
+              @update:modelValue="v => toggleRow(data.key, v)"
+            />
+          </template>
+        </Column>
+
         <Column header="Student" style="min-width:190px">
           <template #body="{ data }">
             <!-- Name printed once per student rather than repeated down every
@@ -148,7 +180,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useToast } from 'primevue/usetoast'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
@@ -181,11 +213,12 @@ const props = defineProps({
 const emit = defineEmits(['regenerate', 'saved'])
 
 const toast = useToast()
-const { saveComment, setStatus } = useAapRemarks()
+const { saveComment, setStatus, setStatusBulk } = useAapRemarks()
 
 const search = ref('')
 const needsReviewOnly = ref(false)
 const saving = ref(false)
+const selectedKeys = ref(new Set())
 
 const traitLabel = (trait) => trait.charAt(0).toUpperCase() + trait.slice(1)
 
@@ -226,6 +259,11 @@ const allRows = computed(() => {
   return out
 })
 
+// A new class means new rows; keeping keys from the old one would let a bulk
+// action fire at students who are no longer on screen.
+// (arrow, not a bare reference — clearSelection is declared further down)
+watch(() => props.students, () => clearSelection())
+
 const rows = computed(() => {
   const term = search.value.trim().toLowerCase()
   const kept = allRows.value.filter(r => {
@@ -248,6 +286,56 @@ const visibleRemarkCount = computed(() => rows.value.filter(r => !r.empty).lengt
 const approvedCount = computed(() => allRows.value.filter(r => r.status === STATUS_APPROVED).length)
 
 const rowClass = (data) => (data.firstOfStudent ? 'aap-student-start' : '')
+
+// ── Bulk selection ────────────────────────────────────────────────────────
+const selectableRows = computed(() => rows.value.filter(r => !r.empty))
+const allSelected = computed(() =>
+  selectableRows.value.length > 0 && selectableRows.value.every(r => selectedKeys.value.has(r.key)))
+
+function toggleRow(key, checked) {
+  const next = new Set(selectedKeys.value)
+  if (checked) next.add(key)
+  else next.delete(key)
+  selectedKeys.value = next
+}
+
+function toggleSelectAll() {
+  selectedKeys.value = allSelected.value
+    ? new Set()
+    : new Set(selectableRows.value.map(r => r.key))
+}
+
+const clearSelection = () => { selectedKeys.value = new Set() }
+
+// Filtering can hide a selected row, and acting on something the reviewer
+// can no longer see is exactly the surprise to avoid — the selection is
+// therefore intersected with what is on screen at the moment of the action.
+async function applyBulk(status) {
+  const visible = new Set(selectableRows.value.map(r => r.key))
+  const targets = selectableRows.value
+    .filter(r => selectedKeys.value.has(r.key) && visible.has(r.key))
+    .map(r => ({ studentId: r.studentId, subject: r.subject }))
+  if (!targets.length) return
+
+  saving.value = true
+  try {
+    await setStatusBulk(props.schoolId, targets, status)
+    clearSelection()
+    emit('saved', null)   // null = reload the whole class, not one student
+    toast.add({
+      severity: 'success',
+      summary: status === STATUS_APPROVED
+        ? `${targets.length} approved`
+        : `${targets.length} moved to needs review`,
+      life: 2500,
+    })
+  } catch (e) {
+    console.error('Could not apply the bulk status change', e)
+    toast.add({ severity: 'error', summary: 'Could not update those remarks', detail: e.message, life: 4000 })
+  } finally {
+    saving.value = false
+  }
+}
 
 // ── Editing ───────────────────────────────────────────────────────────────
 const editorVisible = ref(false)

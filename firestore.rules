@@ -75,8 +75,22 @@ service cloud.firestore {
     //
     // The shared `aap_framework` collection (the Stage x Subject descriptor
     // rubric, seeded by tools/migrate_aap_framework.py) gets no rule either —
-    // only the Cloud Function reads it, via the Admin SDK. The deny-all rule
-    // at the bottom is the correct answer for the client.
+    // only the Cloud Function reads it, via the Admin SDK. The dashboard's
+    // relate-subject dialog never reads it directly: the scan call hands back
+    // the rubric rows for the stage, so the deny-all rule at the bottom stays
+    // the correct answer for the client.
+
+    // Confirmed "this survey subject means this rubric row" mappings —
+    // global, NOT scoped to a school, the same self-learning shape as
+    // import_aliases and kb_entries above: a survey saying "Maths" where the
+    // rubric says "Math / Arithmetic" is confirmed once and resolves for every
+    // school from then on. Written by the browser when a human confirms it
+    // (hence the client write grant), read by generate_aap_remarks through the
+    // Admin SDK. Ops-admin only: this decides which rubric text lands on a
+    // child's report card.
+    match /aap_subject_map/{mappingId} {
+      allow read, write: if isOpsAdmin();
+    }
 
     // Sheets Status (Phase 5) only toggles isFrozen / deletes empty stray docs
     // on existing smart_sheet_entries — never creates sheets (teacher app

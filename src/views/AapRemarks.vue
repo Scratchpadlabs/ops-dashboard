@@ -45,6 +45,22 @@
             :disabled="!schoolId || running" filter
           />
         </div>
+        <div>
+          <label class="form-label">Subjects</label>
+          <MultiSelect
+            v-model="selectedSubjects" :options="subjectOptions" optionLabel="label" optionValue="value"
+            placeholder="All subjects" class="w-72" :loading="scanning"
+            :disabled="!classId || running" filter display="chip" :maxSelectedLabels="2"
+          >
+            <template #option="{ option }">
+              <div class="flex items-center gap-2">
+                <span>{{ option.label }}</span>
+                <i v-if="!option.matched" class="pi pi-exclamation-triangle text-amber-500" style="font-size:10px"
+                   v-tooltip="'No rubric row matches this subject yet'"></i>
+              </div>
+            </template>
+          </MultiSelect>
+        </div>
         <Button
           label="Generate remarks" icon="pi pi-sparkles"
           :loading="running" :disabled="!schoolId || !classId"
@@ -58,6 +74,18 @@
         <div v-if="classId && !loadingRoster" class="text-xs text-slate-400 ml-auto pb-2">
           {{ students.length }} student{{ students.length === 1 ? '' : 's' }} in this class
         </div>
+      </div>
+
+      <div v-if="classId" class="flex items-center gap-2 flex-wrap mt-3">
+        <Button label="Scan subjects" icon="pi pi-search" size="small" text
+                :loading="scanning" :disabled="running" @click="runScan" />
+        <Button label="Export CSV" icon="pi pi-download" size="small" outlined
+                :disabled="!hasRemarks" @click="exportCsv" />
+        <Button label="Export XLSX" icon="pi pi-file-excel" size="small" outlined
+                :disabled="!hasRemarks" @click="exportXlsx" />
+        <span class="text-xs text-slate-400">
+          Exports one row per student-subject, exactly as listed below.
+        </span>
       </div>
 
       <!-- Generation skips anything already approved, which is the difference
@@ -103,6 +131,34 @@
       </div>
     </div>
 
+    <!-- ── Subjects with no rubric row ───────────────────────────────────── -->
+    <!-- Shown from the scan AND from a run's result: a subject nothing matches
+         produces no comment and no error, which is precisely the failure that
+         is invisible unless the page says so out loud. -->
+    <div v-if="unmatchedSubjects.length && !running"
+         class="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4 flex items-center gap-3 flex-wrap">
+      <i class="pi pi-exclamation-triangle text-amber-500"></i>
+      <div class="text-sm text-amber-900 min-w-0">
+        <strong>{{ unmatchedSubjects.length }}</strong>
+        subject{{ unmatchedSubjects.length === 1 ? '' : 's' }} in this class
+        match{{ unmatchedSubjects.length === 1 ? 'es' : '' }} no
+        {{ scanStage || 'rubric' }} row, so no comment can be written for
+        {{ unmatchedSubjects.length === 1 ? 'it' : 'them' }}:
+        <span class="font-semibold">{{ unmatchedSubjects.map(s => s.subject).join(', ') }}</span>
+      </div>
+      <Button label="Relate subjects" icon="pi pi-link" size="small" class="ml-auto"
+              :disabled="!scanStage" @click="mapDialogVisible = true" />
+    </div>
+
+    <AapSubjectMapDialog
+      v-model:visible="mapDialogVisible"
+      :school-id="schoolId"
+      :stage="scanStage"
+      :unmatched="unmatchedSubjects"
+      :framework-subjects="frameworkSubjects"
+      @saved="onMappingsSaved"
+    />
+
     <!-- ── Review table ──────────────────────────────────────────────────── -->
     <div v-if="!classId" class="text-center py-20 bg-white rounded-xl border border-slate-200">
       <i class="pi pi-comments text-4xl text-slate-300 mb-3 block"></i>
@@ -130,6 +186,7 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useToast } from 'primevue/usetoast'
 import { useConfirm } from 'primevue/useconfirm'
 import Select from 'primevue/select'
+import MultiSelect from 'primevue/multiselect'
 import Password from 'primevue/password'
 import Button from 'primevue/button'
 import ProgressBar from 'primevue/progressbar'
@@ -138,7 +195,9 @@ import ConfirmDialog from 'primevue/confirmdialog'
 
 import { useStepUpAuth } from '../composables/useStepUpAuth.js'
 import { useAapRemarks } from '../composables/useAapRemarks.js'
+import { downloadAapCsv, downloadAapXlsx } from '../utils/aapExport.js'
 import AapRemarksTable from '../components/aap-remarks/AapRemarksTable.vue'
+import AapSubjectMapDialog from '../components/aap-remarks/AapSubjectMapDialog.vue'
 
 /**
  * AAP remarks — Awareness / Sensitivity / Creativity report-card comments.
@@ -156,10 +215,10 @@ const confirm = useConfirm()
 const { isElevated, markActivity, reauthenticate } = useStepUpAuth()
 
 const {
-  schools, classes, students, remarksByStudent,
+  schools, classes, students, remarksByStudent, scan, scanning,
   loadingSchools, loadingClasses, loadingRoster,
   loadSchools, loadClasses, loadClass, reloadStudent,
-  recentJobIds, watchNewJob, generate,
+  recentJobIds, watchNewJob, generate, scanSubjects,
 } = useAapRemarks()
 
 // ── Step-up gate ──────────────────────────────────────────────────────────
@@ -209,7 +268,22 @@ watch(schoolId, async (id) => {
   }
 })
 
-watch(classId, () => reload())
+// ── Subjects ──────────────────────────────────────────────────────────────
+const selectedSubjects = ref([])
+const mapDialogVisible = ref(false)
+// A run reports the same subject fields a scan does, so whichever happened
+// last is the current truth about this class's subjects.
+const lastRunSummary = ref(null)
+
+// Changing class resets everything derived from the old one. Kept here rather
+// than inside reload() so the Refresh button — which is also reload() — re-reads
+// Firestore without silently throwing away the subject scope you just chose.
+watch(classId, () => {
+  selectedSubjects.value = []
+  lastRunSummary.value = null
+  scan.value = null
+  reload()
+})
 
 async function reload() {
   try {
@@ -217,7 +291,76 @@ async function reload() {
   } catch (e) {
     console.error('Could not load the class roster', e)
     toast.add({ severity: 'error', summary: 'Could not load this class', detail: e.message, life: 5000 })
+    return
   }
+  // A class with nothing generated yet is the one case where the subject list
+  // can't be inferred from existing remarks, and it is also the case where
+  // someone is about to press Generate — so the scan is worth its reads here
+  // and offered as a button the rest of the time.
+  if (classId.value && !hasRemarks.value) await runScan()
+}
+
+const subjectSource = computed(() => lastRunSummary.value || scan.value)
+const scanStage = computed(() => subjectSource.value?.stage || '')
+const frameworkSubjects = computed(() => subjectSource.value?.frameworkSubjects || [])
+const unmatchedSubjects = computed(() => subjectSource.value?.unmatchedSubjects || [])
+
+const hasRemarks = computed(() =>
+  Object.values(remarksByStudent.value).some(rows => rows.length))
+
+/**
+ * Options for the subject picker: what the scan found, falling back to the
+ * subjects already written when no scan has run. Unmatched subjects are
+ * listed rather than hidden — being able to see that "Robotics" exists and
+ * resolves to nothing is the point.
+ */
+const subjectOptions = computed(() => {
+  const scanned = subjectSource.value?.subjects || []
+  if (scanned.length) {
+    return scanned.map(s => ({ label: s.subject, value: s.subject, matched: !!s.matched }))
+  }
+  const written = new Set()
+  for (const rows of Object.values(remarksByStudent.value)) {
+    for (const row of rows) written.add(row.id)
+  }
+  return [...written].sort().map(subject => ({ label: subject, value: subject, matched: true }))
+})
+
+async function runScan() {
+  try {
+    lastRunSummary.value = null
+    await scanSubjects(schoolId.value, classId.value)
+  } catch (e) {
+    console.error('Could not scan subjects', e)
+    toast.add({ severity: 'error', summary: 'Could not read this class\'s subjects', detail: e.message, life: 4000 })
+  }
+}
+
+/** A new mapping only changes anything on the next run, so say so and offer
+ *  it rather than silently spending a run's worth of model calls. */
+async function onMappingsSaved(mappedTokens) {
+  await runScan()
+  selectedSubjects.value = mappedTokens
+  confirm.require({
+    header: 'Generate for the newly related subjects?',
+    message: `${mappedTokens.join(', ')} can be written now. Generate remarks for `
+      + `${mappedTokens.length === 1 ? 'it' : 'them'} in ${classId.value}?`,
+    icon: 'pi pi-sparkles',
+    rejectLabel: 'Not now',
+    acceptLabel: 'Generate',
+    accept: runGenerate,
+  })
+}
+
+// ── Export ────────────────────────────────────────────────────────────────
+function exportCsv() {
+  const count = downloadAapCsv(schoolId.value, classId.value, students.value, remarksByStudent.value)
+  toast.add({ severity: 'success', summary: `Exported ${count} rows`, life: 2500 })
+}
+
+function exportXlsx() {
+  const count = downloadAapXlsx(schoolId.value, classId.value, students.value, remarksByStudent.value)
+  toast.add({ severity: 'success', summary: `Exported ${count} rows`, life: 2500 })
 }
 
 // ── Generation run ────────────────────────────────────────────────────────
@@ -238,12 +381,15 @@ function stopWatching() {
   if (unsubJob) { unsubJob(); unsubJob = null }
 }
 
+const scopeLabel = computed(() =>
+  selectedSubjects.value.length ? selectedSubjects.value.join(', ') : 'every subject')
+
 function confirmGenerate() {
-  const generated = Object.values(remarksByStudent.value).some(rows => rows.length)
-  if (!generated) { runGenerate(); return }
+  if (!hasRemarks.value) { runGenerate(); return }
   confirm.require({
     header: 'Generate remarks',
-    message: `${classId.value} already has remarks. Running again rewrites every comment that isn't approved yet. Continue?`,
+    message: `${classId.value} already has remarks. Running again for ${scopeLabel.value} `
+      + `rewrites every comment in that scope that isn't approved yet. Continue?`,
     icon: 'pi pi-exclamation-triangle',
     rejectLabel: 'Cancel',
     acceptLabel: 'Generate',
@@ -262,19 +408,34 @@ async function runGenerate() {
     const known = await recentJobIds(schoolId.value)
     unsubJob = watchNewJob(schoolId.value, classId.value, known, (j) => { job.value = j })
 
-    const result = await generate({ schoolId: schoolId.value, classId: classId.value })
-    toast.add({
-      severity: 'success',
-      summary: 'Remarks generated',
-      detail: `${result.processed} student-subject remark${result.processed === 1 ? '' : 's'} processed`,
-      life: 4000,
+    const result = await generate({
+      schoolId: schoolId.value,
+      classId: classId.value,
+      subjects: selectedSubjects.value,
     })
-    await reload()
+    lastRunSummary.value = result
+    // Report what was WRITTEN, and account for the rest. The earlier version
+    // announced "126 remarks processed" for a run that wrote nothing, because
+    // a skipped record and a written one counted the same.
+    const skipped = []
+    if (result.skippedApproved) skipped.push(`${result.skippedApproved} already approved`)
+    if (result.skippedNoFramework) skipped.push(`${result.skippedNoFramework} with no rubric row`)
+    toast.add({
+      severity: result.written ? 'success' : 'warn',
+      summary: result.written
+        ? `${result.written} remark${result.written === 1 ? '' : 's'} written`
+        : 'No remarks written',
+      detail: skipped.length ? `Skipped: ${skipped.join(', ')}` : undefined,
+      life: 6000,
+    })
+    await loadClass(schoolId.value, classId.value)
   } catch (e) {
     console.error('AAP generation failed', e)
     runError.value = e.message || 'Generation failed'
     // Whatever was written before the failure is real and worth showing.
-    await reload()
+    // loadClass, not reload(): reload resets the subject scope and rescans,
+    // which would throw away the scope the failed run was using.
+    await loadClass(schoolId.value, classId.value)
   } finally {
     stopWatching()
     running.value = false
@@ -283,17 +444,26 @@ async function runGenerate() {
 }
 
 /**
- * One student, every subject. This is the only path that overwrites remarks
- * already marked approved — the function treats an explicit student_ids list
- * as "the dashboard asked for this one on purpose".
+ * One student — every subject, or just the selected ones. This is the only
+ * path that overwrites remarks already marked approved: the function treats an
+ * explicit student_ids list as "the dashboard asked for this one on purpose".
  */
 async function regenerateStudent(studentId) {
   regeneratingStudentId.value = studentId
   runError.value = ''
   try {
-    await generate({ schoolId: schoolId.value, classId: classId.value, studentIds: [studentId] })
+    const result = await generate({
+      schoolId: schoolId.value,
+      classId: classId.value,
+      studentIds: [studentId],
+      subjects: selectedSubjects.value,
+    })
     await reloadStudent(schoolId.value, studentId)
-    toast.add({ severity: 'success', summary: 'Regenerated', life: 2500 })
+    toast.add({
+      severity: result.written ? 'success' : 'warn',
+      summary: result.written ? `${result.written} rewritten` : 'Nothing to write for this student',
+      life: 3000,
+    })
   } catch (e) {
     console.error('AAP regeneration failed', e)
     runError.value = e.message || 'Regeneration failed'
@@ -302,7 +472,11 @@ async function regenerateStudent(studentId) {
   }
 }
 
-const onSaved = (studentId) => reloadStudent(schoolId.value, studentId)
+// A bulk action passes null: it touched many students, so the whole class is
+// re-read rather than guessing which rows moved.
+const onSaved = (studentId) => studentId
+  ? reloadStudent(schoolId.value, studentId)
+  : loadClass(schoolId.value, classId.value)
 
 onMounted(async () => {
   try {

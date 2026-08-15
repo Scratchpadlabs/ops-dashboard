@@ -271,10 +271,27 @@ export async function classHealthRemote() {
 // whole-class run so the function applies its skip-approved rule.
 const generateAapRemarksCallable = httpsCallable(functions, 'generate_aap_remarks', { timeout: 540_000 })
 
-export async function generateAapRemarksRemote({ schoolId, classId, studentIds }) {
+// `subjects` narrows a run to the chosen subjects; omitted means every subject
+// the survey rated. Returns { written, processed, skippedApproved,
+// skippedNoFramework, unmatchedSubjects, ... } — `written` is the count that
+// actually got a comment, `processed` counts everything it looked at.
+export async function generateAapRemarksRemote({ schoolId, classId, studentIds, subjects }) {
   const payload = { school_id: schoolId, class_id: classId }
   if (studentIds?.length) payload.student_ids = studentIds
+  if (subjects?.length) payload.subjects = subjects
   const res = await generateAapRemarksCallable(payload)
+  return res.data
+}
+
+// Same callable with scan_only: resolves the class's survey subjects against
+// the rubric and returns what it found WITHOUT writing anything or calling a
+// model. This is how the page knows which subjects exist before a run, and
+// which of them no rubric row matches — the question the relate-subject
+// dialog exists to answer.
+export async function scanAapSubjectsRemote({ schoolId, classId }) {
+  const res = await generateAapRemarksCallable({
+    school_id: schoolId, class_id: classId, scan_only: true,
+  })
   return res.data
 }
 

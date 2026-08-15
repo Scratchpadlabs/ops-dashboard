@@ -19,16 +19,22 @@
  */
 import { ref } from 'vue'
 import {
-  getDocs, query, orderBy, limit, onSnapshot, setDoc, serverTimestamp,
+  getDocs, query, orderBy, limit, onSnapshot, setDoc, serverTimestamp, writeBatch,
 } from 'firebase/firestore'
 
 import {
   rootSchoolsCollection, schoolCollection, aapJobsCollection,
-  studentAapRemarksCollection, studentAapRemarkDoc,
+  studentAapRemarksCollection, studentAapRemarkDoc, aapSubjectMapDoc,
 } from '../firebase/schoolCollections.js'
 import { compareClassIds } from './useSurveys.js'
-import { classDetailRemote, generateAapRemarksRemote } from '../utils/api.js'
-import { auth } from '../firebase/config'
+import {
+  classDetailRemote, generateAapRemarksRemote, scanAapSubjectsRemote,
+} from '../utils/api.js'
+import { auth, db } from '../firebase/config'
+
+// Firestore's own cap is 500 writes per batch; the rest of this repo chunks at
+// 450 for headroom, so bulk approval does the same.
+const WRITE_CHUNK = 450
 
 export const STATUS_APPROVED = 'approved'
 export const STATUS_NEEDS_REVIEW = 'needs_review'
@@ -196,10 +202,72 @@ export function useAapRemarks() {
     }, { merge: true })
   }
 
+  /**
+   * Flip many remarks in one go. `targets` is [{ studentId, subject }].
+   *
+   * Batched rather than a loop of writes: approving a 40-student class across
+   * 7 subjects is 280 documents, and a partially-applied bulk action is worse
+   * than one that didn't run — a reviewer would have no way to tell which
+   * half went through.
+   */
+  async function setStatusBulk(schoolId, targets, status) {
+    const stamp = {
+      status, updatedAt: serverTimestamp(), updatedBy: auth.currentUser?.email || 'unknown',
+    }
+    for (let i = 0; i < targets.length; i += WRITE_CHUNK) {
+      const batch = writeBatch(db)
+      for (const { studentId, subject } of targets.slice(i, i + WRITE_CHUNK)) {
+        batch.set(studentAapRemarkDoc(schoolId, studentId, subject), stamp, { merge: true })
+      }
+      await batch.commit()
+    }
+    return targets.length
+  }
+
+  // ── Subjects ────────────────────────────────────────────────────────────
+  const scan = ref(null)          // last scan_only result for the loaded class
+  const scanning = ref(false)
+
+  /**
+   * What the survey actually says for this class, and which rubric row each
+   * subject resolves to. Reads only — no model calls, no writes — so it is
+   * safe to run before deciding whether a generation run is worth starting.
+   */
+  async function scanSubjects(schoolId, classId) {
+    if (!schoolId || !classId) { scan.value = null; return null }
+    scanning.value = true
+    try {
+      scan.value = await scanAapSubjectsRemote({ schoolId, classId })
+      return scan.value
+    } finally {
+      scanning.value = false
+    }
+  }
+
+  /**
+   * Confirm that a survey's subject token means a particular rubric row.
+   *
+   * Global by decision (see firestore.rules): one confirmation resolves that
+   * spelling for every school. Keyed by stage as well as token because
+   * "Science" is a different rubric row in Middle than in Preparatory, and
+   * `token` is stored raw — the function normalises it the same way the
+   * matcher does, so the two can never drift apart.
+   */
+  async function saveSubjectMapping({ stage, token, frameworkSubject }) {
+    await setDoc(aapSubjectMapDoc(stage, token), {
+      stage,
+      token,
+      frameworkSubject,
+      confirmedBy: auth.currentUser?.email || 'unknown',
+      confirmedAt: serverTimestamp(),
+    }, { merge: true })
+  }
+
   return {
-    schools, classes, students, remarksByStudent,
+    schools, classes, students, remarksByStudent, scan, scanning,
     loadingSchools, loadingClasses, loadingRoster,
     loadSchools, loadClasses, loadClass, loadRemarks, reloadStudent,
-    recentJobIds, watchNewJob, generate, saveComment, setStatus,
+    recentJobIds, watchNewJob, generate, saveComment, setStatus, setStatusBulk,
+    scanSubjects, saveSubjectMapping,
   }
 }

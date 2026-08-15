@@ -20,9 +20,46 @@ What the dashboard does NOT use this function for: editing a comment and
 flipping `approved` / `needs_review` are direct client writes to the remark
 doc (see firestore.rules). The function is only ever called to generate text.
 
+One callable, three modes, all on the same entry point:
+- `{school_id, class_id}` — generate for the whole class
+- `+ {subjects: [...]}` — narrow the run to those subjects
+- `+ {student_ids: [...]}` — one student, and the ONLY way to overwrite a
+  remark already marked approved
+- `+ {scan_only: true}` — resolve and report, writing nothing and calling no
+  model. Backs the subject picker and the relate-subject dialog.
+
+It returns `written` (records that got a comment) alongside `processed`
+(records looked at), plus `skippedApproved`, `skippedNoFramework` and
+`unmatchedSubjects`. **`processed` counts skips**: a run that writes nothing
+still reports every record as processed, which is exactly how the first live
+run announced "126 remarks processed" having written none. Show `written`.
+
 ### Files needed in the folder:
 - main.py ✅
+- subject_match.py ✅ (pure matching logic, 29 unit tests)
 - requirements.txt ✅
+
+### Subject matching — why subject_match.py exists
+framework.csv's "Subject Name" column holds GROUP LABELS, not subject names:
+`Math / Arithmetic`, `L1 (Marathi / Telugu / Kannada / Hindi / Sindhi)`,
+`World Around Us (Science / EVS / Social Studies / SST)`. A survey response
+carries one token — `Maths`, `EVS`, `SST`. The original flat `dict.get()` on
+the label could only ever reach the two rows spelled as a single plain word,
+so every other subject was skipped in silence. Lookup now goes: confirmed
+mapping → exact label → alias (punctuation and case removed) → plural
+relaxation. Anything unresolved is REPORTED, never guessed — a wrong guess
+puts the wrong rubric text on a child's report card.
+
+Confirmations live in `aap_subject_map` (global, ops-admin write, see
+firestore.rules), written by the dashboard's relate-subject dialog and read
+here through the Admin SDK. Keyed by stage as well as token, because
+"Science" is a different rubric row in Middle than in Preparatory.
+
+Run the tests before deploying — they assert against the 15 real labels seeded
+for clarified-1501, so a regression is a regression against live data:
+```
+cd functions/generate_aap_remarks && python3 -m pytest tests/ -q
+```
 
 ### Seed the framework first (once, and after any framework.csv change):
 ```
@@ -56,12 +93,19 @@ above (not the `@https_fn.on_call(...)` decorator arguments) are what actually
 size the Cloud Run resource, since this repo deploys with plain `gcloud`.
 
 ### firestore.rules
-One new rule: `schools/{id}/students/{studentId}/aap_remarks/{subject}` —
-authenticated read, ops-admin create/update, no delete. It is needed because
-the generic `schools/{schoolId}/{collection}/{docId}` rule matches exactly one
-segment and cannot reach a remark. `aap_jobs` (the progress doc the page polls
-during a run) and `aap_framework` are deliberately left with no client write
-path at all — both are written only through the Admin SDK.
+Two rules:
+- `schools/{id}/students/{studentId}/aap_remarks/{subject}` — authenticated
+  read, ops-admin create/update, no delete. Needed because the generic
+  `schools/{schoolId}/{collection}/{docId}` rule matches exactly one segment
+  and cannot reach a remark.
+- `aap_subject_map/{mappingId}` — ops-admin read/write. Confirmed subject
+  mappings, written by the browser when a human relates a subject.
+
+`aap_jobs` (the progress doc the page polls during a run) and `aap_framework`
+are deliberately left with no client write path at all — both are written only
+through the Admin SDK, and the relate-subject dialog gets the rubric rows it
+offers from the `scan_only` response rather than reading `aap_framework`
+itself.
 
 ### Known gaps — read before relying on this in production
 
