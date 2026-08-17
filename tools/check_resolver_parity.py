@@ -10,9 +10,9 @@ import os
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, os.path.join(ROOT, "functions", "shared"))
+sys.path.insert(0, os.path.join(ROOT, "functions"))
 
-from class_resolver import (  # noqa: E402
+from shared.class_resolver import (  # noqa: E402
     parse_class_value, notation_of, ordinal_to_token,
 )
 

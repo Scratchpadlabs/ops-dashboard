@@ -35,9 +35,9 @@ import sys
 from collections import Counter, defaultdict
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                "..", "functions", "shared"))
+                                "..", "functions"))
 
-from class_resolver import (  # noqa: E402
+from shared.class_resolver import (  # noqa: E402
     CLASS_ID_FIELDS, GRADE_FIELDS, SECTION_FIELDS, CONF_HIGH, CONF_MEDIUM,
     build_school_context, resolve_class, raw_class_value, distinct_class_values,
 )

@@ -35,17 +35,13 @@ VOCABULARY (education_kb.json)
     that already exists.
 """
 
-import json
-import os
 import re
 
-_DIR = os.path.dirname(os.path.abspath(__file__))
+from . import load_kb
 
-# The KB ships alongside this module (see tools/sync_shared.py — the canonical
-# copy lives in functions/shared and is mirrored into each deployable folder,
-# because gcloud uploads only `--source .`).
-with open(os.path.join(_DIR, "education_kb.json"), encoding="utf-8") as _f:
-    KB = json.load(_f)
+# The KB ships inside this package, so it travels wherever the package does —
+# including into the staged tree tools/deploy_function.sh hands to gcloud.
+KB = load_kb()
 
 # ── Ordering ────────────────────────────────────────────────────────────────
 # Ordinals are the whole point: promotion is `ordinal + 1`, and the

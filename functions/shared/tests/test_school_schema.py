@@ -11,9 +11,9 @@ from datetime import datetime
 
 import pytest
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 
-from school_schema import (  # noqa: E402
+from shared.school_schema import (  # noqa: E402
     validate_doc, format_errors, validate_current_class_id, coerce_wire_payload,
     REASON_PERSON_ID, REASON_SELF_ID, REASON_GRADE_ONLY, REASON_UNRESOLVABLE,
     REASON_EMPTY, REASON_UNKNOWN_CLASS,

@@ -299,11 +299,11 @@ def in_active_window(survey, now):
 #                      (src/composables/useImport.js buildStudentsPlan)
 #   - grade + section  as separate fields, needing composition
 # Class resolution is NOT decided here. It lives in the shared resolver
-# (functions/shared/class_resolver.py, mirrored into this folder by
-# tools/sync_shared.py) so surveys, promotion, import review and reports all
-# read a student's class the same way. This module previously had its own
-# copy — one of three in the repo — and the three disagreed.
-from class_resolver import (  # noqa: E402
+# (functions/shared/class_resolver.py, imported — no copy in this folder) so
+# surveys, promotion, import review and reports all read a student's class the
+# same way. This module previously had its own copy — one of three in the repo
+# — and the three disagreed.
+from shared.class_resolver import (  # noqa: E402
     CLASS_ID_FIELDS, GRADE_FIELDS, SECTION_FIELDS,  # noqa: F401 (re-exported)
     raw_class_value, parse_class_value,
 )

@@ -15,7 +15,7 @@
  * confidence 'none', its raw string and the field it came from, so the UI can
  * render `classId: "1st Std" (unrecognized)` instead of a bare arrow.
  */
-import SEED from '../../functions/generate_import/education_kb.json'
+import SEED from '../../functions/shared/education_kb.json'
 
 export const CONF_HIGH = 'high'
 export const CONF_MEDIUM = 'medium'

@@ -30,7 +30,7 @@ import { mapImportRowToStudent } from '../schemas/studentMapping.js'
 
 // ── Grade normalization — delegates to the shared education knowledge base
 // (src/utils/educationKB.js), which is seeded from the very same
-// education_kb.json that functions/generate_import/education_kb.py reads.
+// functions/shared/education_kb.json that generate_import/education_kb.py reads.
 // The review UI needs the same "does this row's class-section exist" answer
 // the Cloud Function used when it raised the flag, and the only way to
 // guarantee that is one shared vocabulary rather than two hand-synced

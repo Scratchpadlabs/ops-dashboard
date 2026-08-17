@@ -75,9 +75,9 @@ from normalize import (
 )
 import education_kb as kb
 from tabular_parser import parse_tabular_file
-# Mirrored from functions/shared/ by tools/sync_shared.py — see that script for
-# why these are copies rather than imports.
-from school_schema import (
+# ONE copy, imported — functions/shared/ is staged into the deploy tree by
+# tools/deploy_function.sh (see that script and functions/shared/__init__.py).
+from shared.school_schema import (
     validate_doc, format_errors, validate_current_class_id, coerce_wire_payload,
 )
 

@@ -9,9 +9,9 @@ import sys
 
 import pytest
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 
-from class_resolver import (  # noqa: E402
+from shared.class_resolver import (  # noqa: E402
     CONF_HIGH, CONF_MEDIUM, CONF_NONE,
     parse_class_value, resolve_class, build_school_context, raw_class_value,
     ordinal_to_token, notation_of, describe_unresolved, distinct_class_values,

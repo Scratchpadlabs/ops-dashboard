@@ -402,7 +402,7 @@ def validate_current_class_id(value, student_id=None, class_ids=None):
         return {"ok": False, "reason": REASON_PERSON_ID, "severity": "error",
                 "message": f'currentClassId "{raw}" looks like a student/staff ID, not a class'}
 
-    from class_resolver import parse_class_value          # local: mirrored per folder
+    from .class_resolver import parse_class_value    # local: avoids an import cycle
     parsed = parse_class_value(raw)
 
     if parsed.get("grade_ordinal") is None:

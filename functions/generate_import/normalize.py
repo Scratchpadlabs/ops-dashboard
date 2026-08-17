@@ -19,7 +19,7 @@ Jr-KG spelling list, and one subject alias dictionary in the codebase.
 import difflib
 import re
 
-from class_resolver import normalize_section_value
+from shared.class_resolver import normalize_section_value
 from datetime import date, datetime, timedelta
 
 import education_kb as kb

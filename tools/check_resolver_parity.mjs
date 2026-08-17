@@ -28,7 +28,7 @@ if (!fs.existsSync(RESULTS)) {
 
 // Load the real module with only the JSON import substituted.
 const src = fs.readFileSync(path.join(ROOT, 'src/utils/classResolver.js'), 'utf8')
-const seed = fs.readFileSync(path.join(ROOT, 'functions/generate_import/education_kb.json'), 'utf8')
+const seed = fs.readFileSync(path.join(ROOT, 'functions/shared/education_kb.json'), 'utf8')
 const patched = src.replace(/^import SEED from .*$/m, `const SEED = ${seed};`)
 if (patched === src) {
   console.error('Could not find the SEED import line — parity harness needs updating.')
