@@ -23,7 +23,9 @@
     ]
   },
   "firestore": {
-    "rules": "firestore.rules"
+    "//": "firestore.indexes.json is NOT a complete picture of the project's composite indexes - it currently declares only the assessments(termId, subjectId) index the teacher app needs (docs/school-setup-page-spec.md 2). Before running `firebase deploy --only firestore:indexes`, reconcile it against the live set (`gcloud firestore indexes composite list --project clarified-1501`) and add anything missing, so the deploy cannot propose removing an index the teacher app depends on. Creating an index is additive and safe; removing one breaks a live query.",
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
   },
   "storage": {
     "rules": "storage.rules"

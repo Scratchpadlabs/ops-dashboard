@@ -66,7 +66,22 @@
         <div class="grid grid-cols-2 gap-4">
           <div v-if="!isCoScholasticForm">
             <label class="form-label">Grade *</label>
-            <InputText v-model="form.grade" class="w-full" placeholder="e.g. III" :disabled="!!editingSubject" />
+            <!-- Options come from the school's OWN classes, never a fixed roman
+                 list: a school onboarded from a student file keeps its own
+                 notation (`1`, `Nursery`), and a subject filed under `III` would
+                 never attach to a class whose clazz is `1`. Still `editable`, so
+                 a grade whose class does not exist yet is not blocked. -->
+            <Select
+              v-model="form.grade"
+              :options="classGrades"
+              editable
+              class="w-full"
+              :placeholder="classGrades.length ? 'Pick the grade as this school writes it' : 'e.g. III'"
+              :disabled="!!editingSubject"
+            />
+            <p v-if="gradeWarning" class="text-xs text-amber-700 bg-amber-50 rounded px-2 py-1 mt-1">
+              {{ gradeWarning }}
+            </p>
           </div>
           <div v-else>
             <label class="form-label">Term *</label>
@@ -268,22 +283,43 @@ const conversionTypeOptions = [
 const terms = ref([])
 const scales = ref([])
 const coActivities = ref([])
+const classes = ref([])
 
 async function loadCoScholasticContext() {
-  if (!props.schoolId) { terms.value = []; scales.value = []; coActivities.value = []; return }
+  if (!props.schoolId) {
+    terms.value = []; scales.value = []; coActivities.value = []; classes.value = []
+    return
+  }
   try {
-    const [tSnap, gSnap, aSnap] = await Promise.all([
+    const [tSnap, gSnap, aSnap, cSnap] = await Promise.all([
       getDocs(schoolCollection(props.schoolId, 'terms')),
       getDocs(schoolCollection(props.schoolId, 'grading_scales')),
       getDocs(schoolCollection(props.schoolId, 'co_scholastic_activities')),
+      getDocs(schoolCollection(props.schoolId, 'classes')),
     ])
     terms.value = tSnap.docs.map(d => ({ id: d.id, ...d.data() }))
     scales.value = gSnap.docs.map(d => ({ id: d.id, ...d.data() }))
     coActivities.value = aSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+    classes.value = cSnap.docs.map(d => ({ id: d.id, ...d.data() }))
   } catch (e) {
-    console.error('Could not load terms/scales/co-scholastic activities', e)
+    console.error('Could not load terms/scales/co-scholastic activities/classes', e)
   }
 }
+
+// The grade tokens THIS school actually uses. Read from classes rather than a
+// fixed list because ClassesTeachersTab attaches a subject to a class by exact
+// string equality on the id prefix (`parseGrade(subject.id) === class.clazz`) —
+// so a subject filed under a token no class uses can never be attached, and the
+// teacher app's subject dropdown (classes.subjects[] ∩ assignments[classId])
+// comes back empty.
+const classGrades = computed(() => {
+  const seen = new Set()
+  for (const c of classes.value) {
+    const g = (c.clazz || '').trim()
+    if (g) seen.add(g)
+  }
+  return Array.from(seen).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+})
 
 // Co-scholastic activities are ordered within a term — a new one lands last.
 function nextCoOrder(termId) {
@@ -337,6 +373,20 @@ const form = reactive({
 // doc between collections is the migration script's job, not a side effect of
 // an edit (scripts/migrate-co-scholastic-subjects.mjs).
 const isCoScholasticForm = computed(() => !editingSubject.value && isCoScholasticArea(form.area))
+
+// Must stay below `form`, `editingSubject` and `isCoScholasticForm` — same
+// ordering rule as the watch in SchoolSetup.vue. Advisory only: it never blocks
+// a save, because a subject may legitimately be created before its class exists
+// and this tab has to keep working for a school with no classes yet.
+const gradeWarning = computed(() => {
+  if (isCoScholasticForm.value || editingSubject.value) return ''
+  const g = (form.grade || '').trim()
+  if (!g) return ''
+  if (!classes.value.length) return 'This school has no classes yet — nothing to check this grade against.'
+  if (classGrades.value.includes(g)) return ''
+  return `No class in this school uses grade "${g}". Its classes use: ${classGrades.value.join(', ')}. `
+       + 'A subject whose grade does not match a class can never be attached to it.'
+})
 const dialogHeader = computed(() => {
   if (editingSubject.value) return 'Edit Subject'
   return isCoScholasticForm.value ? 'Add Co-Scholastic Activity' : 'Add Subject'
@@ -691,9 +741,14 @@ function areaFor(name) {
 }
 
 function downloadSample() {
+  // Prefer grades already in use, then the school's actual class grades. The
+  // roman literals are a last resort only — handing a numeric-notation school a
+  // sample that says "III" is how a subject gets filed under a grade none of its
+  // classes use.
   const existingGrades = Array.from(new Set(subjects.value.map(s => parseGrade(s.id))))
-  const g1 = existingGrades[0] || 'III'
-  const g2 = existingGrades[1] || 'IV'
+  const candidates = existingGrades.length ? existingGrades : classGrades.value
+  const g1 = candidates[0] || 'III'
+  const g2 = candidates[1] || candidates[0] || 'IV'
   const termId = terms.value[0]?.id || 'term1'
   const sample = [
     // area left blank — the knowledge base classifies these from the name.
