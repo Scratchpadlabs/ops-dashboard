@@ -225,8 +225,6 @@ async function refreshOutstanding() {
   }
 }
 
-watch(selectedSchoolObject, refreshOutstanding, { immediate: true })
-
 function onResetTarget(schoolId) {
   resetTargetSchoolId.value = schoolId || null
   if (schoolId) selectedSchoolId.value = schoolId
@@ -296,6 +294,11 @@ const creatingTestSchool = ref(false)
 
 const hasTestSchool = computed(() => schools.value.some(s => s.id === TEST_SCHOOL_ID))
 const selectedSchoolObject = computed(() => schools.value.find(s => s.id === selectedSchoolId.value) || null)
+
+// Must stay below `selectedSchoolObject`: `watch` evaluates its source argument
+// eagerly, so declaring this any earlier reads the const in its temporal dead
+// zone and throws during setup — which renders the whole page blank.
+watch(selectedSchoolObject, refreshOutstanding, { immediate: true })
 
 async function loadSchools() {
   loadingSchools.value = true
