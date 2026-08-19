@@ -36,8 +36,9 @@ function arg(name, fallback = null) {
 const PROJECT = arg('project', 'clarified-1501')
 const SCHOOL = arg('school')
 const AS_JSON = process.argv.includes('--json')
-if (!SCHOOL) {
-  console.error('usage: node tools/preview_curriculum.mjs --project <id> --school "<school doc id>" [--map "ID=FrameworkSubject,..."] [--json]')
+const LIST = process.argv.includes('--list')
+if (!SCHOOL && !LIST) {
+  console.error('usage: node tools/preview_curriculum.mjs --project <id> --school "<school doc id>" [--map "ID=FrameworkSubject,..."] [--json]\n       node tools/preview_curriculum.mjs --project <id> --list')
   process.exit(2)
 }
 
@@ -72,7 +73,36 @@ const { buildCurriculumPlan } = await import(path.join(TMP, 'curriculumPlan.js')
 // ── read the school (read-only) ────────────────────────────────────────────
 const { Firestore } = await import('@google-cloud/firestore')
 const db = new Firestore({ projectId: PROJECT })
+
+// `--list` first: a school id is a human-readable name with spaces and casing,
+// and guessing it is the likeliest way to waste a run.
+if (LIST) {
+  const snap = await db.collection('schools').select().get()
+  console.log(`\n${snap.size} school(s) in ${PROJECT}:\n`)
+  for (const d of snap.docs) console.log(`  ${d.id}`)
+  console.log('')
+  process.exit(0)
+}
+
 const base = db.collection('schools').doc(SCHOOL)
+
+// Without this a typo reads three empty collections and prints a confident plan
+// for a school that does not exist.
+const root = await base.get()
+if (!root.exists) {
+  console.error(`\nNo school with id "${SCHOOL}" in ${PROJECT}.`)
+  const snap = await db.collection('schools').select().get()
+  const near = snap.docs.map(d => d.id)
+    .filter(id => id.toLowerCase().includes(SCHOOL.toLowerCase().split(/\s+/)[0] || ''))
+  if (near.length) {
+    console.error('\nDid you mean:')
+    for (const id of near) console.error(`  ${id}`)
+  } else {
+    console.error('\nRun with --list to see every school id.')
+  }
+  console.error('')
+  process.exit(1)
+}
 
 async function read(name) {
   const snap = await base.collection(name).get()
