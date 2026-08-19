@@ -62,3 +62,20 @@ export function stageForGrade(gradeOrClassId) {
   const parsed = parseClassValue(gradeOrClassId)
   return stageForOrdinal(parsed?.gradeOrdinal ?? null)
 }
+
+/**
+ * Stage for a remark category's grade band — the inverse of STAGE_LABELS.
+ *
+ * The two vocabularies differ and must not be compared directly: a remark
+ * category's document id reads `Preparatory_General_Remarks` while the class
+ * field spells that stage `prepratory`, misspelled to match production. Deriving
+ * one from the other here keeps that single mapping in one place.
+ */
+export function stageForBand(band) {
+  const want = String(band || '').trim().toLowerCase()
+  if (!want) return null
+  for (const [stage, label] of Object.entries(STAGE_LABELS)) {
+    if (label.toLowerCase() === want) return stage
+  }
+  return null
+}

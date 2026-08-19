@@ -193,6 +193,11 @@ export const SCHOOL_SCHEMAS = {
       label: f(STRING),
       order: f(NUMBER, { min: 1 }),
       remarks: f(ARRAY, { minLength: 1 }),
+      // Which classes this category applies to. The grade band lives in the doc
+      // ID prefix (`Foundational_Discipline`); this is that band resolved to the
+      // school's actual class ids, so the teacher app does not have to parse it.
+      // Optional: a category with no classIds applies wherever the app decides.
+      classIds: opt(ARRAY),
     },
     check(doc, errors) {
       const remarks = Array.isArray(doc.remarks) ? doc.remarks : []

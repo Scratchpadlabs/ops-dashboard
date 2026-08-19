@@ -5,6 +5,8 @@
       <div class="flex gap-2">
         <Button label="Import CSV" icon="pi pi-upload" size="small" outlined @click="importVisible = true" />
         <Button label="Sample CSV" icon="pi pi-download" size="small" text @click="downloadSample" />
+        <Button label="Allocate classes" icon="pi pi-sitemap" size="small" outlined
+                :disabled="!schoolId || !categories.length" @click="confirmAllocate" />
         <Button label="Copy from another school" icon="pi pi-copy" size="small" outlined @click="openCopyDialog" />
         <Button label="Add Category" icon="pi pi-plus" size="small" @click="openAddCategory" />
       </div>
@@ -34,6 +36,19 @@
           <template #body="{ data }">
             <div class="font-medium text-sm text-slate-900">{{ data.label }}</div>
             <div class="text-xs text-slate-400">{{ (data.remarks || []).length }} remark(s)</div>
+          </template>
+        </Column>
+        <Column header="Classes" style="width:190px">
+          <template #body="{ data }">
+            <span v-if="(data.classIds || []).length"
+                  class="text-xs text-slate-600 font-mono"
+                  v-tooltip="(data.classIds || []).join(', ')">
+              {{ (data.classIds || []).length }} class(es)
+              <span v-if="wrongForBand(data).length" class="text-amber-700">
+                · {{ wrongForBand(data).length }} not in band
+              </span>
+            </span>
+            <span v-else class="text-xs text-slate-300">none</span>
           </template>
         </Column>
         <Column header="" style="width:170px">
@@ -144,13 +159,15 @@ import Select from 'primevue/select'
 import ProgressSpinner from 'primevue/progressspinner'
 
 import { schoolCollection, schoolDoc, rootSchoolsCollection } from '../../firebase/schoolCollections.js'
+import { stageForBand, stageForGrade } from '../../utils/stages.js'
+import { compareClasses } from '../../utils/classResolver.js'
 import ConfigEmptyState from './ConfigEmptyState.vue'
 import CsvImportDialog from './CsvImportDialog.vue'
 import { toCsv, downloadCsv } from '../../utils/csv.js'
 import {
   REMARK_CSV_COLUMNS, makeRemarkRowClassifier, groupRemarkRows, bandOfId, sampleRemarkRows,
 } from '../../utils/remarksImport.js'
-import { guardedSetDoc, guardedUpdateDoc, guardedBatchSet, SchemaViolation } from '../../schemas/guardedWrite.js'
+import { guardedSetDoc, guardedUpdateDoc, guardedBatchSet, MODE_UPDATE, SchemaViolation } from '../../schemas/guardedWrite.js'
 import { db } from '../../firebase/config'
 import { auth } from '../../firebase/config'
 
@@ -159,7 +176,50 @@ const confirm = useConfirm()
 const toast = useToast()
 
 const categories = ref([])
+const classes = ref([])
 const loading = ref(false)
+const allocating = ref(false)
+
+/**
+ * Class ids for a category's grade band.
+ *
+ * The band is the document id prefix (`Foundational_Discipline`) and reads
+ * "Foundational"; a class stores that same stage as `foundation`. stageForBand
+ * bridges the two vocabularies rather than comparing them directly.
+ *
+ * The stage is DERIVED from each class's grade, not read from its stored
+ * `stage` field — every class created before that field was derived was written
+ * as 'foundation' regardless of grade, so trusting it would allocate a whole
+ * school to one band.
+ */
+function classIdsForBand(band) {
+  const stage = stageForBand(band)
+  if (!stage) return []
+  // Grade order, not lexicographic: a plain sort puts II_A before I_A and
+  // reads as nonsense to anyone opening the document.
+  return classes.value
+    .filter(c => stageForGrade(c.clazz || c.id) === stage)
+    .map(c => c.id)
+    .sort(compareClasses)
+}
+
+/** Class ids currently on a category that its band does not cover. */
+function wrongForBand(cat) {
+  const band = bandOfId(cat?.id)
+  if (!band) return []
+  const want = new Set(classIdsForBand(band))
+  return (cat.classIds || []).filter(id => !want.has(id))
+}
+
+async function loadClasses() {
+  if (!props.schoolId) { classes.value = []; return }
+  try {
+    const snap = await getDocs(schoolCollection(props.schoolId, 'classes'))
+    classes.value = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+  } catch (e) {
+    console.error('Could not load classes for remark allocation', e)
+  }
+}
 
 async function loadCategories() {
   if (!props.schoolId) { categories.value = []; return }
@@ -386,6 +446,69 @@ async function copyRemarkBank() {
 const importVisible = ref(false)
 const bandOf = cat => bandOfId(cat?.id)
 
+function buildAllocation() {
+  const rows = []
+  for (const cat of categories.value) {
+    const band = bandOfId(cat.id)
+    if (!band) continue                       // no band prefix: applies everywhere, leave alone
+    const want = classIdsForBand(band)
+    const have = [...(cat.classIds || [])].sort(compareClasses)
+    if (JSON.stringify(want) === JSON.stringify(have)) continue
+    rows.push({ id: cat.id, band, label: cat.label, from: have, to: want })
+  }
+  return rows
+}
+
+function confirmAllocate() {
+  const rows = buildAllocation()
+  if (!rows.length) {
+    toast.add({ severity: 'info', summary: 'Already allocated',
+                detail: 'Every category matches its grade band', life: 2500 })
+    return
+  }
+  const emptied = rows.filter(r => r.to.length === 0)
+  const detail = rows.slice(0, 6)
+    .map(r => `${r.id}: ${r.from.length} -> ${r.to.length}`).join('\n')
+  confirm.require({
+    message: `Set classIds on ${rows.length} categor(ies) from their grade band?\n\n${detail}`
+           + (rows.length > 6 ? `\n… and ${rows.length - 6} more` : '')
+           + (emptied.length
+               ? `\n\n${emptied.length} would end up with NO classes — this school has no classes in that band.`
+               : ''),
+    header: 'Allocate classes by grade band',
+    icon: 'pi pi-sitemap',
+    rejectLabel: 'Cancel',
+    acceptLabel: 'Allocate',
+    accept: () => runAllocate(rows),
+  })
+}
+
+async function runAllocate(rows) {
+  allocating.value = true
+  try {
+    for (let i = 0; i < rows.length; i += 450) {
+      const batch = writeBatch(db)
+      for (const r of rows.slice(i, i + 450)) {
+        // Partial update through the guard: classIds is the only field touched,
+        // so a category's label, order and remarks cannot be disturbed.
+        guardedBatchSet(batch, 'remark_categories',
+          schoolDoc(props.schoolId, 'remark_categories', r.id),
+          { classIds: r.to, updated_at: serverTimestamp(), updated_by: auth.currentUser?.email || 'unknown' },
+          { mode: MODE_UPDATE, merge: true })
+      }
+      await batch.commit()
+    }
+    toast.add({ severity: 'success', summary: 'Classes allocated', detail: `${rows.length} categor(ies)`, life: 3000 })
+    await loadCategories()
+  } catch (e) {
+    console.error(e)
+    toast.add({ severity: 'error', summary: 'Could not allocate',
+                detail: e instanceof SchemaViolation ? e.userMessage : 'Check the console', life: 5000 })
+  } finally {
+    allocating.value = false
+  }
+}
+
 // The classifier is stateful across the rows of one file, so it must be built
 // once per file rather than per row — rebuilding it would reset the set of
 // keys earlier rows already claimed and let collisions through.
@@ -422,8 +545,8 @@ function downloadSample() {
   downloadCsv('remarks_sample.csv', toCsv(sampleRemarkRows(), REMARK_CSV_COLUMNS))
 }
 
-watch(() => props.schoolId, loadCategories)
-onMounted(loadCategories)
+watch(() => props.schoolId, () => { loadCategories(); loadClasses() })
+onMounted(() => { loadCategories(); loadClasses() })
 </script>
 
 <style scoped>

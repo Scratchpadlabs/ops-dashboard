@@ -229,7 +229,10 @@ SCHOOL_SCHEMAS = {
     },
     "remark_categories": {
         "label": "Remark categories",
-        "fields": {"label": _f(STRING), "order": _f(NUMBER, min=1), "remarks": _f(ARRAY, minLength=1)},
+        # classIds — the doc id's grade band resolved to real class ids, so the
+        # teacher app need not parse the prefix. Optional; see the JS twin.
+        "fields": {"label": _f(STRING), "order": _f(NUMBER, min=1),
+                   "remarks": _f(ARRAY, minLength=1), "classIds": _opt(ARRAY)},
         "check": _check_remark_categories,
     },
     "months": {
