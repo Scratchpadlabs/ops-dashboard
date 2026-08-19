@@ -53,7 +53,7 @@ import ConfirmDialog from 'primevue/confirmdialog'
 
 import { schoolCollection, schoolDoc, rootSchoolDoc } from '../../firebase/schoolCollections.js'
 import { auth } from '../../firebase/config'
-import { regenerateStudentsSchemaClassOptions } from '../../utils/schoolSetupHelpers.js'
+import { regenerateStudentsSchemaClassOptions, isJunkDoc } from '../../utils/schoolSetupHelpers.js'
 
 const props = defineProps({ schoolId: { type: String, default: null }, school: { type: Object, default: null } })
 const emit = defineEmits(['saved'])
@@ -91,11 +91,6 @@ async function saveSchool() {
 // ── Hygiene scan (read-only detection; every fix below is opt-in + confirm) ─
 const warnings = ref([])
 const scanning = ref(false)
-
-function isJunkDoc(data) {
-  const keys = Object.keys(data)
-  return keys.length === 1 && keys[0] === 'a'
-}
 
 async function runScan() {
   if (!props.schoolId) { warnings.value = []; return }
