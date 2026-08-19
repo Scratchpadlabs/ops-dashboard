@@ -6,12 +6,17 @@
     "Codes are the framework's own (MCG1, MC1.1, CG-8, L1CG2 ...) and are kept so an entry",
     "can always be traced back to the source document.",
     "",
-    "'foundation' has NO subject breakdown: the Foundational document is organised by",
-    "developmental domain, not by subject, so its 13 goals sit under a single '(stage-wide)'",
-    "entry until ops confirms how they map onto the subjects a foundational class teaches.",
+    "appliesToAllSubjects — the Foundational document is organised by developmental domain,",
+    "not by subject. Ops decided every foundational subject carries all 13 goals, so that",
+    "stage has no subject list of its own and its goals attach to whatever subjects the",
+    "school teaches at that stage.",
     "",
-    "This file is the TEMPLATE LIBRARY content only. It carries no survey/feedback questions",
-    "— those were not in the source documents and are still needed.",
+    "For the other stages the subject names are NCF SLOTS, not the names a school uses.",
+    "'Mathematics' matches a school's Maths/Numeracy through the knowledge base, but",
+    "'Language 1/2/3' identify which language a school teaches first, second, third — that",
+    "is per-school and cannot be inferred from the name.",
+    "",
+    "This file carries no survey/feedback questions — they were not in the source documents.",
     "",
     "Written into schools/{id}/subjects/{subjectId}.curricular_goals as",
     "[{ '<goal text>': ['<competency text>', ...] }, ...] — the shape spec §2 defines."
@@ -22,7 +27,7 @@
     "foundation": {
       "subjects": [
         {
-          "subject": "(stage-wide)",
+          "subject": "(all subjects at this stage)",
           "aliases": [],
           "goals": [
             {
@@ -377,7 +382,8 @@
             }
           ]
         }
-      ]
+      ],
+      "appliesToAllSubjects": true
     },
     "prepratory": {
       "subjects": [
@@ -811,7 +817,8 @@
             }
           ]
         }
-      ]
+      ],
+      "appliesToAllSubjects": false
     },
     "middle": {
       "subjects": [
@@ -1543,7 +1550,8 @@
             }
           ]
         }
-      ]
+      ],
+      "appliesToAllSubjects": false
     },
     "secondary": {
       "subjects": [
@@ -2651,7 +2659,8 @@
             }
           ]
         }
-      ]
+      ],
+      "appliesToAllSubjects": false
     }
   }
 }

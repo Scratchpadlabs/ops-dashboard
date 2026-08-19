@@ -22,95 +22,677 @@
     "hit the same entry — no need to list punctuation variants."
   ],
   "version": 1,
-
   "subjects": [
-    { "canonical": "English", "aliases": ["eng", "english language", "eng lang", "englsih", "english lang"] },
-    { "canonical": "English Grammar", "aliases": ["grammar", "eng grammar", "english gram", "gram"] },
-    { "canonical": "English Literature", "aliases": ["literature", "eng literature", "eng lit", "lit"] },
-    { "canonical": "Hindi", "aliases": ["hin", "hindi language", "hindi lang", "हिंदी"] },
-    { "canonical": "Hindi Grammar", "aliases": ["hindi vyakaran", "vyakaran", "hin grammar"] },
-    { "canonical": "Marathi", "aliases": ["mar", "marathi language", "मराठी"] },
-    { "canonical": "Sanskrit", "aliases": ["sans", "sanskrit language", "sankrit", "संस्कृत"] },
-    { "canonical": "Urdu", "aliases": ["urdu language"] },
-    { "canonical": "Telugu", "aliases": ["telgu", "telugu language"] },
-    { "canonical": "Kannada", "aliases": ["kanada", "kannad"] },
-    { "canonical": "Tamil", "aliases": ["tamizh"] },
-    { "canonical": "Bengali", "aliases": ["bangla"] },
-    { "canonical": "Gujarati", "aliases": ["gujrati"] },
-    { "canonical": "Punjabi", "aliases": ["panjabi"] },
-    { "canonical": "French", "aliases": ["french language"] },
-    { "canonical": "German", "aliases": ["german language"] },
-    { "canonical": "Second Language", "aliases": ["2nd language", "sec language", "ii language", "second lang"] },
-    { "canonical": "Third Language", "aliases": ["3rd language", "iii language", "third lang"] },
-
-    { "canonical": "Mathematics", "aliases": ["maths", "math", "ganit", "mathematic", "mathmatics", "maths.", "गणित"] },
-    { "canonical": "Science", "aliases": ["sci", "general science", "gen science", "sciene", "विज्ञान"] },
-    { "canonical": "EVS", "aliases": ["environmental studies", "environmental science", "env studies", "env science", "environment studies", "environment", "e v s"] },
-    { "canonical": "Social Science", "aliases": ["sst", "social studies", "social", "soc sci", "s st", "socialscience", "social sci"] },
-    { "canonical": "Computer", "aliases": ["ict", "computer science", "computers", "comp", "computer studies", "information technology", "it", "comp sci", "computer application", "computer applications"] },
-    { "canonical": "General Awareness", "aliases": ["ga", "gen awareness", "general awarness", "awareness"] },
-
-    { "canonical": "Physics", "aliases": ["phy", "physic"] },
-    { "canonical": "Chemistry", "aliases": ["chem", "chemisty"] },
-    { "canonical": "Biology", "aliases": ["bio", "bilogy"] },
-    { "canonical": "History", "aliases": ["hist"] },
-    { "canonical": "Geography", "aliases": ["geo", "geog"] },
-    { "canonical": "Civics", "aliases": ["civic"] },
-    { "canonical": "Political Science", "aliases": ["pol science", "pol sci", "politics"] },
-    { "canonical": "Economics", "aliases": ["eco", "econ"] },
-    { "canonical": "Accountancy", "aliases": ["accounts", "accounting", "acc"] },
-    { "canonical": "Business Studies", "aliases": ["bst", "business", "b studies"] },
-    { "canonical": "Rhymes", "aliases": ["rhyme", "poems", "nursery rhymes"] },
-    { "canonical": "Reading", "aliases": ["reading skills", "read"] },
-    { "canonical": "Writing", "aliases": ["writing skills", "penmanship"] }
+    {
+      "canonical": "English",
+      "aliases": [
+        "eng",
+        "english language",
+        "eng lang",
+        "englsih",
+        "english lang"
+      ]
+    },
+    {
+      "canonical": "English Grammar",
+      "aliases": [
+        "grammar",
+        "eng grammar",
+        "english gram",
+        "gram"
+      ]
+    },
+    {
+      "canonical": "English Literature",
+      "aliases": [
+        "literature",
+        "eng literature",
+        "eng lit",
+        "lit"
+      ]
+    },
+    {
+      "canonical": "Hindi",
+      "aliases": [
+        "hin",
+        "hindi language",
+        "hindi lang",
+        "हिंदी"
+      ]
+    },
+    {
+      "canonical": "Hindi Grammar",
+      "aliases": [
+        "hindi vyakaran",
+        "vyakaran",
+        "hin grammar"
+      ]
+    },
+    {
+      "canonical": "Marathi",
+      "aliases": [
+        "mar",
+        "marathi language",
+        "मराठी"
+      ]
+    },
+    {
+      "canonical": "Sanskrit",
+      "aliases": [
+        "sans",
+        "sanskrit language",
+        "sankrit",
+        "संस्कृत"
+      ]
+    },
+    {
+      "canonical": "Urdu",
+      "aliases": [
+        "urdu language"
+      ]
+    },
+    {
+      "canonical": "Telugu",
+      "aliases": [
+        "telgu",
+        "telugu language"
+      ]
+    },
+    {
+      "canonical": "Kannada",
+      "aliases": [
+        "kanada",
+        "kannad"
+      ]
+    },
+    {
+      "canonical": "Tamil",
+      "aliases": [
+        "tamizh"
+      ]
+    },
+    {
+      "canonical": "Bengali",
+      "aliases": [
+        "bangla"
+      ]
+    },
+    {
+      "canonical": "Gujarati",
+      "aliases": [
+        "gujrati"
+      ]
+    },
+    {
+      "canonical": "Punjabi",
+      "aliases": [
+        "panjabi"
+      ]
+    },
+    {
+      "canonical": "French",
+      "aliases": [
+        "french language"
+      ]
+    },
+    {
+      "canonical": "German",
+      "aliases": [
+        "german language"
+      ]
+    },
+    {
+      "canonical": "Second Language",
+      "aliases": [
+        "2nd language",
+        "sec language",
+        "ii language",
+        "second lang"
+      ]
+    },
+    {
+      "canonical": "Third Language",
+      "aliases": [
+        "3rd language",
+        "iii language",
+        "third lang"
+      ]
+    },
+    {
+      "canonical": "Mathematics",
+      "aliases": [
+        "maths",
+        "math",
+        "ganit",
+        "mathematic",
+        "mathmatics",
+        "maths.",
+        "गणित",
+        "numeracy"
+      ]
+    },
+    {
+      "canonical": "Science",
+      "aliases": [
+        "sci",
+        "general science",
+        "gen science",
+        "sciene",
+        "विज्ञान"
+      ]
+    },
+    {
+      "canonical": "EVS",
+      "aliases": [
+        "environmental studies",
+        "environmental science",
+        "env studies",
+        "env science",
+        "environment studies",
+        "environment",
+        "e v s"
+      ]
+    },
+    {
+      "canonical": "Social Science",
+      "aliases": [
+        "sst",
+        "social studies",
+        "social",
+        "soc sci",
+        "s st",
+        "socialscience",
+        "social sci"
+      ]
+    },
+    {
+      "canonical": "Computer",
+      "aliases": [
+        "ict",
+        "computer science",
+        "computers",
+        "comp",
+        "computer studies",
+        "information technology",
+        "it",
+        "comp sci",
+        "computer application",
+        "computer applications"
+      ]
+    },
+    {
+      "canonical": "General Awareness",
+      "aliases": [
+        "ga",
+        "gen awareness",
+        "general awarness",
+        "awareness"
+      ]
+    },
+    {
+      "canonical": "Physics",
+      "aliases": [
+        "phy",
+        "physic"
+      ]
+    },
+    {
+      "canonical": "Chemistry",
+      "aliases": [
+        "chem",
+        "chemisty"
+      ]
+    },
+    {
+      "canonical": "Biology",
+      "aliases": [
+        "bio",
+        "bilogy"
+      ]
+    },
+    {
+      "canonical": "History",
+      "aliases": [
+        "hist"
+      ]
+    },
+    {
+      "canonical": "Geography",
+      "aliases": [
+        "geo",
+        "geog"
+      ]
+    },
+    {
+      "canonical": "Civics",
+      "aliases": [
+        "civic"
+      ]
+    },
+    {
+      "canonical": "Political Science",
+      "aliases": [
+        "pol science",
+        "pol sci",
+        "politics"
+      ]
+    },
+    {
+      "canonical": "Economics",
+      "aliases": [
+        "eco",
+        "econ"
+      ]
+    },
+    {
+      "canonical": "Accountancy",
+      "aliases": [
+        "accounts",
+        "accounting",
+        "acc"
+      ]
+    },
+    {
+      "canonical": "Business Studies",
+      "aliases": [
+        "bst",
+        "business",
+        "b studies"
+      ]
+    },
+    {
+      "canonical": "Rhymes",
+      "aliases": [
+        "rhyme",
+        "poems",
+        "nursery rhymes"
+      ]
+    },
+    {
+      "canonical": "Reading",
+      "aliases": [
+        "reading skills",
+        "read"
+      ]
+    },
+    {
+      "canonical": "Writing",
+      "aliases": [
+        "writing skills",
+        "penmanship"
+      ]
+    }
   ],
-
   "coscholastic": [
-    { "canonical": "Art & Craft", "aliases": ["drawing", "art", "craft", "arts and craft", "art and craft", "arts & crafts", "art craft", "colouring", "coloring", "painting", "drawing and painting"] },
-    { "canonical": "Music", "aliases": ["vocal music", "instrumental music", "singing", "song", "sangeet"] },
-    { "canonical": "Dance", "aliases": ["dancing", "nritya", "classical dance"] },
-    { "canonical": "Physical Education", "aliases": ["pe", "pt", "sports", "games", "phy edu", "physical training", "phy ed", "p e", "p t", "physical edu", "sports and games", "khel"] },
-    { "canonical": "Work Education", "aliases": ["supw", "work exp", "work experience", "socially useful productive work"] },
-    { "canonical": "Value Education", "aliases": ["moral science", "sanskar", "moral values", "values", "moral edu", "value edu", "moral", "ethics"] },
-    { "canonical": "General Knowledge", "aliases": ["gk", "gen knowledge", "g k", "general knowlege"] },
-    { "canonical": "Yoga", "aliases": ["yog", "yoga and meditation", "meditation"] },
-    { "canonical": "Library", "aliases": ["lib", "library reading", "library period"] },
-    { "canonical": "Health", "aliases": ["health education", "health and hygiene", "hygiene", "health edu"] },
-    { "canonical": "Handwriting", "aliases": ["hand writing", "calligraphy", "cursive", "cursive writing"] },
-    { "canonical": "Recitation", "aliases": ["elocution", "poem recitation", "declamation"] },
-    { "canonical": "Drama", "aliases": ["theatre", "theater", "dramatics", "role play", "acting"] },
-    { "canonical": "Discipline", "aliases": ["conduct", "behaviour", "behavior"] },
-    { "canonical": "Cleanliness", "aliases": ["neatness", "tidiness", "personal hygiene"] },
-    { "canonical": "Swimming", "aliases": ["swim"] },
-    { "canonical": "Karate", "aliases": ["martial arts", "taekwondo", "judo", "self defence", "self defense"] },
-    { "canonical": "Scouting", "aliases": ["scouts", "scouts and guides", "guides", "ncc", "nss"] },
-    { "canonical": "Computer Lab", "aliases": ["computer practical", "lab work"] },
-    { "canonical": "Life Skills", "aliases": ["life skill", "soft skills"] },
-    { "canonical": "SEW", "aliases": ["social emotional wellbeing", "social and emotional wellbeing", "socio emotional wellbeing", "social emotional well being"] }
+    {
+      "canonical": "Art & Craft",
+      "aliases": [
+        "drawing",
+        "art",
+        "craft",
+        "arts and craft",
+        "art and craft",
+        "arts & crafts",
+        "art craft",
+        "colouring",
+        "coloring",
+        "painting",
+        "drawing and painting"
+      ]
+    },
+    {
+      "canonical": "Music",
+      "aliases": [
+        "vocal music",
+        "instrumental music",
+        "singing",
+        "song",
+        "sangeet"
+      ]
+    },
+    {
+      "canonical": "Dance",
+      "aliases": [
+        "dancing",
+        "nritya",
+        "classical dance"
+      ]
+    },
+    {
+      "canonical": "Physical Education",
+      "aliases": [
+        "pe",
+        "pt",
+        "sports",
+        "games",
+        "phy edu",
+        "physical training",
+        "phy ed",
+        "p e",
+        "p t",
+        "physical edu",
+        "sports and games",
+        "khel"
+      ]
+    },
+    {
+      "canonical": "Work Education",
+      "aliases": [
+        "supw",
+        "work exp",
+        "work experience",
+        "socially useful productive work"
+      ]
+    },
+    {
+      "canonical": "Value Education",
+      "aliases": [
+        "moral science",
+        "sanskar",
+        "moral values",
+        "values",
+        "moral edu",
+        "value edu",
+        "moral",
+        "ethics"
+      ]
+    },
+    {
+      "canonical": "General Knowledge",
+      "aliases": [
+        "gk",
+        "gen knowledge",
+        "g k",
+        "general knowlege"
+      ]
+    },
+    {
+      "canonical": "Yoga",
+      "aliases": [
+        "yog",
+        "yoga and meditation",
+        "meditation"
+      ]
+    },
+    {
+      "canonical": "Library",
+      "aliases": [
+        "lib",
+        "library reading",
+        "library period"
+      ]
+    },
+    {
+      "canonical": "Health",
+      "aliases": [
+        "health education",
+        "health and hygiene",
+        "hygiene",
+        "health edu"
+      ]
+    },
+    {
+      "canonical": "Handwriting",
+      "aliases": [
+        "hand writing",
+        "calligraphy",
+        "cursive",
+        "cursive writing"
+      ]
+    },
+    {
+      "canonical": "Recitation",
+      "aliases": [
+        "elocution",
+        "poem recitation",
+        "declamation"
+      ]
+    },
+    {
+      "canonical": "Drama",
+      "aliases": [
+        "theatre",
+        "theater",
+        "dramatics",
+        "role play",
+        "acting"
+      ]
+    },
+    {
+      "canonical": "Discipline",
+      "aliases": [
+        "conduct",
+        "behaviour",
+        "behavior"
+      ]
+    },
+    {
+      "canonical": "Cleanliness",
+      "aliases": [
+        "neatness",
+        "tidiness",
+        "personal hygiene"
+      ]
+    },
+    {
+      "canonical": "Swimming",
+      "aliases": [
+        "swim"
+      ]
+    },
+    {
+      "canonical": "Karate",
+      "aliases": [
+        "martial arts",
+        "taekwondo",
+        "judo",
+        "self defence",
+        "self defense"
+      ]
+    },
+    {
+      "canonical": "Scouting",
+      "aliases": [
+        "scouts",
+        "scouts and guides",
+        "guides",
+        "ncc",
+        "nss"
+      ]
+    },
+    {
+      "canonical": "Computer Lab",
+      "aliases": [
+        "computer practical",
+        "lab work"
+      ]
+    },
+    {
+      "canonical": "Life Skills",
+      "aliases": [
+        "life skill",
+        "soft skills"
+      ]
+    },
+    {
+      "canonical": "SEW",
+      "aliases": [
+        "social emotional wellbeing",
+        "social and emotional wellbeing",
+        "socio emotional wellbeing",
+        "social emotional well being"
+      ]
+    }
   ],
-
   "grades": [
-    { "canonical": "Pre-Nursery", "aliases": ["pre nursery", "prenursery", "playgroup", "play group", "pg", "toddler"] },
-    { "canonical": "Nursery", "aliases": ["nur", "nsy", "nurs", "nursary"] },
-    { "canonical": "LKG", "aliases": ["lower kg", "jr kg", "junior kg", "jrkg", "kg1", "kg 1", "kg i", "lower kindergarten", "l k g"] },
-    { "canonical": "UKG", "aliases": ["upper kg", "sr kg", "senior kg", "srkg", "kg2", "kg 2", "kg ii", "upper kindergarten", "u k g"] },
-    { "canonical": "1", "aliases": ["i", "first", "1st", "one"] },
-    { "canonical": "2", "aliases": ["ii", "second", "2nd", "two"] },
-    { "canonical": "3", "aliases": ["iii", "third", "3rd", "three"] },
-    { "canonical": "4", "aliases": ["iv", "fourth", "4th", "four"] },
-    { "canonical": "5", "aliases": ["v", "fifth", "5th", "five"] },
-    { "canonical": "6", "aliases": ["vi", "sixth", "6th", "six"] },
-    { "canonical": "7", "aliases": ["vii", "seventh", "7th", "seven"] },
-    { "canonical": "8", "aliases": ["viii", "eighth", "8th", "eight"] },
-    { "canonical": "9", "aliases": ["ix", "ninth", "9th", "nine"] },
-    { "canonical": "10", "aliases": ["x", "tenth", "10th", "ten"] },
-    { "canonical": "11", "aliases": ["xi", "eleventh", "11th", "eleven"] },
-    { "canonical": "12", "aliases": ["xii", "twelfth", "12th", "twelve"] }
+    {
+      "canonical": "Pre-Nursery",
+      "aliases": [
+        "pre nursery",
+        "prenursery",
+        "playgroup",
+        "play group",
+        "pg",
+        "toddler"
+      ]
+    },
+    {
+      "canonical": "Nursery",
+      "aliases": [
+        "nur",
+        "nsy",
+        "nurs",
+        "nursary"
+      ]
+    },
+    {
+      "canonical": "LKG",
+      "aliases": [
+        "lower kg",
+        "jr kg",
+        "junior kg",
+        "jrkg",
+        "kg1",
+        "kg 1",
+        "kg i",
+        "lower kindergarten",
+        "l k g"
+      ]
+    },
+    {
+      "canonical": "UKG",
+      "aliases": [
+        "upper kg",
+        "sr kg",
+        "senior kg",
+        "srkg",
+        "kg2",
+        "kg 2",
+        "kg ii",
+        "upper kindergarten",
+        "u k g"
+      ]
+    },
+    {
+      "canonical": "1",
+      "aliases": [
+        "i",
+        "first",
+        "1st",
+        "one"
+      ]
+    },
+    {
+      "canonical": "2",
+      "aliases": [
+        "ii",
+        "second",
+        "2nd",
+        "two"
+      ]
+    },
+    {
+      "canonical": "3",
+      "aliases": [
+        "iii",
+        "third",
+        "3rd",
+        "three"
+      ]
+    },
+    {
+      "canonical": "4",
+      "aliases": [
+        "iv",
+        "fourth",
+        "4th",
+        "four"
+      ]
+    },
+    {
+      "canonical": "5",
+      "aliases": [
+        "v",
+        "fifth",
+        "5th",
+        "five"
+      ]
+    },
+    {
+      "canonical": "6",
+      "aliases": [
+        "vi",
+        "sixth",
+        "6th",
+        "six"
+      ]
+    },
+    {
+      "canonical": "7",
+      "aliases": [
+        "vii",
+        "seventh",
+        "7th",
+        "seven"
+      ]
+    },
+    {
+      "canonical": "8",
+      "aliases": [
+        "viii",
+        "eighth",
+        "8th",
+        "eight"
+      ]
+    },
+    {
+      "canonical": "9",
+      "aliases": [
+        "ix",
+        "ninth",
+        "9th",
+        "nine"
+      ]
+    },
+    {
+      "canonical": "10",
+      "aliases": [
+        "x",
+        "tenth",
+        "10th",
+        "ten"
+      ]
+    },
+    {
+      "canonical": "11",
+      "aliases": [
+        "xi",
+        "eleventh",
+        "11th",
+        "eleven"
+      ]
+    },
+    {
+      "canonical": "12",
+      "aliases": [
+        "xii",
+        "twelfth",
+        "12th",
+        "twelve"
+      ]
+    }
   ],
-
   "_grade_prefixes_comment": "Stripped before matching a grade token, any case/spacing: 'Grade III', 'Std. 4', 'Class-9' all reduce to the bare token. 'garde' is a real, frequent typo in school files.",
-  "grade_prefixes": ["grade", "garde", "gradee", "std", "standard", "class", "clas", "cls"],
-
+  "grade_prefixes": [
+    "grade",
+    "garde",
+    "gradee",
+    "std",
+    "standard",
+    "class",
+    "clas",
+    "cls"
+  ],
   "_section_patterns_comment": [
     "Section names are open-ended, so these are PATTERNS/vocabularies rather than",
     "a closed canonical list: a school can call a section anything. A value that",
@@ -119,11 +701,97 @@
     "territory). Names are stored title-cased as the canonical display form."
   ],
   "section_patterns": {
-    "letters": ["A", "B", "C", "D", "E", "F", "G", "H"],
-    "colors": ["Red", "Blue", "Green", "Yellow", "Orange", "Purple", "Pink", "White", "Violet", "Indigo", "Maroon", "Silver", "Golden", "Sky", "Peach"],
-    "gems": ["Ruby", "Emerald", "Diamond", "Pearl", "Sapphire", "Topaz", "Opal", "Jade", "Amber", "Crystal", "Coral", "Garnet"],
-    "flowers": ["Rose", "Lotus", "Lily", "Jasmine", "Tulip", "Sunflower", "Marigold", "Daisy", "Orchid", "Daffodil", "Lavender", "Hibiscus"],
-    "virtues": ["Winner", "Victor", "Champion", "Achiever", "Explorer", "Discoverer", "Courage", "Honesty", "Wisdom", "Unity", "Harmony", "Truth", "Peace", "Valour", "Justice", "Integrity", "Diligence", "Kindness", "Respect", "Excellence"],
-    "nature": ["Eagle", "Falcon", "Peacock", "Sparrow", "Tiger", "Lion", "Dolphin", "Sun", "Moon", "Star", "River", "Ocean", "Mountain"]
+    "letters": [
+      "A",
+      "B",
+      "C",
+      "D",
+      "E",
+      "F",
+      "G",
+      "H"
+    ],
+    "colors": [
+      "Red",
+      "Blue",
+      "Green",
+      "Yellow",
+      "Orange",
+      "Purple",
+      "Pink",
+      "White",
+      "Violet",
+      "Indigo",
+      "Maroon",
+      "Silver",
+      "Golden",
+      "Sky",
+      "Peach"
+    ],
+    "gems": [
+      "Ruby",
+      "Emerald",
+      "Diamond",
+      "Pearl",
+      "Sapphire",
+      "Topaz",
+      "Opal",
+      "Jade",
+      "Amber",
+      "Crystal",
+      "Coral",
+      "Garnet"
+    ],
+    "flowers": [
+      "Rose",
+      "Lotus",
+      "Lily",
+      "Jasmine",
+      "Tulip",
+      "Sunflower",
+      "Marigold",
+      "Daisy",
+      "Orchid",
+      "Daffodil",
+      "Lavender",
+      "Hibiscus"
+    ],
+    "virtues": [
+      "Winner",
+      "Victor",
+      "Champion",
+      "Achiever",
+      "Explorer",
+      "Discoverer",
+      "Courage",
+      "Honesty",
+      "Wisdom",
+      "Unity",
+      "Harmony",
+      "Truth",
+      "Peace",
+      "Valour",
+      "Justice",
+      "Integrity",
+      "Diligence",
+      "Kindness",
+      "Respect",
+      "Excellence"
+    ],
+    "nature": [
+      "Eagle",
+      "Falcon",
+      "Peacock",
+      "Sparrow",
+      "Tiger",
+      "Lion",
+      "Dolphin",
+      "Sun",
+      "Moon",
+      "Star",
+      "River",
+      "Ocean",
+      "Mountain"
+    ]
   }
 }
