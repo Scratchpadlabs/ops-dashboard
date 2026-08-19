@@ -110,7 +110,17 @@ The LLM is the last resort and never writes.
   (`parseGrade(subject.id) === class.clazz`). The manual onboarding route mints Roman grades
   (`III_A`); the "from a student file" route preserves the school's own (`1_A`). A subject filed
   under a grade token no class uses can never attach, and the teacher app's subject dropdown —
-  `classes.subjects[]` ∩ `assignments[classId]` — then comes back empty.
+  `classes.subjects[]` ∩ `assignments[classId]` — then comes back empty. Subjects now offers the
+  grade tokens the school's classes actually use, and warns on a mismatch, so this cannot be hit
+  silently from that tab.
+- **"Always Roman" is an authoring rule, not a migration.** New classes and subjects are written
+  in Roman. It does NOT license normalising a school that already holds numeric data: students
+  carry `currentClassId`, the teacher app matches `students where currentClassId == classId`, and
+  rewriting classes to `III_A` while students still say `1_A` orphans every one of them. The
+  resolver's promotion path must keep preserving each school's existing notation — that rule
+  exists because normalising mid-flight creates a parallel set of classes beside the real ones.
+  Reconciling an existing numeric school is a deliberate, verified migration of classes AND
+  students together, never a side effect.
 - **Temporal dead zone in `<script setup>`.** `watch(source, …)` evaluates its source *eagerly*, so
   declaring it above the `const` it watches throws during setup and renders the **whole page
   blank**. A `computed` next to it survives only because its getter is lazy. This has taken School
@@ -136,17 +146,62 @@ The LLM is the last resort and never writes.
 commits to them. `.github/workflows/deploy-school.yml` builds and deploys them per school with the
 school id injected at build time.
 
-## To be filled in by the team
+## Domain model
 
-Referenced in code and docs but written down nowhere. Please complete:
+```
+school
+ └── classes            (per section: III_A, III_B — grade is ALWAYS Roman)
+      └── subjects[]    (references subjects/{id}, e.g. III_English)
+           ├── topics            2–5 per subject
+           └── curricular_goals  array of { "<goal>": ["<competency>", …] }
+subjects/{id}
+ └── subject_feedbacks   survey questions + options, per subject
+```
+
+`config/students_schema` must expose **every** field available for student data,
+because it is what the import flow shows when a roster comes in from the app.
+A field missing here is a field ops cannot map.
+
+## Team decisions (answered — do not re-litigate)
+
+- **Grades are written in Roman numerals. Always, everywhere.** `III_A`, not `3_A`.
+  This is the house convention for authoring classes and subjects, and it is what
+  makes `parseGrade(subject.id) === class.clazz` line up in
+  `ClassesTeachersTab`. See the caveat in *Things that will bite you* — it does not
+  license rewriting an existing school's data.
+- **`SAMARTH DNYANPEETH SAHAYDRI` is the reference school.** Treat its structure as
+  the real deal. It is still not pristine — see `AUDIT.md` §1.5 — so clean before
+  copying, and never derive a schema by intersecting its docs.
+- **`term1` is the real term in SAMARTH.** This answers `AUDIT.md` Q1. The 8
+  `smart_sheet_entries` pointing at `63Zyu8RKgSts5VzToD2e` are therefore **wrong and
+  must be repointed to `term1`, never deleted** — they hold entered marks. The
+  Overview hygiene panel only offers Delete today, which is the wrong action here.
+- **Playbooks and activities are copied to every new school.** This answers spec §9
+  Q3; they are default-on in Clone School. Avatars stay opt-in — not confirmed.
+- **Nobody works the dashboard daily.** School Setup is an onboarding-time tool;
+  ongoing writes come from teacher/student activity in the apps. So a bug here is
+  discovered late, by a teacher, not by ops — which is the argument for guardrails
+  in the UI over documentation.
+
+## What the teacher app reads
+
+It is the consumer of nearly everything School Setup writes: **subjects, survey
+questions, smart-sheet entries, term details, grading scales** — the whole data-entry
+surface. Spec §6 holds the exact contract. Two consequences worth remembering:
+
+- The subject dropdown for a class is `classes/{id}.subjects[]` ∩ `staffs.assignments[classId]`.
+  Either side empty ⇒ the teacher sees nothing at all.
+- Assessment columns come from `assessments where termId == X && subjectId == Y`.
+  No match ⇒ "No assessments configured for the selected term and subject."
+
+## Still to be filled in by the team
 
 - **The "golden rules".** Cited by number (`golden rule 2/3/4`) across `generate_import` and
   `DEPLOY.md`, never listed. From context: **2** = multiple teachers on the same
   (subject, grade, section) is valid; **3** = never extract Aadhaar/SSSM/caste/religion/address;
   **4** = secrets live only in Secret Manager. Rule 1 is unknown.
-- **Which term is real in SAMARTH** — `term1`, or the auto-ID term its 8 sheets reference?
-  (`AUDIT.md` Q1, still open, and it blocks fixing those sheets without losing marks.)
-- **Which schools are live, and the grade notation each uses** (Roman vs numeric).
-- **The four open questions in spec §9** — ops identity for `lastEditedBy`, whether
-  playbooks/activities/avatars belong in Clone School, whether `stage` is a fixed enum.
-- **Which School Setup tabs are actually used day to day**, and which have never been run.
+- **The remaining spec §9 questions** — ops identity for `lastEditedBy`, and whether
+  `stage` is a fixed enum.
+- **Whether any live school stores grades numerically.** The Roman rule is now the
+  convention for authoring; whether legacy data already violates it is unverified, and
+  it decides whether a migration is needed.

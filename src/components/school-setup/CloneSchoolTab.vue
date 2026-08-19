@@ -28,7 +28,7 @@
       </div>
 
       <div>
-        <label class="form-label mb-2 block">Also copy (opt-in — confirm with Sid before relying on these)</label>
+        <label class="form-label mb-2 block">Also copy (opt-in — not confirmed as belonging in a clone)</label>
         <div class="grid grid-cols-2 gap-1.5">
           <label v-for="opt in optInOptions" :key="opt.key" class="flex items-center gap-2 text-sm">
             <Checkbox v-model="selected" :value="opt.key" />
@@ -80,10 +80,13 @@ const standardOptions = [
   { key: 'assessments', label: 'Assessments' },
   { key: 'classes', label: 'Classes (structure only, no teachers/progress)' },
   { key: 'config', label: 'Config Schemas' },
-]
-const optInOptions = [
+  // Confirmed by ops: playbooks and activities go to every new school, so they
+  // are standard rather than opt-in (spec §9 Q3). Avatars stay opt-in — never
+  // confirmed either way.
   { key: 'playbooks', label: 'Playbooks' },
   { key: 'activities', label: 'Activities' },
+]
+const optInOptions = [
   { key: 'avatars', label: 'Avatars' },
 ]
 
