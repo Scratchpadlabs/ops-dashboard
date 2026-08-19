@@ -112,7 +112,6 @@
       <div v-if="progress" class="text-sm text-slate-500">{{ progress }}</div>
     </template>
 
-    <ConfirmDialog />
   </div>
 </template>
 
@@ -125,7 +124,6 @@ import Button from 'primevue/button'
 import Select from 'primevue/select'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
-import ConfirmDialog from 'primevue/confirmdialog'
 
 import ConfigEmptyState from './ConfigEmptyState.vue'
 import { schoolCollection, schoolDoc } from '../../firebase/schoolCollections.js'

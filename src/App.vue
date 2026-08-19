@@ -142,6 +142,12 @@
     </div>
 
     <Toast />
+    <!-- Exactly ONE ConfirmDialog for the whole app. PrimeVue's confirmation
+         service is a singleton: every mounted ConfirmDialog answers the same
+         confirm.require() call, so a dialog per component meant one click
+         opened one dialog per mounted component — 23 of them existed, 14 of
+         those School Setup tabs that are all mounted at once. -->
+    <ConfirmDialog />
     <CelebrationOverlay />
     <GlobalSearchModal />
   </div>
@@ -164,6 +170,7 @@ import {
 } from './composables/useTaskNotifications.js'
 import { useToast } from 'primevue/usetoast'
 import Toast from 'primevue/toast'
+import ConfirmDialog from 'primevue/confirmdialog'
 import CelebrationOverlay from './components/shared/CelebrationOverlay.vue'
 import GlobalSearchModal from './components/shared/GlobalSearchModal.vue'
 

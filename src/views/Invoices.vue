@@ -396,7 +396,6 @@
       :on-cancel="onSanityCancel"
     />
 
-    <ConfirmDialog />
   </div>
 </template>
 
@@ -429,7 +428,6 @@ import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
 import ProgressSpinner from 'primevue/progressspinner'
-import ConfirmDialog from 'primevue/confirmdialog'
 import SchoolSearchSelect from '../components/shared/SchoolSearchSelect.vue'
 import SanityCheckDialog from '../components/shared/SanityCheckDialog.vue'
 import MarkPaidDialog from '../components/shared/MarkPaidDialog.vue'

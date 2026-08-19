@@ -43,7 +43,6 @@
       <Button label="Clone School" :loading="cloning" @click="confirmClone" />
     </div>
 
-    <ConfirmDialog />
   </div>
 </template>
 
@@ -56,7 +55,6 @@ import { useToast } from 'primevue/usetoast'
 import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
 import Checkbox from 'primevue/checkbox'
-import ConfirmDialog from 'primevue/confirmdialog'
 
 import { schoolCollection, schoolDoc, rootSchoolDoc } from '../../firebase/schoolCollections.js'
 import { db } from '../../firebase/config'

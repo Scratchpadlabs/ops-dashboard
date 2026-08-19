@@ -795,7 +795,6 @@
     @saved="onPaymentSaved"
   />
 
-  <ConfirmDialog />
 </template>
 
 <script setup>
@@ -828,7 +827,6 @@ import Textarea from 'primevue/textarea'
 import MultiSelect from 'primevue/multiselect'
 import Select from 'primevue/select'
 import ProgressSpinner from 'primevue/progressspinner'
-import ConfirmDialog from 'primevue/confirmdialog'
 import Tabs from 'primevue/tabs'
 import TabList from 'primevue/tablist'
 import Tab from 'primevue/tab'

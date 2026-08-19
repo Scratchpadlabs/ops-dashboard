@@ -200,7 +200,6 @@
       @saved="loadTasks"
       @deleted="loadTasks"
     />
-    <ConfirmDialog />
   </div>
 </template>
 
@@ -224,7 +223,6 @@ import Button from 'primevue/button'
 import Select from 'primevue/select'
 import Checkbox from 'primevue/checkbox'
 import ProgressSpinner from 'primevue/progressspinner'
-import ConfirmDialog from 'primevue/confirmdialog'
 
 const confirm = useConfirm()
 const toast = useToast()
