@@ -21,7 +21,11 @@
 
       <!-- ── Language slots ────────────────────────────────────────────── -->
       <div v-if="languageCandidates.length" class="bg-white rounded-xl border border-slate-200 p-4">
-        <div class="text-sm font-semibold text-slate-800 mb-1">Unmatched subjects</div>
+        <div class="flex items-start justify-between gap-4">
+          <div class="text-sm font-semibold text-slate-800 mb-1">Unmatched subjects</div>
+          <Button label="Save mapping" icon="pi pi-save" size="small" outlined
+                  :loading="savingMap" @click="saveMap" />
+        </div>
         <p class="text-sm text-slate-500 mb-3">
           These do not match a framework subject by name. Sometimes the framework names a slot
           rather than a subject (Language 1, 2, 3); sometimes it groups differently — Preparatory
@@ -96,7 +100,7 @@
 
 <script setup>
 import { ref, reactive, computed } from 'vue'
-import { getDocs, writeBatch, serverTimestamp } from 'firebase/firestore'
+import { getDoc, getDocs, setDoc, writeBatch, serverTimestamp } from 'firebase/firestore'
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
 import Button from 'primevue/button'
@@ -123,6 +127,7 @@ const feedbackIds = ref(new Set())
 const plan = ref(null)
 const scanning = ref(false)
 const applying = ref(false)
+const savingMap = ref(false)
 const error = ref('')
 const progress = ref('')
 const subjectMap = reactive({})
@@ -143,14 +148,47 @@ function slotOptionsFor(subjectId) {
 }
 
 async function loadAll() {
-  const [cSnap, sSnap, fSnap] = await Promise.all([
+  const [cSnap, sSnap, fSnap, mSnap] = await Promise.all([
     getDocs(schoolCollection(props.schoolId, 'classes')),
     getDocs(schoolCollection(props.schoolId, 'subjects')),
     getDocs(schoolCollection(props.schoolId, 'subject_feedbacks')).catch(() => null),
+    getDoc(mapDocRef()).catch(() => null),
   ])
   classes.value = cSnap.docs.map(d => ({ id: d.id, ...d.data() }))
   subjects.value = sSnap.docs.map(d => ({ id: d.id, ...d.data() }))
   feedbackIds.value = new Set((fSnap?.docs || []).map(d => d.id))
+
+  // A saved mapping is a per-school fact worth keeping: SAMARTH alone needs 24
+  // of them, and re-picking every dropdown each session is how they get picked
+  // wrong. Only seeds entries the user has not already changed this session.
+  const saved = mSnap?.exists?.() ? (mSnap.data().map || {}) : {}
+  for (const [k, v] of Object.entries(saved)) {
+    if (subjectMap[k] === undefined) subjectMap[k] = v
+  }
+}
+
+function mapDocRef() {
+  return schoolDoc(props.schoolId, 'config', 'curriculum_map')
+}
+
+async function saveMap() {
+  savingMap.value = true
+  error.value = ''
+  try {
+    const clean = {}
+    for (const [k, v] of Object.entries(subjectMap)) if (v) clean[k] = v
+    await setDoc(mapDocRef(), {
+      map: clean,
+      updated_at: serverTimestamp(),
+      updated_by: auth.currentUser?.email || 'unknown',
+    }, { merge: true })
+    toast.add({ severity: 'success', summary: 'Mapping saved', detail: `${Object.keys(clean).length} subject(s)`, life: 2500 })
+  } catch (e) {
+    console.error(e)
+    error.value = 'Could not save the mapping.'
+  } finally {
+    savingMap.value = false
+  }
 }
 
 async function runPreview() {
@@ -233,6 +271,7 @@ async function runApply() {
       progress.value = `Wrote ${done}/${ops.length} document(s)…`
     }
 
+    await saveMap()   // the mapping that produced this run is worth keeping
     toast.add({ severity: 'success', summary: 'Templates applied', detail: `${ops.length} document(s)`, life: 3000 })
     await runPreview()   // re-preview: a correct run leaves nothing to do
   } catch (e) {

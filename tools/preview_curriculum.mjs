@@ -79,14 +79,23 @@ async function read(name) {
   return snap.docs.map(d => ({ id: d.id, ...d.data() }))
 }
 
-const [classes, subjects, feedbacks] = await Promise.all([
+const [classes, subjects, feedbacks, savedMap] = await Promise.all([
   read('classes'), read('subjects'), read('subject_feedbacks'),
+  base.collection('config').doc('curriculum_map').get()
+      .then(d => (d.exists ? (d.data().map || {}) : {})).catch(() => ({})),
 ])
+
+// The mapping the tab saved is the default; --map overrides entry by entry, so
+// the CLI and the UI cannot disagree about what a run would do.
+const effectiveMap = { ...savedMap, ...subjectMap }
+if (Object.keys(savedMap).length) {
+  console.log(`(using ${Object.keys(savedMap).length} saved mapping(s) from config/curriculum_map)`)
+}
 
 const plan = buildCurriculumPlan({
   classes, subjects,
   existingFeedbackIds: new Set(feedbacks.map(f => f.id)),
-  subjectMap,
+  subjectMap: effectiveMap,
 })
 
 fs.rmSync(TMP, { recursive: true, force: true })
