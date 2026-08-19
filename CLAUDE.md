@@ -186,6 +186,13 @@ Questions are per STAGE, not per subject — every subject at a stage carries th
 same set. Tags are `AWARENESS`, `SENSITIVITY`, `CREATIVITY`, `NORMAL-1`,
 `NORMAL-2`.
 
+**Secondary asks the same questions as middle** (ops decided), so a secondary
+document's question ids still read `Middle-…` — one question identity across
+both stages rather than a parallel `Secondary-…` id for identical wording.
+**Foundation has no question set yet.** The doc id is the SUBJECT's own doc id
+plus the term, so it carries the school's spelling: `III_Maths_Term1`, not
+`III_Mathematics_Term1`.
+
 **`surveys/{id}`** — what the TEACHER answers about a learner. Paired 1:1 with
 **`activities/{id}`** by a SHARED doc id; the activity holds `{id, name, stage}`.
 

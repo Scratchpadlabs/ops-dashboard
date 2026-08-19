@@ -12,6 +12,7 @@
  * against a live school whose teachers are already entering against it.
  */
 import TEMPLATES from '../data/curriculumTemplates.json'
+import QUESTIONS from '../data/feedbackQuestions.json'
 import { canonicalize, classify, SUBJECT, COSCHOLASTIC, MEDIUM_CONFIDENCE } from './educationKB.js'
 
 export const STAGE_KEYS = ['foundation', 'prepratory', 'middle', 'secondary']
@@ -129,4 +130,37 @@ export function mergeCurricularGoals(existing, templateGoals) {
     addedCompetencies,
     unchanged: addedGoals === 0 && addedCompetencies === 0,
   }
+}
+
+// ── Activity feedback questions ─────────────────────────────────────────────
+// Student and peer questions are per STAGE, not per subject: every subject at a
+// stage carries the same set. Teacher surveys are NOT here — their summaryMap
+// text is authored per activity, so they cannot come from a stage template.
+
+/** Terms a subject_feedbacks document is written for. */
+export const FEEDBACK_TERMS = ['Term1', 'Term2', 'Optional']
+
+/**
+ * Questions for a stage, in the exact shape subject_feedbacks stores.
+ *
+ * Returns a deep copy so a caller can stamp per-document fields without
+ * mutating the shared seed.
+ */
+export function feedbackQuestionsFor(stage, { peer = false } = {}) {
+  const set = QUESTIONS.subjectFeedbacks?.[stage]
+  if (!set) return []
+  return JSON.parse(JSON.stringify(peer ? (set.peer || []) : (set.student || [])))
+}
+
+/**
+ * Doc id for a subject's feedback in one term: the SUBJECT's own doc id plus
+ * the term — `III_English` + `Term1` -> `III_English_Term1`.
+ *
+ * Deliberately built from the subject id rather than from grade + canonical
+ * name, because live ids carry the school's own spelling: SAMARTH has
+ * `III_Maths_Term1` and `III_SST_Term1`, not `III_Mathematics_…` /
+ * `III_Social Science_…`.
+ */
+export function subjectFeedbackDocId(subjectId, term) {
+  return `${subjectId}_${term}`
 }
