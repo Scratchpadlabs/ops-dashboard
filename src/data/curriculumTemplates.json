@@ -1,0 +1,2657 @@
+{
+  "_comment": [
+    "NCF curricular goals and competencies, per NEP stage — extracted verbatim from the",
+    "four source documents ops supplied (Foundational / Prep / Middle / Secondary).",
+    "",
+    "Codes are the framework's own (MCG1, MC1.1, CG-8, L1CG2 ...) and are kept so an entry",
+    "can always be traced back to the source document.",
+    "",
+    "'foundation' has NO subject breakdown: the Foundational document is organised by",
+    "developmental domain, not by subject, so its 13 goals sit under a single '(stage-wide)'",
+    "entry until ops confirms how they map onto the subjects a foundational class teaches.",
+    "",
+    "This file is the TEMPLATE LIBRARY content only. It carries no survey/feedback questions",
+    "— those were not in the source documents and are still needed.",
+    "",
+    "Written into schools/{id}/subjects/{subjectId}.curricular_goals as",
+    "[{ '<goal text>': ['<competency text>', ...] }, ...] — the shape spec §2 defines."
+  ],
+  "version": 1,
+  "source": "ops-supplied NCF stage documents, 2026-08-19",
+  "stages": {
+    "foundation": {
+      "subjects": [
+        {
+          "subject": "(stage-wide)",
+          "aliases": [],
+          "goals": [
+            {
+              "code": "CG-1",
+              "goal": "The learner developed habits that kept them healthy and safe",
+              "competencies": [
+                {
+                  "code": "C-1.1",
+                  "text": "The learner showed a liking for and understanding of nutritious food and did not waste food."
+                },
+                {
+                  "code": "C-1.2",
+                  "text": "The learner practised basic self-care and hygiene."
+                },
+                {
+                  "code": "C-1.3",
+                  "text": "The learner kept the school/classroom hygienic and organised."
+                },
+                {
+                  "code": "C-1.4",
+                  "text": "The learner practised safe use of material and simple tools."
+                },
+                {
+                  "code": "C-1.5",
+                  "text": "The learner showed awareness of safety in movements (walking, running, cycling) and acted appropriately."
+                },
+                {
+                  "code": "C-1.6",
+                  "text": "The learner understood unsafe situations and asked for help."
+                }
+              ]
+            },
+            {
+              "code": "CG-2",
+              "goal": "The learner developed sharpness in sensorial perceptions.",
+              "competencies": [
+                {
+                  "code": "C-2.1",
+                  "text": "The learner differentiated between shapes, colours, and their shades."
+                },
+                {
+                  "code": "C-2.2",
+                  "text": "The learner developed visual memory for symbols and representations."
+                },
+                {
+                  "code": "C-2.3",
+                  "text": "The learner differentiated sounds and sound patterns by their pitch, volume, and tempo."
+                },
+                {
+                  "code": "C-2.4",
+                  "text": "The learner differentiated multiple smells and tastes."
+                },
+                {
+                  "code": "C-2.5",
+                  "text": "The learner developed discrimination in the sense of touch."
+                },
+                {
+                  "code": "C-2.6",
+                  "text": "The learner began integrating sensorial perceptions to get a holistic awareness of their experiences."
+                }
+              ]
+            },
+            {
+              "code": "CG-3",
+              "goal": "The learner developed a fit and flexible body.",
+              "competencies": [
+                {
+                  "code": "C-3.1",
+                  "text": "The learner showed coordination between sensorial perceptions and body movements in various activities."
+                },
+                {
+                  "code": "C-3.2",
+                  "text": "The learner showed balance, coordination, and flexibility in various physical activities."
+                },
+                {
+                  "code": "C-3.3",
+                  "text": "The learner showed precision and control in working with their hands and fingers."
+                },
+                {
+                  "code": "C-3.4",
+                  "text": "The learner showed strength and endurance in carrying, walking, and running."
+                }
+              ]
+            },
+            {
+              "code": "CG-4",
+              "goal": "The learner developed emotional intelligence, i.e., the ability to understand and manage their own emotions, and responded positively to social norms.",
+              "competencies": [
+                {
+                  "code": "C-4.1",
+                  "text": "The learner started recognising ‘self’ as an individual belonging to a family and community."
+                },
+                {
+                  "code": "C-4.2",
+                  "text": "The learner recognised different emotions and made deliberate efforts to regulate them appropriately."
+                },
+                {
+                  "code": "C-4.3",
+                  "text": "The learner interacted comfortably with other children and adults."
+                },
+                {
+                  "code": "C-4.4",
+                  "text": "The learner showed cooperative behaviour with other children."
+                },
+                {
+                  "code": "C-4.5",
+                  "text": "The learner understood and responded positively to social norms in the classroom and school."
+                },
+                {
+                  "code": "C-4.6",
+                  "text": "The learner showed kindness and helpfulness to others (including animals, plants) when they were in need."
+                },
+                {
+                  "code": "C-4.7",
+                  "text": "The learner understood and responded positively to different thoughts, preferences, and emotional needs of other children."
+                }
+              ]
+            },
+            {
+              "code": "CG-5",
+              "goal": "The learner developed a positive attitude towards productive work and service or ‘Seva’.",
+              "competencies": [
+                {
+                  "code": "C-5.1",
+                  "text": "The learner demonstrated willingness and participation in age-appropriate physical work towards helping others."
+                }
+              ]
+            },
+            {
+              "code": "CG-6",
+              "goal": "The learner developed a positive regard for the natural environment around them.",
+              "competencies": [
+                {
+                  "code": "C-6.1",
+                  "text": "The learner showed care for and joy in engaging with all life forms."
+                }
+              ]
+            },
+            {
+              "code": "CG-7",
+              "goal": "The learner made sense of the world around them through observation and logical thinking.",
+              "competencies": [
+                {
+                  "code": "C-7.1",
+                  "text": "The learner observed and understood different categories of objects and relationships between them."
+                },
+                {
+                  "code": "C-7.2",
+                  "text": "The learner observed and understood cause and effect relationships in nature by forming simple hypotheses and used observations to explain their hypothesis."
+                },
+                {
+                  "code": "C-7.3",
+                  "text": "The learner used appropriate tools and technology in daily life situations and for learning."
+                }
+              ]
+            },
+            {
+              "code": "CG-8",
+              "goal": "The learner developed mathematical understanding and abilities to recognise the world through quantities, shapes, and measures.",
+              "competencies": [
+                {
+                  "code": "C-8.1",
+                  "text": "The learner sorted objects into groups and sub-groups based on more than one property."
+                },
+                {
+                  "code": "C-8.2",
+                  "text": "The learner identified and extended simple patterns in their surroundings, shapes, and numbers."
+                },
+                {
+                  "code": "C-8.3",
+                  "text": "The learner counted up to 99 both forwards and backwards and in groups of 10s and 20s."
+                },
+                {
+                  "code": "C-8.4",
+                  "text": "The learner arranged numbers up to 99 in ascending and descending order."
+                },
+                {
+                  "code": "C-8.5",
+                  "text": "The learner recognised and used numerals to represent quantities up to 99 with the understanding of decimal place value system."
+                },
+                {
+                  "code": "C-8.6",
+                  "text": "The learner performed addition and subtraction of 2-digit numbers fluently using flexible strategies of composition and decomposition."
+                },
+                {
+                  "code": "C-8.7",
+                  "text": "The learner recognised multiplication as repeated addition and division as equal sharing."
+                },
+                {
+                  "code": "C-8.8",
+                  "text": "The learner recognised basic geometric shapes and their observable properties."
+                },
+                {
+                  "code": "C-8.9",
+                  "text": "The learner performed simple measurements of length, weight, and volume of objects in their immediate environment."
+                },
+                {
+                  "code": "C-8.10",
+                  "text": "The learner performed simple measurements of time in minutes, hours, day, weeks, and months."
+                },
+                {
+                  "code": "C-8.11",
+                  "text": "The learner performed simple transactions using money up to INR 100."
+                },
+                {
+                  "code": "C-8.12",
+                  "text": "The learner developed adequate and appropriate vocabulary for comprehending and expressing concepts and procedures related to quantities, shapes, space, and measurements."
+                },
+                {
+                  "code": "C-8.13",
+                  "text": "The learner formulated and solved simple mathematical problems related to quantities, shapes, space, and measurements."
+                }
+              ]
+            },
+            {
+              "code": "CG-9",
+              "goal": "The learner developed effective communication skills for day-to-day interactions in two languages.",
+              "competencies": [
+                {
+                  "code": "C-9.1",
+                  "text": "The learner listened to and appreciated simple songs, rhymes, and poems."
+                },
+                {
+                  "code": "C-9.2",
+                  "text": "The learner created simple songs and poems on their own."
+                },
+                {
+                  "code": "C-9.3",
+                  "text": "The learner conversed fluently and could hold a meaningful conversation."
+                },
+                {
+                  "code": "C-9.4",
+                  "text": "The learner understood oral instructions for a complex task and gave clear oral instructions for the same to others."
+                },
+                {
+                  "code": "C-9.5",
+                  "text": "The learner comprehended narrated/read-out stories and identified characters, storyline, and what the author wanted to say."
+                },
+                {
+                  "code": "C-9.6",
+                  "text": "The learner narrated short stories with clear plot and characters."
+                },
+                {
+                  "code": "C-9.7",
+                  "text": "The learner knew and used enough words to carry out day-to-day interactions effectively and could guess meaning of new words by using existing vocabulary."
+                }
+              ]
+            },
+            {
+              "code": "CG-10",
+              "goal": "The learner developed fluency in reading and writing in Language 1 (L1)",
+              "competencies": [
+                {
+                  "code": "C-10.1",
+                  "text": "The learner developed phonological awareness and blended phonemes/syllables into words and segmented words into phonemes/syllables."
+                },
+                {
+                  "code": "C-10.2",
+                  "text": "The learner understood basic structure/format of a book, idea of words in print and direction in which they are printed, and recognised basic punctuation marks."
+                },
+                {
+                  "code": "C-10.3",
+                  "text": "The learner recognised all the letters of the alphabet (forms of akshara) of the script and used this knowledge to read and write words."
+                },
+                {
+                  "code": "C-10.4",
+                  "text": "The learner read stories and passages with accuracy and fluency with appropriate pauses and voice modulation."
+                },
+                {
+                  "code": "C-10.5",
+                  "text": "The learner read short stories and comprehended their meaning—by identifying characters, storyline, and what the author wanted to say—or their own."
+                },
+                {
+                  "code": "C-10.6",
+                  "text": "The learner read short poems and began to appreciate the poem for its choice of words and imagination."
+                },
+                {
+                  "code": "C-10.7",
+                  "text": "The learner read and comprehended the meaning of short news items, instructions and recipes, and publicity material."
+                },
+                {
+                  "code": "C-10.8",
+                  "text": "The learner wrote a paragraph to express their understanding and experiences."
+                },
+                {
+                  "code": "C-10.9",
+                  "text": "The learner showed interest in picking up and reading a variety of children’s books."
+                }
+              ]
+            },
+            {
+              "code": "CG-11",
+              "goal": "The learner began to read and write in Language 2 (L2).",
+              "competencies": [
+                {
+                  "code": "C-11.1",
+                  "text": "The learner developed phonological awareness and was able to blend phonemes/syllables into words and segment words into phonemes/syllables."
+                },
+                {
+                  "code": "C-11.2",
+                  "text": "The learner recognised most frequently occurring letters of the alphabet (forms of akshara) of the script and used this knowledge to read and write simple words and sentences."
+                }
+              ]
+            },
+            {
+              "code": "CG-12",
+              "goal": "The learner developed abilities and sensibilities in visual and performing arts and expressed their emotions through art in meaningful and joyful ways.",
+              "competencies": [
+                {
+                  "code": "C-12.1",
+                  "text": "The learner explored and played with a variety of materials and tools to create two-dimensional and three-dimensional artworks in varying sizes."
+                },
+                {
+                  "code": "C-12.2",
+                  "text": "The learner explored and played with their own voice, body, spaces, and a variety of objects to create music, role-play, dance, and movement."
+                },
+                {
+                  "code": "C-12.3",
+                  "text": "The learner innovated and worked imaginatively to express a range of ideas and emotions through the arts."
+                },
+                {
+                  "code": "C-12.4",
+                  "text": "The learner worked collaboratively in the arts."
+                },
+                {
+                  "code": "C-12.5",
+                  "text": "The learner communicated and appreciated a variety of responses while creating and experiencing different forms of art, local culture, and heritage."
+                }
+              ]
+            },
+            {
+              "code": "CG-13",
+              "goal": "The learner developed habits of learning that allowed them to engage actively in formal learning environments like a school classroom.",
+              "competencies": [
+                {
+                  "code": "C-13.1",
+                  "text": "The learner acquired skills to plan, focus attention, and direct activities to achieve specific goals."
+                },
+                {
+                  "code": "C-13.2",
+                  "text": "The learner developed adequate working memory, mental flexibility (to sustain or shift attention appropriately), and self-control (to resist impulsive actions or responses) that assisted them in learning in structured environments."
+                },
+                {
+                  "code": "C-13.3",
+                  "text": "The learner observed minute details of objects, wondered, and explored using various senses, tinkered with objects, and asked questions."
+                },
+                {
+                  "code": "C-13.4",
+                  "text": "The learner adopted and followed classroom norms with agency and understanding."
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "prepratory": {
+      "subjects": [
+        {
+          "subject": "Language 1 (R1)",
+          "aliases": [],
+          "goals": [
+            {
+              "code": "L1CG1",
+              "goal": "The learner demonstrated oral language skills, using complex sentence structures to understand and communicate ideas coherently.",
+              "competencies": [
+                {
+                  "code": "L1C1.1",
+                  "text": "The learner conversed fluently and meaningfully in different contexts."
+                },
+                {
+                  "code": "L1C1.2",
+                  "text": "The learner summarised core ideas from the material read out in class."
+                },
+                {
+                  "code": "L1C1.3",
+                  "text": "The learner made oral presentations (show and tell, short welcome notes, anchoring of small events, short speeches, class debates)."
+                }
+              ]
+            },
+            {
+              "code": "L1CG2",
+              "goal": "The learner demonstrated the ability to read with comprehension by gaining a basic understanding of different forms of familiar and unfamiliar texts (such as prose and poetry).",
+              "competencies": [
+                {
+                  "code": "L1C2.1",
+                  "text": "The learner applied varied comprehension strategies (inferring, predicting, visualising) to understand different texts."
+                },
+                {
+                  "code": "L1C2.2",
+                  "text": "The learner understood main ideas and drew essential conclusions from the material read."
+                }
+              ]
+            },
+            {
+              "code": "L1CG3",
+              "goal": "The learner demonstrated the ability to write simple and compound sentence structures to express their understanding and experiences.",
+              "competencies": [
+                {
+                  "code": "L1C3.1",
+                  "text": "The learner used writing strategies, such as sequencing, identifying headings or sub-headings, noting the beginning and ending, and forming paragraphs."
+                },
+                {
+                  "code": "L1C3.2",
+                  "text": "The learner wrote clear and coherent paragraphs conveying their understanding of a given topic, concept, or text."
+                },
+                {
+                  "code": "L1C3.3",
+                  "text": "The learner created posters, invitations, simple poems, stories, or dialogues with appropriate information and purpose."
+                },
+                {
+                  "code": "L1C3.4",
+                  "text": "The learner used appropriate grammar and structure in their writing."
+                }
+              ]
+            },
+            {
+              "code": "L1CG4",
+              "goal": "The learner acquired a broader range of words in various contexts through different sources and experiences.",
+              "competencies": [
+                {
+                  "code": "L1C4.1",
+                  "text": "The learner discussed the meanings of words and developed vocabulary by listening to and reading a variety of texts."
+                },
+                {
+                  "code": "L1C4.2",
+                  "text": "The learner discussed the meanings of words and developed vocabulary by listening to and reading a variety of texts or other content areas."
+                }
+              ]
+            },
+            {
+              "code": "L1CG5",
+              "goal": "The learner developed an interest and preference in reading.",
+              "competencies": [
+                {
+                  "code": "L1C5.1",
+                  "text": "The learner borrowed books from the library regularly to read at home."
+                },
+                {
+                  "code": "L1C5.2",
+                  "text": "The learner demonstrated interest in reading books from the library."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "subject": "Language 2 (R2)",
+          "aliases": [],
+          "goals": [
+            {
+              "code": "L2CG1",
+              "goal": "The learner sustained effective communication skills for day-to-day interactions, enhancing their oral ability to express ideas.",
+              "competencies": [
+                {
+                  "code": "L2C1.1",
+                  "text": "The learner listened to poems, stories, and conversations and located important ideas in them."
+                },
+                {
+                  "code": "L2C1.2",
+                  "text": "The learner comprehended narrated or read out stories and identified characters, storyline, and key aspects."
+                },
+                {
+                  "code": "L2C1.3",
+                  "text": "The learner conversed meaningfully and coherently."
+                },
+                {
+                  "code": "L2C1.4",
+                  "text": "The learner made oral presentations and participated in group discussions."
+                }
+              ]
+            },
+            {
+              "code": "L2CG2",
+              "goal": "The learner developed fluency in reading and the ability to read with comprehension.",
+              "competencies": [
+                {
+                  "code": "L2C2.1",
+                  "text": "The learner developed phonological awareness further by blending phonemes or syllables into words and segmenting words into phonemes or syllables."
+                },
+                {
+                  "code": "L2C2.2",
+                  "text": "The learner examined the basic structure of the text and recognised words and sentences in print and basic punctuation marks."
+                },
+                {
+                  "code": "L2C2.3",
+                  "text": "The learner read stories and passages fluently and accurately with appropriate pauses."
+                },
+                {
+                  "code": "L2C2.4",
+                  "text": "The learner comprehended the meaning of stories, poems, and story posters."
+                },
+                {
+                  "code": "L2C2.5",
+                  "text": "The learner demonstrated interest in picking up and reading a variety of children’s books."
+                }
+              ]
+            },
+            {
+              "code": "L2CG3",
+              "goal": "The learner developed the ability to express understanding, experiences, feelings, and ideas in writing.",
+              "competencies": [
+                {
+                  "code": "L2C3.1",
+                  "text": "The learner wrote a paragraph to express understanding and experiences."
+                },
+                {
+                  "code": "L2C3.2",
+                  "text": "The learner created simple posters, invites, and instructions with appropriate information and purpose."
+                },
+                {
+                  "code": "L2C3.3",
+                  "text": "The learner wrote stories, poems, and conversations based on imagination and experiences."
+                }
+              ]
+            },
+            {
+              "code": "L2CG4",
+              "goal": "The learner developed a wide range of vocabulary in various contexts and through different sources.",
+              "competencies": [
+                {
+                  "code": "L2C4.1",
+                  "text": "The learner discussed the meanings of words and developed vocabulary by listening to and reading a variety of texts in other content areas."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "subject": "Mathematics",
+          "aliases": [],
+          "goals": [
+            {
+              "code": "MCG1",
+              "goal": "The learner understood numbers, represented whole numbers using the Indian place value system, performed the four basic operations with whole numbers, and recognised patterns in number sequences.",
+              "competencies": [
+                {
+                  "code": "MC1.1",
+                  "text": "The learner represented numbers using the place value structure of the Indian number system, compared whole numbers, and read the names of very large numbers."
+                },
+                {
+                  "code": "MC1.2",
+                  "text": "The learner represented and compared commonly used fractions in daily life (such as ½, ¼) as parts of unit wholes, as locations on number lines, and as divisions of whole numbers."
+                },
+                {
+                  "code": "MC1.3",
+                  "text": "The learner understood and visualised arithmetic operations and the relationships among them, knew addition and multiplication tables at least up to 10x10, and applied the four basic operations on whole numbers to solve daily life problems."
+                },
+                {
+                  "code": "MC1.4",
+                  "text": "The learner recognised, described, and extended simple number patterns such as odd numbers, even numbers, square numbers, cubes, powers of 2, powers of 10, and Virahanka–Fibonacci numbers."
+                }
+              ]
+            },
+            {
+              "code": "MCG2",
+              "goal": "The learner analysed the characteristics and properties of two- and three-dimensional geometric shapes, specified locations and described spatial relationships, and recognised and created shapes with symmetry.",
+              "competencies": [
+                {
+                  "code": "MC2.1",
+                  "text": "The learner identified, compared, and analysed attributes of two- and three-dimensional shapes and developed vocabulary to describe their attributes and properties."
+                },
+                {
+                  "code": "MC2.2",
+                  "text": "The learner described location and movement using both common language and mathematical vocabulary, and understood the notion of a map (najri naksha)."
+                },
+                {
+                  "code": "MC2.3",
+                  "text": "The learner recognised and created symmetry (reflection, rotation) in familiar 2D and 3D shapes."
+                },
+                {
+                  "code": "MC2.4",
+                  "text": "The learner discovered, recognised, described, and extended patterns in 2D and 3D shapes."
+                }
+              ]
+            },
+            {
+              "code": "MCG3",
+              "goal": "The learner understood measurable attributes of objects and the units, systems, and processes of measurement, including distance, length, weight, area, volume, and time, using nonstandard and standard units.",
+              "competencies": [
+                {
+                  "code": "MC3.1",
+                  "text": "The learner measured using non-standard and standard units and evaluated the need for standard units."
+                },
+                {
+                  "code": "MC3.2",
+                  "text": "The learner used appropriate units and tools for attributes being measured (like length, perimeter, time, weight, volume)."
+                },
+                {
+                  "code": "MC3.3",
+                  "text": "The learner carried out simple unit conversions, such as from centimetres to metres, within a system of measurement."
+                },
+                {
+                  "code": "MC3.4",
+                  "text": "The learner understood the definition and formula for the area of a square or rectangle as length times breadth."
+                },
+                {
+                  "code": "MC3.5",
+                  "text": "The learner devised strategies for estimating distance, length, time, perimeter (for regular and irregular shapes), area (for regular and irregular shapes), weight, and volume and verified the same using standard units."
+                },
+                {
+                  "code": "MC3.6",
+                  "text": "The learner deduced that shapes having equal areas can have different perimeters, and shapes having equal perimeters can have different areas."
+                },
+                {
+                  "code": "MC3.7",
+                  "text": "The learner evaluated the conservation of attributes like length and volume and solved daily-life problems related to them."
+                }
+              ]
+            },
+            {
+              "code": "MCG4",
+              "goal": "The learner developed problem-solving skills with procedural fluency to solve mathematical puzzles and daily-life problems, supporting the development of computational thinking.",
+              "competencies": [
+                {
+                  "code": "MC4.1",
+                  "text": "The learner solved puzzles and daily-life problems involving one or more operations on whole numbers (including word puzzles and recreational puzzles such as the construction of magic squares)."
+                },
+                {
+                  "code": "MC4.2",
+                  "text": "The learner systematically counted and listed all possible permutations or combinations given a constraint, in simple situations (e.g., making a committee of two people from a group of five people)."
+                },
+                {
+                  "code": "MC4.3",
+                  "text": "The learner selected appropriate methods and tools for computing with whole numbers, such as mental computation, estimation, or paper-pencil calculation, as per the context."
+                }
+              ]
+            },
+            {
+              "code": "MCG5",
+              "goal": "The learner knew and appreciated the development in India of the decimal place value system that is used globally today.",
+              "competencies": [
+                {
+                  "code": "MC5.1",
+                  "text": "The learner understood the development of zero in India and the Indian place value system for writing numerals, the history of its transmission to the world, and its modern impact on our lives and technology."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "subject": "The World Around Us",
+          "aliases": [],
+          "goals": [
+            {
+              "code": "TWCG1",
+              "goal": "The learner explored and engaged with the natural and socio-cultural environment in their surroundings.",
+              "competencies": [
+                {
+                  "code": "TWC1.1",
+                  "text": "The learner observed and identified the natural (insects, plants, birds, animals, geographical features, sun and moon, stars, planets, natural resources) and social (houses, relationships) components in their immediate environment."
+                },
+                {
+                  "code": "TWC1.2",
+                  "text": "The learner described relationships (including between humans and animals/nature) and traditions (art forms, celebrations, festivals) in the family and community."
+                },
+                {
+                  "code": "TWC1.3",
+                  "text": "The learner asked questions and made predictions about simple patterns (season change, food chain, phases of the moon, movement of stars and planets, shapes of trees, plants, leaves, and flowers, rituals, celebrations) observed in the immediate environment."
+                },
+                {
+                  "code": "TWC1.4",
+                  "text": "The learner explained the functioning of local institutions (family, school, bank/post office, market, and panchayat) in different forms (story, drawing, tabulating data, reports) and analysed their roles."
+                },
+                {
+                  "code": "TWC1.5",
+                  "text": "The learner used local materials to create simple objects (family tree, envelopes, origami animals) on their own for display or use in classroom processes."
+                }
+              ]
+            },
+            {
+              "code": "TWCG2",
+              "goal": "The learner understood the interdependence in their environment through observation and experiences, developing an appreciation for the idea of ‘Vasudhaiva Kutumbakam’.",
+              "competencies": [
+                {
+                  "code": "TWC2.1",
+                  "text": "The learner identified natural and human-made systems that support their lives (water supply, water cycle, river flow systems, seasons, life cycle of plants and animals, food, household items, transport, communication, electricity in the home)."
+                },
+                {
+                  "code": "TWC2.2",
+                  "text": "The learner described the relationship between the natural environment and cultural practices in their immediate environment (nature of work, food, festivals, traditions)."
+                },
+                {
+                  "code": "TWC2.3",
+                  "text": "The learner connected changes in the environment and the lives of their family and community, as communicated by elders and through local stories (changes in occupation, food habits, resources, celebrations, communication)."
+                }
+              ]
+            },
+            {
+              "code": "TWCG3",
+              "goal": "The learner explained how to ensure the safety of self and others in different (normal as well as emergency) situations.",
+              "competencies": [
+                {
+                  "code": "TWC3.1",
+                  "text": "The learner described the basic safety needs and protection (health and hygiene, food, water, shelter, precautions, awareness of emergency situations, abuse, and unsafe situations) of humans, birds, and animals."
+                },
+                {
+                  "code": "TWC3.2",
+                  "text": "The learner discussed how to prepare for emergency situations (smoke, fire, small injuries, burns, electrical safety, unseasonal rains, fallen trees) based on discussions with family and community, or personal experiences."
+                },
+                {
+                  "code": "TWC3.3",
+                  "text": "The learner developed simple labels and slogans, and participated in roleplay on safety and protection in the local environment for display or enactment in school and locality."
+                }
+              ]
+            },
+            {
+              "code": "TWCG4",
+              "goal": "The learner developed sensitivity towards the social and natural environment.",
+              "competencies": [
+                {
+                  "code": "TWC4.1",
+                  "text": "The learner observed and described diversity among plants, birds, and animals in their immediate environment (shape, sounds, food habits, growth, habitat)."
+                },
+                {
+                  "code": "TWC4.2",
+                  "text": "The learner observed and described cultural diversity in their immediate environment (food, clothing, games, different seasons, festivals related to harvest and sowing)."
+                },
+                {
+                  "code": "TWC4.3",
+                  "text": "The learner described usage of natural resources in their immediate environment."
+                },
+                {
+                  "code": "TWC4.4",
+                  "text": "The learner demonstrated how natural resources can be shared, maintained, and conserved (trees, use of rainwater, benefits of millets)."
+                },
+                {
+                  "code": "TWC4.5",
+                  "text": "The learner identified the needs of plants, birds, and animals, and how they can be supported (water, soil, food, care)."
+                },
+                {
+                  "code": "TWC4.6",
+                  "text": "The learner identified the needs of people in different situations – in terms of access to resources, equal opportunities, work distribution, and shelter."
+                },
+                {
+                  "code": "TWC4.7",
+                  "text": "The learner learnt about basic social and behavioural norms, values, and dispositions that benefit social and natural environments and help society function smoothly (using dustbins, standing in queues, conserving water, using public transportation, keeping one’s environment clean, always helping others in need regardless of background)."
+                }
+              ]
+            },
+            {
+              "code": "TWCG5",
+              "goal": "The learner developed the ability to read and interpret simple maps.",
+              "competencies": [
+                {
+                  "code": "TWC5.1",
+                  "text": "The learner explained a line drawing of their school, village, or ward."
+                },
+                {
+                  "code": "TWC5.2",
+                  "text": "The learner drew a sketch of their school, village, or ward using symbols and directions."
+                },
+                {
+                  "code": "TWC5.3",
+                  "text": "The learner read simple maps of a city, state, and country to identify natural and human-made features (well, lake, post office, school, hospital) with reference to symbols and directions."
+                }
+              ]
+            },
+            {
+              "code": "TWCG6",
+              "goal": "The learner used data and information from various sources to investigate questions related to their immediate environment.",
+              "competencies": [
+                {
+                  "code": "TWC6.1",
+                  "text": "The learner performed simple inquiries related to specific questions independently or in groups."
+                },
+                {
+                  "code": "TWC6.2",
+                  "text": "The learner presented observations and findings through different creative modes (drawing, diagram, poem, play, skit, oral and written expression)."
+                }
+              ]
+            },
+            {
+              "code": "TWCG7",
+              "goal": "The learner gained foundational familiarity with basic concepts and methods from the natural sciences (life sciences, physical sciences, earth and space sciences) and engineering.",
+              "competencies": [
+                {
+                  "code": "TWC7.1",
+                  "text": "The learner gained familiarity with using the scientific method in investigations, as well as other crosscutting concepts such as energy, matter, and systems that apply across the domains of science and engineering."
+                },
+                {
+                  "code": "TWC7.2",
+                  "text": "The learner gained familiarity with disciplinary core ideas in the natural sciences, as well as in engineering, technology, and applications of science, which will be explored in later grades."
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "middle": {
+      "subjects": [
+        {
+          "subject": "Language 1",
+          "aliases": [],
+          "goals": [
+            {
+              "code": "L1CG1",
+              "goal": "The learner developed the capacity for effective communication using language skills for description, analysis, and response.",
+              "competencies": [
+                {
+                  "code": "L1C1.1",
+                  "text": "The learner identified main points and summarised information from a careful listening or reading of the text (news articles, reports, editorials)."
+                },
+                {
+                  "code": "L1C1.2",
+                  "text": "The learner listened to, planned, and conducted different kinds of interviews (structured and unstructured)."
+                },
+                {
+                  "code": "L1C1.3",
+                  "text": "The learner raised probing questions about social experiences using appropriate language (open-ended/closed-ended, formal/informal, relevant to context, with sensitivity)."
+                },
+                {
+                  "code": "L1C1.4",
+                  "text": "The learner wrote different kinds of letters, essays, and reports using appropriate style and registers for different audiences and purposes."
+                },
+                {
+                  "code": "L1C1.5",
+                  "text": "The learner created content for audio, visual, or both, for different audiences and purposes."
+                }
+              ]
+            },
+            {
+              "code": "L1CG2",
+              "goal": "The learner appreciated the language and literary and cultural heritage by exploring various forms of literary devices.",
+              "competencies": [
+                {
+                  "code": "L1C2.1",
+                  "text": "The learner identified and appreciated different forms of literature (prose, poetry, drama) and styles of writing (narrative, descriptive, expository, persuasive) from various cultures and time periods."
+                },
+                {
+                  "code": "L1C2.2",
+                  "text": "The learner identified literary devices [simile, metaphor, personification (alankaras), hyperbole (athishayokthi), alliteration (anuprasa), idioms, proverbs, and riddles] by reading a variety of literature and used them in writing."
+                },
+                {
+                  "code": "L1C2.3",
+                  "text": "The learner expressed ideas and critiques through speech and writing."
+                }
+              ]
+            },
+            {
+              "code": "L1CG3",
+              "goal": "The learner developed the ability to recognise basic linguistic aspects (word and sentence structure) and used them in oral and written expression.",
+              "competencies": [
+                {
+                  "code": "L1C3.1",
+                  "text": "The learner interpreted and understood basic linguistic aspects (rules) such as sentence structure, punctuation, tense, gender, and parts of speech while reading different forms of literature, and applied them while writing."
+                },
+                {
+                  "code": "L1C3.2",
+                  "text": "The learner wrote prose, poetry, and drama using appropriate style and language."
+                }
+              ]
+            },
+            {
+              "code": "L1CG4",
+              "goal": "The learner developed the ability to write reviews and used the library to find references.",
+              "competencies": [
+                {
+                  "code": "L1C4.1",
+                  "text": "The learner read, responded to, and critically reviewed books of varied genres (fiction and non-fiction)."
+                },
+                {
+                  "code": "L1C4.2",
+                  "text": "The learner used books and other media resources effectively to find references for projects and other activities."
+                }
+              ]
+            },
+            {
+              "code": "L1CG5",
+              "goal": "The learner developed an appreciation of the distinctive features of the language, including its alphabet and script, sounds, rhymes, puns, and other unique wordplays and games.",
+              "competencies": [
+                {
+                  "code": "L1C5.1",
+                  "text": "The learner understood the phonetics and script of the language, the number of vowels and consonants, and how they interact and are used."
+                },
+                {
+                  "code": "L1C5.2",
+                  "text": "The learner engaged in the use of puns, rhymes, alliteration, and other wordplays in the language to make speech and writing more interesting and enjoyable."
+                },
+                {
+                  "code": "L1C5.3",
+                  "text": "The learner became familiar with some of the major word games in the language (e.g., palindromes, spoonerisms, sentences without given letters or sounds, riddles, jokes, antakshari, anagrams, crosswords)."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "subject": "Language 2",
+          "aliases": [],
+          "goals": [
+            {
+              "code": "L2CG1",
+              "goal": "The learner developed independent reading comprehension and summarising skills by engaging with a variety of texts and showed interest in reading books.",
+              "competencies": [
+                {
+                  "code": "L2C1.1",
+                  "text": "The learner applied varied comprehension strategies (inferring, predicting) to understand different texts."
+                },
+                {
+                  "code": "L2C1.2",
+                  "text": "The learner identified the main points, summarised after a careful reading of the text, and responded coherently."
+                },
+                {
+                  "code": "L2C1.3",
+                  "text": "The learner identified and appreciated the main idea in various texts."
+                },
+                {
+                  "code": "L2C1.4",
+                  "text": "The learner showed interest in choosing and reading a variety of books."
+                }
+              ]
+            },
+            {
+              "code": "L2CG2",
+              "goal": "The learner attained the ability to write about thoughts, feelings, and experiences of social events (e.g., village fairs, festivals, occasions).",
+              "competencies": [
+                {
+                  "code": "L2C2.1",
+                  "text": "The learner used writing strategies, such as sequencing ideas, identifying headings or sub-headings, and forming clear beginnings, endings, and paragraphs."
+                },
+                {
+                  "code": "L2C2.2",
+                  "text": "The learner expressed experiences, emotions, and critiques on various aspects of their surroundings in writing."
+                }
+              ]
+            },
+            {
+              "code": "L2CG3",
+              "goal": "The learner developed the capacity for effective communication using language skills for questioning, describing, analysing, and responding.",
+              "competencies": [
+                {
+                  "code": "L2C3.1",
+                  "text": "The learner wrote different kinds of letters and essays using appropriate style and registers for different audiences and purposes."
+                }
+              ]
+            },
+            {
+              "code": "L2CG4",
+              "goal": "The learner explored different literary devices and forms of literature.",
+              "competencies": [
+                {
+                  "code": "L2C4.1",
+                  "text": "The learner identified and appreciated different forms of literature (samples of prose, poetry, and drama)."
+                },
+                {
+                  "code": "L2C4.2",
+                  "text": "The learner identified literary devices, such as simile, metaphor, personification (alankaras), hyperbole (athishayokthi), and alliteration (anuprasa), by reading a variety of literature and used them in writing."
+                }
+              ]
+            },
+            {
+              "code": "L2CG5",
+              "goal": "The learner developed the ability to recognise basic linguistic aspects (word and sentence structure) and used them in oral and written expression.",
+              "competencies": [
+                {
+                  "code": "L2C5.1",
+                  "text": "The learner used appropriate grammar and structure in their writing."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "subject": "Language 3",
+          "aliases": [],
+          "goals": [
+            {
+              "code": "L3CG1",
+              "goal": "The learner developed effective communication skills for day-to-day interactions, enhancing their oral ability to express ideas by describing and narrating events and situations.",
+              "competencies": [
+                {
+                  "code": "L3C1.1",
+                  "text": "The learner made conversations relevant to the context."
+                },
+                {
+                  "code": "L3C1.2",
+                  "text": "The learner listened to varied texts (stories, poems, and conversations) and summarised core ideas from the material."
+                },
+                {
+                  "code": "L3C1.3",
+                  "text": "The learner made oral presentations (class debates, short welcome notes, anchoring of small events, short speeches)."
+                }
+              ]
+            },
+            {
+              "code": "L3CG2",
+              "goal": "The learner developed fluency and the ability to comprehend what they read.",
+              "competencies": [
+                {
+                  "code": "L3C2.1",
+                  "text": "The learner read stories and passages with accuracy and fluency, using appropriate pauses and intonation."
+                },
+                {
+                  "code": "L3C2.2",
+                  "text": "The learner comprehended the meaning of stories, poems, conversations, posters, and instructions, and identified the main idea in the text."
+                }
+              ]
+            },
+            {
+              "code": "L3CG3",
+              "goal": "The learner developed the ability to express their understanding, experiences, feelings, and ideas in writing instructions, invitations, and letters.",
+              "competencies": [
+                {
+                  "code": "L3C3.1",
+                  "text": "The learner wrote a paragraph to express their understanding and experiences."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "subject": "Mathematics",
+          "aliases": [],
+          "goals": [
+            {
+              "code": "MCG1",
+              "goal": "The learner understood numbers and sets of numbers (whole numbers, fractions, integers, rational numbers, and real numbers), looked for patterns, and appreciated relationships between numbers.",
+              "competencies": [
+                {
+                  "code": "MC1.1",
+                  "text": "The learner developed a sense for and an ability to manipulate (read, write, form, compare, estimate, and apply operations) and name (in words) large whole numbers of up to 20 digits, and expressed them in scientific notation using exponents and powers."
+                },
+                {
+                  "code": "MC1.2",
+                  "text": "The learner discovered, identified, and explored patterns in numbers, described rules for their formation (e.g., multiples of 7, powers of 3, prime numbers), and explained relations between different patterns."
+                },
+                {
+                  "code": "MC1.3",
+                  "text": "The learner learnt about the inclusion of zero and negative quantities as numbers, and the arithmetic operations on them, as given by Brahmagupta."
+                },
+                {
+                  "code": "MC1.4",
+                  "text": "The learner explored and understood sets of numbers (whole numbers, fractions, integers, rational numbers, and real numbers), their properties, and visualised them on the number line."
+                },
+                {
+                  "code": "MC1.5",
+                  "text": "The learner explored the idea of percentage and applied it to solve problems."
+                },
+                {
+                  "code": "MC1.6",
+                  "text": "The learner explored and applied fractions (both as ratios and in decimal form) in daily-life situations."
+                }
+              ]
+            },
+            {
+              "code": "MCG2",
+              "goal": "The learner understood the concepts of variable, constant, coefficient, expression, and (one-variable) equation, and used these concepts to solve meaningful daily-life problems with procedural fluency.",
+              "competencies": [
+                {
+                  "code": "MC2.1",
+                  "text": "The learner understood equality between numerical expressions and learnt to check arithmetical equations."
+                },
+                {
+                  "code": "MC2.2",
+                  "text": "The learner extended the representation of a number in the form of a variable or an algebraic expression using a variable."
+                },
+                {
+                  "code": "MC2.3",
+                  "text": "The learner formed algebraic expressions using variables, coefficients, and constants, and manipulated them through basic operations."
+                },
+                {
+                  "code": "MC2.4",
+                  "text": "The learner posed and solved linear equations to find the value of an unknown, including solving puzzles and word problems."
+                },
+                {
+                  "code": "MC2.5",
+                  "text": "The learner developed their own methods to solve puzzles and problems using algebraic thinking."
+                }
+              ]
+            },
+            {
+              "code": "MCG3",
+              "goal": "The learner understood, formulated, and applied properties and theorems regarding simple geometric shapes (2D and 3D).",
+              "competencies": [
+                {
+                  "code": "MC3.1",
+                  "text": "The learner described, classified, and understood relationships among different types of two- and three-dimensional shapes using their defining properties or attributes."
+                },
+                {
+                  "code": "MC3.2",
+                  "text": "The learner outlined the properties of lines, angles, triangles, quadrilaterals, and polygons and applied them to solve related problems."
+                },
+                {
+                  "code": "MC3.3",
+                  "text": "The learner identified attributes of three-dimensional shapes (cubes, parallelepipeds, cylinders, cones), worked hands-on with material to construct these shapes, and also used two-dimensional representations of three-dimensional objects to visualise and solve problems."
+                },
+                {
+                  "code": "MC3.4",
+                  "text": "The learner drew and constructed geometric shapes, such as lines, parallel lines, perpendicular lines, angles, and simple triangles, with specified properties using a compass and straightedge."
+                },
+                {
+                  "code": "MC3.5",
+                  "text": "The learner understood congruence and similarity as it applies to geometric shapes and identified similar and congruent triangles."
+                }
+              ]
+            },
+            {
+              "code": "MCG4",
+              "goal": "The learner developed an understanding of perimeter and area for 2D shapes and used them to solve day-to-day life problems.",
+              "competencies": [
+                {
+                  "code": "MC4.1",
+                  "text": "The learner discovered, understood, and used formulae to determine the area of a square, triangle, parallelogram, and trapezium, and developed strategies to find the areas of composite 2D shapes."
+                },
+                {
+                  "code": "MC4.2",
+                  "text": "The learner learnt the Baudhayana-Pythagoras theorem on the lengths of the sides of a right-angled triangle, and discovered a geometric proof using areas of squares erected on the sides of the triangle, and other related geometric constructions from the Sulba-Sutras."
+                },
+                {
+                  "code": "MC4.3",
+                  "text": "The learner constructed various designs (using tiling) on a plane surface using different 2D shapes and appreciated their appearances in art in India and around the world."
+                },
+                {
+                  "code": "MC4.4",
+                  "text": "The learner developed familiarity with the notion of fractal and identified and appreciated the appearances of fractals in nature and art in India and around the world."
+                }
+              ]
+            },
+            {
+              "code": "MCG5",
+              "goal": "The learner collected, organised, represented (graphically and in tables), and interpreted data/information from daily-life experiences.",
+              "competencies": [
+                {
+                  "code": "MC5.1",
+                  "text": "The learner collected, organised, and interpreted data using measures of central tendencies such as average/mean, mode, and median."
+                },
+                {
+                  "code": "MC5.2",
+                  "text": "The learner selected, created, and used appropriate graphical representations (e.g., pictographs, bar graphs, histograms, line graphs, and pie charts) of data to make interpretations."
+                }
+              ]
+            },
+            {
+              "code": "MCG6",
+              "goal": "The learner developed mathematical thinking and the ability to communicate mathematical ideas logically and precisely.",
+              "competencies": [
+                {
+                  "code": "MC6.1",
+                  "text": "he learner applied both inductive and deductive logic to formulate definitions and conjectures, evaluated and produced convincing arguments or proofs to turn these definitions and conjectures into theorems or correct statements, particularly in the areas of algebra, elementary number theory, and geometry."
+                }
+              ]
+            },
+            {
+              "code": "MCG7",
+              "goal": "The learner engaged with puzzles and mathematical problems and developed their own creative methods and strategies to solve them.",
+              "competencies": [
+                {
+                  "code": "MC7.1",
+                  "text": "The learner demonstrated creativity in discovering their own solutions to puzzles and other problems, and appreciated the work of others in finding their own, possibly different, solutions."
+                },
+                {
+                  "code": "MC7.2",
+                  "text": "The learner engaged in and appreciated the artistry and aesthetics of puzzle-making and puzzle-solving."
+                }
+              ]
+            },
+            {
+              "code": "MCG8",
+              "goal": "The learner developed basic skills and capacities of computational thinking, namely, decomposition, pattern recognition, data representation, generalisation, abstraction, and algorithms in order to solve problems where such techniques of computational thinking are effective",
+              "competencies": [
+                {
+                  "code": "MC8.1",
+                  "text": "The learner approached problems using programmatic thinking techniques such as iteration, symbolic representation, and logical operations, and reformulated problems into a series of ordered steps (algorithmic thinking)."
+                },
+                {
+                  "code": "MC8.2",
+                  "text": "The learner learnt systematic counting and listing, systematic reasoning about counts and iterative patterns, and multiple data representations; and learnt to devise and follow algorithms, understanding their correctness, effectiveness, and efficiency."
+                }
+              ]
+            },
+            {
+              "code": "MCG9",
+              "goal": "The learner knew and appreciated the development of mathematical ideas over time and the contributions of past and modern mathematicians from India and across the world.",
+              "competencies": [
+                {
+                  "code": "MC9.1",
+                  "text": "The learner recognised how concepts (like counting numbers, whole numbers, negative numbers, rational numbers, zero, concepts of algebra, geometry) evolved over a period of time in different civilisations."
+                },
+                {
+                  "code": "MC9.2",
+                  "text": "The learner knew and appreciated the contributions of specific Indian mathematicians (such as Baudhayana, Pingala, Aryabhata, Brahmagupta, Virahanka, Bhaskara, and Ramanujan)."
+                }
+              ]
+            },
+            {
+              "code": "MCG10",
+              "goal": "The learner knew about and appreciated the interaction of Mathematics with other school subjects.",
+              "competencies": [
+                {
+                  "code": "MC10.1",
+                  "text": "The learner recognised the interaction of Mathematics with multiple subjects across Science, Social Science, Visual Arts, Music, Vocational Education, and Sports."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "subject": "Science",
+          "aliases": [],
+          "goals": [
+            {
+              "code": "SCCG1",
+              "goal": "The learner explored the world of matter and its constituents, properties, and behaviour.",
+              "competencies": [
+                {
+                  "code": "SCC1.1",
+                  "text": "The learner classified matter based on observable physical (solid, liquid, gas, shape, volume, density, transparent, opaque, translucent, magnetic, non-magnetic, conducting, non-conducting) and chemical (pure, impure; acid, base; metal, non-metal; element, compound) characteristics."
+                },
+                {
+                  "code": "SCC1.2",
+                  "text": "The learner described changes in matter (physical and chemical) and used the particulate nature to represent the properties of matter and the changes."
+                },
+                {
+                  "code": "SCC1.3",
+                  "text": "The learner explained the importance of measurement and measured physical properties of matter (such as volume, weight, temperature, density) in indigenous, non-standard and standard units using simple instruments."
+                },
+                {
+                  "code": "SCC1.4",
+                  "text": "The learner observed and explained phenomena caused by differences in pressure, temperature, and density (e.g., breathing, sinking-floating, water pumps in homes, cooling of things, formation of winds)."
+                }
+              ]
+            },
+            {
+              "code": "SCCG2",
+              "goal": "The learner explored the physical world in scientific and mathematical terms.",
+              "competencies": [
+                {
+                  "code": "SCC2.1",
+                  "text": "The learner described one-dimensional motion (uniform, non-uniform, horizontal, vertical) using physical measurements (position, speed, and changes in speed) through mathematical and diagrammatic representations."
+                },
+                {
+                  "code": "SCC2.2",
+                  "text": "The learner described how electricity works by manipulating different elements in simple circuits and demonstrated the heating and magnetic effects of electricity."
+                },
+                {
+                  "code": "SCC2.3",
+                  "text": "The learner described the properties of a magnet (natural and artificial; Earth as a magnet)."
+                },
+                {
+                  "code": "SCC2.4",
+                  "text": "The learner demonstrated rectilinear propagation of light from different sources (natural, artificial, reflecting surfaces), verified the laws of reflection through manipulation of light sources and objects and the use of apparatus and artefacts (such as plane and curved mirrors, pinhole camera, kaleidoscope, periscope)."
+                },
+                {
+                  "code": "SCC2.5",
+                  "text": "The learner observed and identified celestial objects (stars, planets, natural and artificial satellites, constellations, comets) in the night sky using a simple telescope and images/photographs, and explained their role in navigation, calendars, and other phenomena (phases of the moon, eclipse, life on earth)."
+                }
+              ]
+            },
+            {
+              "code": "SCCG3",
+              "goal": "The learner explored the living world in scientific terms.",
+              "competencies": [
+                {
+                  "code": "SCC3.1",
+                  "text": "The learner described the diversity of living things observed in the natural surroundings (insects, earthworms, snails, birds, mammals, reptiles, spiders, diverse plants, and fungi), including at a smaller scale (microscopic organisms)."
+                },
+                {
+                  "code": "SCC3.2",
+                  "text": "The learner distinguished the characteristics of living organisms (need for nutrition, growth and development, need for respiration, response to stimuli, reproduction, excretion, cellular organisation) from non-living things."
+                },
+                {
+                  "code": "SCC3.3",
+                  "text": "The learner analysed patterns of relationships between living organisms and their environments in terms of dependence on and response to each other."
+                },
+                {
+                  "code": "SCC3.4",
+                  "text": "The learner explained the conditions suitable for sustaining life on Earth and other planets (atmosphere; suitable temperature-pressure, light; properties of water)."
+                }
+              ]
+            },
+            {
+              "code": "SCCG4",
+              "goal": "The learner understood the components of health, hygiene, and well-being.",
+              "competencies": [
+                {
+                  "code": "SCC4.1",
+                  "text": "The learner undertook a nutrition-based analysis of food components with special reference to Indian culinary practices and modern understanding of nutrition, and explained the effect of nutrition on health."
+                },
+                {
+                  "code": "SCC4.2",
+                  "text": "The learner examined different dimensions of diversity of food—sources, nutrients, climatic conditions, diets."
+                },
+                {
+                  "code": "SCC4.3",
+                  "text": "The learner described biological changes (growth, hormonal) during adolescence, and measures to ensure overall well-being."
+                },
+                {
+                  "code": "SCC4.4",
+                  "text": "The learner recognised and discussed substance abuse, viewing school as a safe space to raise these concerns."
+                }
+              ]
+            },
+            {
+              "code": "SCCG5",
+              "goal": "The learner understood the interface of Science, Technology, and Society.",
+              "competencies": [
+                {
+                  "code": "SCC5.1",
+                  "text": "The learner illustrated how Science and Technology can help to improve the quality of human life (health care, communication, transportation, food security, mitigation of climate change, judicious consumption of resources, applications of artificial satellites) as well as recognised some of the harmful uses of science in history."
+                },
+                {
+                  "code": "SCC5.2",
+                  "text": "The learner shared views on news and articles related to the impact that Science/Technology and society have on each other."
+                }
+              ]
+            },
+            {
+              "code": "SCCG6",
+              "goal": "The learner explored the nature and processes of Science through the evolution of knowledge and scientific inquiry.",
+              "competencies": [
+                {
+                  "code": "SCC6.1",
+                  "text": "The learner illustrated how scientific knowledge and ideas have changed over time and identified the scientific values that are inherent and common across the evolution of scientific knowledge (scientific temper, Science as a collective endeavour, conserving biodiversity and ecosystems)."
+                },
+                {
+                  "code": "SCC6.2",
+                  "text": "The learner formulated questions using scientific terminology (to identify possible causes for an event, patterns, or behaviour of objects) and collected data as evidence (through observation of the natural environment, design of simple experiments, or use of simple scientific instruments)."
+                }
+              ]
+            },
+            {
+              "code": "SCCG7",
+              "goal": "The learner communicated questions, observations, and conclusions related to science.",
+              "competencies": [
+                {
+                  "code": "SCC7.1",
+                  "text": "The learner used scientific vocabulary to communicate Science accurately in oral and written form, and through visual representation."
+                },
+                {
+                  "code": "SCC7.2",
+                  "text": "The learner designed and built simple models to demonstrate scientific concepts."
+                },
+                {
+                  "code": "SCC7.3",
+                  "text": "The learner represented real-world events and relationships through diagrams and simple mathematical representations."
+                }
+              ]
+            },
+            {
+              "code": "SCCG8",
+              "goal": "The learner understood and appreciated the contribution of India through history and the present times to the overall field of science.",
+              "competencies": [
+                {
+                  "code": "SCC8.1",
+                  "text": "The learner knew and explained the significant contributions of India to all matters studied within the curriculum in an integrated manner."
+                }
+              ]
+            },
+            {
+              "code": "SCCG9",
+              "goal": "The learner developed awareness of the most current discoveries, ideas, and frontiers in all areas of scientific knowledge.",
+              "competencies": [
+                {
+                  "code": "SCC9.1",
+                  "text": "The learner stated concepts that represent the most current understanding of the matter being studied—ranging from mere familiarity to conceptual understanding, as appropriate to their developmental stage."
+                },
+                {
+                  "code": "SCC9.2",
+                  "text": "The learner stated questions related to matters in the curriculum for which current scientific understanding is well recognised to be inadequate."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "subject": "Social Science",
+          "aliases": [],
+          "goals": [
+            {
+              "code": "SSCG1",
+              "goal": "The learner comprehended and interpreted sources related to different aspects of human life and made meaningful interpretations.",
+              "competencies": [
+                {
+                  "code": "SSC1.1",
+                  "text": "The learner collected and interpreted multiple sources of information (primary and secondary) to understand the historical, cultural, geographical, and socio-political aspects of human life."
+                },
+                {
+                  "code": "SSC1.2",
+                  "text": "The learner represented and analysed data related to various aspects of human life given in the form of text, tables, charts, diagrams, and maps."
+                }
+              ]
+            },
+            {
+              "code": "SSCG2",
+              "goal": "The learner explored the process of continuity and change in human civilisations through specific examples from their context and a few historical episodes.",
+              "competencies": [
+                {
+                  "code": "SSC2.1",
+                  "text": "The learner explained and analysed major changes in the past and their impact on society."
+                },
+                {
+                  "code": "SSC2.2",
+                  "text": "The learner recognised elements of the continued prevalence of certain beliefs, relationships, practices, and activities in human society, notwithstanding major changes in society."
+                }
+              ]
+            },
+            {
+              "code": "SSCG3",
+              "goal": "The learner drew connections between the causes and effects of different social and historical events or episodes, and connected them with the overall impact on human life.",
+              "competencies": [
+                {
+                  "code": "SSC3.1",
+                  "text": "The learner analysed the effect of various changes in early human society from nomadism to settled life and early civilisation, and changes in human habitation, family structures, relationships, work, and sociocultural beliefs."
+                },
+                {
+                  "code": "SSC3.2",
+                  "text": "The learner identified reasons behind harmony and conflict among social groups and communities, in their region and in other parts of the world, and their impact on human societies."
+                }
+              ]
+            },
+            {
+              "code": "SSCG4",
+              "goal": "The learner understood the functioning of social, cultural, and political institutions and their impact on society, and the way individuals and collectives shape these institutions.",
+              "competencies": [
+                {
+                  "code": "SSC4.1",
+                  "text": "The learner collected, organised, and interpreted information about various social, cultural, economic, and political institutions in their vicinity and region, and realised its significance for human society."
+                },
+                {
+                  "code": "SSC4.2",
+                  "text": "The learner assessed the influence of social, cultural, and political institutions on an individual, group, community, or society in general."
+                }
+              ]
+            },
+            {
+              "code": "SSCG5",
+              "goal": "The learner understood various forms of inequality and prejudice in society—from those prevalent in a family to those at a community, regional, or national level—and also the initiatives and efforts at various levels to address these issues.",
+              "competencies": [
+                {
+                  "code": "SSC5.1",
+                  "text": "The learner identified, explained, and raised questions about different forms of inequality, prejudice, and discrimination prevailing in one’s own family, locality, region, and at national and global levels."
+                },
+                {
+                  "code": "SSC5.2",
+                  "text": "The learner identified, explained, and appreciated efforts made at different levels through various (including social, cultural, economic, and political) mechanisms and institutions, and what individuals can do, to address these to ensure equity, inclusion, and justice."
+                }
+              ]
+            },
+            {
+              "code": "SSCG6",
+              "goal": "The learner understood the spatial distribution of resources (from local to global), their conservation, the interdependence between natural phenomena and human life, and their environmental and other implications.",
+              "competencies": [
+                {
+                  "code": "SSC6.1",
+                  "text": "The learner explained key natural phenomena such as climate, weather, ocean cycles, soil formation, the flow of rivers, and how they are spatially distributed."
+                },
+                {
+                  "code": "SSC6.2",
+                  "text": "The learner identified the distribution of resources such as water, agriculture, raw materials, and services across geographies."
+                },
+                {
+                  "code": "SSC6.3",
+                  "text": "The learner analysed Indian perspectives on and efforts towards conservation and sustainability in society, and advocated the importance of the same, and what more needs to be done in these directions, including in the context of global climate change."
+                },
+                {
+                  "code": "SSC6.4",
+                  "text": "The learner correlated the existence of different patterns of livelihoods with different types of landforms, availability of resources, and climatic conditions and changes (in local, regional, national, and global contexts)."
+                }
+              ]
+            },
+            {
+              "code": "SSCG7",
+              "goal": "The learner appreciated the importance and meaning of being Indian (Bharatiya) by understanding India’s rich past and present, including its glorious cultural unity in diversity, pluralism, heritage, traditions, and integrating factors despite geographical diversity.",
+              "competencies": [
+                {
+                  "code": "SSC7.1",
+                  "text": "The learner explained India’s unity in diversity by recognising commonalities in its rich and diverse cultural elements, languages, art, philosophical ideas, values, clothing, cuisines, traditions, festivals, trade, commerce, literature, art, architecture, philosophy, medicine, science, and other contributions to humanity."
+                },
+                {
+                  "code": "SSC7.2",
+                  "text": "The learner discovered the topographical diversity of the Indian landmass—from the semi-arid zone in the west and the areas of heavy rains in the north-east to the long coastal areas in the south and the snow-clad mountains in the north, as well as the rich biodiversity of the country."
+                },
+                {
+                  "code": "SSC7.3",
+                  "text": "The learner appreciated India’s tradition of inclusion across communities and social groups, and its influence in vast parts of the world through its cultural elements."
+                }
+              ]
+            },
+            {
+              "code": "SSCG8",
+              "goal": "The learner understood and appreciated the process of development of the Constitution of India and upheld its importance to promote democratic values in Indian society.",
+              "competencies": [
+                {
+                  "code": "SSC8.1",
+                  "text": "The learner understood the need for a constitution for any country during the last few centuries—especially in a country such as India—and its deeper objectives."
+                },
+                {
+                  "code": "SSC8.2",
+                  "text": "The learner explained the process of formation of the Indian Constitution and understood the ideas and ideals of the Indian national movement enshrined in it as well as those drawn from India’s civilisational heritage."
+                },
+                {
+                  "code": "SSC8.3",
+                  "text": "The learner explained the working of the three tiers of local self-government and appreciated its significance in upholding democracy at the grassroot level."
+                }
+              ]
+            },
+            {
+              "code": "SSCG9",
+              "goal": "The learner understood the processes of economic activities (production and consumption, trade, and commerce).",
+              "competencies": [
+                {
+                  "code": "SSC9.1",
+                  "text": "The learner explained the key elements of trade and commerce (commodity, production, consumption, and capital) and its impact on individual life and society."
+                }
+              ]
+            },
+            {
+              "code": "SSCG10",
+              "goal": "The learner understood and appreciated the contributions of India through history and in the present times, to the overall field of Social Science, including the different disciplines that constitute it.",
+              "competencies": [
+                {
+                  "code": "SSC10.1",
+                  "text": "The learner knew and explained the significant contributions of India to all matters studied within the curriculum, in an integrated manner, along with the particular matter (e.g., understanding the strengths of India’s democratic traditions through its history)."
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "secondary": {
+      "subjects": [
+        {
+          "subject": "Language 1",
+          "aliases": [],
+          "goals": [
+            {
+              "code": "L1CG1",
+              "goal": "The learner used language for effective communication through writing various forms (essays, letters, articles, discussions, interviews, public speeches) and for new media (email, audio, and visual material).",
+              "competencies": [
+                {
+                  "code": "L1C1.1",
+                  "text": "The learner used language appropriate to the social context, expressed agreement and disagreement with reasons, and arrived at conclusions through discussion and debate."
+                },
+                {
+                  "code": "L1C1.2",
+                  "text": "The learner wrote in different styles (narrative, descriptive, expository, persuasive) drawing from their own experiences and the experiences of others."
+                },
+                {
+                  "code": "L1C1.3",
+                  "text": "The learner wrote for real-life situations (invitations, speeches, condolence messages, notices, creative slogans, advertisements) and for the school newsletter/magazine/journal."
+                },
+                {
+                  "code": "L1C1.4",
+                  "text": "The learner scripted content to inform and communicate ideas effectively with the use of technology."
+                }
+              ]
+            },
+            {
+              "code": "L1CG2",
+              "goal": "The learner developed an appreciation of the aesthetics in different genres (humour, suspense, tragedy) through an analysis of style (narrative, descriptive, expository, persuasive) and employed these elements in their writing.",
+              "competencies": [
+                {
+                  "code": "L1C2.1",
+                  "text": "The learner described the characteristics of works of literature from different time periods (such as early, medieval, contemporary)."
+                },
+                {
+                  "code": "L1C2.2",
+                  "text": "The learner analysed a literary text by close reading, critiquing form and style, and interpreting possible meanings."
+                },
+                {
+                  "code": "L1C2.3",
+                  "text": "The learner composed literary texts by using appropriate literary devices."
+                }
+              ]
+            },
+            {
+              "code": "L1CG3",
+              "goal": "The learner used language to develop reasoning and argumentation skills by engaging with a variety of audio and written material.",
+              "competencies": [
+                {
+                  "code": "L1C3.1",
+                  "text": "The learner analysed and evaluated different audio and written material."
+                },
+                {
+                  "code": "L1C3.2",
+                  "text": "The learner argued with proper rationale by carefully evaluating premises."
+                }
+              ]
+            },
+            {
+              "code": "L1CG4",
+              "goal": "The learner appreciated the literary and cultural heritage in and related to the language, and the richness of Indian languages.",
+              "competencies": [
+                {
+                  "code": "L1C4.1",
+                  "text": "The learner recognised the multilingual nature of Indian society and the richness of its literary work through reading texts and watching content of different genres."
+                },
+                {
+                  "code": "L1C4.2",
+                  "text": "The learner appreciated the richness of culture and heritage in the different works of regional language literature and their connections."
+                },
+                {
+                  "code": "L1C4.3",
+                  "text": "The learner showed an understanding of the role of language in the formation of our identities and culture."
+                },
+                {
+                  "code": "L1C4.4",
+                  "text": "The learner demonstrated a basic knowledge of the commonalities among some of the major Indian languages, such as their common phonetic and scientifically arranged alphabets and scripts, common grammatical structures, origins and sources of vocabularies from Sanskrit and other classical languages, as well as their rich inter-influences and differences."
+                },
+                {
+                  "code": "L1C4.5",
+                  "text": "The learner demonstrated a basic knowledge of which languages are spoken in which geographical areas, developed a sense of the nature and structure of tribal languages, and became familiar with a few useful words and phrases and works of literature from a few Indian languages from across the country."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "subject": "Language 2",
+          "aliases": [],
+          "goals": [
+            {
+              "code": "L2CG1",
+              "goal": "The learner used language for effective communication through various oral activities (discussions, interviews, public speeches) and writing activities (essays, letters, articles), including new media (email, audio, and visual material).",
+              "competencies": [
+                {
+                  "code": "L2C1.1",
+                  "text": "The learner used language appropriate to the social context, expressed agreement and disagreement with reasons, and arrived at conclusions through discussion and debate."
+                },
+                {
+                  "code": "L2C1.2",
+                  "text": "The learner wrote in different styles (narrative, descriptive, expository, persuasive) drawing from their own experiences and the experiences of others."
+                },
+                {
+                  "code": "L2C1.3",
+                  "text": "The learner wrote for real-life situations (invitations, speeches, condolence messages, notices, creative slogans, advertisements) and for the school newsletter/magazine/journal."
+                },
+                {
+                  "code": "L2C1.4",
+                  "text": "The learner scripted content to inform and communicate ideas effectively with the use of technology."
+                }
+              ]
+            },
+            {
+              "code": "L2CG2",
+              "goal": "The learner used language to develop reasoning and argumentation skills by engaging with a variety of audio and written material.",
+              "competencies": [
+                {
+                  "code": "L2C2.1",
+                  "text": "The learner analysed and evaluated different audio and written material."
+                },
+                {
+                  "code": "L2C2.2",
+                  "text": "The learner argued with proper rationale by carefully evaluating premises."
+                }
+              ]
+            },
+            {
+              "code": "L2CG3",
+              "goal": "The learner developed an appreciation of the aesthetics in different genres (humour, suspense, tragedy) through an analysis of style (narrative, descriptive, expository, persuasive) and employed these elements in their writing.",
+              "competencies": [
+                {
+                  "code": "L2C3.1",
+                  "text": "The learner described the characteristics of works of literature from different time periods (such as early, medieval, contemporary)."
+                },
+                {
+                  "code": "L2C3.2",
+                  "text": "The learner analysed a literary text by close reading, critiquing form and style, and interpreting possible meanings."
+                },
+                {
+                  "code": "L2C3.3",
+                  "text": "The learner composed literary texts using appropriate literary devices."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "subject": "Language 3",
+          "aliases": [],
+          "goals": [
+            {
+              "code": "L3CG1",
+              "goal": "The learner developed reading comprehension and summarising skills by engaging with a variety of texts (stories, poems, extracts of plays, essays, articles, and news reports) and used various strategies to write for different audiences.",
+              "competencies": [
+                {
+                  "code": "L3C1.1",
+                  "text": "The learner identified main points, summarised after a careful reading of the text, and responded coherently."
+                },
+                {
+                  "code": "L3C1.2",
+                  "text": "The learner used strategies to organise ideas and information to write for an intended purpose and audience."
+                }
+              ]
+            },
+            {
+              "code": "L3CG2",
+              "goal": "The learner developed the capacity for effective oral and written communication in different situations (formal and informal).",
+              "competencies": [
+                {
+                  "code": "L3C2.1",
+                  "text": "The learner listened critically and read different news articles, reports, and editorials to express opinions."
+                },
+                {
+                  "code": "L3C2.2",
+                  "text": "The learner asked a variety of questions on social experiences using appropriate language (open-ended/closed-ended, formal/informal, relevant to context, with sensitivity)."
+                },
+                {
+                  "code": "L3C2.3",
+                  "text": "The learner shared ideas and critiques on the various aspects of their social and cultural surroundings in oral and written form."
+                },
+                {
+                  "code": "L3C2.4",
+                  "text": "The learner wrote different kinds of letters and essays in an appropriate language for different audiences."
+                }
+              ]
+            },
+            {
+              "code": "L3CG3",
+              "goal": "The learner explored different forms of literature (samples from the early to the contemporary period).",
+              "competencies": [
+                {
+                  "code": "L3C3.1",
+                  "text": "The learner identified and appreciated different forms of literature such as samples of prose, poetry, and drama (early to contemporary)."
+                }
+              ]
+            },
+            {
+              "code": "L3CG4",
+              "goal": "The learner developed the ability to recognise basic linguistic aspects (word and sentence structure) and used them in oral and written expression.",
+              "competencies": [
+                {
+                  "code": "L3C4.1",
+                  "text": "The learner interpreted, understood, and applied basic linguistic aspects (rules), such as sentence structure, punctuation, tense, gender, and parts of speech."
+                }
+              ]
+            },
+            {
+              "code": "L3CG5",
+              "goal": "The learner developed an appreciation of the distinctive features of the particular language, including its alphabet and script, sounds, rhymes, puns, and other wordplays and games unique to the language.",
+              "competencies": [
+                {
+                  "code": "L3C5.1",
+                  "text": "The learner understood the phonetics and script of the language, the number of vowels and consonants, and how they interact and are used."
+                },
+                {
+                  "code": "L3C5.2",
+                  "text": "The learner engaged in the use of puns, rhymes, alliteration, and other wordplays in the language, to make speech and writing more interesting and enjoyable."
+                },
+                {
+                  "code": "L3C5.3",
+                  "text": "The learner became familiar with some of the major word games in the language (e.g., palindromes, spoonerisms, sentences without given letters or sounds, riddles, jokes, antakshari, anagrams, crosswords)."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "subject": "Mathematics",
+          "aliases": [],
+          "goals": [
+            {
+              "code": "MCG1",
+              "goal": "The learner understood numbers (natural, whole, integer, rational, irrational, and real), ways of representing numbers, relationships amongst numbers, and number sets.",
+              "competencies": [
+                {
+                  "code": "MC1.1",
+                  "text": "The learner developed an understanding of numbers, including the set of real numbers and its properties."
+                }
+              ]
+            },
+            {
+              "code": "MCG2",
+              "goal": "The learner built deductive and inductive logic to prove theorems related to numbers and their relationships (such as ‘√2 is an irrational number’, recursion relation for Virahanka numbers, formula for the sum of the first n square numbers).",
+              "competencies": [
+                {
+                  "code": "MC2.1",
+                  "text": "The learner extended their understanding of powers (radical powers) and exponents."
+                }
+              ]
+            },
+            {
+              "code": "MCG3",
+              "goal": "The learner discovered and proved algebraic identities and modelled real-life situations in the form of equations to solve them.",
+              "competencies": [
+                {
+                  "code": "MC3.1",
+                  "text": "The learner stated and motivated/proved the remainder theorem, factor theorem, and division algorithm."
+                },
+                {
+                  "code": "MC3.2",
+                  "text": "The learner modelled and solved contextualised problems using equations (e.g., simultaneous linear equations in two variables or single polynomial equations) and drew conclusions about the situation being modelled."
+                },
+                {
+                  "code": "MC3.3",
+                  "text": "The learner learnt Brahmagupta’s quadratic formula (in both symbolic and poetic form) and its derivation, and used it to solve some of the poetic puzzles of Bhaskara as well as modern-day problems."
+                }
+              ]
+            },
+            {
+              "code": "MCG4",
+              "goal": "The learner analysed characteristics and properties of two-dimensional geometric shapes and developed mathematical arguments to explain geometric relationships.",
+              "competencies": [
+                {
+                  "code": "MC4.1",
+                  "text": "The learner analysed characteristics and properties of two-dimensional geometric shapes and developed mathematical arguments to explain geometric relationships."
+                },
+                {
+                  "code": "MC4.2",
+                  "text": "The learner proved theorems using Euclid’s axioms and postulates for triangles and quadrilaterals, and applied them to solve geometric problems."
+                },
+                {
+                  "code": "MC4.3",
+                  "text": "The learner proved theorems about the geometry of a circle, including its chords, subtended angles, inscribed polygons, and area in terms of π."
+                },
+                {
+                  "code": "MC4.4",
+                  "text": "The learner understood the irrationality of π, the best approximations to π discovered over human history, and the first exact formula (infinite series) for π given by Madhava."
+                },
+                {
+                  "code": "MC4.5",
+                  "text": "The learner specified locations and described spatial relationships using coordinate geometry, e.g., plotting a pair of linear equations and graphically finding the solution, or finding the area of a triangle with given coordinates as vertices."
+                },
+                {
+                  "code": "MC4.6",
+                  "text": "The learner understood the definitions of the basic trigonometric functions, their history and motivation (including the introduction of the sin and cos functions by Aryabhata using chords), and their utility across the sciences."
+                }
+              ]
+            },
+            {
+              "code": "MCG5",
+              "goal": "The learner derived and used formulae to calculate areas of plane figures, and surface areas and volumes of solid objects.",
+              "competencies": [
+                {
+                  "code": "MC5.1",
+                  "text": "The learner visualised, represented, and calculated the area of a triangle using Heron’s formula and its generalisation to cyclic quadrilaterals given by Brahmagupta’s formula."
+                },
+                {
+                  "code": "MC5.2",
+                  "text": "The learner visualised and used mathematical thinking to discover formulae to calculate surface areas and volumes of solid objects (cubes, cuboids, spheres, hemispheres, right circular cylinders/cones, and their combinations)."
+                }
+              ]
+            },
+            {
+              "code": "MCG6",
+              "goal": "The learner analysed and interpreted data using statistical concepts (such as measures of central tendency, standard deviations) and probability.",
+              "competencies": [
+                {
+                  "code": "MC6.1",
+                  "text": "The learner applied measures of central tendency such as mean, median, and mode."
+                },
+                {
+                  "code": "MC6.2",
+                  "text": "The learner applied concepts from probability to solve problems on the likelihood of everyday events."
+                }
+              ]
+            },
+            {
+              "code": "MCG7",
+              "goal": "The learner began to perceive and appreciate the axiomatic and deductive structure of Mathematics.",
+              "competencies": [
+                {
+                  "code": "MC7.1",
+                  "text": "The learner proved mathematical statements and carried out geometric constructions using stated assumptions, axioms, postulates, definitions, and mathematics vocabulary."
+                },
+                {
+                  "code": "MC7.2",
+                  "text": "The learner visualised and appreciated geometric proofs for algebraic identities and other ‘proofs without words’."
+                },
+                {
+                  "code": "MC7.3",
+                  "text": "The learner proved theorems using Euclid’s axioms and postulates — for angles, triangles, quadrilaterals, circles, and area-related theorems for triangles and parallelograms."
+                },
+                {
+                  "code": "MC7.4",
+                  "text": "The learner constructed different geometrical shapes like bisectors of line segments, angles and their bisectors, triangles, and other polygons, satisfying given constraints."
+                }
+              ]
+            },
+            {
+              "code": "MCG8",
+              "goal": "The learner built skills such as visualisation, optimisation, representation, and mathematical modelling, along with their application in daily life.",
+              "competencies": [
+                {
+                  "code": "MC8.1",
+                  "text": "The learner modelled daily-life phenomena and used representations such as graphs, tables, and equations to draw conclusions."
+                },
+                {
+                  "code": "MC8.2",
+                  "text": "The learner used two-dimensional representations of three-dimensional objects to visualise and solve problems such as those involving surface area and volume."
+                },
+                {
+                  "code": "MC8.3",
+                  "text": "The learner employed optimisation strategies to maximise desired quantities (such as area, volume, or other output) under given constraints."
+                }
+              ]
+            },
+            {
+              "code": "MCG9",
+              "goal": "The learner developed computational thinking, i.e., dealt with complex problems and was able to break them down into a series of simple problems that could then be solved by suitable procedures/algorithms.",
+              "competencies": [
+                {
+                  "code": "MC9.1",
+                  "text": "The learner decomposed a problem into sub-problems."
+                },
+                {
+                  "code": "MC9.2",
+                  "text": "The learner described and analysed a sequence of instructions being followed."
+                },
+                {
+                  "code": "MC9.3",
+                  "text": "The learner analysed similarities and differences among problems to make one solution or procedure work for multiple problems."
+                },
+                {
+                  "code": "MC9.4",
+                  "text": "The learner engaged in algorithmic problem solving to design such solutions."
+                }
+              ]
+            },
+            {
+              "code": "MCG10",
+              "goal": "The learner knew and appreciated important contributions of mathematicians from India and around the world.",
+              "competencies": [
+                {
+                  "code": "MC10.1",
+                  "text": "The learner recognised the important contributions made by mathematicians (Indian and others) in the field of Mathematics (such as the evolution of numbers, geometry, algebra)."
+                },
+                {
+                  "code": "MC10.2",
+                  "text": "The learner recognised modern contributions to Mathematics made in both India and abroad, and understood the next frontiers and next major open questions in the field of Mathematics."
+                }
+              ]
+            },
+            {
+              "code": "MCG11",
+              "goal": "The learner explored connections of Mathematics with other subjects.",
+              "competencies": [
+                {
+                  "code": "MC11.1",
+                  "text": "The learner applied mathematical knowledge and tools to analyse problems/situations in multiple subjects across Science, Social Science, Visual Arts, Music, Vocational Education, and Sports."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "subject": "Science",
+          "aliases": [],
+          "goals": [
+            {
+              "code": "SCCG1",
+              "goal": "The learner explored the world of matter, its interactions, and properties at the atomic level.",
+              "competencies": [
+                {
+                  "code": "SCC1.1",
+                  "text": "The learner described the classification of elements in the Periodic Table, and explained how compounds (including carbon compounds) are formed based on atomic structure (Bohr’s model) and properties (valency)."
+                },
+                {
+                  "code": "SCC1.2",
+                  "text": "The learner investigated the nature and properties of chemical substances (distillation, crystallisation, chromatography, centrifugation, types and properties of mixtures, solutions, colloids, and suspensions)."
+                },
+                {
+                  "code": "SCC1.3",
+                  "text": "The learner described and represented chemical interactions and changes using symbols and chemical equations (acid and base, metal and non-metal, reversible and irreversible)."
+                }
+              ]
+            },
+            {
+              "code": "SCCG2",
+              "goal": "The learner explored the physical world around them, and understood scientific principles and laws based on observations and analysis.",
+              "competencies": [
+                {
+                  "code": "SCC2.1",
+                  "text": "The learner applied Newton’s laws to explain the effect of forces (change in state of motion — displacement and direction, velocity and acceleration, uniform circular motion, acceleration due to gravity) and analysed graphical and mathematical representations of motion in one dimension."
+                },
+                {
+                  "code": "SCC2.2",
+                  "text": "The learner explained the relationship between mass and weight using the universal law of gravitation and connected it to the laws of motion."
+                },
+                {
+                  "code": "SCC2.3",
+                  "text": "The learner manipulated the position of an object and the properties of lenses (focus, centre of curvature) to observe image characteristics and their correspondence with a ray diagram, and extended this understanding to a combination of lenses (telescope, microscope)."
+                },
+                {
+                  "code": "SCC2.4",
+                  "text": "The learner manipulated and analysed different characteristics of a circuit (current, voltage, resistance), mathematised their relationship (Ohm’s law), and applied it to everyday usage (electricity bill, short circuit, safety measures)."
+                },
+                {
+                  "code": "SCC2.5",
+                  "text": "The learner defined work in scientific terms, and represented the relationship between potential and kinetic energy (conservation of energy) in mathematical expressions."
+                },
+                {
+                  "code": "SCC2.6",
+                  "text": "The learner demonstrated the principle of mechanical advantage by constructing simple machines (system of levers and pulleys)."
+                },
+                {
+                  "code": "SCC2.7",
+                  "text": "The learner described the origin and properties of sound (wavelength, frequency, amplitude) and the differences in what we hear as it propagates through different instruments."
+                }
+              ]
+            },
+            {
+              "code": "SCCG3",
+              "goal": "The learner explored the structure and function of the living world at the cellular level.",
+              "competencies": [
+                {
+                  "code": "SCC3.1",
+                  "text": "The learner explained the role of cellular components (nucleus, mitochondria, endoplasmic reticulum, vacuoles, chloroplast, cell wall), including the semi-permeability of the cell membrane, in making the cell the structural basis of living organisms and the functional basis of life processes."
+                },
+                {
+                  "code": "SCC3.2",
+                  "text": "The learner analysed similarities and differences in the life processes involved in nutrition (photosynthesis in plants; absorption of nutrients in fungi; digestion in animals), transport (transport of water in plants; circulation in animals), exchange of materials (respiration and excretion), and reproduction."
+                },
+                {
+                  "code": "SCC3.3",
+                  "text": "The learner described mechanisms of heredity (in terms of DNA, genes, chromosomes) and variation (as changes in the sequence of DNA)."
+                }
+              ]
+            },
+            {
+              "code": "SCCG4",
+              "goal": "The learner explored the interconnectedness between organisms and their environment.",
+              "competencies": [
+                {
+                  "code": "SCC4.1",
+                  "text": "The learner applied the knowledge of cellular diversity in organisms along with the ecological role organisms play (autotrophic/heterotrophic nutrition) to classify them into five kingdoms."
+                },
+                {
+                  "code": "SCC4.2",
+                  "text": "The learner illustrated different levels of organisation of living organisms (from molecules to organisms)."
+                },
+                {
+                  "code": "SCC4.3",
+                  "text": "The learner analysed different levels of biological organisation from organisms to ecosystems and biomes, along with the interactions that take place at each level."
+                },
+                {
+                  "code": "SCC4.4",
+                  "text": "The learner analysed patterns of inheritance of traits in terms of Mendel’s laws and their consequences at a population level (using models and/or simulations)."
+                },
+                {
+                  "code": "SCC4.5",
+                  "text": "The learner analysed evidence of biological evolution demonstrating the consequences of the process of natural selection in terms of changes in allele frequency in a population, and in the structure and function of organisms."
+                }
+              ]
+            },
+            {
+              "code": "SCCG5",
+              "goal": "The learner drew linkages between scientific knowledge and knowledge across other curricular areas.",
+              "competencies": [
+                {
+                  "code": "SCC5.1",
+                  "text": "The learner explored how literature and the arts have influenced Science."
+                },
+                {
+                  "code": "SCC5.2",
+                  "text": "The learner examined a case study related to the use of Science in human life from the perspective of Social Sciences and ethics (e.g., Marie Curie, Jenner, treatment of patients with mental illness, the story of the atomic bomb, the green revolution and GMOs, conservation of biodiversity)."
+                },
+                {
+                  "code": "SCC5.3",
+                  "text": "The learner applied scientific principles to explain phenomena in other subjects (sound pitch, octave, and amplitude in music; use of muscles in dance forms and sports)."
+                }
+              ]
+            },
+            {
+              "code": "SCCG6",
+              "goal": "The learner understood and appreciated the contribution of India through history and the present times to the overall field of Science, including the disciplines that constitute it.",
+              "competencies": [
+                {
+                  "code": "SCC6.1",
+                  "text": "The learner knew and explained the significant contributions of India to all matters (concepts, explanations, methods) that are studied within the curriculum in an integrated manner."
+                }
+              ]
+            },
+            {
+              "code": "SCCG7",
+              "goal": "The learner developed awareness of the most current discoveries, ideas, and frontiers in all areas of scientific knowledge in order to appreciate that Science is ever evolving, and that there are still many unanswered questions.",
+              "competencies": [
+                {
+                  "code": "SCC7.1",
+                  "text": "The learner stated concepts that represent the most current understanding of the matter being studied — ranging from mere familiarity to conceptual understanding of the matter, as appropriate to their developmental stage."
+                },
+                {
+                  "code": "SCC7.2",
+                  "text": "The learner stated questions related to matters in the curriculum for which current scientific understanding is well recognised to be inadequate."
+                }
+              ]
+            },
+            {
+              "code": "SCCG8",
+              "goal": "The learner explored the nature of Science by doing Science.",
+              "competencies": [
+                {
+                  "code": "SCC8.1",
+                  "text": "The learner developed accurate and appropriate models (including geometric, mathematical, graphical) to represent real-life events and phenomena using scientific principles, and used these models to manipulate variables and predict results."
+                },
+                {
+                  "code": "SCC8.2",
+                  "text": "The learner designed and implemented a plan for scientific inquiry (formulated hypotheses, made predictions, identified variables, accurately used scientific instruments, represented data — primary and secondary — in multiple modes, drew inferences based on data and an understanding of scientific concepts, theories, laws, and principles, and communicated findings using scientific terminology)."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "subject": "Social Science",
+          "aliases": [],
+          "goals": [
+            {
+              "code": "SSCG1",
+              "goal": "The learner understood and analysed the important phases in Indian history and drew insights to understand present-day India.",
+              "competencies": [
+                {
+                  "code": "SSC1.1",
+                  "text": "The learner explained historical events and processes using different types of sources, with specific examples from Indian history."
+                },
+                {
+                  "code": "SSC1.2",
+                  "text": "The learner explained and analysed the chronology of human life on the Indian subcontinent, from prehistory to its civilisational beginnings and beyond, and its relations with other civilisations over time such as those in Mesopotamia, Greece, Central Asia, China, Southeast Asia, Arabia, and Eastern Africa."
+                },
+                {
+                  "code": "SSC1.3",
+                  "text": "The learner traced aspects of continuity and change in different phases of history across the Indian subcontinent (including cultural trends, social and religious trends and reforms, and economic and political transformations)."
+                },
+                {
+                  "code": "SSC1.4",
+                  "text": "The learner explained the growth of new indigenous ideas across India including in Mathematics, Philosophy, Science and Technology, Medicine, Architecture, Agriculture, Literature and Art, and Social Science (such as zero and the Indian number system, ahimsa, the six systems of Indian philosophy, Ayurveda, yoga, the 22 shrutis of Indian music, horticulture, use of herbs and spices, etymology, meters, and grammar) and how they affected the course of Indian and world history."
+                }
+              ]
+            },
+            {
+              "code": "SSCG2",
+              "goal": "The learner analysed the important phases in world history and drew insights to understand the present-day world.",
+              "competencies": [
+                {
+                  "code": "SSC2.1",
+                  "text": "The learner explained historical events and processes with different types of sources, with specific examples from world history."
+                },
+                {
+                  "code": "SSC2.2",
+                  "text": "The learner explained and analysed the chronology of human life from its beginnings to nomadism to settled life and other phases of human civilisation."
+                },
+                {
+                  "code": "SSC2.3",
+                  "text": "The learner traced aspects of continuity and change in different phases of world history (including cultural trends, social and religious reforms, and economic and political transformations)."
+                },
+                {
+                  "code": "SSC2.4",
+                  "text": "The learner explained the growth of new ideas and practices across the world (including humanism, mercantilism, industrialisation, scientific developments and explorations, imperialism, colonialism, the rise of new nation-states across the world, and various technologies including the most current) and how they affected the course of world history."
+                },
+                {
+                  "code": "SSC2.5",
+                  "text": "The learner recognised the various practices that arose, such as those in C-2.4, and came to be condemned later on (such as racism, slavery, colonial invasions, conquests and plunder, genocides, and the exclusion of women from democratic and other institutions), all of which have also impacted the course of world history and have left unhealed wounds."
+                }
+              ]
+            },
+            {
+              "code": "SSCG3",
+              "goal": "The learner understood the idea of a nation and the emergence of the modern Indian nation.",
+              "competencies": [
+                {
+                  "code": "SSC3.1",
+                  "text": "The learner analysed the meaning of nation and how the concept evolved over time across the world and in the specific context of India, including its roots in the rich civilisational history of the Indian subcontinent."
+                },
+                {
+                  "code": "SSC3.2",
+                  "text": "The learner identified and analysed important phases of the Indian national freedom struggle against British colonial rule, with special reference to the movement led by Mahatma Gandhi and other important figures as well as those that led to independence, and understood the specific Indian concepts, values, and methods (such as Swaraj, Swadeshi, passive resistance, fight for dharma, self-sacrifice, ahimsa) that played a part in achieving Independence."
+                }
+              ]
+            },
+            {
+              "code": "SSCG4",
+              "goal": "The learner developed an understanding of the inter-relationship between human beings and their physical environment and how that influences the livelihoods, culture, and biodiversity of the region.",
+              "competencies": [
+                {
+                  "code": "SSC4.1",
+                  "text": "The learner located physiographic regions of India and the climatic zones of the world on a globe/map."
+                },
+                {
+                  "code": "SSC4.2",
+                  "text": "The learner explained important geographical concepts, characteristics of key landforms, their origin, and other physical factors of a region."
+                },
+                {
+                  "code": "SSC4.3",
+                  "text": "The learner drew inter-linkages between various components of the physical environment, such as climate and relief, climate and vegetation, and vegetation and wildlife."
+                },
+                {
+                  "code": "SSC4.4",
+                  "text": "The learner analysed and evaluated the inter-relationship between the natural environment and human beings and their cultures across regions and, in the case of India, the special environmental ethos that resulted in practices of nature conservation."
+                },
+                {
+                  "code": "SSC4.5",
+                  "text": "The learner critically evaluated the impact of human interventions on the environment, including climate change, pollution, shortages of natural resources (particularly water), and loss of biodiversity; and identified practices that have led to these environmental crises and the measures that must be taken to reverse them."
+                },
+                {
+                  "code": "SSC4.6",
+                  "text": "The learner developed sensitivity towards the judicious use of natural resources (by individuals, societies, and nations) and suggested measures for their conservation."
+                }
+              ]
+            },
+            {
+              "code": "SSCG5",
+              "goal": "The learner understood the Indian Constitution and explored the essence of Indian democracy and the characteristics of a democratic government.",
+              "competencies": [
+                {
+                  "code": "SSC5.1",
+                  "text": "The learner understood that the Indian Constitution draws from the great cultural heritage and common aspirations of the Indian nation, and recalled India’s early experiments with democracy (assemblies in Mahajanapadas, kingdoms and empires at several levels of society, guilds, sanghas and ganas, village councils and committees, Uthiramerur inscriptions)."
+                },
+                {
+                  "code": "SSC5.2",
+                  "text": "The learner appreciated fundamental Constitutional values and identified their significance for the prosperity of the Indian nation."
+                },
+                {
+                  "code": "SSC5.3",
+                  "text": "The learner explained that fundamental rights are the most basic human rights, and that they flourish when people also perform their fundamental duties."
+                },
+                {
+                  "code": "SSC5.4",
+                  "text": "The learner analysed the basic features of a democracy and democratic government — and its history in India and across the world — and compared this form of government with other forms of government."
+                },
+                {
+                  "code": "SSC5.5",
+                  "text": "The learner analysed the critical role of non-state and non-market participants in the functioning of a democratic government and society, such as the media, civil society, socio-religious institutions, and community institutions."
+                }
+              ]
+            },
+            {
+              "code": "SSCG6",
+              "goal": "The learner understood and analysed social, cultural, and political life in India over time — as well as the underlying historical Indian ethos and philosophy of unity in diversity — and recognised challenges faced in these areas in the past and present and the efforts being made to address them.",
+              "competencies": [
+                {
+                  "code": "SSC6.1",
+                  "text": "The learner understood how the Indian ethos and the cultural integration across India did not attempt uniformity, but respected and promoted a rich diversity in Indian society, and how this harmonisation and unity in diversity, with a historical respect for all cultures, have counted among India’s great strengths by promoting peaceful coexistence."
+                },
+                {
+                  "code": "SSC6.2",
+                  "text": "The learner understood that, despite C-6.1, forms of inequality, injustice, and discrimination have occurred in different sections of society at different times (due to internal as well as outside forces such as colonisation), leading to political, social, and cultural efforts, struggles, movements, and mechanisms at various levels towards equity, inclusion, justice, and harmony, with varying outcomes and degrees of success."
+                },
+                {
+                  "code": "SSC6.3",
+                  "text": "The learner analysed aspects of differential treatment or discrimination that may exist in Indian society, based on, e.g., socio-cultural background, region, and language spoken, and what individuals and societies can do to eradicate such differential treatment."
+                },
+                {
+                  "code": "SSC6.4",
+                  "text": "The learner understood that a progressive society and nation such as India is one that recognises not only its civilisational strengths but also its socio-economic, cultural, and political challenges, and continuously makes efforts to address those challenges to become ever more prosperous, inclusive, just, and harmonious."
+                }
+              ]
+            },
+            {
+              "code": "SSCG7",
+              "goal": "The learner developed an understanding of the economy of a nation, with specific reference to India.",
+              "competencies": [
+                {
+                  "code": "SSC7.1",
+                  "text": "The learner defined key features of the economy such as production, distribution, demand, supply, trade, and commerce, and the factors that influence these aspects (including technology)."
+                },
+                {
+                  "code": "SSC7.2",
+                  "text": "The learner evaluated the importance of the three sectors of production (primary, secondary, and tertiary) in any country’s economy, especially India."
+                },
+                {
+                  "code": "SSC7.3",
+                  "text": "The learner distinguished between the ‘unorganised’ and ‘organised’ sectors of the economy and their role in production for the local market in small-, medium-, and large-scale production centres (industries), and recognised the special importance of the so-called ‘unorganised’ sector in the Indian economy and its connections with the self-organising features of Indian society."
+                },
+                {
+                  "code": "SSC7.4",
+                  "text": "The learner traced the beginning and importance of large-scale trade and commerce (including e-commerce) between one country and another — the key items of trade in the beginning, and the changes from time to time."
+                }
+              ]
+            },
+            {
+              "code": "SSCG8",
+              "goal": "The learner evaluated the economic development of a country in terms of its impact on the lives of its people and on nature.",
+              "competencies": [
+                {
+                  "code": "SSC8.1",
+                  "text": "The learner gathered, comprehended, and analysed data related to income, capital, poverty, and employment in their locality, region, and at the national level."
+                },
+                {
+                  "code": "SSC8.2",
+                  "text": "The learner understood and analysed the concepts and practice of the range of economic systems — from free market to entirely state-controlled markets."
+                },
+                {
+                  "code": "SSC8.3",
+                  "text": "The learner understood these features in the context of ancient India, with its thriving trade, both internal and external, and its well-established trade practices and networks, business conventions, and diverse industries, all of which made India one of the world’s leading economies up to the colonial period."
+                },
+                {
+                  "code": "SSC8.4",
+                  "text": "The learner described India’s recent path towards again becoming one of the three largest economies of the world, and how individuals can contribute to this economic progress."
+                },
+                {
+                  "code": "SSC8.5",
+                  "text": "The learner appreciated the connections between economic development and the environment, and the broader indicators of societal well-being beyond GDP growth and income."
+                }
+              ]
+            },
+            {
+              "code": "SSCG9",
+              "goal": "The learner understood and appreciated the contribution of India through history and present times to the overall field of Social Science, and the disciplines that constitute it.",
+              "competencies": [
+                {
+                  "code": "SSC9.1",
+                  "text": "The learner knew and explained the significant contributions of India to all matters (concepts, explanations, methods) studied within the curriculum, in an integrated manner."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "subject": "Visual Arts",
+          "aliases": [],
+          "goals": [
+            {
+              "code": "VACG1",
+              "goal": "The learner developed an understanding of their interest and aptitude in the Arts.",
+              "competencies": [
+                {
+                  "code": "VAC1.1",
+                  "text": "The learner evaluated their own interest in Visual Art forms by considering its scope of practice and application (Fine Arts, crafts, applied art/design, Art research and management)."
+                },
+                {
+                  "code": "VAC1.2",
+                  "text": "The learner initiated discussions and took steps to find more information and resources to pursue their interest in the Visual Arts."
+                }
+              ]
+            },
+            {
+              "code": "VACG2",
+              "goal": "The learner extended creative practices and artistic expression in different aspects of their life.",
+              "competencies": [
+                {
+                  "code": "VAC2.1",
+                  "text": "The learner applied the elements and principles of Visual Arts into their artwork and incorporated these into their routine life."
+                },
+                {
+                  "code": "VAC2.2",
+                  "text": "The learner analysed the development of visual expression across a series of works."
+                }
+              ]
+            },
+            {
+              "code": "VACG3",
+              "goal": "The learner developed their Art practice through the knowledge of a wide range of Indian art forms.",
+              "competencies": [
+                {
+                  "code": "VAC3.1",
+                  "text": "The learner extended explorations and refined techniques in the Visual Arts through regular practice."
+                },
+                {
+                  "code": "VAC3.2",
+                  "text": "The learner incorporated ideas and elements from various genres of Indian Visual Arts (traditional, popular, contemporary) into their artwork."
+                }
+              ]
+            },
+            {
+              "code": "VACG4",
+              "goal": "The learner appreciated the commonality, interconnectedness, and diversity of aesthetic sensibilities across Indian and global Art practices and cultures.",
+              "competencies": [
+                {
+                  "code": "VAC4.1",
+                  "text": "The learner analysed commonalities and differences among diverse forms of Visual Arts, cultures, and aesthetic sensibilities in India and the rest of the world."
+                },
+                {
+                  "code": "VAC4.2",
+                  "text": "The learner evaluated artwork based on creative expression, artistry, and social context."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "subject": "Theatre",
+          "aliases": [],
+          "goals": [
+            {
+              "code": "TCG1",
+              "goal": "The learner developed an understanding of their interest and aptitude in the Arts.",
+              "competencies": [
+                {
+                  "code": "TC1.1",
+                  "text": "The learner evaluated their own interest in Dramatic Arts by considering its scope of practice and application (acting, direction and design, story/playwriting, backstage, research and stage management)."
+                },
+                {
+                  "code": "TC1.2",
+                  "text": "The learner initiated discussions and took steps to find more information and resources for pursuing their interest in Dramatic Arts."
+                }
+              ]
+            },
+            {
+              "code": "TCG2",
+              "goal": "The learner extended creative practices and artistic expression in different aspects of their life.",
+              "competencies": [
+                {
+                  "code": "TC2.1",
+                  "text": "The learner applied the elements and principles of Drama into their performance practices and incorporated these into their routine life."
+                },
+                {
+                  "code": "TC2.2",
+                  "text": "The learner analysed the development of the Drama process and performance across a series of work."
+                }
+              ]
+            },
+            {
+              "code": "TCG3",
+              "goal": "The learner developed their art practice through the knowledge of a wide range of Indian art forms.",
+              "competencies": [
+                {
+                  "code": "TC3.1",
+                  "text": "The learner extended explorations and refined techniques in Drama through regular practice and rehearsals."
+                },
+                {
+                  "code": "TC3.2",
+                  "text": "The learner incorporated ideas and elements from various genres of Indian Dramatic Arts (traditional, popular, contemporary) into their own Drama work."
+                }
+              ]
+            },
+            {
+              "code": "TCG4",
+              "goal": "The learner appreciated the commonality, interconnectedness, and diversity of aesthetic sensibilities across Indian and global Art practices and cultures.",
+              "competencies": [
+                {
+                  "code": "TC4.1",
+                  "text": "The learner analysed commonalities and differences among diverse forms of Theatre, cultures, and aesthetic sensibilities in India and the rest of the world."
+                },
+                {
+                  "code": "TC4.2",
+                  "text": "The learner evaluated Drama and Theatre performances based on creative expression, artistry, and social context."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "subject": "Music",
+          "aliases": [],
+          "goals": [
+            {
+              "code": "MUCG1",
+              "goal": "The learner developed an understanding of their interest and aptitude in the Arts.",
+              "competencies": [
+                {
+                  "code": "MUC1.1",
+                  "text": "The learner evaluated their own interest in Music by considering its scope of practice and application (performance, composing, production, sound arts and design, recording, Music research and management)."
+                },
+                {
+                  "code": "MUC1.2",
+                  "text": "The learner initiated discussions and took steps to find more information and resources to pursue their interest in Music."
+                }
+              ]
+            },
+            {
+              "code": "MUCG2",
+              "goal": "The learner extended creative practices and artistic expression in different aspects of their life.",
+              "competencies": [
+                {
+                  "code": "MUC2.1",
+                  "text": "The learner applied the elements and principles of Music into their musical works and incorporated these into their routine life."
+                },
+                {
+                  "code": "MUC2.2",
+                  "text": "The learner analysed the development of musical expression across a series of musical projects."
+                }
+              ]
+            },
+            {
+              "code": "MUCG3",
+              "goal": "The learner developed their Art practice through the knowledge of a wide range of Indian Art forms.",
+              "competencies": [
+                {
+                  "code": "MUC3.1",
+                  "text": "The learner extended explorations and refined techniques in Music through regular practice and rehearsals."
+                },
+                {
+                  "code": "MUC3.2",
+                  "text": "The learner incorporated ideas and elements from various genres of Indian Music (traditional, popular, contemporary) into their own musical work."
+                }
+              ]
+            },
+            {
+              "code": "MUCG4",
+              "goal": "The learner appreciated the commonality, interconnectedness, and diversity of aesthetic sensibilities across Indian and global Art practices and cultures.",
+              "competencies": [
+                {
+                  "code": "MUC4.1",
+                  "text": "The learner analysed commonalities and differences among diverse forms of Music, cultures, and their aesthetic sensibilities in India and the rest of the world."
+                },
+                {
+                  "code": "MUC4.2",
+                  "text": "The learner evaluated musical work based on creative expression, artistry, and social context."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "subject": "Dance and Movement",
+          "aliases": [],
+          "goals": [
+            {
+              "code": "DMCG1",
+              "goal": "The learner developed an understanding of their interest and aptitude in the Arts.",
+              "competencies": [
+                {
+                  "code": "DMC1.1",
+                  "text": "The learner evaluated their interest in forms of Dance and Movement by considering its scope of practice and application (performance, choreography, production, recording, Dance and Movement research and management)."
+                },
+                {
+                  "code": "DMC1.2",
+                  "text": "The learner initiated discussions and took steps to find more information and resources to pursue their interest in Dance and Movement."
+                }
+              ]
+            },
+            {
+              "code": "DMCG2",
+              "goal": "The learner extended creative practices and artistic expression in different aspects of their life.",
+              "competencies": [
+                {
+                  "code": "DMC2.1",
+                  "text": "The learner applied the elements and principles of Dance and Movement into their performance work, and incorporated these into their routine life."
+                },
+                {
+                  "code": "DMC2.2",
+                  "text": "The learner analysed the development of expression in Dance and Movement work across a series of Movement projects."
+                }
+              ]
+            },
+            {
+              "code": "DMCG3",
+              "goal": "The learner developed their Art practice through the knowledge of a wide range of Indian Art forms.",
+              "competencies": [
+                {
+                  "code": "DMC3.1",
+                  "text": "The learner extended explorations and refined techniques in Dance and Movement through regular practice and rehearsals."
+                },
+                {
+                  "code": "DMC3.2",
+                  "text": "The learner incorporated ideas and elements from various genres of Indian Dance and Movement (traditional, popular, contemporary) into their own artwork."
+                }
+              ]
+            },
+            {
+              "code": "DMCG4",
+              "goal": "The learner appreciated the commonality, interconnectedness, and diversity of aesthetic sensibilities across Indian and global Art practices and cultures.",
+              "competencies": [
+                {
+                  "code": "DMC4.1",
+                  "text": "The learner analysed commonalities and differences among diverse forms of Indian Dance and Movement, cultures, and their aesthetic sensibilities."
+                },
+                {
+                  "code": "DMC4.2",
+                  "text": "The learner evaluated dance/movement work based on creative expression, artistry, and social context."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "subject": "Art Education (Learning Standards 2)",
+          "aliases": [],
+          "goals": [
+            {
+              "code": "AECG1",
+              "goal": "The learner developed capacities in any one form of Visual or Performing Arts and developed an appreciation for diverse Art practices and traditions in India.",
+              "competencies": [
+                {
+                  "code": "AEC1.1",
+                  "text": "The learner demonstrated rigour and regularity in art-making processes, rehearsals, and performances/displays at the school level and at inter-school events (e.g., regularly practised Drama or Music and rehearsed specific pieces for performance at an event, allocated a few hours a week to practise vocal/instrumental techniques, and rehearsed a group song with peers)."
+                },
+                {
+                  "code": "AEC1.2",
+                  "text": "The learner imaginatively applied artistic techniques, tools, and materials to express their ideas and feelings while working in the Visual or Performing Arts (e.g., experimented with a variety of threads, needles, and stitch patterns in embroidery; experimented with found materials to create musical instruments)."
+                },
+                {
+                  "code": "AEC1.3",
+                  "text": "The learner appreciated diverse forms of artistic expression on the basis of artistic qualities and social context (e.g., appreciated the different forms of classical dance practised in India)."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "subject": "Interdisciplinary Areas (Grade 9: Individuals in Society)",
+          "aliases": [],
+          "goals": [
+            {
+              "code": "CG1",
+              "goal": "The learner developed the capacity for ethical and moral reasoning.",
+              "competencies": [
+                {
+                  "code": "C1.1",
+                  "text": "The learner examined an issue/event from multiple perspectives — socio-cultural, economic, political, and environmental."
+                },
+                {
+                  "code": "C1.2",
+                  "text": "The learner articulated ethical and moral questions on an issue/event."
+                },
+                {
+                  "code": "C1.3",
+                  "text": "The learner identified different positions related to an issue/event, and provided arguments supported by rationale for each."
+                },
+                {
+                  "code": "C1.4",
+                  "text": "The learner identified the human values, including those from Indian cultural heritage and the Indian Constitution, relevant to an issue/event."
+                }
+              ]
+            },
+            {
+              "code": "CG2",
+              "goal": "The learner developed the capacity to analyse current affairs from multiple perspectives.",
+              "competencies": [
+                {
+                  "code": "C2.1",
+                  "text": "The learner used authentic sources of news, views, and opinions to develop an understanding of current affairs, particularly current affairs in India."
+                },
+                {
+                  "code": "C2.2",
+                  "text": "The learner communicated and advocated opinions and alternatives through a variety of modes (writing, speaking, debates, discussions)."
+                }
+              ]
+            },
+            {
+              "code": "CG3",
+              "goal": "The learner applied ethical and moral reasoning to engage with current affairs related to the local community, State, nation, and the larger world.",
+              "competencies": [
+                {
+                  "code": "C3.1",
+                  "text": "The learner identified and explored issues/events within the community from multiple perspectives (historical, social, cultural, economic)."
+                },
+                {
+                  "code": "C3.2",
+                  "text": "The learner discussed issues/events at the district, State, national, and international level."
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
