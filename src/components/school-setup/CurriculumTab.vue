@@ -19,26 +19,44 @@
         </div>
       </div>
 
-      <!-- ── Language slots ────────────────────────────────────────────── -->
-      <div v-if="languageCandidates.length" class="bg-white rounded-xl border border-slate-200 p-4">
-        <div class="flex items-start justify-between gap-4">
-          <div class="text-sm font-semibold text-slate-800 mb-1">Unmatched subjects</div>
-          <Button label="Save mapping" icon="pi pi-save" size="small" outlined
-                  :loading="savingMap" @click="saveMap" />
-        </div>
-        <p class="text-sm text-slate-500 mb-3">
-          These do not match a framework subject by name. Sometimes the framework names a slot
-          rather than a subject (Language 1, 2, 3); sometimes it groups differently — Preparatory
-          has "The World Around Us" where a school teaches Science and Social Science. Map each
-          one, or leave it unset and its goals stay untouched.
-        </p>
-        <div class="grid gap-2 md:grid-cols-2">
-          <div v-for="s in languageCandidates" :key="s.id" class="flex items-center gap-2">
-            <span class="font-mono text-xs w-40 shrink-0 text-slate-600">{{ s.id }}</span>
-            <Select v-model="subjectMap[s.id]" :options="slotOptionsFor(s.id)" class="w-full"
-                    size="small" showClear filter placeholder="Leave unmapped / skip" />
+      <!-- ── Subject mapping ───────────────────────────────────────────── -->
+      <div v-if="groups.length" class="bg-white rounded-xl border border-slate-200 p-4">
+        <div class="flex items-start justify-between gap-4 mb-1">
+          <div class="text-sm font-semibold text-slate-800">
+            Map subjects <span class="font-normal text-slate-400">({{ groups.length }} decision(s) covering {{ mappedSubjectCount }} subject(s))</span>
+          </div>
+          <div class="flex gap-2">
+            <Button label="Accept suggestions" icon="pi pi-bolt" size="small" outlined
+                    :disabled="!suggestedCount" @click="acceptSuggestions" />
+            <Button label="Save mapping" icon="pi pi-save" size="small" outlined
+                    :loading="savingMap" @click="saveMap" />
           </div>
         </div>
+        <p class="text-sm text-slate-500 mb-3">
+          One row per subject name, not per grade — a choice here applies to every grade that
+          uses it. The framework names slots (Language 1, 2, 3) rather than languages, and
+          Preparatory groups Science and Social Science as "The World Around Us".
+        </p>
+
+        <table class="w-full text-sm">
+          <tbody>
+            <tr v-for="g in groups" :key="g.key" class="border-b border-slate-100 last:border-0">
+              <td class="py-2 pr-3 w-40 align-middle">
+                <div class="font-medium text-slate-800">{{ g.name }}</div>
+                <div class="text-xs text-slate-400">{{ STAGE_LABELS[g.stage] || g.stage }} · {{ g.count }} grade(s)</div>
+              </td>
+              <td class="py-2 pr-3 align-middle">
+                <Select v-model="choices[g.key]" :options="optionsFor(g.stage)" class="w-full"
+                        size="small" showClear filter placeholder="Leave unmapped / skip" />
+              </td>
+              <td class="py-2 w-52 align-middle">
+                <span v-if="g.confidence === 'high'" class="text-xs text-emerald-700">{{ g.reason }}</span>
+                <span v-else-if="g.confidence === 'low'" class="text-xs text-amber-700">{{ g.reason }}</span>
+                <span v-else class="text-xs text-slate-400">{{ g.reason }}</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
 
       <!-- ── Preview ───────────────────────────────────────────────────── -->
@@ -99,7 +117,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed } from 'vue'
+import { ref, reactive, computed, watch } from 'vue'
 import { getDoc, getDocs, setDoc, writeBatch, serverTimestamp } from 'firebase/firestore'
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
@@ -114,6 +132,7 @@ import { schoolCollection, schoolDoc } from '../../firebase/schoolCollections.js
 import { db, auth } from '../../firebase/config'
 import { buildCurriculumPlan } from '../../utils/curriculumPlan.js'
 import { templateSubjectNames } from '../../utils/curriculumTemplates.js'
+import { groupForMapping, expandGroups, canonicalSubject, isLanguageSubject } from '../../utils/curriculumSuggest.js'
 import { stageForGrade, STAGE_LABELS } from '../../utils/stages.js'
 import { guardedBatchSet, MODE_UPDATE, SchemaViolation } from '../../schemas/guardedWrite.js'
 
@@ -130,21 +149,45 @@ const applying = ref(false)
 const savingMap = ref(false)
 const error = ref('')
 const progress = ref('')
-const subjectMap = reactive({})
+const choices = reactive({})   // groupKey -> framework subject
+const savedMap = ref({})       // subjectId -> framework subject, from Firestore
 
 // Subjects that matched no template are the ones that may be languages. Offered
 // after a preview, so the list reflects this school rather than a guess.
-const languageCandidates = computed(() => {
-  if (!plan.value) return []
-  const ids = new Set(plan.value.warnings.filter(w => w.kind === 'needs-mapping').map(w => w.subjectId))
-  for (const id of Object.keys(subjectMap)) ids.add(id)
-  return subjects.value.filter(s => ids.has(s.id))
+// The order a school teaches its languages in, inferred from how many grades
+// each appears in — the most widely taught language is usually the first. It
+// only seeds the SUGGESTION; every language row still says "check this".
+const languageOrder = computed(() => {
+  const counts = new Map()
+  for (const s of subjects.value) {
+    if (!isLanguageSubject(s.name || s.id)) continue
+    const c = canonicalSubject(s.name || s.id)
+    counts.set(c, (counts.get(c) || 0) + 1)
+  }
+  return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([c]) => c)
 })
 
-// Every framework subject at that stage, so "SST" can be mapped to "The World
-// Around Us" just as "English" is mapped to a Language slot.
-function slotOptionsFor(subjectId) {
-  return templateSubjectNames(stageForGrade(String(subjectId).split('_')[0]) || '')
+// One row per (stage, subject name) rather than per subject id: SAMARTH's 24
+// unmapped ids are 8 decisions, and a school spanning I–XII is still 8.
+const groups = computed(() => {
+  if (!plan.value) return []
+  const refs = plan.value.warnings
+    .filter(w => w.kind === 'needs-mapping')
+    .map(w => {
+      const subj = subjects.value.find(s => s.id === w.subjectId)
+      return { subjectId: w.subjectId, name: subj?.name || w.subjectId, stage: stageForGrade(String(w.subjectId).split('_')[0]) }
+    })
+    .filter(r => r.stage)
+  return groupForMapping(refs, { languageOrder: languageOrder.value })
+})
+
+const mappedSubjectCount = computed(() => groups.value.reduce((n, g) => n + g.count, 0))
+const suggestedCount = computed(() => groups.value.filter(g => g.suggestion && !choices[g.key]).length)
+
+function optionsFor(stage) { return templateSubjectNames(stage) }
+
+function acceptSuggestions() {
+  for (const g of groups.value) if (g.suggestion && !choices[g.key]) choices[g.key] = g.suggestion
 }
 
 async function loadAll() {
@@ -158,14 +201,22 @@ async function loadAll() {
   subjects.value = sSnap.docs.map(d => ({ id: d.id, ...d.data() }))
   feedbackIds.value = new Set((fSnap?.docs || []).map(d => d.id))
 
-  // A saved mapping is a per-school fact worth keeping: SAMARTH alone needs 24
-  // of them, and re-picking every dropdown each session is how they get picked
-  // wrong. Only seeds entries the user has not already changed this session.
-  const saved = mSnap?.exists?.() ? (mSnap.data().map || {}) : {}
-  for (const [k, v] of Object.entries(saved)) {
-    if (subjectMap[k] === undefined) subjectMap[k] = v
-  }
+  // A saved mapping is a per-school fact worth keeping — re-picking it every
+  // session is how it gets picked wrong. Stored per subject id, because that is
+  // what the plan consumes and what stays correct if a school renames a subject
+  // in one grade only.
+  savedMap.value = mSnap?.exists?.() ? (mSnap.data().map || {}) : {}
 }
+
+// A saved id whose group is on screen pre-fills that row, so a returning user
+// sees their previous decision rather than the suggestion again.
+watch([groups, savedMap], () => {
+  for (const g of groups.value) {
+    if (choices[g.key] !== undefined) continue
+    const prev = g.subjectIds.map(id => savedMap.value[id]).find(Boolean)
+    if (prev) choices[g.key] = prev
+  }
+})
 
 function mapDocRef() {
   return schoolDoc(props.schoolId, 'config', 'curriculum_map')
@@ -175,8 +226,10 @@ async function saveMap() {
   savingMap.value = true
   error.value = ''
   try {
-    const clean = {}
-    for (const [k, v] of Object.entries(subjectMap)) if (v) clean[k] = v
+    // Saved per subject id: the group key is a UI construct and would not
+    // survive a subject being renamed or a stage boundary moving.
+    const clean = { ...savedMap.value, ...expandGroups(groups.value, choices) }
+    for (const k of Object.keys(clean)) if (!clean[k]) delete clean[k]
     await setDoc(mapDocRef(), {
       map: clean,
       updated_at: serverTimestamp(),
@@ -201,7 +254,7 @@ async function runPreview() {
       classes: classes.value,
       subjects: subjects.value,
       existingFeedbackIds: feedbackIds.value,
-      subjectMap: { ...subjectMap },
+      subjectMap: { ...savedMap.value, ...expandGroups(groups.value, choices) },
     })
   } catch (e) {
     console.error(e)
