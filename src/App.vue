@@ -160,6 +160,7 @@ import { signOut, onAuthStateChanged } from 'firebase/auth'
 import { auth } from './firebase/config'
 import { opsCollection } from './firebase/collections.js'
 import { isOpsAdmin } from './config/opsAdmins.js'
+import { isPathHiddenFor } from './config/navAccess.js'
 import { getDocs } from 'firebase/firestore'
 import { activeYear, availableYears, computeCurrentAcademicYear } from './composables/useAcademicYear.js'
 import { isSearchOpen } from './composables/useGlobalSearch.js'
@@ -295,7 +296,11 @@ const baseNavItems = [
 
 const ADMIN_ONLY_NAV_PATHS = ['/school-setup', '/import', '/surveys']
 const navItems = computed(() =>
-  baseNavItems.filter(item => !ADMIN_ONLY_NAV_PATHS.includes(item.to) || isOpsAdmin(currentUserEmail.value))
+  baseNavItems.filter(item =>
+    (!ADMIN_ONLY_NAV_PATHS.includes(item.to) || isOpsAdmin(currentUserEmail.value)) &&
+    // Per-person hiding, separate from the admin role — see config/navAccess.js.
+    !isPathHiddenFor(currentUserEmail.value, item.to)
+  )
 )
 
 const pageTitles = {
