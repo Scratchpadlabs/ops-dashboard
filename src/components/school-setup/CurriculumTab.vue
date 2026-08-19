@@ -21,16 +21,18 @@
 
       <!-- ── Language slots ────────────────────────────────────────────── -->
       <div v-if="languageCandidates.length" class="bg-white rounded-xl border border-slate-200 p-4">
-        <div class="text-sm font-semibold text-slate-800 mb-1">Language subjects</div>
+        <div class="text-sm font-semibold text-slate-800 mb-1">Unmatched subjects</div>
         <p class="text-sm text-slate-500 mb-3">
-          The framework names slots (Language 1, 2, 3), not languages. Say which of this school's
-          subjects fills each slot, or leave a subject unset to skip its goals.
+          These do not match a framework subject by name. Sometimes the framework names a slot
+          rather than a subject (Language 1, 2, 3); sometimes it groups differently — Preparatory
+          has "The World Around Us" where a school teaches Science and Social Science. Map each
+          one, or leave it unset and its goals stay untouched.
         </p>
         <div class="grid gap-2 md:grid-cols-2">
           <div v-for="s in languageCandidates" :key="s.id" class="flex items-center gap-2">
             <span class="font-mono text-xs w-40 shrink-0 text-slate-600">{{ s.id }}</span>
-            <Select v-model="languageMap[s.id]" :options="slotOptionsFor(s.id)" class="w-full"
-                    size="small" showClear placeholder="Not a language / skip" />
+            <Select v-model="subjectMap[s.id]" :options="slotOptionsFor(s.id)" class="w-full"
+                    size="small" showClear filter placeholder="Leave unmapped / skip" />
           </div>
         </div>
       </div>
@@ -107,7 +109,7 @@ import ConfigEmptyState from './ConfigEmptyState.vue'
 import { schoolCollection, schoolDoc } from '../../firebase/schoolCollections.js'
 import { db, auth } from '../../firebase/config'
 import { buildCurriculumPlan } from '../../utils/curriculumPlan.js'
-import { ambiguousSlots } from '../../utils/curriculumTemplates.js'
+import { templateSubjectNames } from '../../utils/curriculumTemplates.js'
 import { stageForGrade, STAGE_LABELS } from '../../utils/stages.js'
 import { guardedBatchSet, MODE_UPDATE, SchemaViolation } from '../../schemas/guardedWrite.js'
 
@@ -123,19 +125,21 @@ const scanning = ref(false)
 const applying = ref(false)
 const error = ref('')
 const progress = ref('')
-const languageMap = reactive({})
+const subjectMap = reactive({})
 
 // Subjects that matched no template are the ones that may be languages. Offered
 // after a preview, so the list reflects this school rather than a guess.
 const languageCandidates = computed(() => {
   if (!plan.value) return []
-  const ids = new Set(plan.value.warnings.filter(w => w.kind === 'needs-language-slot').map(w => w.subjectId))
-  for (const id of Object.keys(languageMap)) ids.add(id)
+  const ids = new Set(plan.value.warnings.filter(w => w.kind === 'needs-mapping').map(w => w.subjectId))
+  for (const id of Object.keys(subjectMap)) ids.add(id)
   return subjects.value.filter(s => ids.has(s.id))
 })
 
+// Every framework subject at that stage, so "SST" can be mapped to "The World
+// Around Us" just as "English" is mapped to a Language slot.
 function slotOptionsFor(subjectId) {
-  return ambiguousSlots(stageForGrade(String(subjectId).split('_')[0]) || '')
+  return templateSubjectNames(stageForGrade(String(subjectId).split('_')[0]) || '')
 }
 
 async function loadAll() {
@@ -159,7 +163,7 @@ async function runPreview() {
       classes: classes.value,
       subjects: subjects.value,
       existingFeedbackIds: feedbackIds.value,
-      languageMap: { ...languageMap },
+      subjectMap: { ...subjectMap },
     })
   } catch (e) {
     console.error(e)

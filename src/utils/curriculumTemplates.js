@@ -66,6 +66,13 @@ function resolveSubjectName(name) {
   return canonicalize(raw)
 }
 
+/** Every framework subject a stage defines, for mapping a school's own names. */
+export function templateSubjectNames(stage) {
+  const t = stageTemplate(stage)
+  if (!t || t.appliesToAllSubjects) return []
+  return (t.subjects || []).map(s => s.subject)
+}
+
 /**
  * Subject slots a stage defines that cannot be matched by name alone.
  *

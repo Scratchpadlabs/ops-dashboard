@@ -25,13 +25,14 @@ export function gradeOf(subjectId) {
  * @param {object[]} classes   existing class docs ({ id, clazz, stage })
  * @param {object[]} subjects  existing subject docs ({ id, name, curricular_goals })
  * @param {Set<string>} existingFeedbackIds  subject_feedbacks doc ids already present
- * @param {object} languageMap  { [subjectId]: 'Language 1' } — which of THIS
- *   school's subjects fills each language slot. Without it a school's English
- *   and Hindi match no template at all, because the framework names the slots
- *   (Language 1/2/3) and not the languages.
+ * @param {object} subjectMap  { [subjectId]: '<framework subject>' } — which
+ *   framework subject one of THIS school's subjects corresponds to. Needed
+ *   wherever the framework's name is not a school's name: Language 1/2/3 are
+ *   slots rather than languages, and Preparatory has "The World Around Us"
+ *   where a school teaches Science and Social Science.
  */
 export function buildCurriculumPlan({
-  classes = [], subjects = [], existingFeedbackIds = new Set(), languageMap = {},
+  classes = [], subjects = [], existingFeedbackIds = new Set(), subjectMap = {},
 } = {}) {
   const subjectRows = []
   const feedbackRows = []
@@ -63,18 +64,20 @@ export function buildCurriculumPlan({
     }
 
     // ── curricular goals ────────────────────────────────────────────────
-    // A mapped language slot wins over the subject's own name: "English" finds
-    // no framework subject, but the slot it was assigned to does.
-    const slot = languageMap[subjectId]
+    // An explicit mapping wins over the subject's own name: "English" and
+    // "SST" find no framework subject, but the one they are mapped to does.
+    const slot = subjectMap[subjectId]
     const tpl = templateGoalsFor(stage, slot || subj.name || subjectId)
     if (!tpl.length) {
-      const isLang = ambiguousSlots(stage).length > 0 && !slot
+      // Deliberately does NOT claim the subject is a language. Preparatory
+      // has no Science or Social Science — it has "The World Around Us" — so
+      // an unmatched subject may need mapping for reasons that have nothing to
+      // do with languages.
       warnings.push({
-        kind: isLang ? 'needs-language-slot' : 'no-template',
+        kind: 'needs-mapping',
         subjectId,
-        message: isLang
-          ? `${subjectId} ("${subj.name || ''}"): no ${STAGE_LABELS[stage]} template matches. If this is a language subject, map it to a Language slot.`
-          : `${subjectId} ("${subj.name || ''}"): no ${STAGE_LABELS[stage]} template matches this subject — goals unchanged.`,
+        message: `${subjectId} ("${subj.name || ''}"): no ${STAGE_LABELS[stage]} framework subject matches. `
+               + 'Map it to one to give it goals, or leave it unmapped and its goals stay untouched.',
       })
     } else {
       const merged = mergeCurricularGoals(subj.curricular_goals || [], tpl)
