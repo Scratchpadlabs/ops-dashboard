@@ -162,6 +162,51 @@ subjects/{id}
 because it is what the import flow shows when a roster comes in from the app.
 A field missing here is a field ops cannot map.
 
+### Activity feedback — two systems, different field names
+
+Verified against live SAMARTH data. Nothing in this repo read either collection
+before, so these shapes were undocumented.
+
+**`subject_feedbacks/{Grade}_{Subject}_{Term}`** — what the STUDENT (and a peer)
+answers, e.g. `III_English_Term1`, `III_Maths_Optional`. Terms are
+`Term1` / `Term2` / `Optional`.
+
+```
+{ id, isActive, questions: [ {
+    answers: ["Yes","No","Maybe"],
+    description:  "Think about if you were paying attention…",
+    id:           "Prep-Awareness",        // {StagePrefix}-{Tag}
+    is_peer:      null,                    // set for peer questions
+    questionText: "Did I listen carefully when my teacher was giving instructions?",
+    type:         "scq",
+} ] }
+```
+
+Questions are per STAGE, not per subject — every subject at a stage carries the
+same set. Tags are `AWARENESS`, `SENSITIVITY`, `CREATIVITY`, `NORMAL-1`,
+`NORMAL-2`.
+
+**`surveys/{id}`** — what the TEACHER answers about a learner. Paired 1:1 with
+**`activities/{id}`** by a SHARED doc id; the activity holds `{id, name, stage}`.
+
+```
+{ id, clazzId, name, desc, card_desc, card_image, parameter,
+  isLiveInternal, peer_survey,
+  questions: [ {
+    options:      ["Beginner (LOW)","Proficient (MEDIUM)","Advanced (HIGH)","Not Applicable"],
+    questionText: "To what extent did the learner stay attentive…",
+    summaryMap:   { "Beginner (LOW)": "…", "Proficient (MEDIUM)": "…", "Advanced (HIGH)": "…" },
+    tag:          "AWARENESS",
+} ] }
+```
+
+Note the collections disagree on names for the same ideas — `answers` vs
+`options`, `description` vs `summaryMap`, `id` vs `tag`. Do not write one
+shape into the other.
+
+`summaryMap` text is authored per ACTIVITY, not per stage, so teacher surveys
+cannot be generated from a stage template the way `subject_feedbacks` can.
+
 ## Team decisions (answered — do not re-litigate)
 
 - **Grades are written in Roman numerals. Always, everywhere.** `III_A`, not `3_A`.

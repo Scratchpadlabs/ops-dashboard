@@ -1,0 +1,263 @@
+{
+  "_comment": [
+    "Activity feedback questions, from the APP_Questions document ops supplied and",
+    "cross-checked against live SAMARTH data.",
+    "",
+    "TWO DIFFERENT SYSTEMS — do not conflate them, the field names differ:",
+    "",
+    "  subject_feedbacks/{Grade}_{Subject}_{Term}  — STUDENT and PEER questions.",
+    "    question: { answers[], description, id, is_peer, questionText, type:'scq' }",
+    "    Verified against schools/SAMARTH.../subject_feedbacks/III_English_Term1,",
+    "    whose first question is exactly the STUDENTS/Prep [AWARENESS] entry below.",
+    "    Question id is '{StagePrefix}-{Tag}', e.g. 'Prep-Awareness'.",
+    "",
+    "  surveys/{id}  — TEACHER questions, one per activity (activities/{id} shares the",
+    "    SAME doc id and carries the stage).",
+    "    question: { options[], questionText, summaryMap{option:text}, tag }",
+    "    NOT fully templatable: summaryMap text is written per ACTIVITY, not per stage,",
+    "    so it cannot be generated from this document. The teacher wording is recorded",
+    "    here for reference only.",
+    "",
+    "COVERAGE GAPS in the source document — no questions exist for:",
+    "  students: foundation, secondary   peers: foundation, secondary   teacher: secondary",
+    "'Middle' as a stage prefix is inferred; only 'Prep-' is confirmed from live data."
+  ],
+  "version": 1,
+  "source": "ops-supplied APP_Questions document, 2026-08-19",
+  "subjectFeedbacks": {
+    "prepratory": {
+      "student": [
+        {
+          "answers": [
+            "Yes",
+            "No",
+            "Maybe"
+          ],
+          "description": "Think about if you were paying attention and understood what to do and tried to finish the activity nicely.",
+          "id": "Prep-Awareness",
+          "is_peer": null,
+          "questionText": "Did I listen carefully when my teacher was giving instructions?",
+          "type": "scq"
+        },
+        {
+          "answers": [
+            "Yes",
+            "No",
+            "Maybe"
+          ],
+          "description": "Think if you tried something in your own way or came up with a fun or new idea during the activity, or did something in a way that was a little different or special from others.",
+          "id": "Prep-Creativity",
+          "is_peer": null,
+          "questionText": "Did I try something new or use my own idea in the activity?",
+          "type": "scq"
+        },
+        {
+          "answers": [
+            "Yes",
+            "No",
+            "Maybe"
+          ],
+          "description": "Think about how it felt to do the activity with your classmates and friends, did you share, help, or enjoy being in a group?",
+          "id": "Prep-Sensitivity",
+          "is_peer": null,
+          "questionText": "Did I like working with my classmates?",
+          "type": "scq"
+        },
+        {
+          "answers": [
+            "Yes",
+            "No",
+            "Maybe"
+          ],
+          "description": "Would you like to do this activity one more time?",
+          "id": "Prep-Normal-1",
+          "is_peer": null,
+          "questionText": "Would I like to do this activity again?",
+          "type": "scq"
+        },
+        {
+          "answers": [
+            "Yes",
+            "No",
+            "Maybe"
+          ],
+          "description": "Think about whether you tried to get help from your teacher or friends when you were confused.",
+          "id": "Prep-Normal-2",
+          "is_peer": null,
+          "questionText": "Did I ask for help when I did not understand something?",
+          "type": "scq"
+        }
+      ],
+      "peer": [
+        {
+          "answers": [
+            "Yes",
+            "No",
+            "Maybe"
+          ],
+          "description": "Think about if your friend paid attention to the teacher and tried to do the activity carefully.",
+          "id": "Prep-Awareness",
+          "is_peer": true,
+          "questionText": "Did this friend listen to the teacher carefully and follow the instructions?",
+          "type": "scq"
+        },
+        {
+          "answers": [
+            "Yes",
+            "No",
+            "Maybe"
+          ],
+          "description": "Think about if your friend helped others and worked happily with classmates.",
+          "id": "Prep-Sensitivity",
+          "is_peer": true,
+          "questionText": "Was this friend kind and spoke nicely to other classmates?",
+          "type": "scq"
+        },
+        {
+          "answers": [
+            "Yes",
+            "No",
+            "Maybe"
+          ],
+          "description": "Think if your friend said something new, fun, or helpful that others didn’t think of, or said something that made it easier for others to do the activity.",
+          "id": "Prep-Creativity",
+          "is_peer": true,
+          "questionText": "Did this friend share any new or interesting ideas during the activity?",
+          "type": "scq"
+        }
+      ]
+    },
+    "middle": {
+      "student": [
+        {
+          "answers": [
+            "Yes",
+            "No",
+            "Maybe"
+          ],
+          "description": "Think if you were able to listen carefully to your teacher’s instructions, stay on task, and not get distracted too much during the activity.",
+          "id": "Middle-Awareness",
+          "is_peer": null,
+          "questionText": "Was I able to stay focused and follow what my teacher was asking me to do?",
+          "type": "scq"
+        },
+        {
+          "answers": [
+            "Yes",
+            "No",
+            "Maybe"
+          ],
+          "description": "Think if something you learnt during this activity can help you outside school, like at home, in the playground, in your neighbourhood, or with friends.",
+          "id": "Middle-Normal-1",
+          "is_peer": null,
+          "questionText": "Did this activity teach me something that I can use in my real life?",
+          "type": "scq"
+        },
+        {
+          "answers": [
+            "Yes",
+            "No",
+            "Maybe"
+          ],
+          "description": "Think about how much effort you put into your work. Did you complete it carefully? In the end, did it make you feel good about what you have done?",
+          "id": "Middle-Normal-2",
+          "is_peer": null,
+          "questionText": "Did I try my best in this activity and feel proud of what I did?",
+          "type": "scq"
+        },
+        {
+          "answers": [
+            "Yes",
+            "No",
+            "Maybe"
+          ],
+          "description": "Think about whether you gave your own idea, used your imagination, or did something in a way that was different from others. Did you try a new way to finish the task or add your own special touch to it?",
+          "id": "Middle-Creativity",
+          "is_peer": null,
+          "questionText": "Did I try to think in a different way, try something new in my own style, or have any unique idea during the activity?",
+          "type": "scq"
+        },
+        {
+          "answers": [
+            "Yes",
+            "No",
+            "Maybe"
+          ],
+          "description": "Think about whether you noticed how you were feeling while doing the activity, like feeling happy, confused, or excited.",
+          "id": "Middle-Sensitivity",
+          "is_peer": null,
+          "questionText": "Was I able to understand how I was feeling during the activity and express or share my emotions clearly?",
+          "type": "scq"
+        }
+      ],
+      "peer": [
+        {
+          "answers": [
+            "Yes",
+            "No",
+            "Maybe"
+          ],
+          "description": "Think about if your friend paid attention to the teacher and tried to do the activity carefully.",
+          "id": "Middle-Awareness",
+          "is_peer": true,
+          "questionText": "Did this friend listen to the teacher carefully and follow the instructions?",
+          "type": "scq"
+        },
+        {
+          "answers": [
+            "Yes",
+            "No",
+            "Maybe"
+          ],
+          "description": "Think about if your friend helped others and worked happily with classmates.",
+          "id": "Middle-Sensitivity",
+          "is_peer": true,
+          "questionText": "Was this friend kind and spoke nicely to other classmates?",
+          "type": "scq"
+        },
+        {
+          "answers": [
+            "Yes",
+            "No",
+            "Maybe"
+          ],
+          "description": "Think if your friend said something new, fun, or helpful that others didn’t think of, or said something that made it easier for others to do the activity.",
+          "id": "Middle-Creativity",
+          "is_peer": true,
+          "questionText": "Did this friend share any new or interesting ideas during the activity?",
+          "type": "scq"
+        }
+      ]
+    },
+    "foundation": {
+      "student": [],
+      "peer": []
+    },
+    "secondary": {
+      "student": [],
+      "peer": []
+    }
+  },
+  "teacherSurveyQuestions": {
+    "_scope": "Foundational to Middle",
+    "answers": [
+      "Beginner (LOW)",
+      "Proficient (MEDIUM)",
+      "Advanced (HIGH)"
+    ],
+    "questions": [
+      {
+        "tag": "AWARENESS",
+        "questionText": "To what extent did the learner stay attentive and follow instructions during the activity?"
+      },
+      {
+        "tag": "SENSITIVITY",
+        "questionText": "To what extent did the learner express their emotions clearly and respond with care towards people or situations?"
+      },
+      {
+        "tag": "CREATIVITY",
+        "questionText": "To what extent did the learner attempt to share original thoughts, try new approaches, or express ideas in a unique way?"
+      }
+    ]
+  }
+}
