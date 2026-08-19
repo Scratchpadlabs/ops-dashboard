@@ -348,6 +348,7 @@ import {
 } from '../../firebase/schoolCollections.js'
 import { db, auth } from '../../firebase/config'
 import { checkNewSchoolRemote, schoolStateRemote } from '../../utils/api.js'
+import { stageForGrade } from '../../utils/stages.js'
 import { slugifySchoolId } from '../../utils/wizardHelpers.js'
 import { deriveClassStructure } from '../../utils/deriveClasses.js'
 import {
@@ -801,7 +802,10 @@ async function commitStep(key) {
         const [clazz, section] = cid.split('_')
         batch.set(schoolDoc(sid, 'classes', cid), {
           id: cid, clazz, section, name: `${clazz} ${section}`,
-          stage: 'foundation', isActive: true, subjects: [],
+          // Derived, not assumed: hardcoding 'foundation' filed Grade XII as
+          // foundational. An unreadable grade keeps the old default rather
+          // than inventing a stage.
+          stage: stageForGrade(clazz) || 'foundation', isActive: true, subjects: [],
           created_at: serverTimestamp(), created_by: auth.currentUser?.email || 'unknown',
           created_via: 'new_school_wizard',
         }, { merge: true })
