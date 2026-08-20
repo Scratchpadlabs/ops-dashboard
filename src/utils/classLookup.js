@@ -11,7 +11,7 @@
  * which re-exports it from here.
  */
 import { classify, GRADE } from './educationKB.js'
-import { normalizeSectionValue } from './classResolver.js'
+import { normalizeSectionValue, classIdKey } from './classResolver.js'
 
 // ── Grade normalization — delegates to the shared education knowledge base
 // (src/utils/educationKB.js), which is seeded from the very same
@@ -36,19 +36,10 @@ export function normalizeSection(s) {
   return normalizeSectionValue(s)
 }
 
-/**
- * Comparison key for a class DOCUMENT id, so "Play_Group_A", "play group a"
- * and "PLAY-GROUP-A" all read as the same class.
- *
- * Deliberately separate from normalizeGrade: this one understands nothing
- * about grades, it only makes an id typed into a spreadsheet comparable with
- * one School Setup wrote.
- */
-export function classIdKey(v) {
-  return String(v ?? '').trim().toLowerCase()
-    .replace(/[\s_\-/.]+/g, '_')
-    .replace(/^_+|_+$/g, '')
-}
+// classIdKey lives in classResolver.js — the parity-checked twin of
+// functions/shared/class_resolver.py, so the Cloud Function's validator and
+// this planner fold an id the same way. Re-exported for callers of this module.
+export { classIdKey }
 
 /**
  * @param {Array<{id: string, clazz?: string, section?: string, subjects?: Array}>} classDocs

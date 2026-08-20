@@ -114,6 +114,15 @@ The LLM is the last resort and never writes.
   `classes.subjects[]` ∩ `assignments[classId]` — then comes back empty. Subjects now offers the
   grade tokens the school's classes actually use, and warns on a mismatch, so this cannot be hit
   silently from that tab.
+- **A file can name the class in one column or two.** Most exports carry `Class` +
+  `Section`; some carry the whole class id in `Class` alone (`Play_Group_A`, `8_KALAM`).
+  `STUDENT_HEADER_ALIASES` maps `class` onto `grade`, so the second shape reaches the
+  matcher as grade `8_KALAM` with no section. `resolveClassId` (`src/utils/classLookup.js`)
+  and `resolve_by_doc_id` (`generate_import/main.py`) try `(grade, section)` first and
+  unchanged, then fold the value with `classIdKey`/`class_id_key` — the parity-checked twin
+  in the resolver — against the real class doc ids. Both ends must keep agreeing, or the
+  review screen warns about rows the commit then accepts.
+
 - **"Always Roman" is an authoring rule, not a migration.** New classes and subjects are written
   in Roman. It does NOT license normalising a school that already holds numeric data: students
   carry `currentClassId`, the teacher app matches `students where currentClassId == classId`, and

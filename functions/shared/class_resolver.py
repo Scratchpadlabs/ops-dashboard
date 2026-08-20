@@ -118,6 +118,25 @@ def normalize_section_value(raw):
     return strip_board_tokens(raw).upper()
 
 
+_CLASS_ID_SEPARATORS = re.compile(r"[\s_\-/.]+")
+
+
+def class_id_key(value):
+    """Comparison key for a class DOCUMENT id.
+
+    "Play_Group_A", "play group a" and "PLAY-GROUP-A" all reduce to
+    "play_group_a", so an id typed into a spreadsheet can be compared with one
+    School Setup wrote. Deliberately knows nothing about grades — it is not a
+    parser, only a fold. Twin: classIdKey in src/utils/classResolver.js.
+
+    Exists because a school's export can carry the class as ONE complete id
+    instead of a Class + Section pair (Hillgreen's 2026-27 export), which the
+    (grade, section) lookup cannot see.
+    """
+    folded = _CLASS_ID_SEPARATORS.sub("_", str(value if value is not None else "").strip().lower())
+    return folded.strip("_")
+
+
 SECTION_FIELDS = ("section", "sec", "division", "div", "Section")
 
 

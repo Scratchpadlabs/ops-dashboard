@@ -80,6 +80,7 @@ from tabular_parser import parse_tabular_file
 from shared.school_schema import (
     validate_doc, format_errors, validate_current_class_id, coerce_wire_payload,
 )
+from shared.class_resolver import class_id_key
 
 # Must run at module load, not lazily inside a handler: the on_call framework
 # verifies the caller's Firebase Auth ID token BEFORE our function body ever
@@ -565,7 +566,36 @@ def _already_flagged(existing, field):
     return any(f.get("field") == field for f in (existing or []))
 
 
-def validate_students(rows, class_lookup, sections_by_grade, existing_flags=None):
+def resolve_by_doc_id(class_by_doc_id, raw_grade, raw_section):
+    """The class a row names by its DOCUMENT id, or None.
+
+    A school's export can carry the class as ONE complete id instead of a
+    Class + Section pair — Hillgreen's 2026-27 export dropped its Section
+    column and put "Play_Group_A" / "8_KALAM" straight into Class. Because
+    STUDENT_HEADER_ALIASES maps "class" onto grade, the (grade, section)
+    lookup cannot see those, and every row was told its grade was "not
+    configured for this school" when the class was configured all along.
+
+    Only ever consulted AFTER the (grade, section) lookup misses, and an id
+    that is not configured still returns None — this cannot invent a class.
+
+    Twin of resolveClassId's fallback rungs in src/utils/classLookup.js: the
+    commit planner in the browser and this validator have to agree about the
+    same row, or the review screen warns about what the commit then accepts.
+    """
+    if not class_by_doc_id:
+        return None
+    gkey = class_id_key(raw_grade)
+    if gkey and gkey in class_by_doc_id:
+        return class_by_doc_id[gkey]
+    skey = class_id_key(raw_section)
+    if gkey and skey and f"{gkey}_{skey}" in class_by_doc_id:
+        return class_by_doc_id[f"{gkey}_{skey}"]
+    return None
+
+
+def validate_students(rows, class_lookup, sections_by_grade, existing_flags=None,
+                      class_by_doc_id=None):
     flags_by_row = [[] for _ in rows]
     seen_names = {}
     dobs_by_grade = {}
@@ -605,7 +635,7 @@ def validate_students(rows, class_lookup, sections_by_grade, existing_flags=None
         grade = normalize_grade(r.get("grade"))
         section = normalize_section(r.get("section"))
         gkey = (grade, section)
-        if gkey not in class_lookup:
+        if gkey not in class_lookup and not resolve_by_doc_id(class_by_doc_id, r.get("grade"), r.get("section")):
             if grade and grade not in sections_by_grade:
                 flags_by_row[i].append(_flag("grade", f"grade '{grade}' not configured for this school"))
             elif section:
@@ -626,7 +656,8 @@ def validate_students(rows, class_lookup, sections_by_grade, existing_flags=None
 
     return flags_by_row
 
-def validate_teachers(rows, class_lookup, sections_by_grade, subject_names_by_grade):
+def validate_teachers(rows, class_lookup, sections_by_grade, subject_names_by_grade,
+                      class_by_doc_id=None):
     flags_by_row = [[] for _ in rows]
 
     # Group by normalized teacher identity to find zero-assignment teachers.
@@ -646,7 +677,7 @@ def validate_teachers(rows, class_lookup, sections_by_grade, subject_names_by_gr
         grade = normalize_grade(r.get("grade"))
         section = normalize_section(r.get("section"))
         gkey = (grade, section)
-        if grade and gkey not in class_lookup:
+        if grade and gkey not in class_lookup and not resolve_by_doc_id(class_by_doc_id, r.get("grade"), r.get("section")):
             if grade not in sections_by_grade:
                 flags_by_row[i].append(_flag("grade", f"grade '{grade}' not configured for this school"))
             elif section:
@@ -698,7 +729,8 @@ def validate_required_fields(entity, rows):
         flags_by_row.append(flags)
     return flags_by_row
 
-def core_subject_coverage_flags(rows, class_lookup, subjects_by_class, core_subjects_by_grade):
+def core_subject_coverage_flags(rows, class_lookup, subjects_by_class, core_subjects_by_grade,
+                                class_by_doc_id=None):
     """Job-level (not per-row) check: any (class, core subject) with zero
     teacher rows covering it. Best-effort — 'core' comes from live subjects'
     `area` field when present, else falls back to every subject already
@@ -707,7 +739,7 @@ def core_subject_coverage_flags(rows, class_lookup, subjects_by_class, core_subj
     covered = set()
     for r in rows:
         gkey = (normalize_grade(r.get("grade")), normalize_section(r.get("section")))
-        classId = class_lookup.get(gkey)
+        classId = class_lookup.get(gkey) or resolve_by_doc_id(class_by_doc_id, r.get("grade"), r.get("section"))
         subject = r.get("subject", "").strip().rstrip("?")
         if classId and subject:
             covered.add((classId, subject.lower()))
@@ -728,6 +760,10 @@ def load_school_config(db, school_id, entity):
     """Returns a dict bundle (not a tuple — too many fields now that cleaning
     needs canonical-keyed lookups alongside the original membership checks):
       class_lookup            (grade, section) -> classId, unchanged
+      class_by_doc_id         class_id_key(doc id) -> classId, for the rows
+                               whose file names the class by its whole id
+                               rather than as a Class + Section pair
+                               (see resolve_by_doc_id)
       subjects_by_class       classId -> [subjectId, ...], unchanged
       sections_by_grade       grade -> {canonical_section: display_section},
                                for match_value() in clean_students_rows/
@@ -745,6 +781,7 @@ def load_school_config(db, school_id, entity):
     classes_ref = db.collection("schools").document(school_id).collection("classes")
     classes = [{"id": d.id, **d.to_dict()} for d in classes_ref.stream()]
     class_lookup = {}
+    class_by_doc_id = {}
     subjects_by_class = {}
     sections_by_grade = {}
     for c in classes:
@@ -752,6 +789,7 @@ def load_school_config(db, school_id, entity):
         section_display = (c.get("section") or "").strip()
         section_norm = normalize_section(section_display)
         class_lookup[(grade, section_norm)] = c["id"]
+        class_by_doc_id[class_id_key(c["id"])] = c["id"]
         subjects_by_class[c["id"]] = [s.get("subjectId") for s in (c.get("subjects") or []) if s.get("subjectId")]
         if section_display:
             sections_by_grade.setdefault(grade, {})[canonicalize(section_display)] = section_norm
@@ -775,6 +813,7 @@ def load_school_config(db, school_id, entity):
 
     return {
         "class_lookup": class_lookup,
+        "class_by_doc_id": class_by_doc_id,
         "subjects_by_class": subjects_by_class,
         "sections_by_grade": sections_by_grade,
         "subject_names_by_grade": subject_names_by_grade,
@@ -1020,13 +1059,16 @@ def process_import(req: https_fn.CallableRequest):
         if entity == "students":
             validation_flags = validate_students(
                 cleaned_data, cfg["class_lookup"], cfg["sections_by_grade"],
-                existing_flags=[c["flags"] for c in cleaned])
+                existing_flags=[c["flags"] for c in cleaned],
+                class_by_doc_id=cfg["class_by_doc_id"])
             class_level_flags = []
         elif entity == "teachers":
             validation_flags = validate_teachers(
-                cleaned_data, cfg["class_lookup"], cfg["sections_by_grade"], cfg["subject_names_by_grade"])
+                cleaned_data, cfg["class_lookup"], cfg["sections_by_grade"], cfg["subject_names_by_grade"],
+                class_by_doc_id=cfg["class_by_doc_id"])
             class_level_flags = core_subject_coverage_flags(
-                cleaned_data, cfg["class_lookup"], cfg["subjects_by_class"], cfg["core_subjects_by_grade"])
+                cleaned_data, cfg["class_lookup"], cfg["subjects_by_class"], cfg["core_subjects_by_grade"],
+                class_by_doc_id=cfg["class_by_doc_id"])
         else:
             validation_flags = validate_required_fields(entity, cleaned_data)
             class_level_flags = []
