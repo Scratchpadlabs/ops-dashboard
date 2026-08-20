@@ -201,27 +201,34 @@ export function buildEnrichmentPlan({
 }
 
 /**
- * The school's own extra columns, as fields on a student document.
+ * The school's own extra columns, as {key, label, value} triples.
  *
  * The importer maps a fixed vocabulary (name, gender, dob, class, admNo…) and
- * every school's file carries more than that — Board, House, Bus Route. Those
- * used to be dropped, so ops could never get a school's own data into that
- * school. `extras` is what the parser carried through under the header text;
- * this turns each into the camelCase key the rest of a student doc uses.
+ * every school's file carries more than that — House, Bus Route, Blood Group.
+ * Those used to be dropped, so ops could never get a school's own data into
+ * that school. `extras` is what the parser carried through under the header
+ * text; this turns each into the camelCase key the rest of a student doc uses,
+ * keeping the header as the label config/students_schema will show.
  *
  * Golden rule 3 is enforced twice on purpose: the Cloud Function drops a
  * caste/religion/SSSM column before it is ever staged, and this drops it again
  * on the way out, so neither end alone is load-bearing.
  */
-export function extraFieldsFor(extras) {
-  const out = {}
+export function extraColumnsFor(extras) {
+  const out = []
   for (const [header, value] of Object.entries(extras || {})) {
-    if (String(value ?? '').trim() === '') continue
+    const v = String(value ?? '').trim()
+    if (!v) continue
     const key = fieldKeyFor(header)
     if (!key || isBannedKey(key)) continue
-    out[key] = String(value).trim()
+    out.push({ key, label: header, value: v })
   }
   return out
+}
+
+/** Same thing flattened into a payload fragment. */
+export function extraFieldsFor(extras) {
+  return Object.fromEntries(extraColumnsFor(extras).map(c => [c.key, c.value]))
 }
 
 /**
@@ -240,18 +247,17 @@ export function extraFieldsFor(extras) {
 export function newSchemaColumnsFor(plan, schemaColumns = []) {
   const known = new Set((schemaColumns || []).map(c => c.key))
   const valuesByKey = new Map()
-  const headerByKey = new Map()
+  const labelByKey = new Map()
   for (const item of plan?.items || []) {
-    for (const [header, value] of Object.entries(item.row?.extras || {})) {
-      const key = fieldKeyFor(header)
-      if (!key || known.has(key) || isBannedKey(key)) continue
-      if (!headerByKey.has(key)) headerByKey.set(key, header)
-      if (!valuesByKey.has(key)) valuesByKey.set(key, [])
-      valuesByKey.get(key).push(value)
+    for (const c of item.extraColumns || []) {
+      if (!c.key || known.has(c.key) || isBannedKey(c.key)) continue
+      if (!labelByKey.has(c.key)) labelByKey.set(c.key, c.label || c.key)
+      if (!valuesByKey.has(c.key)) valuesByKey.set(c.key, [])
+      valuesByKey.get(c.key).push(c.value)
     }
   }
-  const columns = [...headerByKey.entries()].map(([key, header]) => ({
-    key, header, type: inferColumnType(valuesByKey.get(key) || []),
+  const columns = [...labelByKey.entries()].map(([key, label]) => ({
+    key, header: label, type: inferColumnType(valuesByKey.get(key) || []),
   }))
   return schemaColumnsFor(columns, schemaColumns)
 }

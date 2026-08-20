@@ -123,7 +123,11 @@ The LLM is the last resort and never writes.
   optional fields before writing — a merge that wrote `email: ''` would erase the address
   every auth account was created with. Columns the alias dictionary has no field for ride
   through as `extras` and become camelCase fields; `config/students_schema` is offered
-  afterwards, as its own confirmation, never as part of the commit.
+  afterwards, as its own confirmation, never as part of the commit. Fields the extractor
+  recognises but `school_schema.js` has no named field for — parent contacts, board,
+  admission date, address — are carried too, via `CARRIED_SOURCE_FIELDS` in
+  `studentMapping.js`. Only `sr_no` is still dropped, because a spreadsheet's serial number
+  is not data about a child.
 
 - **A file can name the class in one column or two.** Most exports carry `Class` +
   `Section`; some carry the whole class id in `Class` alone (`Play_Group_A`, `8_KALAM`).

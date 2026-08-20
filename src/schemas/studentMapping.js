@@ -74,19 +74,47 @@ export function toPhoneNo(raw) {
 }
 
 /**
- * Extractor fields with no home in the student schema. Dropped deliberately,
- * and surfaced per row so an operator can see what the file carried that the
- * app has nowhere to put.
+ * Extractor fields the student schema has no named field for, CARRIED anyway.
+ *
+ * These were dropped until 2026-08-20 (decision, Sid, 2026-08-04: "parsed and
+ * shown in Review, deliberately NOT persisted — the student document has one
+ * phoneNo/email and no parent contact fields"). That is now reversed: a school
+ * registers its students, then imports its own export to fill them in, and
+ * every parent contact in Hillgreen's file was landing in a "not saved" note
+ * instead of on the student. Ops asked for one step that writes them.
+ *
+ * The KEY is what fieldKeyFor() would produce from the school's own header, so
+ * a value written by this import and the same value written by the enrichment
+ * screen land on the same field rather than beside each other. The LABEL is
+ * what config/students_schema shows.
+ *
+ * They stay OUT of school_schema.js on purpose: the teacher app does not read
+ * them, so they are unknown-but-written fields (a schema warning, never an
+ * error), which is exactly what they are.
  */
-export const UNMAPPED_SOURCE_FIELDS = [
-  'sr_no', 'roll_no', 'mother_name', 'father_name', 'city', 'address',
-  // Decision (Sid, 2026-08-04): parsed and shown in Review, deliberately NOT
-  // persisted — the student document has one phoneNo/email and no parent
-  // contact fields. Surfaced per row rather than dropped in silence.
-  'father_mobile', 'father_email', 'mother_mobile', 'mother_email',
-  'branch_name', 'board', 'enrollment_code', 'date_of_admission', 'status',
-  'using_transport',
-]
+export const CARRIED_SOURCE_FIELDS = {
+  roll_no: { key: 'rollNo', label: 'Roll No' },
+  father_name: { key: 'fatherName', label: 'Father Name' },
+  father_mobile: { key: 'fatherMobile', label: 'Father Mobile' },
+  father_email: { key: 'fatherEmail', label: 'Father Email' },
+  mother_name: { key: 'motherName', label: 'Mother Name' },
+  mother_mobile: { key: 'motherMobile', label: 'Mother Mobile' },
+  mother_email: { key: 'motherEmail', label: 'Mother Email' },
+  address: { key: 'address', label: 'Address' },
+  city: { key: 'city', label: 'City' },
+  branch_name: { key: 'branchName', label: 'Branch Name' },
+  board: { key: 'board', label: 'Board' },
+  enrollment_code: { key: 'enrollmentCode', label: 'Enrollment Code' },
+  date_of_admission: { key: 'dateOfAdmission', label: 'Date Of Admission' },
+  status: { key: 'status', label: 'Status' },
+  using_transport: { key: 'usingTransport', label: 'Using Transport' },
+}
+
+/**
+ * Fields that are about the FILE, not the student. Still dropped, still
+ * reported — a spreadsheet's serial number is not data about a child.
+ */
+export const UNMAPPED_SOURCE_FIELDS = ['sr_no']
 
 /** Digits only — an Aadhaar cell arrives as "1234 5678 9012" or "1234-5678-9012". */
 export function toAadhaar(raw) {
@@ -149,6 +177,12 @@ export function mapImportRowToStudent(row, { classId } = {}) {
 
   const dropped = UNMAPPED_SOURCE_FIELDS.filter(k => String(d[k] ?? '').trim())
 
+  // {key, label, value} rather than a plain object: the students_schema step
+  // needs the school's own label and the value's shape, not just the key.
+  const carried = Object.entries(CARRIED_SOURCE_FIELDS)
+    .map(([field, { key, label }]) => ({ key, label, value: String(d[field] ?? '').trim() }))
+    .filter(c => c.value)
+
   // Aadhaar: 12 digits or nothing. A partial/garbled value is reported and
   // dropped rather than written half-formed.
   const aadhaarRaw = String(d.aadhaar ?? '').trim()
@@ -173,5 +207,5 @@ export function mapImportRowToStudent(row, { classId } = {}) {
     aadhaarNumber,
   }
 
-  return { payload, dropped, warnings }
+  return { payload, carried, dropped, warnings }
 }

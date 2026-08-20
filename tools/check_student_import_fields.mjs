@@ -16,9 +16,10 @@ import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-const { extraFieldsFor, newSchemaColumnsFor } =
+const { extraFieldsFor, extraColumnsFor, newSchemaColumnsFor } =
   await import(path.join(ROOT, 'src/utils/studentEnrichment.js'))
-const { dropBlankOptionalFields, REQUIRED_STUDENT_KEYS } =
+const { dropBlankOptionalFields, REQUIRED_STUDENT_KEYS, mapImportRowToStudent,
+        CARRIED_SOURCE_FIELDS, UNMAPPED_SOURCE_FIELDS } =
   await import(path.join(ROOT, 'src/schemas/studentMapping.js'))
 
 let failures = 0
@@ -63,11 +64,46 @@ for (const k of REQUIRED_STUDENT_KEYS) {
 }
 check('empty lastName is kept (schema calls it required)', kept.lastName === '')
 
+console.log('\nRecognized columns the schema has no named field for are carried, not dropped')
+// One real Hillgreen row, as the extractor hands it over.
+const { payload: mapped, carried, dropped } = mapImportRowToStudent({
+  student_name: 'Zayn Aman Arab', gender: 'Boy', dob: '2024-01-16',
+  adm_no: '5701', gr_emis_sts: '', aadhaar: '', contact: '', email: '',
+  sr_no: '1', roll_no: '12', branch_name: 'Hillgreen Highschool & Junior College',
+  board: 'CBSE', enrollment_code: '26HHS0236', date_of_admission: '16 May 2026',
+  status: 'Active', address: '2001, Princetown Towers, Pune',
+  father_name: 'Arab Aman Mehboob', father_mobile: '8087867401',
+  father_email: 'amanarab74@gmail.com', mother_name: 'Zeba Aman Arab',
+  mother_mobile: '9359262211', mother_email: 'zebaman2318@gmail.com',
+  using_transport: 'No', city: 'Pune',
+}, { classId: 'Play_Group_A' })
+const carriedKeys = carried.map(c => c.key).sort()
+eq('every parent contact, the board and the address are carried', carriedKeys, [
+  'address', 'board', 'branchName', 'city', 'dateOfAdmission', 'enrollmentCode',
+  'fatherEmail', 'fatherMobile', 'fatherName', 'motherEmail', 'motherMobile',
+  'motherName', 'rollNo', 'status', 'usingTransport',
+])
+eq("only the spreadsheet's own serial number is dropped", dropped, ['sr_no'])
+eq('the fixed mapping is untouched by this',
+   [mapped.name, mapped.gender, mapped.currentClassId, mapped.admNo],
+   ['Zayn Aman Arab', 'Boy', 'Play_Group_A', '5701'])
+check('a carried key matches what the enrichment screen would produce',
+      carried.find(c => c.key === 'fatherMobile')?.value === '8087867401')
+eq('blank carried fields are omitted',
+   mapImportRowToStudent({ student_name: 'A B', father_name: '  ' }, { classId: 'X' })
+     .carried.map(c => c.key), [])
+eq('UNMAPPED_SOURCE_FIELDS is now only the file-level one', UNMAPPED_SOURCE_FIELDS, ['sr_no'])
+check('no key collides with a real student field',
+      !Object.values(CARRIED_SOURCE_FIELDS).some(
+        v => REQUIRED_STUDENT_KEYS.includes(v.key) || ['email', 'phoneNo', 'dateOfBirth'].includes(v.key)),
+      JSON.stringify(Object.values(CARRIED_SOURCE_FIELDS).map(v => v.key)))
+
 console.log('\nstudents_schema columns the file implies')
+const asItem = (extras) => ({ extraColumns: extraColumnsFor(extras) })
 const plan = { items: [
-  { row: { extras: { House: 'Tagore', 'Bus Route': 'Route 4', 'Date Of Admission': '16 May 2026' } } },
-  { row: { extras: { House: 'Bose', 'Bus Route': 'Route 4', 'Date Of Admission': '2 Jun 2026' } } },
-  { row: { extras: { House: 'Tagore', 'Bus Route': 'Route 4', 'Date Of Admission': '9 Jul 2026' } } },
+  asItem({ House: 'Tagore', 'Bus Route': 'Route 4', 'Date Of Admission': '16 May 2026' }),
+  asItem({ House: 'Bose', 'Bus Route': 'Route 4', 'Date Of Admission': '2 Jun 2026' }),
+  asItem({ House: 'Tagore', 'Bus Route': 'Route 4', 'Date Of Admission': '9 Jul 2026' }),
 ] }
 const cols = newSchemaColumnsFor(plan, [{ key: 'house', order: 3 }])
 eq('a column the school already has is not re-proposed',
@@ -80,7 +116,11 @@ check('a small repeating vocabulary is typed as a select',
 check('the label keeps the school\'s own header',
       cols.find(c => c.key === 'busRoute').label === 'Bus Route')
 eq('banned columns are never proposed',
-   newSchemaColumnsFor({ items: [{ row: { extras: { Caste: 'OBC' } } }] }, []), [])
+   newSchemaColumnsFor({ items: [asItem({ Caste: 'OBC' })] }, []), [])
+eq('carried fields are proposed as columns too, under their own labels',
+   newSchemaColumnsFor({ items: [{ extraColumns: carried }] }, [])
+     .filter(c => c.key === 'fatherMobile').map(c => [c.label, c.type]),
+   [['Father Mobile', 'text']])
 eq('an empty plan proposes nothing', newSchemaColumnsFor({ items: [] }, []), [])
 
 console.log(failures ? `\n${failures} FAILURE(S)` : '\nall checks passed')

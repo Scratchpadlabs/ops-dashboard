@@ -92,23 +92,27 @@
              the student schema has no home for. Both used to vanish silently. -->
         <div v-if="(job.unmapped_headers || []).length || reviewOnlyPresent.length"
              class="mt-3 border-t border-slate-100 pt-3">
-          <div class="text-xs font-semibold text-slate-600 mb-1.5">Columns not written to the student record</div>
+          <div class="text-xs font-semibold text-slate-600 mb-1.5">Columns outside the fixed mapping</div>
           <div v-if="(job.unmapped_headers || []).length" class="mb-1.5">
-            <div class="text-[11px] text-slate-500 mb-1">Not recognized — no field matches this header:</div>
+            <div class="text-[11px] text-slate-500 mb-1">
+              No named field matches these headers, so each is written under its own camelCase key
+              and offered for <span class="font-mono">config/students_schema</span> after the commit:
+            </div>
             <div class="flex flex-wrap gap-1">
               <span v-for="h in job.unmapped_headers" :key="h"
-                class="px-2 py-0.5 rounded bg-red-50 border border-red-100 text-[11px] font-mono text-red-700">{{ h }}</span>
+                class="px-2 py-0.5 rounded bg-blue-50 border border-blue-100 text-[11px] font-mono text-blue-700">{{ h }}</span>
             </div>
           </div>
           <div v-if="reviewOnlyPresent.length">
-            <div class="text-[11px] text-slate-500 mb-1">Read and shown below, but the student schema has no field for them:</div>
+            <div class="text-[11px] text-slate-500 mb-1">Read, shown below, and deliberately not saved — about the file, not the student:</div>
             <div class="flex flex-wrap gap-1">
               <span v-for="c in reviewOnlyPresent" :key="c"
                 class="px-2 py-0.5 rounded bg-amber-50 border border-amber-100 text-[11px] font-mono text-amber-800">{{ colLabel(c) }}</span>
             </div>
           </div>
           <p class="text-[11px] text-slate-400 mt-1.5">
-            Adding a field for any of these is a schema decision — say so and it gets added deliberately, not guessed.
+            A caste, religion or SSSM column is dropped before it reaches Firestore at all (golden rule 3)
+            and will not appear here.
           </p>
         </div>
         <div v-if="(job.class_level_flags || []).length" class="mt-3 border-t border-slate-100 pt-3">

@@ -28,7 +28,7 @@ import {
 import { validateDoc, formatErrors } from '../schemas/schoolSchema.js'
 import { validateCurrentClassId } from '../schemas/currentClassId.js'
 import { mapImportRowToStudent, dropBlankOptionalFields } from '../schemas/studentMapping.js'
-import { extraFieldsFor, newSchemaColumnsFor } from '../utils/studentEnrichment.js'
+import { extraColumnsFor, newSchemaColumnsFor } from '../utils/studentEnrichment.js'
 // Re-exported for ImportReview.vue, which drives the schema step from the plan.
 export { newSchemaColumnsFor }
 
@@ -354,9 +354,7 @@ async function buildStudentsPlan(schoolId, rows) {
       if (dupeCount > 1) docId = `${docId}_${dupeCount}`
     }
 
-    // Mapped, not copied: source columns the student schema has no home for
-    // are dropped and reported rather than written into fields nothing reads.
-    const { payload, dropped, warnings } = mapImportRowToStudent(d, { classId })
+    const { payload, carried, dropped, warnings } = mapImportRowToStudent(d, { classId })
 
     // The class value is the one field where live data is genuinely broken,
     // so it is checked on its own terms as well as by the schema.
@@ -375,23 +373,24 @@ async function buildStudentsPlan(schoolId, rows) {
     const notes = [...warnings]
     if (classCheck.severity === 'warning') notes.push(classCheck.message)
 
-    // The school's own columns, which the fixed mapping has no field for.
-    // In id mode they are the point of the import; without an id there is no
-    // student to attach them to beyond the one this row is minting, so they
-    // are carried the same way either side.
-    const extraFields = extraFieldsFor(row.extras)
-    const stillDropped = dropped.filter(k => !(k in extraFields))
-    if (stillDropped.length) {
-      notes.push(`no field in the student schema for: ${stillDropped.join(', ')} — not saved`)
+    // Everything the file carried that the student schema has no NAMED field
+    // for, from both directions: columns the extractor recognises but has
+    // nowhere to put (father_mobile, board, address) and columns it does not
+    // recognise at all (House, Bus Route). One list, so config/students_schema
+    // sees them all and the payload writes them all.
+    const extraColumns = [...carried, ...extraColumnsFor(row.extras)]
+    const extraFields = Object.fromEntries(extraColumns.map(c => [c.key, c.value]))
+    if (dropped.length) {
+      notes.push(`about the file, not the student — not saved: ${dropped.join(', ')}`)
     }
-    if (Object.keys(extraFields).length) {
-      notes.push(`extra column(s) saved as: ${Object.keys(extraFields).sort().join(', ')}`)
+    if (extraColumns.length) {
+      notes.push(`extra column(s) saved as: ${extraColumns.map(c => c.key).sort().join(', ')}`)
     }
 
     let finalPayload = { ...payload, ...extraFields }
     if (idMode) finalPayload = dropBlankOptionalFields({ ...finalPayload, id: docId })
 
-    const item = { row, docId, payload: finalPayload, extraFields, notes,
+    const item = { row, docId, payload: finalPayload, extraColumns, notes,
                    derived: { firstName: payload.firstName, lastName: payload.lastName } }
     const existing = existingById.get(docId)
     if (!existing) {
