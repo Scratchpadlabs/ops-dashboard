@@ -35,16 +35,44 @@
       </div>
     </div>
 
+    <!-- ── Repoint a sheet at a real term ──────────────────────────────── -->
+    <Dialog v-model:visible="repointVisible" header="Point sheet at a term" modal :style="{ width: '480px' }">
+      <div class="space-y-3 pt-2">
+        <p class="text-sm text-slate-600">
+          <span class="font-mono text-xs">{{ repointTarget?.id }}</span>
+        </p>
+        <div v-if="repointTarget?.entryCount" class="text-xs text-amber-800 bg-amber-50 rounded px-2 py-1.5">
+          This sheet holds {{ repointTarget.entryCount }} student entr(ies). Only the term it points at
+          changes — the marks themselves are not touched.
+        </div>
+        <div>
+          <label class="form-label">Term</label>
+          <Select v-model="repointTermId" :options="realTerms" optionLabel="name" optionValue="id"
+                  placeholder="Select the correct term" class="w-full" />
+          <p v-if="!realTerms.length" class="text-xs text-red-500 mt-1">
+            This school has no real terms — create one before repointing.
+          </p>
+        </div>
+      </div>
+      <template #footer>
+        <Button label="Cancel" text @click="repointVisible = false" />
+        <Button label="Repoint" :disabled="!repointTermId" :loading="repointing" @click="runRepoint" />
+      </template>
+    </Dialog>
   </div>
 </template>
 
 <script setup>
 import { ref, reactive, watch, onMounted } from 'vue'
-import { getDocs, updateDoc, deleteDoc, getDoc, serverTimestamp } from 'firebase/firestore'
+import {
+  collection, deleteDoc, getCountFromServer, getDoc, getDocs, serverTimestamp, updateDoc,
+} from 'firebase/firestore'
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
 
 import Button from 'primevue/button'
+import Dialog from 'primevue/dialog'
+import Select from 'primevue/select'
 import InputText from 'primevue/inputtext'
 import ToggleButton from 'primevue/togglebutton'
 import ProgressSpinner from 'primevue/progressspinner'
@@ -88,6 +116,11 @@ async function saveSchool() {
 
 // ── Hygiene scan (read-only detection; every fix below is opt-in + confirm) ─
 const warnings = ref([])
+const realTerms = ref([])            // terms that are not junk stubs
+const repointVisible = ref(false)
+const repointTarget = ref(null)      // the warning being acted on
+const repointTermId = ref(null)
+const repointing = ref(false)
 const scanning = ref(false)
 
 async function runScan() {
@@ -124,13 +157,45 @@ async function runScan() {
       })
     }
 
-    // 2. Sheet docs referencing a nonexistent term
-    sheets.docs.forEach(d => {
-      const termId = d.data().termId
-      if (termId && !termIds.has(termId)) {
-        found.push({ message: `smart_sheet_entries/${d.id} references missing term "${termId}"`, actionLabel: 'Delete doc', action: 'delete', collection: 'smart_sheet_entries', id: d.id })
-      }
+    // 2. Sheet docs pointing at a term that is missing OR a junk stub.
+    //
+    // Checking only for MISSING misses the case that actually happens: SAMARTH's
+    // sheets point at a term document that exists but holds nothing except `a`,
+    // so termIds.has() was true and eight sheets full of entered marks were
+    // never flagged at all.
+    const junkTermIds = new Set(terms.docs.filter(d => isJunkDoc(d.data())).map(d => d.id))
+    realTerms.value = terms.docs
+      .filter(d => !isJunkDoc(d.data()))
+      .map(d => ({ id: d.id, name: d.data().name || d.id }))
+
+    const badSheets = sheets.docs.filter(d => {
+      const t = d.data().termId
+      return t && (!termIds.has(t) || junkTermIds.has(t))
     })
+    // Entry counts only for the flagged few — a count query, not a download, so
+    // a hygiene scan does not pull every mark in the school.
+    for (const d of badSheets) {
+      let entryCount = null
+      try {
+        entryCount = (await getCountFromServer(collection(d.ref, 'entries'))).data().count
+      } catch (e) {
+        console.warn('Could not count entries for', d.id, e)
+      }
+      const termId = d.data().termId
+      const why = junkTermIds.has(termId) ? 'a junk term' : 'a missing term'
+      const marks = entryCount === null ? 'entry count unknown'
+        : entryCount === 0 ? 'no entries' : `${entryCount} student entr(ies)`
+      found.push({
+        message: `smart_sheet_entries/${d.id} points at ${why} "${termId}" — ${marks}`,
+        actionLabel: 'Point at term…',
+        action: 'repoint-term',
+        collection: 'smart_sheet_entries',
+        id: d.id,
+        entryCount,
+        // Deleting is only offered when there is demonstrably nothing to lose.
+        alsoDelete: entryCount === 0,
+      })
+    }
 
     // 3. Subjects referenced by classes but missing from subjects
     classes.docs.forEach(d => {
@@ -178,10 +243,45 @@ async function runScan() {
   }
 }
 
+async function runRepoint() {
+  const w = repointTarget.value
+  if (!w || !repointTermId.value) return
+  repointing.value = true
+  try {
+    // Only termId changes. The entries subcollection is untouched — the marks
+    // are keyed by assessment id, and those assessments already belong to the
+    // term being pointed at, which is what makes this a correction rather than
+    // a move.
+    await updateDoc(schoolDoc(props.schoolId, 'smart_sheet_entries', w.id), {
+      termId: repointTermId.value,
+      updated_at: serverTimestamp(),
+      updated_by: auth.currentUser?.email || 'unknown',
+    })
+    toast.add({ severity: 'success', summary: 'Sheet repointed',
+                detail: `${w.id} -> ${repointTermId.value}`, life: 3000 })
+    repointVisible.value = false
+    await runScan()
+  } catch (e) {
+    console.error(e)
+    toast.add({ severity: 'error', summary: 'Could not repoint', life: 4000 })
+  } finally {
+    repointing.value = false
+  }
+}
+
 function runWarningAction(w) {
+  if (w.action === 'repoint-term') {
+    repointTarget.value = w
+    repointTermId.value = realTerms.value.length === 1 ? realTerms.value[0].id : null
+    repointVisible.value = true
+    return
+  }
   if (w.action === 'delete') {
     confirm.require({
-      message: `Delete ${w.collection}/${w.id}? This cannot be undone.`,
+      message: w.entryCount
+        ? `${w.collection}/${w.id} holds ${w.entryCount} student entr(ies) of marks. `
+          + 'Deleting it destroys them and cannot be undone. Repoint it at the correct term instead.'
+        : `Delete ${w.collection}/${w.id}? This cannot be undone.`,
       header: 'Delete Document', icon: 'pi pi-exclamation-triangle',
       rejectLabel: 'Cancel', acceptLabel: 'Delete', acceptClass: 'p-button-danger',
       accept: async () => {
