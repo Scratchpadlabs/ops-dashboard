@@ -41,7 +41,21 @@
         <span class="stat">{{ plan.totals.fieldsToWrite }} field value(s)</span>
       </div>
 
-      <div v-if="plan.isEmpty" class="text-sm text-slate-500 bg-slate-50 rounded-lg px-3 py-2">
+      <div v-if="!plan.totals.matched"
+           class="text-sm text-red-800 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+        <div class="font-semibold mb-1">No row matched a student — nothing can be filled in.</div>
+        Every id in "{{ idColumn }}" is unknown to this school. Either these students have not been
+        registered yet, or that column is not the one holding their registration id.
+        Adding schema columns is blocked until at least one row matches, because a file that matches
+        nothing has not been shown to belong to this school.
+      </div>
+      <div v-else-if="plan.totals.matchRate < 0.5"
+           class="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+        Only {{ plan.totals.matched }} of {{ plan.totals.rows }} rows matched a student. Check that
+        "{{ idColumn }}" is the right column before writing anything.
+      </div>
+
+      <div v-if="plan.isEmpty && plan.totals.matched" class="text-sm text-slate-500 bg-slate-50 rounded-lg px-3 py-2">
         Nothing to add — every matched student already has everything this file carries.
       </div>
 
@@ -73,11 +87,14 @@
             <p class="text-xs text-slate-500 mt-0.5">
               Separate on purpose — this list decides what ops can map on every future import,
               and the teacher app reads it too.
+              <span v-if="!plan.canAddColumns" class="text-red-700 font-medium">
+                Blocked: no row matched a student.
+              </span>
             </p>
           </div>
           <Button label="Add columns" icon="pi pi-plus" size="small" outlined
-                  :disabled="!plan.totals.newSchemaColumns" :loading="writingSchema"
-                  @click="confirmSchema" />
+                  :disabled="!plan.totals.newSchemaColumns || !plan.canAddColumns"
+                  :loading="writingSchema" @click="confirmSchema" />
         </div>
         <div v-if="plan.newColumns.length" class="flex flex-wrap gap-1.5">
           <span v-for="c in plan.newColumns" :key="c.key"
@@ -237,6 +254,10 @@ async function runFields() {
 const additions = computed(() => plan.value ? schemaAdditionsFor(plan.value, schemaColumns.value) : [])
 
 function confirmSchema() {
+  if (!plan.value?.canAddColumns) {
+    error.value = 'No row matched a student, so this file has not been shown to belong to this school.'
+    return
+  }
   const list = additions.value.map(c => c.key).join(', ')
   confirm.require({
     message: `Add ${additions.value.length} column(s) to config/students_schema for "${schoolId.value}"?\n\n${list}\n\n`

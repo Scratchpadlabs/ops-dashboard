@@ -187,7 +187,15 @@ export function buildEnrichmentPlan({
       studentsToUpdate: withChanges.length,
       fieldsToWrite: withChanges.reduce((n, m) => n + m.fieldCount, 0),
       newSchemaColumns: columns.filter(c => c.status === 'new').length,
+      // Columns come from the file's HEADERS, so they exist whether or not a
+      // single row found a student. Callers must not offer to add them on the
+      // strength of that count alone — a file that matched nothing has not been
+      // shown to belong to this school at all.
+      matchRate: csvRows.length ? matched.length / csvRows.length : 0,
     },
+    // Adding columns to students_schema changes what ops can map on every
+    // future import. Require evidence the file is even this school's.
+    canAddColumns: matched.length > 0,
     isEmpty: withChanges.length === 0 && columns.filter(c => c.status === 'new').length === 0,
   }
 }
