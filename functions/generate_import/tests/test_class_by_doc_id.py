@@ -176,3 +176,32 @@ def test_without_the_map_nothing_is_retracted():
     rows = [_cleaned("8_KALAM")]
     drop_unrecognized_grade_flags(rows, None)
     assert _messages([r["flags"] for r in rows]) == ["unrecognized grade value: '8_KALAM'"]
+
+
+# ------------------------------------------------------- contact numbers --
+def _with_contacts(**kw):
+    row = _student("8_KALAM")
+    row["contact"] = ""
+    row.update(kw)
+    return row
+
+
+def test_a_fathers_number_is_a_contact():
+    """Hillgreen's export leaves MobileNumber empty on 1472 of 1622 rows and
+    fills Father Mobile No on 1620 of them. Those rows are not missing a
+    contact — father_mobile is written to the student document."""
+    flags = validate_students([_with_contacts(father_mobile="8087867401")],
+                              LOOKUP, SECTIONS, class_by_doc_id=BY_DOC_ID)
+    assert _messages(flags) == []
+
+
+def test_a_mothers_number_is_a_contact():
+    flags = validate_students([_with_contacts(mother_mobile="9359262211")],
+                              LOOKUP, SECTIONS, class_by_doc_id=BY_DOC_ID)
+    assert _messages(flags) == []
+
+
+def test_no_number_anywhere_is_still_reported():
+    flags = validate_students([_with_contacts()], LOOKUP, SECTIONS,
+                              class_by_doc_id=BY_DOC_ID)
+    assert _messages(flags) == ["no contact number in any column"]

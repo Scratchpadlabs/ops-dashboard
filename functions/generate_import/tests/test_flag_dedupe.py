@@ -79,8 +79,12 @@ def test_invalid_contact_is_not_also_reported_as_missing():
 
 
 def test_genuinely_empty_contact_is_still_reported_as_missing():
+    """No number in ANY column — contact, father's or mother's. The wording
+    changed with the check on 2026-08-20: a parent's number now counts, so
+    "missing contact number" would have been misleading about what was looked
+    at. See test_class_by_doc_id.py for the parent-number cases."""
     messages = [m for f, m in flags_for({**BASE, "contact": ""})]
-    assert any("missing contact" in m for m in messages)
+    assert any("no contact number in any column" in m for m in messages)
 
 
 def test_unrecognized_gender_is_not_also_reported_as_missing():

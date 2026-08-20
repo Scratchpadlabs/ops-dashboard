@@ -674,8 +674,17 @@ def validate_students(rows, class_lookup, sections_by_grade, existing_flags=None
                 dobs_by_grade.setdefault(r.get("grade", ""), []).append(d)
         if not r.get("gender", "").strip() and not _already_flagged(prior, "gender"):
             flags_by_row[i].append(_flag("gender", "missing gender"))
-        if not r.get("contact", "").strip() and not _already_flagged(prior, "contact"):
-            flags_by_row[i].append(_flag("contact", "missing contact number"))
+        # A parent's number counts. father_mobile and mother_mobile are written
+        # to the student document since 2026-08-20 (CARRIED_SOURCE_FIELDS in
+        # src/schemas/studentMapping.js), so a row carrying one is not missing
+        # a contact — it just does not fill the column this check used to read
+        # alone. On Hillgreen's export that was 1472 of 1622 rows warned while
+        # every single one carried a father's number; a warning on 90% of a
+        # file is one nobody reads.
+        has_contact = any(r.get(k, "").strip()
+                          for k in ("contact", "father_mobile", "mother_mobile"))
+        if not has_contact and not _already_flagged(prior, "contact"):
+            flags_by_row[i].append(_flag("contact", "no contact number in any column"))
 
         key = (normalize_grade(r.get("grade")), normalize_section(r.get("section")),
                r.get("student_name", "").strip().lower())
