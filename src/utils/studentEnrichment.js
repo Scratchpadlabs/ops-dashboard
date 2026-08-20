@@ -200,12 +200,81 @@ export function buildEnrichmentPlan({
   }
 }
 
+/**
+ * The school's own extra columns, as fields on a student document.
+ *
+ * The importer maps a fixed vocabulary (name, gender, dob, class, admNo…) and
+ * every school's file carries more than that — Board, House, Bus Route. Those
+ * used to be dropped, so ops could never get a school's own data into that
+ * school. `extras` is what the parser carried through under the header text;
+ * this turns each into the camelCase key the rest of a student doc uses.
+ *
+ * Golden rule 3 is enforced twice on purpose: the Cloud Function drops a
+ * caste/religion/SSSM column before it is ever staged, and this drops it again
+ * on the way out, so neither end alone is load-bearing.
+ */
+export function extraFieldsFor(extras) {
+  const out = {}
+  for (const [header, value] of Object.entries(extras || {})) {
+    if (String(value ?? '').trim() === '') continue
+    const key = fieldKeyFor(header)
+    if (!key || isBannedKey(key)) continue
+    out[key] = String(value).trim()
+  }
+  return out
+}
+
+/**
+ * The students_schema columns a committed plan would need, minus the ones the
+ * school already has.
+ *
+ * config/students_schema is what the import mapper offers ops on every future
+ * roster, and the teacher app reads it too — so growing it is a bigger
+ * decision than filling in one student, and gets its own confirmation rather
+ * than riding along with the commit.
+ *
+ * The TYPE is inferred from the values this file actually carried in that
+ * column, not from the header text: "16 Jan 2024" is a date whatever the
+ * column is called.
+ */
+export function newSchemaColumnsFor(plan, schemaColumns = []) {
+  const known = new Set((schemaColumns || []).map(c => c.key))
+  const valuesByKey = new Map()
+  const headerByKey = new Map()
+  for (const item of plan?.items || []) {
+    for (const [header, value] of Object.entries(item.row?.extras || {})) {
+      const key = fieldKeyFor(header)
+      if (!key || known.has(key) || isBannedKey(key)) continue
+      if (!headerByKey.has(key)) headerByKey.set(key, header)
+      if (!valuesByKey.has(key)) valuesByKey.set(key, [])
+      valuesByKey.get(key).push(value)
+    }
+  }
+  const columns = [...headerByKey.entries()].map(([key, header]) => ({
+    key, header, type: inferColumnType(valuesByKey.get(key) || []),
+  }))
+  return schemaColumnsFor(columns, schemaColumns)
+}
+
 /** New students_schema columns, ordered after the ones already there. */
 export function schemaAdditionsFor(plan, schemaColumns = []) {
+  return schemaColumnsFor(plan.newColumns, schemaColumns)
+}
+
+/**
+ * {key, header, type}[] -> students_schema column entries, numbered after the
+ * ones a school already has.
+ *
+ * Shared by the two screens that can grow this array — the enrichment screen
+ * and the roster import — because a column added by one has to look exactly
+ * like a column added by the other. The teacher app reads this list, and two
+ * shapes for the same idea is how it ends up reading half of it.
+ */
+export function schemaColumnsFor(columns, schemaColumns = []) {
   let order = Math.max(0, ...schemaColumns.map(c => Number(c.order) || 0))
-  return plan.newColumns.map(c => ({
+  return (columns || []).map(c => ({
     key: c.key,
-    label: c.header,
+    label: c.header ?? c.label ?? c.key,
     type: c.type || 'text',
     editable: true,
     order: ++order,

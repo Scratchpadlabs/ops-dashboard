@@ -27,7 +27,10 @@ import {
 } from '../utils/classLookup.js'
 import { validateDoc, formatErrors } from '../schemas/schoolSchema.js'
 import { validateCurrentClassId } from '../schemas/currentClassId.js'
-import { mapImportRowToStudent } from '../schemas/studentMapping.js'
+import { mapImportRowToStudent, dropBlankOptionalFields } from '../schemas/studentMapping.js'
+import { extraFieldsFor, newSchemaColumnsFor } from '../utils/studentEnrichment.js'
+// Re-exported for ImportReview.vue, which drives the schema step from the plan.
+export { newSchemaColumnsFor }
 
 // Re-exported for ImportReview.vue, which has always imported it from this
 // module; the definition moved to utils/classLookup.js with the rest of the
@@ -298,6 +301,14 @@ async function buildStudentsPlan(schoolId, rows) {
   const usedIds = new Map() // dedupe doc ids within this batch
   const items = []
 
+  // Does this file carry the school's own student ids? Decided ONCE for the
+  // whole file, not per row: a file that names its students by id is a
+  // different kind of file from one that does not, and switching between the
+  // two mid-import is what produced a duplicate for every student. One row
+  // carrying an id is enough — the rows that then lack one are the error.
+  const idMode = rows.some(r => String(r.data?.student_id ?? '').trim())
+  const unregisteredIds = []
+
   for (const row of rows) {
     const d = row.data
     if ((row.suggestions || []).length) {
@@ -309,11 +320,39 @@ async function buildStudentsPlan(schoolId, rows) {
       items.push({ row, status: 'ERROR', reason: describeClassMiss(lookup, d.grade, d.section) })
       continue
     }
-    const base = slugPart(d.roll_no) || slugPart(d.student_name) || 'student'
-    let docId = `${classId}_${base}`
-    const dupeCount = (usedIds.get(docId) || 0) + 1
-    usedIds.set(docId, dupeCount)
-    if (dupeCount > 1) docId = `${docId}_${dupeCount}`
+
+    // ── Which document does this row belong to? ──────────────────────────
+    // With an id, the row updates the student that already carries it and
+    // NOTHING is created: registration mints the document (and its auth
+    // account), the import fills it in. An id nobody holds is an error, never
+    // a new student — a typo would otherwise become a real pupil who can
+    // never log in, and a stale export would rebuild a roster ops had cleaned.
+    let docId
+    let studentId = ''
+    if (idMode) {
+      studentId = String(d.student_id ?? '').trim()
+      if (!studentId) {
+        items.push({ row, status: 'ERROR',
+                     reason: 'This file names students by id, but this row has no id. '
+                           + 'Fill in the ID column or remove the row.' })
+        continue
+      }
+      if (!existingById.has(studentId)) {
+        unregisteredIds.push({ id: studentId, name: d.student_name || '', row: row.id })
+        items.push({ row, status: 'ERROR',
+                     reason: `No registered student with id "${studentId}". `
+                           + 'Register and authenticate this student first — the import fills '
+                           + 'in existing students and never creates one.' })
+        continue
+      }
+      docId = studentId
+    } else {
+      const base = slugPart(d.roll_no) || slugPart(d.student_name) || 'student'
+      docId = `${classId}_${base}`
+      const dupeCount = (usedIds.get(docId) || 0) + 1
+      usedIds.set(docId, dupeCount)
+      if (dupeCount > 1) docId = `${docId}_${dupeCount}`
+    }
 
     // Mapped, not copied: source columns the student schema has no home for
     // are dropped and reported rather than written into fields nothing reads.
@@ -335,18 +374,34 @@ async function buildStudentsPlan(schoolId, rows) {
 
     const notes = [...warnings]
     if (classCheck.severity === 'warning') notes.push(classCheck.message)
-    if (dropped.length) notes.push(`no field in the student schema for: ${dropped.join(', ')} — not saved`)
 
-    const item = { row, docId, payload, notes, derived: { firstName: payload.firstName, lastName: payload.lastName } }
+    // The school's own columns, which the fixed mapping has no field for.
+    // In id mode they are the point of the import; without an id there is no
+    // student to attach them to beyond the one this row is minting, so they
+    // are carried the same way either side.
+    const extraFields = extraFieldsFor(row.extras)
+    const stillDropped = dropped.filter(k => !(k in extraFields))
+    if (stillDropped.length) {
+      notes.push(`no field in the student schema for: ${stillDropped.join(', ')} — not saved`)
+    }
+    if (Object.keys(extraFields).length) {
+      notes.push(`extra column(s) saved as: ${Object.keys(extraFields).sort().join(', ')}`)
+    }
+
+    let finalPayload = { ...payload, ...extraFields }
+    if (idMode) finalPayload = dropBlankOptionalFields({ ...finalPayload, id: docId })
+
+    const item = { row, docId, payload: finalPayload, extraFields, notes,
+                   derived: { firstName: payload.firstName, lastName: payload.lastName } }
     const existing = existingById.get(docId)
     if (!existing) {
       items.push({ ...item, status: 'CREATE' })
     } else {
-      const same = fieldsEqual(existing, payload, Object.keys(payload))
+      const same = fieldsEqual(existing, finalPayload, Object.keys(finalPayload))
       items.push({ ...item, status: same ? 'UPDATE_UNCHANGED' : 'UPDATE_CHANGED' })
     }
   }
-  return summarize('students', items)
+  return { ...summarize('students', items), idMode, unregisteredIds }
 }
 
 async function buildTeachersPlan(schoolId, rows) {

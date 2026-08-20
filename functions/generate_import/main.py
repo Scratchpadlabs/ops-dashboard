@@ -177,6 +177,32 @@ SCHEMAS = {
 # Restricting who can READ Aadhaar needs a rules change, not a code change.
 BANNED_KEYS = {"sssm_id", "sssm", "caste", "category", "religion", "address"}
 
+# Header-level twin of the above, for the DETERMINISTIC path's `extras` — the
+# columns the alias dictionary has no field for, carried through so a school
+# can get its own data onto its own students.
+#
+# Shorter than BANNED_KEYS on purpose: "address" and "category" were allowed
+# on 2026-08-20 by explicit decision, the same way "aadhaar" was on 2026-08-04,
+# and the same consequence applies — firestore.rules lets any signed-in user of
+# the teacher and student apps read every student document, so an allowed field
+# is a readable field. Narrowing that needs a rules change, not a code change.
+# Matched against canonicalize(header), so "Caste Category" and "caste-category"
+# are the same header.
+BANNED_EXTRA_TOKENS = ("sssm", "caste", "religion")
+
+
+def is_banned_extra(header):
+    """Whether a column header names something golden rule 3 forbids storing.
+
+    Substring, not equality: the header is a school's own free text, so the
+    ban has to catch "Caste", "Caste Category", "Student Caste (SC/ST)" and
+    "SSSM ID" alike. Over-matching here costs a column an operator can add by
+    hand; under-matching writes a caste record into a document every signed-in
+    app user can read.
+    """
+    key = canonicalize(header)
+    return any(token in key for token in BANNED_EXTRA_TOKENS)
+
 # ------------------------------------------------------------- preprocess ---
 def xlsx_to_tsv(raw: bytes) -> str:
     import io
@@ -892,9 +918,16 @@ def _process_one_file(entity, name, raw, job_diag):
                              for w in warn_by_key.get(key, [])]
                             + [_flag(e["field"], e["message"], severity=e.get("severity", "error"))
                                for e in err_by_key.get(key, [])])
+            extras = {k: v for k, v in (r.get("extras") or {}).items()
+                      if not is_banned_extra(k)}
+            dropped = sorted(k for k in (r.get("extras") or {}) if is_banned_extra(k))
+            if dropped:
+                extra_flags = extra_flags + [_flag(
+                    None, f"not stored (golden rule 3): {', '.join(dropped)}")]
             provenance.append({
                 "source_file": name, "sheet": r["sheet"], "row": r["row"],
                 "excluded_default": bool(r.get("excluded")), "extra_flags": extra_flags,
+                "extras": extras,
             })
     elif not terminal:
         used_fallback = True
@@ -1121,7 +1154,8 @@ def process_import(req: https_fn.CallableRequest):
                 if not excluded_default:
                     included_row_count += 1
                 batch.set(rows_ref.document(str(j)), {
-                    "data": c["data"], "flags": c["flags"],
+                    "data": c["data"], "extras": prov.get("extras") or {},
+                    "flags": c["flags"],
                     "fixes": c["fixes"], "suggestions": c["suggestions"],
                     "edited": False, "excluded": excluded_default,
                     "source_file": prov.get("source_file"), "source_sheet": prov.get("sheet"),

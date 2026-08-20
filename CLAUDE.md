@@ -39,6 +39,7 @@ python3 tools/check_resolver_parity.py && node tools/check_resolver_parity.mjs
 python3 tools/check_schema_parity.py   && node tools/check_schema_parity.mjs
 node tools/check_derive_classes.mjs    # class derivation behaviour
 node tools/check_class_lookup.mjs      # how an import row finds its class
+node tools/check_student_import_fields.mjs  # extra columns, schema growth, blank-cell rule
 node tools/check_remarks_import.mjs
 
 # Read-only production inspection (needs application-default credentials)
@@ -114,6 +115,16 @@ The LLM is the last resort and never writes.
   `classes.subjects[]` ∩ `assignments[classId]` — then comes back empty. Subjects now offers the
   grade tokens the school's classes actually use, and warns on a mismatch, so this cannot be hit
   silently from that tab.
+- **A roster file carrying the school's own student ids is a different import.**
+  `STUDENT_HEADER_ALIASES` has a `student_id` key, and if ANY row in a file fills it,
+  `buildStudentsPlan` switches to id mode for the whole file: each row updates the student
+  already holding that id, an id nobody holds is an ERROR, and nothing is created. This is
+  the register → authenticate → import flow, and it is why the plan also drops blank
+  optional fields before writing — a merge that wrote `email: ''` would erase the address
+  every auth account was created with. Columns the alias dictionary has no field for ride
+  through as `extras` and become camelCase fields; `config/students_schema` is offered
+  afterwards, as its own confirmation, never as part of the commit.
+
 - **A file can name the class in one column or two.** Most exports carry `Class` +
   `Section`; some carry the whole class id in `Class` alone (`Play_Group_A`, `8_KALAM`).
   `STUDENT_HEADER_ALIASES` maps `class` onto `grade`, so the second shape reaches the

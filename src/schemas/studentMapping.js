@@ -95,6 +95,37 @@ export function toAadhaar(raw) {
 }
 
 /**
+ * The fields school_schema.js marks required for a student. They are always
+ * written, empty or not — dropping one makes the Cloud Function's
+ * validate_doc reject the whole row as "required".
+ */
+export const REQUIRED_STUDENT_KEYS = ['name', 'firstName', 'lastName', 'currentClassId', 'type']
+
+/**
+ * Blank optional fields removed, so a merge write cannot erase what is there.
+ *
+ * Only for the register-then-enrich flow, where each row updates a student
+ * that already exists. A blank cell in a spreadsheet means "this file does not
+ * say", not "delete what you know" — and Hillgreen's export has an empty Email
+ * column on all 1622 rows while every registered student has a real
+ * shh1612@hillgreen.com. Writing that payload through a merge would wipe the
+ * address the auth account was created with, on every student, silently.
+ *
+ * Not applied when the import is creating students: a create wants the full
+ * shape, blanks included, so the document has every field the teacher app
+ * expects to read.
+ */
+export function dropBlankOptionalFields(payload) {
+  const out = {}
+  for (const [k, v] of Object.entries(payload || {})) {
+    const blank = v === null || v === undefined || (typeof v === 'string' && !v.trim())
+    if (blank && !REQUIRED_STUDENT_KEYS.includes(k)) continue
+    out[k] = v
+  }
+  return out
+}
+
+/**
  * @param {Object} row      extractor row (student_name, gender, dob, contact, …)
  * @param {Object} opts
  * @param {string} opts.classId  resolved class ID for currentClassId

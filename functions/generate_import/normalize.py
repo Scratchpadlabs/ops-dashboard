@@ -374,6 +374,16 @@ def match_value(raw, alias_type, valid_canon_to_display, aliases):
 # `import_unknown_headers` (see main.py) specifically to grow this list from
 # real data instead of guesswork.
 STUDENT_HEADER_ALIASES = {
+    # The school's OWN student id, and the spine of the register-then-enrich
+    # flow: ops registers students (which mints schools/{id}/students/{docId}),
+    # authenticates them, then imports a file carrying that same id so each row
+    # updates its student instead of creating a second one. Without this the
+    # column is an unmapped header, dropped at parse time, and the commit
+    # planner has no choice but to mint a doc id from class + name — which is
+    # how Hillgreen ended up with 1621 duplicate students beside 1621 real ones.
+    "student_id": ["id", "student id", "studentid", "student code", "student no",
+                   "unique id", "unique student id", "student unique id",
+                   "registration id", "registration no", "reg no", "reg id"],
     "sr_no": ["sno", "sr no", "s.no", "serial", "serial no", "serial number", "sl no"],
     "adm_no": ["adm no", "admission no", "admission number",
                "admission no/reference code", "admission no / reference code",
@@ -436,7 +446,7 @@ STUDENT_HEADER_ALIASES = {
 # Everything the parser will carry through to Review. Being here does NOT mean
 # a field reaches Firestore — src/schemas/studentMapping.js decides that, and
 # most of these are deliberately review-only (see REVIEW_ONLY_STUDENT_KEYS).
-STUDENT_SCHEMA_KEYS = ["grade", "section", "roll_no", "student_name", "gender",
+STUDENT_SCHEMA_KEYS = ["student_id", "grade", "section", "roll_no", "student_name", "gender",
                         "dob", "sr_no", "adm_no", "gr_emis_sts", "aadhaar",
                         "mother_name", "father_name", "contact", "email", "city",
                         "father_mobile", "father_email", "mother_mobile",
