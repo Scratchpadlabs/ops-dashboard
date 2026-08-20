@@ -35,7 +35,8 @@ sys.modules["firebase_functions"].options = types.SimpleNamespace(
     MemoryOption=types.SimpleNamespace(MB_256="256", MB_512="512", GB_1="1024"))
 
 from main import (  # noqa: E402
-    resolve_by_doc_id, validate_students, validate_teachers,
+    drop_unrecognized_grade_flags, resolve_by_doc_id, validate_students,
+    validate_teachers,
 )
 
 # A Hillgreen-shaped school, as load_school_config builds it.
@@ -131,3 +132,47 @@ def test_resolve_by_doc_id_never_guesses():
     assert resolve_by_doc_id(BY_DOC_ID, "9_TAGORE", "") is None
     assert resolve_by_doc_id(BY_DOC_ID, "", "") is None
     assert resolve_by_doc_id(BY_DOC_ID, "   ", "  ") is None
+
+
+# ------------------------------------------- retracting the parse warning --
+def _cleaned(grade, section="", flags=None):
+    return {"data": {"student_name": "Zayn", "grade": grade, "section": section},
+            "flags": list(flags if flags is not None else
+                          [{"field": "grade", "severity": "warning",
+                            "message": f"unrecognized grade value: '{grade}'"}])}
+
+
+def test_unrecognized_grade_is_retracted_once_the_class_resolves():
+    rows = [_cleaned("8_KALAM"), _cleaned("Play_Group_A"), _cleaned("ukg jerry")]
+    drop_unrecognized_grade_flags(rows, BY_DOC_ID)
+    assert [r["flags"] for r in rows] == [[], [], []]
+
+
+def test_a_class_that_does_not_resolve_keeps_its_warning():
+    rows = [_cleaned("9_TAGORE")]
+    drop_unrecognized_grade_flags(rows, BY_DOC_ID)
+    assert _messages([r["flags"] for r in rows]) == \
+        ["unrecognized grade value: '9_TAGORE'"]
+
+
+def test_other_grade_warnings_survive():
+    """Only the "this is not a grade" verdict is retracted — a cell holding
+    two grades is still ambiguous however the class resolves."""
+    rows = [_cleaned("8_KALAM", flags=[
+        {"field": "grade", "severity": "warning",
+         "message": "multiple grades found in '8_KALAM, 9_RAMAN' — using '8_KALAM'"},
+        {"field": "grade", "severity": "warning",
+         "message": "unrecognized grade value: '8_KALAM'"},
+        {"field": "contact", "severity": "warning", "message": "missing contact number"},
+    ])]
+    drop_unrecognized_grade_flags(rows, BY_DOC_ID)
+    assert _messages([r["flags"] for r in rows]) == [
+        "multiple grades found in '8_KALAM, 9_RAMAN' — using '8_KALAM'",
+        "missing contact number",
+    ]
+
+
+def test_without_the_map_nothing_is_retracted():
+    rows = [_cleaned("8_KALAM")]
+    drop_unrecognized_grade_flags(rows, None)
+    assert _messages([r["flags"] for r in rows]) == ["unrecognized grade value: '8_KALAM'"]

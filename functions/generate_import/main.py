@@ -594,6 +594,32 @@ def resolve_by_doc_id(class_by_doc_id, raw_grade, raw_section):
     return None
 
 
+UNRECOGNIZED_GRADE_PREFIX = "unrecognized grade value:"
+
+
+def drop_unrecognized_grade_flags(cleaned, class_by_doc_id):
+    """Retract the parser's "unrecognized grade value" once the school config
+    shows the value was a class id all along.
+
+    tabular_parser reads each cell with no knowledge of the school, so a
+    Class cell holding a whole class id ("8_KALAM") is correctly reported as
+    not being a grade. Only here, after load_school_config, can that be
+    resolved — and on Hillgreen's 2026-27 export it was every single row:
+    1621 warnings about 52 classes the school has configured.
+
+    A row whose class does NOT resolve keeps its warning, which is the whole
+    point: the report should be short enough that the real one is visible.
+    """
+    for c in cleaned:
+        d = c.get("data") or {}
+        if not resolve_by_doc_id(class_by_doc_id, d.get("grade"), d.get("section")):
+            continue
+        c["flags"] = [f for f in c["flags"]
+                      if not (f.get("field") == "grade"
+                              and str(f.get("message", "")).startswith(UNRECOGNIZED_GRADE_PREFIX))]
+    return cleaned
+
+
 def validate_students(rows, class_lookup, sections_by_grade, existing_flags=None,
                       class_by_doc_id=None):
     flags_by_row = [[] for _ in rows]
@@ -1054,6 +1080,7 @@ def process_import(req: https_fn.CallableRequest):
                 extra = (c.get("provenance") or {}).get("extra_flags") or []
                 if extra:
                     c["flags"] = extra + c["flags"]
+            drop_unrecognized_grade_flags(cleaned, cfg["class_by_doc_id"])
 
         cleaned_data = [c["data"] for c in cleaned]
         if entity == "students":
