@@ -22,33 +22,17 @@ import {
   schoolCollection, importAliasDoc,
 } from '../firebase/schoolCollections.js'
 import { startProcessImport, commitImportRemote } from '../utils/api.js'
-import { classify, GRADE } from '../utils/educationKB.js'
-import { normalizeSectionValue } from '../utils/classResolver.js'
+import {
+  normalizeGrade, normalizeSection, buildClassLookup, resolveClassId, describeClassMiss,
+} from '../utils/classLookup.js'
 import { validateDoc, formatErrors } from '../schemas/schoolSchema.js'
 import { validateCurrentClassId } from '../schemas/currentClassId.js'
 import { mapImportRowToStudent } from '../schemas/studentMapping.js'
 
-// ── Grade normalization — delegates to the shared education knowledge base
-// (src/utils/educationKB.js), which is seeded from the very same
-// functions/shared/education_kb.json that generate_import/education_kb.py reads.
-// The review UI needs the same "does this row's class-section exist" answer
-// the Cloud Function used when it raised the flag, and the only way to
-// guarantee that is one shared vocabulary rather than two hand-synced
-// roman-numeral tables (which is what this used to be). ─────────────────────
-export function normalizeGrade(g) {
-  const s = (g || '').trim()
-  if (!s) return ''
-  // expect: GRADE is correct here — every caller already knows this value
-  // came from a grade column, the context that lets a bare 'V' read as 5.
-  const r = classify(s, { expect: GRADE })
-  return r.type === GRADE && r.canonical ? r.canonical : s.toUpperCase()
-}
-// Board tokens stripped, so a teacher row's "SCI_CBSE_A" resolves to the same
-// class as the configured "SCI_A". One rule, shared with the Cloud Function's
-// normalize_section and the wizard's class derivation.
-export function normalizeSection(s) {
-  return normalizeSectionValue(s)
-}
+// Re-exported for ImportReview.vue, which has always imported it from this
+// module; the definition moved to utils/classLookup.js with the rest of the
+// class matching.
+export { normalizeGrade, normalizeSection }
 
 function slugPart(s) {
   return (s || '').trim().replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_|_$/g, '')
@@ -126,40 +110,11 @@ export async function setRowExcluded(jobId, rowId, excluded) {
 }
 
 // ── School config lookups (shared by the commit planner) ───────────────────
+// The matching itself lives in src/utils/classLookup.js — pure, so it can be
+// checked without a live school (node tools/check_class_lookup.mjs).
 async function loadClassLookup(schoolId) {
   const snap = await getDocs(schoolCollection(schoolId, 'classes'))
-  const classLookup = new Map()
-  const subjectsByClass = new Map()
-  snap.docs.forEach(d => {
-    const c = { id: d.id, ...d.data() }
-    classLookup.set(`${normalizeGrade(c.clazz)}|${normalizeSection(c.section)}`, c.id)
-    subjectsByClass.set(c.id, (c.subjects || []).map(s => s.subjectId).filter(Boolean))
-  })
-  return { classLookup, subjectsByClass }
-}
-
-/**
- * Why a (grade, section) missed classLookup, in words an operator can act on.
- *
- * "Class-section not configured for this school." was the entire message, on
- * every one of the rows, with no indication of what was looked for or what
- * exists — so a school whose Classes collection is simply empty looked exactly
- * like one section being misspelled. Both are common and the fixes are
- * completely different, so the message has to tell them apart.
- */
-function describeClassMiss(classLookup, rawGrade, rawSection) {
-  if (classLookup.size === 0) {
-    return 'School Setup has no classes configured at all — set up the class structure before importing.'
-  }
-  const grade = normalizeGrade(rawGrade)
-  const section = normalizeSection(rawSection)
-  const sameGrade = [...classLookup.keys()]
-    .filter(k => k.split('|')[0] === grade)
-    .map(k => k.split('|')[1] || '(no section)')
-  const looked = `looked for grade "${grade}" section "${section || '(none)'}"`
-  return sameGrade.length
-    ? `Class-section not configured — ${looked}. Grade "${grade}" has: ${sameGrade.sort().join(', ')}.`
-    : `Class-section not configured — ${looked}, and grade "${grade}" has no classes at all in School Setup.`
+  return buildClassLookup(snap.docs.map(d => ({ id: d.id, ...d.data() })))
 }
 
 async function loadSubjectLookup(schoolId) {
@@ -333,7 +288,8 @@ function fieldsEqual(a, b, keys) {
 }
 
 async function buildStudentsPlan(schoolId, rows) {
-  const { classLookup } = await loadClassLookup(schoolId)
+  const lookup = await loadClassLookup(schoolId)
+  const { classLookup } = lookup
   const classIds = Array.from(new Set(classLookup.values()))
   // One fetch for the whole existing roster instead of a getDoc per row —
   // matters at the 1000+ row scale imports are sized for.
@@ -348,9 +304,9 @@ async function buildStudentsPlan(schoolId, rows) {
       items.push({ row, status: 'SUGGESTION_PENDING', reason: 'Resolve suggested fixes before committing' })
       continue
     }
-    const classId = classLookup.get(`${normalizeGrade(d.grade)}|${normalizeSection(d.section)}`)
+    const classId = resolveClassId(lookup, d.grade, d.section)
     if (!classId) {
-      items.push({ row, status: 'ERROR', reason: describeClassMiss(classLookup, d.grade, d.section) })
+      items.push({ row, status: 'ERROR', reason: describeClassMiss(lookup, d.grade, d.section) })
       continue
     }
     const base = slugPart(d.roll_no) || slugPart(d.student_name) || 'student'
@@ -394,7 +350,8 @@ async function buildStudentsPlan(schoolId, rows) {
 }
 
 async function buildTeachersPlan(schoolId, rows) {
-  const { classLookup } = await loadClassLookup(schoolId)
+  const lookup = await loadClassLookup(schoolId)
+  const { classLookup } = lookup
   const subjectLookup = await loadSubjectLookup(schoolId)
   const subjectIdsByGrade = await loadSubjectIdsByGrade(schoolId)
   const { byEmail, byName } = await loadStaffLookup(schoolId)
@@ -407,14 +364,14 @@ async function buildTeachersPlan(schoolId, rows) {
       items.push({ row, status: 'SUGGESTION_PENDING', reason: 'Resolve suggested fixes before committing' })
       continue
     }
-    const classId = classLookup.get(`${normalizeGrade(d.grade)}|${normalizeSection(d.section)}`)
+    const classId = resolveClassId(lookup, d.grade, d.section)
     const subject = (d.subject || '').replace(/\?$/, '').trim()
     if (!d.teacher_name?.trim()) {
       items.push({ row, status: 'ERROR', reason: 'Missing teacher name' })
       continue
     }
     if (!classId) {
-      items.push({ row, status: 'ERROR', reason: describeClassMiss(classLookup, d.grade, d.section) })
+      items.push({ row, status: 'ERROR', reason: describeClassMiss(lookup, d.grade, d.section) })
       continue
     }
     const subjectId = subject ? subjectLookup.get(`${normalizeGrade(d.grade)}|${subject.toLowerCase()}`) : null

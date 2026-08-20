@@ -38,6 +38,7 @@ python -m pytest tests/test_class_resolver.py::test_name -v      # a single test
 python3 tools/check_resolver_parity.py && node tools/check_resolver_parity.mjs
 python3 tools/check_schema_parity.py   && node tools/check_schema_parity.mjs
 node tools/check_derive_classes.mjs    # class derivation behaviour
+node tools/check_class_lookup.mjs      # how an import row finds its class
 node tools/check_remarks_import.mjs
 
 # Read-only production inspection (needs application-default credentials)
