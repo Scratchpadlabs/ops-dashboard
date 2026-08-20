@@ -43,6 +43,56 @@ cd functions/shared          && python -m pytest      # assign_survey, shared
 
 ---
 
+## create_auth_accounts (Tools -> Auth Accounts)
+
+Creates the Firebase Auth account for everyone a school has registered but not
+yet given a sign-in. Replaces two hand-run Node scripts that needed a service
+account key on a laptop and had the school id edited into the source each time.
+
+Registering someone — via the Register tool or a roster import — writes their
+record with `needsAuthCreation: true`. Nothing in a browser can create the Auth
+account, because that is Admin SDK only, so this callable is the second half.
+
+- One callable for both `students` and `staffs`; the two scripts were identical
+  apart from the collection.
+- Preview and apply are the SAME call with `dryRun` flipped, so the number on
+  the confirm button is the number that happens.
+- `needsAuthCreation` is the queue and a person is cleared only once their
+  account exists, so a run is resumable — `limit` bounds one call (default 200,
+  max 500) and the response says whether more remain.
+- An email that already has an Auth account is LINKED rather than failed. The
+  scripts recorded that as a failure, so the person stayed flagged for ever and
+  every later run retried them.
+- A record with no email, or whose id is under 6 characters (Firebase's minimum
+  password length), is reported and skipped rather than failing the run.
+
+**The first-time password is the person's own id**, exactly as the scripts did,
+because that is what the teacher and student apps hand out. It is weak and
+guessable and worth changing — but as a deliberate change to how those apps
+onboard, not as a side effect of automating this. Passwords are never returned
+by the callable or written to its log.
+
+### Files needed in the folder:
+- main.py ✅
+- requirements.txt ✅
+
+### Deploy:
+No shared code, so plain gcloud.
+```
+cd functions/create_auth_accounts
+
+gcloud functions deploy create_auth_accounts \
+  --gen2 --runtime python312 --region asia-south1 \
+  --source . --entry-point create_auth_accounts \
+  --trigger-http --allow-unauthenticated --project clarified-1501 \
+  --memory 512MB --timeout 540s --max-instances 3
+```
+No secrets. The runtime service account's existing `roles/editor` does not cover
+Auth admin — if account creation fails with a permission error, grant it
+`roles/firebaseauth.admin`.
+
+---
+
 ## generate_pending_letter (v2: compose dialog, draft/render modes)
 
 PDF per school listing outstanding pending items from the Data Receivable

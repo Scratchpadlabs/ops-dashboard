@@ -311,3 +311,16 @@ function downloadBlob(blob, filename) {
 function formatDate(d) {
   return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })
 }
+
+// ── create_auth_accounts ────────────────────────────────────────────────────
+// Firebase Auth accounts can only be created with the Admin SDK, so this is a
+// callable rather than something the browser does. Preview and apply are the
+// same call with dryRun flipped, so the number on the confirm button is the
+// number that happens. Resumable: `needsAuthCreation` is the queue, and a
+// person is cleared only once their account exists.
+const createAuthAccountsCallable = httpsCallable(functions, 'create_auth_accounts', { timeout: 540_000 })
+
+export async function createAuthAccountsRemote({ schoolId, collection, dryRun = true, limit }) {
+  const res = await createAuthAccountsCallable({ schoolId, collection, dryRun, limit })
+  return res.data
+}
