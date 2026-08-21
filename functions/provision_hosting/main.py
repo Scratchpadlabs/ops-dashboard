@@ -374,6 +374,20 @@ def load_preserve_records(db) -> list[Record]:
     ]
 
 
+def _dns_rows(records: list[Record]) -> list[dict]:
+    """
+    Records shaped for the Namecheap dashboard's Advanced DNS table.
+
+    The key names match the column headings ops is typing into — Host, Type,
+    Value, TTL — rather than Namecheap's API field names, because the audience
+    for this list is a person with the dashboard open, not the API.
+    """
+    return [
+        {"host": r.name, "type": r.type, "value": r.address, "ttl": r.ttl}
+        for r in records
+    ]
+
+
 def _plan(db, school_id: str, site_id: str | None, subdomain: str | None) -> dict:
     """Shared resolution for preview and provision."""
     school = db.collection("schools").document(school_id).get()
@@ -426,7 +440,11 @@ def hosting_preview(req: https_fn.Request) -> https_fn.Response:
         # CORS failure. Report it as JSON the UI can actually display.
         return _json_error(f"Hosting API unreachable: {exc}", 502)
 
-    if body.get("withDomain", True):
+    # Only reach for Namecheap when ops has actually asked us to write the zone.
+    # Otherwise the preview needs no Namecheap credentials, no whitelisted egress
+    # IP and no VPC connector — the whole Namecheap prerequisite drops off the
+    # critical path for the common case of "put the school online".
+    if body.get("withDomain", True) and body.get("writeDns", False):
         try:
             client = NamecheapClient()
             preserve = load_preserve_records(db)
@@ -435,12 +453,15 @@ def hosting_preview(req: https_fn.Request) -> https_fn.Response:
             # rather than the final record set.
             write = apply_records(client, BASE_DOMAIN, desired=[], preserve=preserve, dry_run=True)
             plan["dns"] = {
+                "mode": "auto",
                 "zone_record_count": len(write.before),
                 "preserve_count": len(preserve),
                 "warnings": write.warnings,
             }
         except NamecheapError as exc:
-            plan["dns"] = {"error": str(exc)}
+            plan["dns"] = {"mode": "auto", "error": str(exc)}
+    elif body.get("withDomain", True):
+        plan["dns"] = {"mode": "manual"}
 
     return _json(plan)
 
@@ -448,7 +469,23 @@ def hosting_preview(req: https_fn.Request) -> https_fn.Response:
 @https_fn.on_request(cors=CORS, region="asia-south1")
 def hosting_provision(req: https_fn.Request) -> https_fn.Response:
     """
-    Create the site, attach the domain, write DNS, dispatch the build.
+    Create the site, attach the domain, optionally write DNS, dispatch the build.
+
+    THE DNS WRITE IS OPT-IN (`writeDns`, default off), and the two halves of
+    "custom domain" are deliberately separate:
+
+      * `withDomain` attaches the domain to the Hosting site through the Firebase
+        API. This is what makes Hosting serve the domain and start the
+        certificate, and it needs nothing but Firebase credentials.
+      * `writeDns` additionally writes the records into Namecheap for you. That
+        is the half that needs API credentials, a whitelisted static egress IP
+        and a populated dns_preserve list, and it is the half that can damage a
+        live zone.
+
+    With writeDns off, the records Firebase wants are recorded on the run and
+    returned to the UI to be entered in the Namecheap dashboard by hand. Nothing
+    about the deploy waits on them: the site is live on its .web.app URL either
+    way, and the custom domain starts serving whenever the records land.
 
     Each step is recorded to hosting_runs/{runId} as it completes, so a failure
     halfway leaves an accurate record of what exists. Re-running is the recovery
@@ -470,6 +507,7 @@ def hosting_provision(req: https_fn.Request) -> https_fn.Response:
         return _json_error(str(exc), 400)
 
     with_domain = bool(body.get("withDomain", True))
+    write_dns = with_domain and bool(body.get("writeDns", False))
     run_id = f"{plan['site_id']}__{uuid.uuid4().hex[:8]}"
     run_ref = db.collection("hosting_runs").document(run_id)
     run: dict = {
@@ -477,6 +515,7 @@ def hosting_provision(req: https_fn.Request) -> https_fn.Response:
         "id": run_id,
         "status": "in_progress",
         "with_domain": with_domain,
+        "write_dns": write_dns,
         "created_by": actor,
         "created_at": _now(),
         "steps": {},
@@ -507,29 +546,40 @@ def hosting_provision(req: https_fn.Request) -> https_fn.Response:
             desired = records_from_firebase_dns_updates(
                 domain_doc.get("requiredDnsUpdates", {}), plan["subdomain"], BASE_DOMAIN
             )
-            client = NamecheapClient()
-            preserve = load_preserve_records(db)
 
-            # Guardrail 4: the pre-change zone is persisted BEFORE the write, so
-            # a bad write is always recoverable by hand.
-            pre = client.get_hosts(BASE_DOMAIN)
-            db.collection("hosting_dns_snapshots").document(run_id).set(
-                {
-                    "domain": BASE_DOMAIN,
-                    "taken_at": _now(),
-                    "run_id": run_id,
-                    "records": [r.__dict__ for r in pre],
-                }
-            )
+            if not write_dns:
+                # Hand the records back instead of writing them. Hosting often
+                # has not computed requiredDnsUpdates by the time the
+                # customDomain is created, so this can legitimately be empty
+                # here — hosting_status recomputes it on every poll and the UI
+                # fills the table in when Firebase catches up.
+                step("dns", ok=True, mode="manual", records=_dns_rows(desired))
+                run_ref.set({"manual_dns": _dns_rows(desired)}, merge=True)
+            else:
+                client = NamecheapClient()
+                preserve = load_preserve_records(db)
 
-            write = apply_records(client, BASE_DOMAIN, desired=desired, preserve=preserve)
-            step(
-                "dns",
-                ok=write.verified,
-                added=[r.label() for r in write.added],
-                warnings=write.warnings,
-                snapshot=run_id,
-            )
+                # Guardrail 4: the pre-change zone is persisted BEFORE the write,
+                # so a bad write is always recoverable by hand.
+                pre = client.get_hosts(BASE_DOMAIN)
+                db.collection("hosting_dns_snapshots").document(run_id).set(
+                    {
+                        "domain": BASE_DOMAIN,
+                        "taken_at": _now(),
+                        "run_id": run_id,
+                        "records": [r.__dict__ for r in pre],
+                    }
+                )
+
+                write = apply_records(client, BASE_DOMAIN, desired=desired, preserve=preserve)
+                step(
+                    "dns",
+                    ok=write.verified,
+                    mode="auto",
+                    added=[r.label() for r in write.added],
+                    warnings=write.warnings,
+                    snapshot=run_id,
+                )
 
         dispatch_build(plan["school_id"], plan["site_id"])
         dispatched_at = _now()
@@ -583,8 +633,29 @@ def hosting_status(req: https_fn.Request) -> https_fn.Response:
             domain_doc = get_custom_domain(_hosting_session(), run["site_id"], run["domain"])
             out["cert_state"] = domain_doc.get("state", "UNKNOWN")
             out["required_dns_updates"] = domain_doc.get("requiredDnsUpdates", {})
+
+            # Recomputed on every poll rather than read back from the run.
+            # Firebase usually has not worked out requiredDnsUpdates at the
+            # moment the customDomain is created, so the list captured during
+            # provisioning is often empty — and a permanently empty "records to
+            # add" table is worse than no table at all. Refresh it here, where
+            # we already hold a fresh domain_doc.
+            if not run.get("write_dns"):
+                rows = _dns_rows(
+                    records_from_firebase_dns_updates(
+                        domain_doc.get("requiredDnsUpdates", {}),
+                        run.get("subdomain", ""),
+                        BASE_DOMAIN,
+                    )
+                )
+                out["manual_dns"] = rows or run.get("manual_dns", [])
+                if rows and rows != run.get("manual_dns"):
+                    db.collection("hosting_runs").document(run["id"]).set(
+                        {"manual_dns": rows, "updated_at": _now()}, merge=True
+                    )
         except Exception as exc:  # noqa: BLE001 — a cert lookup must never 500 the poll
             out["cert_state"] = f"error: {exc}"
+            out["manual_dns"] = run.get("manual_dns", [])
 
     gh = latest_run(run.get("site_id", ""), run.get("dispatched_at") or run.get("created_at"))
     if gh:

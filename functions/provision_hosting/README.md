@@ -8,7 +8,31 @@ here to keep this change self-contained.
 
 ---
 
-## 1. The static egress IP (do this first — nothing works without it)
+## What you actually need, and what you don't
+
+The feature has two halves, and **only the first is required**:
+
+| | What it does | Needs |
+| --- | --- | --- |
+| **Hosting** | Creates the Hosting site, attaches the custom domain in Firebase, builds the teacher + student apps with the school id, deploys | Firebase credentials, a GitHub PAT |
+| **DNS write** (opt-in) | Enters the records into Namecheap for you | Namecheap API access, a whitelisted static egress IP, a populated preserve list |
+
+The Publish tab defaults to the first only. Firebase tells you which records it
+wants and the UI prints them as a Host / Type / Value table to paste into
+Namecheap → Domain List → Manage → Advanced DNS. The school is live on its
+`.web.app` URL regardless; the custom domain starts serving whenever the records
+land.
+
+**If you are adding DNS by hand, skip sections 1 and 3 entirely, and drop
+`--vpc-connector`, `--egress-settings` and the `NAMECHEAP_*` secrets from the
+deploy commands in section 4.** Sections 2 (the GitHub PAT), 4 (deploy) and 5
+(Actions secrets) are the whole prerequisite.
+
+---
+
+## 1. The static egress IP — only for the automatic DNS write
+
+Skip this unless you want the function writing Namecheap for you.
 
 Namecheap's API only answers requests from a **whitelisted IPv4**, and it checks
 both the `ClientIp` parameter *and* the actual source address. Cloud Functions
@@ -63,7 +87,12 @@ read-only checkout.
 
 ---
 
-## 3. The DNS preserve list — read this before the first real run
+## 3. The DNS preserve list — only for the automatic DNS write
+
+Skip this too if you are entering records by hand. It exists solely to protect
+the zone from *our* writes; if we never write, there is nothing to protect
+against.
+
 
 Namecheap's `setHosts` replaces the **entire** zone, and `getHosts` does not
 return records managed by Namecheap subsystems (Email Forwarding MX, URL
@@ -98,6 +127,36 @@ own whitelist.
 ---
 
 ## 4. Deploy
+
+### Hosting only (no Namecheap) — the shorter path
+
+Nothing here depends on section 1 or 3. This is enough to make Publish work.
+
+```bash
+cd functions/provision_hosting
+
+COMMON="--gen2 --runtime python312 --region asia-south1 --source . \
+  --trigger-http --allow-unauthenticated --project clarified-1501"
+
+gcloud functions deploy hosting_preview $COMMON \
+  --entry-point hosting_preview --memory 512MB --timeout 120s --max-instances 3
+
+gcloud functions deploy hosting_provision $COMMON \
+  --entry-point hosting_provision --memory 512MB --timeout 300s --max-instances 2 \
+  --set-secrets GITHUB_DISPATCH_PAT=GITHUB_DISPATCH_PAT:latest
+
+gcloud functions deploy hosting_status $COMMON \
+  --entry-point hosting_status --memory 256MB --timeout 60s --max-instances 5 \
+  --set-secrets GITHUB_DISPATCH_PAT=GITHUB_DISPATCH_PAT:latest
+```
+
+Leaving the `NAMECHEAP_*` secrets unbound is safe: the credentials are only read
+when a run is started with the DNS-write box ticked, and `NamecheapClient()`
+refuses to construct without them rather than half-working.
+
+### With the automatic DNS write
+
+Requires sections 1 and 3 first.
 
 ```bash
 cd functions/provision_hosting
@@ -201,6 +260,41 @@ function, and the origin allowlist never ran.
 
 ---
 
+## 6. Publishing a school that already has a site
+
+Read this before the first run against a real school — it is the one place the
+button can quietly do the wrong thing.
+
+Schools onboarded by hand today go through the teacher repo: add a target to
+`.firebaserc`, add a matching `hosting` entry to `firebase.json`, commit, then
+run `deploy.yml` from the Actions tab. Publish replaces all of that — it
+generates the Hosting config in the runner and never commits to the teacher repo
+— but it has to be told **which Hosting site to deploy to**, and it defaults to a
+site id derived from the Firestore school id.
+
+Those two rarely agree. The sites created by hand are, from `.firebaserc`:
+
+```
+hillgreenhighschool   sds-teacher   sangamschool   symbiosis-prabhat
+testapp-central       sse           SAMARTH DNYANPEETH SAHAYDRI
+```
+
+For a school doc id of `Hillgreen_Highschool`, the default site id is
+`hillgreen-highschool` — **not** the existing `hillgreenhighschool`. Publishing
+with the default would create a second site and deploy there, leaving the live
+one untouched and the school apparently unchanged.
+
+So: **for a school that is already live, type its existing site id into the
+Hosting site id field.** The preview says `already exists, will be reused` when
+you have it right, and warns when it is about to create a new site. Only take
+the default for a genuinely new school.
+
+(`SAMARTH DNYANPEETH SAHAYDRI` is not a legal Hosting site id — spaces and
+capitals are not permitted — so that target could never have resolved to a real
+site. It needs a real id before it can be published this way.)
+
+---
+
 ## What this never does
 
 Nothing in this feature writes to `Scratchpad-Labs/scratchpad_teacher`. No commit
@@ -208,3 +302,6 @@ to `schools.json`, `.firebaserc` or `firebase.json`. The workflow checks the rep
 out read-only and generates its Hosting config inside the runner, which is then
 discarded. The teacher repo's own `deploy.yml` is untouched and still works
 exactly as before for the schools already configured there.
+
+It also never writes DNS unless you tick the box. With that box clear, no
+Namecheap call is made at all — not even a read.

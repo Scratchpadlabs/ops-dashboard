@@ -40,14 +40,35 @@
           </div>
         </div>
 
+        <!-- Two halves of "custom domain", split because only one of them
+             touches Namecheap. Attaching the domain is a Firebase call and is
+             what starts the certificate; writing the records is the part that
+             needs API credentials and can damage a live zone, so it is opt-in.
+             The .web.app URL needs no DNS at all either way, so a school can go
+             live in minutes and get its branded domain whenever. -->
         <label class="flex items-center gap-2 text-sm text-slate-700">
           <Checkbox v-model="withDomain" binary />
-          Also attach the custom domain and write its DNS records
+          Attach <span class="font-mono text-xs">{{ subdomain || '…' }}.{{ BASE_DOMAIN }}</span>
+          to this site in Firebase
         </label>
-        <!-- The .web.app URL needs no DNS at all, so a school can go live in
-             minutes and get its branded domain later. Turning this off skips
-             every Namecheap interaction, which is also the fallback if the API
-             is misbehaving. -->
+
+        <label v-if="withDomain" class="flex items-center gap-2 text-sm text-slate-700 pl-6">
+          <Checkbox v-model="writeDns" binary />
+          Also write the DNS records in Namecheap automatically
+        </label>
+        <p v-if="withDomain && !writeDns" class="text-xs text-slate-500 pl-6">
+          Leave this off to add the records yourself in Namecheap → Domain List → Manage →
+          Advanced DNS. The exact records appear below once Firebase issues them.
+        </p>
+        <p v-if="withDomain && writeDns"
+          class="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 ml-6">
+          <i class="pi pi-exclamation-triangle text-xs mr-1"></i>
+          Writing <span class="font-mono">{{ BASE_DOMAIN }}</span> through the Namecheap API
+          replaces the whole zone. This needs the API credentials, the whitelisted egress IP, and a
+          populated <span class="font-mono">hosting_config/dns_preserve</span> list — without the
+          last one, MX records the API cannot see are lost silently. Run Check first.
+        </p>
+
         <p v-if="!withDomain" class="text-xs text-amber-700 bg-amber-50 rounded-lg px-3 py-2">
           The school will be reachable at <span class="font-mono">{{ siteId }}.web.app</span> only.
           You can attach the domain later by re-running with this checked.
@@ -75,9 +96,25 @@
             — {{ preview.site_exists ? 'already exists, will be reused' : 'will be created' }}
           </span>
         </div>
+        <!-- Creating a site is not obviously the good outcome. Sites made by
+             hand rarely match the slug derived from the school id
+             (hillgreenhighschool vs hillgreen-highschool), and taking the
+             default there silently builds a SECOND site next to the live one. -->
+        <div v-if="!preview.site_exists" class="text-xs text-amber-800 bg-amber-50
+          border border-amber-200 rounded-lg px-3 py-2">
+          <i class="pi pi-exclamation-triangle text-xs mr-1"></i>
+          No Hosting site with this id exists yet. If this school is already served by a site
+          created by hand, type that site's exact id above instead — otherwise this creates a
+          second site alongside it.
+        </div>
+
         <div v-if="withDomain && preview.dns" class="text-slate-600">
           <template v-if="preview.dns.error">
             <span class="text-red-600">DNS check failed: {{ preview.dns.error }}</span>
+          </template>
+          <template v-else-if="preview.dns.mode === 'manual'">
+            <span class="font-mono">{{ subdomain }}.{{ BASE_DOMAIN }}</span> will be attached in
+            Firebase; its DNS records are yours to add in Namecheap afterwards.
           </template>
           <template v-else>
             Zone <span class="font-mono">{{ BASE_DOMAIN }}</span> has
@@ -132,8 +169,54 @@
           </a>
           <template v-if="withDomain">
             — <span class="font-mono">https://{{ lastRun.domain }}</span> follows once the
-            certificate is issued.
+            records are in place and the certificate is issued.
           </template>
+        </div>
+
+        <!-- The records to type into Namecheap. Recomputed server-side on every
+             poll, because Firebase rarely has them ready at the moment the
+             domain is attached. -->
+        <div v-if="withDomain && !writeDns" class="pt-2 border-t border-slate-100 space-y-2">
+          <div class="flex items-center justify-between">
+            <div class="text-sm font-semibold text-slate-800">Add these in Namecheap</div>
+            <Button v-if="manualDns.length" label="Copy" icon="pi pi-copy" text size="small"
+              @click="copyDns" />
+          </div>
+
+          <p v-if="!manualDns.length" class="text-xs text-slate-500">
+            Waiting for Firebase to issue the records for
+            <span class="font-mono">{{ lastRun.domain }}</span>. They usually appear within a
+            minute — this refreshes on its own, or press Refresh above.
+          </p>
+
+          <div v-else class="overflow-x-auto">
+            <table class="w-full text-xs">
+              <thead>
+                <tr class="text-left text-slate-500">
+                  <th class="py-1 pr-3 font-medium">Host</th>
+                  <th class="py-1 pr-3 font-medium">Type</th>
+                  <th class="py-1 pr-3 font-medium">Value</th>
+                  <th class="py-1 font-medium">TTL</th>
+                </tr>
+              </thead>
+              <tbody class="font-mono">
+                <tr v-for="(r, i) in manualDns" :key="`${r.type}-${r.value}-${i}`"
+                  class="border-t border-slate-100">
+                  <td class="py-1 pr-3">{{ r.host }}</td>
+                  <td class="py-1 pr-3">{{ r.type }}</td>
+                  <td class="py-1 pr-3 break-all">{{ r.value }}</td>
+                  <td class="py-1">{{ r.ttl || 'Automatic' }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <p v-if="manualDns.length" class="text-xs text-slate-400">
+            Namecheap → Domain List → Manage → Advanced DNS. Certificate issue can take a few
+            hours after the records propagate; the
+            <span class="font-mono">.web.app</span> URL works immediately.
+          </p>
+          <p v-if="copied" class="text-xs text-emerald-600">Copied.</p>
         </div>
       </div>
     </template>
@@ -156,13 +239,17 @@ const BASE_DOMAIN = 'myhpc.in'
 const STEP_ROWS = [
   { key: 'site', label: 'Hosting site created' },
   { key: 'custom_domain', label: 'Custom domain attached' },
-  { key: 'dns', label: 'DNS records written' },
+  { key: 'dns', label: 'DNS records' },
   { key: 'build_dispatched', label: 'Build started' },
 ]
 
 const siteId = ref('')
 const subdomain = ref('')
 const withDomain = ref(true)
+// Off by default: the Namecheap write is the only step here that can damage
+// something already live, and the records are short enough to enter by hand.
+const writeDns = ref(false)
+const copied = ref(false)
 
 const previewing = ref(false)
 const publishing = ref(false)
@@ -174,6 +261,22 @@ const error = ref('')
 let timer = null
 
 const canRun = computed(() => !!props.schoolId && !!siteId.value)
+
+const manualDns = computed(() => lastRun.value?.manual_dns || [])
+
+async function copyDns() {
+  const text = manualDns.value
+    .map((r) => `${r.host}\t${r.type}\t${r.value}\t${r.ttl || 'Automatic'}`)
+    .join('\n')
+  try {
+    await navigator.clipboard.writeText(text)
+    copied.value = true
+    setTimeout(() => (copied.value = false), 2000)
+  } catch {
+    // Clipboard access is blocked in some contexts; the table is right there.
+    copied.value = false
+  }
+}
 
 const statusLabel = computed(() => ({
   in_progress: 'Provisioning',
@@ -211,7 +314,10 @@ function stepIcon(key) {
 function stepNote(key) {
   const step = lastRun.value?.steps?.[key]
   if (!step) return ''
-  if (key === 'dns' && step.added?.length) return `${step.added.length} record(s) added`
+  if (key === 'dns') {
+    if (step.mode === 'manual') return 'to add by hand'
+    if (step.added?.length) return `${step.added.length} record(s) added`
+  }
   if (key === 'custom_domain' && step.state) return step.state
   if (key === 'site') return step.created ? 'created' : 'reused'
   return step.ok ? 'done' : 'check log'
@@ -227,6 +333,7 @@ async function runPreview() {
       siteId: siteId.value,
       subdomain: subdomain.value,
       withDomain: withDomain.value,
+      writeDns: writeDns.value,
     })
   } catch (e) {
     error.value = e.message
@@ -244,6 +351,7 @@ async function publish() {
       siteId: siteId.value,
       subdomain: subdomain.value,
       withDomain: withDomain.value,
+      writeDns: writeDns.value,
     })
     lastRun.value = res
     startPolling(res.runId)
@@ -270,8 +378,14 @@ async function poll() {
 
 // The build is ~10 minutes, so a slow poll is plenty and keeps the function's
 // invocation count sane. Refresh is always available for the impatient.
+//
+// The first poll fires straight away rather than waiting out the interval:
+// provision returns before Firebase has computed the DNS records, so the
+// records-to-add table would otherwise sit empty for 20 seconds on exactly the
+// screen ops is waiting on.
 function startPolling() {
   stopPolling()
+  poll()
   timer = setInterval(poll, 20000)
 }
 
