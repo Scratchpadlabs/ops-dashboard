@@ -10,11 +10,16 @@
         <Button label="Import CSV" icon="pi pi-upload" size="small" outlined @click="importVisible = true" />
         <Button label="Sample CSV" icon="pi pi-download" size="small" text @click="downloadSample" />
         <Button label="Export CSV" icon="pi pi-file-export" size="small" text :disabled="!selectedTermId" @click="exportCsv" />
+        <Button label="Exam Scheme" icon="pi pi-cog" size="small" severity="secondary" outlined
+                :disabled="!schoolId" @click="schemeDialogVisible = true" />
         <Button label="Apply Exam Template" icon="pi pi-sitemap" size="small" severity="secondary"
                 :disabled="!terms.length || !subjects.length" @click="openTemplate" />
         <Button label="New Assessment (Bulk)" icon="pi pi-plus" size="small" :disabled="!selectedTermId" @click="openBuilder" />
       </div>
     </div>
+
+    <ExamSchemeDialog v-model:visible="schemeDialogVisible" :school-id="schoolId"
+                      :subjects="subjects" @saved="onSchemeSaved" />
 
     <CsvImportDialog
       v-model:visible="importVisible"
@@ -273,10 +278,25 @@
          including everything the documents could not answer. -->
     <Dialog v-model:visible="templateVisible" header="Apply Exam Template" modal :style="{ width: '760px' }">
       <div class="space-y-4">
-        <p class="text-sm text-slate-600">
-          Creates the written and internal assessment for every exam, on every subject,
-          in one pass. Doc ids are deterministic, so running it twice updates rather
-          than duplicates.
+        <div v-if="!schemeReady" class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+          <div class="text-sm font-semibold text-amber-900 mb-1">
+            {{ scheme ? 'This school\'s exam scheme has problems' : 'This school has no exam scheme' }}
+          </div>
+          <p class="text-[11px] text-amber-800">
+            Nothing is assumed from other schools — a scheme says how THIS school examines.
+            <span v-if="!scheme">Open <span class="font-semibold">Exam Scheme</span> to build one.</span>
+          </p>
+          <div v-if="schemeVerdict.errors.length" class="text-[11px] text-amber-900 mt-1 space-y-0.5">
+            <div v-for="(e, i) in schemeVerdict.errors" :key="i">{{ e }}</div>
+          </div>
+          <Button label="Open Exam Scheme" icon="pi pi-cog" size="small" text class="mt-1"
+                  @click="templateVisible = false; schemeDialogVisible = true" />
+        </div>
+
+        <p v-else class="text-sm text-slate-600">
+          Applying <span class="font-semibold">{{ scheme.name }}</span>: the written and internal
+          assessment for every exam, on every subject, in one pass. Doc ids are deterministic,
+          so running it twice updates rather than duplicates.
         </p>
 
         <!-- Terms are Firestore ids; nothing in the source documents names them,
@@ -402,7 +422,8 @@
       <template #footer>
         <Button label="Cancel" text @click="templateVisible = false" />
         <Button label="Preview" icon="pi pi-search" outlined :loading="templatePreviewing"
-                :disabled="!templateTermIds[1] || !templateTermIds[2]" @click="previewTemplate" />
+                :disabled="!schemeReady || !templateTermIds[1] || !templateTermIds[2]"
+                @click="previewTemplate" />
         <Button label="Apply" icon="pi pi-check" :loading="applyingTemplate"
                 :disabled="!templatePlan || !templatePlan.items.length" @click="confirmApplyTemplate" />
       </template>
@@ -434,6 +455,8 @@ import { db } from '../../firebase/config'
 import { auth } from '../../firebase/config'
 import { checkEnteredMarks, slugify } from '../../utils/assessmentHelpers.js'
 import { buildAssessmentPlan, compareGradingScale } from '../../utils/assessmentPlan.js'
+import { EXAM_SCHEME_DOC, exampleGradingScale, validateScheme } from '../../utils/examScheme.js'
+import ExamSchemeDialog from './ExamSchemeDialog.vue'
 import { guardedBatchSet, MODE_CREATE, SchemaViolation } from '../../schemas/guardedWrite.js'
 import { toCsv, downloadCsv } from '../../utils/csv.js'
 
@@ -513,6 +536,32 @@ async function loadAssessments() {
 // marks sheet and report cards) and the arithmetic in utils/assessmentPlan.js,
 // which is pure and checked against the report cards' own worked examples —
 // node tools/check_assessment_templates.mjs.
+const schemeDialogVisible = ref(false)
+const scheme = ref(null)
+
+// A scheme is a precondition, not a default: buildAssessmentPlan returns an
+// empty plan without one, and this is what tells an operator why.
+const schemeVerdict = computed(() => scheme.value
+  ? validateScheme(scheme.value)
+  : { ok: false, errors: [], warnings: [] })
+const schemeReady = computed(() => !!scheme.value && schemeVerdict.value.ok)
+
+async function loadScheme() {
+  if (!props.schoolId) { scheme.value = null; return }
+  try {
+    const snap = await getDoc(schoolDoc(props.schoolId, 'config', EXAM_SCHEME_DOC))
+    scheme.value = snap.exists() ? snap.data() : null
+  } catch (e) {
+    console.error('Could not load the exam scheme', e)
+    scheme.value = null
+  }
+}
+
+function onSchemeSaved(saved) {
+  scheme.value = saved
+  templatePlan.value = null   // a plan built from the old scheme is now a lie
+}
+
 const templateVisible = ref(false)
 const templateTermIds = reactive({ 1: null, 2: null })
 const templatePlan = ref(null)
@@ -527,8 +576,12 @@ const templateProgress = ref('')
 // underneath them, and nobody notices until a parent does.
 const scaleCheck = computed(() => {
   if (!scales.value.length) return { matches: false }
+  // Compared against the example's bands, which is the only reference we have.
+  // A school with its own scale is not wrong for differing — this is a nudge,
+  // not a rule, which is why it never blocks.
+  const want = exampleGradingScale().levels
   for (const s of scales.value) {
-    if (compareGradingScale(s).matches) return { matches: true, name: s.name || s.id }
+    if (compareGradingScale(s, want).matches) return { matches: true, name: s.name || s.id }
   }
   return { matches: false }
 })
@@ -558,6 +611,7 @@ async function previewTemplate() {
     // Every term, not just the selected one: the template spans both.
     const snap = await getDocs(schoolCollection(props.schoolId, 'assessments'))
     templatePlan.value = buildAssessmentPlan({
+      scheme: scheme.value,
       subjects: subjects.value,
       termIds: { 1: templateTermIds[1], 2: templateTermIds[2] },
       existing: snap.docs.map(d => ({ id: d.id })),
@@ -1046,9 +1100,9 @@ function exportCsv() {
   downloadCsv(`assessments_${selectedTermId.value}.csv`, toCsv(assessments.value, ASSESSMENT_CSV_COLUMNS))
 }
 
-watch(() => props.schoolId, () => { loadStatic(); assessments.value = []; selectedTermId.value = null })
+watch(() => props.schoolId, () => { loadStatic(); loadScheme(); assessments.value = []; selectedTermId.value = null })
 watch(selectedTermId, () => { loadAssessments(); exitGridMode() })
-onMounted(loadStatic)
+onMounted(() => { loadStatic(); loadScheme() })
 </script>
 
 <style scoped>

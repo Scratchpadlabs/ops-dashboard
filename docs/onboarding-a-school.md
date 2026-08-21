@@ -54,16 +54,33 @@ The NCF stage frameworks are already extracted into
 names against them (Maths/Mathematics/Numeracy all land on the same template)
 and shows every match before writing. Nothing per-school to supply.
 
-### Exam scheme (marks sheet + report card models) → **currently a code change**
+### Exam scheme (marks sheet + report card models) → **Assessments → Exam Scheme**
 
-Hillgreen's scheme lives in `src/data/assessmentTemplates.json`, extracted from
-its `marks_conversion.xlsx` and four report card PDFs. A school that examines
-differently has nowhere to put that today — the documents come to Claude, get
-extracted, and the app is redeployed.
+Each school owns its scheme, at `schools/{id}/config/exam_scheme`. **A school
+without one gets no assessments** — never a default that quietly applies,
+because a school that examines differently would otherwise get columns that
+look right, take marks all term, and disagree with its own report card.
 
-**This is the known gap.** An in-app exam-scheme editor is the fix and is the
-next thing to build. Until then, send the marks sheet and one report card model
-per grade band that differs.
+Building one, from the school's marks sheet and report cards:
+
+1. **Splits** — how a 100-mark exam divides. `standard` is required; add
+   `practical` (70 + 30), `halfPractical` (50 + 50) or your own as the school
+   needs them.
+2. **Exams** — name, term, order, and the written paper's size per grade band.
+   Each becomes two assessments per subject, Written and Internal, because a
+   report card prints them as separate columns.
+3. **Which subjects carry a practical** — every subject the school teaches, and
+   the split it takes. "Suggest from names" guesses once; nothing it guesses is
+   trusted until confirmed. This is the step that stops a school spelling the
+   same subject two ways (`PE Additional` and `HPE`) and having them examined
+   differently by accident.
+4. **Grades taken on trust** — grades covered by extension rather than from a
+   document. They still get assessments; the preview says they are unverified.
+
+Three ways to start: from scratch, by copying another school's scheme (exams and
+splits carry over, the subject list does not), or from the bundled CBSE example —
+which is one school's scheme read from its documents, offered as a starting
+point and never as a standard.
 
 ### Another school's setup → **Clone School**
 

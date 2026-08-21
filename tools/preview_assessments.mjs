@@ -17,6 +17,12 @@
  *     node tools/preview_assessments.mjs --project clarified-1501 \
  *          --school Hillgreen_Highschool --term1 <id> --term2 <id>
  *
+ * The scheme is read from schools/{id}/config/exam_scheme. A school without one
+ * gets no assessments — deliberately, see src/utils/examScheme.js. To see what
+ * the bundled CBSE example WOULD produce for a school, without saving anything:
+ *
+ *     node tools/preview_assessments.mjs … --use-example
+ *
  * Runs the REAL planner (src/utils/assessmentPlan.js) with only the JSON import
  * lines rewritten, because Vite resolves bare JSON imports and plain Node does
  * not — same trick as tools/preview_curriculum.mjs, so what runs here is what
@@ -38,8 +44,9 @@ const SCHOOL = arg('school')
 const AS_JSON = process.argv.includes('--json')
 const LIST = process.argv.includes('--list')
 const VERBOSE = process.argv.includes('--verbose')
+const USE_EXAMPLE = process.argv.includes('--use-example')
 if (!SCHOOL && !LIST) {
-  console.error('usage: node tools/preview_assessments.mjs --project <id> --school "<school doc id>" [--term1 <id> --term2 <id>] [--verbose] [--json]\n'
+  console.error('usage: node tools/preview_assessments.mjs --project <id> --school "<school doc id>" [--term1 <id> --term2 <id>] [--use-example] [--verbose] [--json]\n'
               + '       node tools/preview_assessments.mjs --project <id> --list')
   process.exit(2)
 }
@@ -53,11 +60,15 @@ const inline = (src, name, jsonPath) => src.replace(
 fs.writeFileSync(path.join(TMP, 'classResolver.js'),
   inline(fs.readFileSync(path.join(ROOT, 'src/utils/classResolver.js'), 'utf8'),
          'SEED', path.join(ROOT, 'functions/shared/education_kb.json')))
+fs.writeFileSync(path.join(TMP, 'examScheme.js'),
+  inline(fs.readFileSync(path.join(ROOT, 'src/utils/examScheme.js'), 'utf8'),
+         'EXAMPLE', path.join(ROOT, 'src/data/assessmentTemplates.json')))
 fs.writeFileSync(path.join(TMP, 'assessmentPlan.js'),
-  inline(fs.readFileSync(path.join(ROOT, 'src/utils/assessmentPlan.js'), 'utf8'),
-         'TEMPLATE', path.join(ROOT, 'src/data/assessmentTemplates.json')))
+  fs.readFileSync(path.join(ROOT, 'src/utils/assessmentPlan.js'), 'utf8'))
 
 const { buildAssessmentPlan, compareGradingScale } = await import(path.join(TMP, 'assessmentPlan.js'))
+const { exampleScheme, exampleGradingScale, proposeSubjectSplits, validateScheme } =
+  await import(path.join(TMP, 'examScheme.js'))
 
 // ── read the school (read-only) ────────────────────────────────────────────
 const { Firestore } = await import('@google-cloud/firestore')
@@ -95,6 +106,34 @@ async function read(name) {
 const [terms, scales, subjects, existing] = await Promise.all(
   ['terms', 'grading_scales', 'subjects', 'assessments'].map(read))
 
+// ── the school's own scheme ────────────────────────────────────────────────
+let scheme = null
+const schemeSnap = await base.collection('config').doc('exam_scheme').get()
+if (schemeSnap.exists) {
+  scheme = schemeSnap.data()
+} else if (USE_EXAMPLE) {
+  scheme = exampleScheme()
+  scheme.subjectSplits = proposeSubjectSplits(subjects)
+  console.log('\n--use-example: showing what the bundled CBSE example WOULD produce.')
+  console.log('  Nothing is saved. Every subject split below is a guess from the subject')
+  console.log('  name, not a decision this school has made.')
+} else {
+  console.error(`\n"${SCHOOL}" has no exam scheme at config/exam_scheme, so no assessments`)
+  console.error('can be planned for it. A scheme says how THIS school examines — nothing is')
+  console.error('assumed from another school.\n')
+  console.error('  Build one:  School Setup -> Assessments -> Exam Scheme')
+  console.error('  Or see what the bundled CBSE example would give:  --use-example\n')
+  process.exit(1)
+}
+
+const schemeCheck = validateScheme(scheme)
+if (!schemeCheck.ok) {
+  console.error(`\nThe exam scheme for "${SCHOOL}" is not usable:\n`)
+  for (const e of schemeCheck.errors) console.error(`  ${e}`)
+  console.error('')
+  process.exit(1)
+}
+
 if (!terms.length) {
   console.error(`\n"${SCHOOL}" has no terms. An assessment references a termId, so none can `
               + 'be created until Terms & Scales has at least two.\n')
@@ -119,22 +158,27 @@ if (!term1 || !term2) {
   }
 }
 
-const plan = buildAssessmentPlan({ subjects, termIds: { 1: term1, 2: term2 }, existing })
+const plan = buildAssessmentPlan({ scheme, subjects, termIds: { 1: term1, 2: term2 }, existing })
 
 if (AS_JSON) {
-  console.log(JSON.stringify({ school: SCHOOL, term1, term2, ...plan }, null, 1))
+  console.log(JSON.stringify({ school: SCHOOL, scheme: scheme.name, term1, term2, ...plan }, null, 1))
   process.exit(0)
 }
 
-const scaleMatch = scales.find(s => compareGradingScale(s).matches)
+const exampleLevels = exampleGradingScale().levels
+const scaleMatch = scales.find(s => compareGradingScale(s, exampleLevels).matches)
 
 console.log(`\n=== ${SCHOOL} ${'='.repeat(Math.max(0, 58 - SCHOOL.length))}`)
+console.log(`  exam scheme        ${scheme.name}`)
+if (schemeCheck.warnings.length) {
+  for (const w of schemeCheck.warnings) console.log(`                     ! ${w}`)
+}
 console.log(`  subjects read      ${plan.totals.subjects}`)
 console.log(`  assessments        ${plan.totals.create} to create, ${plan.totals.update} to update`)
 console.log(`  subjects covered   ${plan.totals.subjects - plan.totals.uncoveredSubjects}`)
 console.log(`  grading scale      ` + (scaleMatch
-  ? `"${scaleMatch.name || scaleMatch.id}" matches the report cards' 8-point bands`
-  : 'NONE of this school\'s scales matches the report cards\' 8-point bands'))
+  ? `"${scaleMatch.name || scaleMatch.id}" matches the example's 8-point bands`
+  : 'no scale here matches the example\'s 8-point bands — not wrong, just unchecked'))
 
 // Grouped by subject and then by TERM. `order` is only meaningful within a
 // term — the teacher app queries where termId == X and sorts by order — so
@@ -169,15 +213,15 @@ if (!VERBOSE && bySubject.size > shown.length) {
 // a subject that SHOULD be practical and was not matched is silent in the
 // warnings, and this is the only place it shows up.
 if (plan.splitReview.length) {
-  console.log(`\n  -- written + internal split, grade 11 and up`)
+  console.log(`\n  -- written + internal split, per subject`)
   for (const r of plan.splitReview) {
     const flag = r.splitName === 'standard' ? '   ' : ' * '
     console.log(`   ${flag}${r.name.padEnd(30)} ${String(r.written).padStart(3)} + `
               + `${String(r.internal).padEnd(3)}  ${r.splitName.padEnd(14)} `
               + `${r.count} subject(s)`)
   }
-  console.log('     (* = matched a practical rule. Anything above at 80 + 20 that should not '
-            + 'be\n      is a spelling the rule missed — the warnings cannot tell you that.)')
+  console.log('     (* = a non-standard split. Anything above at the standard split that '
+            + 'should not be\n      is a subject nobody has said otherwise about.)')
 }
 
 if (plan.uncovered.length) {
