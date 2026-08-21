@@ -1,12 +1,14 @@
 /**
- * Hillgreen's exam structure, turned into assessment documents.
+ * A school's exam scheme, turned into assessment documents.
  *
- * Pure — no Firestore, no Vue. Everything here is arithmetic over
- * src/data/assessmentTemplates.json, which is a verbatim reading of the marks
- * sheet and the four report card models. The point of keeping it pure is that
- * the report cards contain worked examples (English 69/80 + 20/20 = 89), so
- * the planner can be checked against the school's own numbers rather than
- * against my reading of them: node tools/check_assessment_templates.mjs
+ * Pure — no Firestore, no Vue. Every function takes the SCHEME as an argument
+ * rather than importing one, because a scheme belongs to a school: see
+ * utils/examScheme.js for why there is deliberately no default.
+ *
+ * The point of keeping it pure is that a school's report cards contain worked
+ * examples (Hillgreen prints English 69/80 + 20/20 = 89), so the planner can
+ * be checked against a school's own numbers rather than against anyone's
+ * reading of them: node tools/check_assessment_templates.mjs
  *
  * TWO ASSESSMENTS PER EXAM (ops decision, 2026-08-20). The report card prints
  * Theory and Practical/Internal as separate columns, and a teacher enters both
@@ -15,51 +17,51 @@
  * the combined figure would make the two unseparable, and the report card
  * needs them apart.
  */
-import TEMPLATE from '../data/assessmentTemplates.json'
+import { nameKey } from './examScheme.js'
 import { parseClassValue } from './classResolver.js'
 
 export const WRITTEN = 'Written'
 export const INTERNAL = 'Internal'
 
-/** A subject's name, as loosely as a school might have spelled it. */
-function nameKey(s) {
-  return String(s ?? '').trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
-}
-
 /**
- * Which written/internal split a subject takes at a grade.
+ * Which written/internal split a subject takes.
  *
- * Returns {split, reason, inferred} — never just the answer. The practical
- * list is a guess from subject names (ops chose that over listing every
- * subject by hand), so every classification has to be visible before it is
- * written, the way the curriculum planner surfaces its own matches.
+ * A lookup, not a guess. The scheme carries `subjectSplits` — a decision an
+ * operator saved — and anything not in it takes the standard split. Grade is
+ * not consulted: if a school examines Physics differently at 11 than at 10,
+ * that is two entries, written down, rather than a rule nobody can see.
+ *
+ * Returns why, not just what, because "standard" is also what an unrecognised
+ * spelling falls through to, and those two need telling apart.
  */
-export function splitFor(subjectName, gradeOrdinal) {
-  const key = nameKey(subjectName)
-  const rules = TEMPLATE.subjectSplitRules
-  for (const ruleName of ['halfPractical', 'practical']) {
-    const rule = rules[ruleName]
-    if (gradeOrdinal < rule.fromGrade) continue
-    const hit = rule.names.find(n => key === nameKey(n) || key.startsWith(nameKey(n) + ' '))
-    if (hit) {
-      return {
-        split: TEMPLATE.splits[ruleName],
-        splitName: ruleName,
-        reason: `matched "${hit}"`,
-        inferred: !!rule.$inferred,
-      }
+export function splitFor(scheme, subjectName) {
+  const splits = scheme?.splits || {}
+  const entry = (scheme?.subjectSplits || {})[nameKey(subjectName)]
+  const chosen = entry && splits[entry.splitName]
+  if (chosen) {
+    return {
+      split: chosen,
+      splitName: entry.splitName,
+      reason: entry.reason || 'set for this school',
+      proposed: !!entry.proposed,
     }
   }
-  return { split: TEMPLATE.splits.standard, splitName: 'standard',
-           reason: 'no practical rule matched', inferred: false }
+  return {
+    split: splits.standard,
+    splitName: 'standard',
+    reason: entry ? `split "${entry.splitName}" is not defined — fell back to standard`
+                  : 'not listed in this school\'s subject splits',
+    proposed: false,
+  }
 }
 
-/** The exams a grade sits, with grade 10's Pre-Board override applied. */
-export function examsForGrade(gradeOrdinal) {
-  const override = TEMPLATE.gradeOverrides[String(gradeOrdinal)]
-  if (!override) return TEMPLATE.exams
-  const kept = TEMPLATE.exams.filter(e => e.term !== override.replaceTerm)
-  return [...kept, ...override.exams]
+/** The exams a grade sits, with any grade override applied. */
+export function examsForGrade(scheme, gradeOrdinal) {
+  const exams = scheme?.exams || []
+  const override = (scheme?.gradeOverrides || {})[String(gradeOrdinal)]
+  if (!override) return exams
+  const kept = exams.filter(e => e.term !== override.replaceTerm)
+  return [...kept, ...(override.exams || [])]
 }
 
 function writtenMaxFor(exam, gradeOrdinal) {
@@ -80,7 +82,7 @@ function writtenMaxFor(exam, gradeOrdinal) {
  * grades 3–5 produce a non-integer — 60 marks scaled to 80. That is what the
  * marks sheet says, and the planner flags it rather than rounding it away.
  */
-export function assessmentsFor({ exam, subjectId, subjectName, gradeOrdinal, termId }) {
+export function assessmentsFor({ scheme, exam, subjectId, subjectName, gradeOrdinal, termId }) {
   const band = writtenMaxFor(exam, gradeOrdinal)
   if (!band) {
     return {
@@ -91,7 +93,7 @@ export function assessmentsFor({ exam, subjectId, subjectName, gradeOrdinal, ter
     }
   }
 
-  const { split, splitName, reason, inferred } = splitFor(subjectName, gradeOrdinal)
+  const { split, splitName, reason, proposed } = splitFor(scheme, subjectName)
   const warnings = []
   const notes = []
 
@@ -122,11 +124,11 @@ export function assessmentsFor({ exam, subjectId, subjectName, gradeOrdinal, ter
 
   if (exam.splitVaries) {
     notes.push(`${splitName} split (${convertTo} + ${internalMax}) — ${reason}`)
-    if (inferred) {
+    if (proposed) {
       warnings.push({
         key: `split:${splitName}:${nameKey(subjectName)}`,
-        message: `"${subjectName}" was classified ${splitName} (${convertTo} + ${internalMax}) `
-               + 'from its name — verify',
+        message: `"${subjectName}" is still the seeded proposal (${splitName}, `
+               + `${convertTo} + ${internalMax}) — confirm it in the exam scheme`,
       })
     }
   }
@@ -181,7 +183,7 @@ export function assessmentsFor({ exam, subjectId, subjectName, gradeOrdinal, ter
  * @param {object[]} existing  assessments already in the school, to mark
  *                             which rows would create and which would update
  */
-export function buildAssessmentPlan({ subjects = [], termIds = {}, existing = [] } = {}) {
+export function buildAssessmentPlan({ scheme, subjects = [], termIds = {}, existing = [] } = {}) {
   const existingById = new Map(existing.map(a => [a.id, a]))
   const items = []
   const uncovered = []
@@ -195,19 +197,17 @@ export function buildAssessmentPlan({ subjects = [], termIds = {}, existing = []
   // two spellings, treated differently, and only one of them visible. A split
   // is a decision about every senior subject, so every senior subject is shown.
   const splitsByName = new Map()
-  const recordSplit = (subject, ordinal) => {
-    const { splitName, split, inferred } = splitFor(subject.name || subject.id, ordinal)
-    const varies = ordinal >= TEMPLATE.subjectSplitRules.practical.fromGrade
-                   || splitName !== 'standard'
-    if (!varies) return
+  const recordSplit = (subject) => {
+    const { splitName, split, reason, proposed } = splitFor(scheme, subject.name || subject.id)
     const key = `${nameKey(subject.name || subject.id)}|${splitName}`
     if (!splitsByName.has(key)) {
       splitsByName.set(key, {
         name: subject.name || subject.id,
         splitName,
-        written: split.written,
-        internal: split.internal,
-        inferred,
+        written: split?.written,
+        internal: split?.internal,
+        reason,
+        proposed,
         subjects: [],
       })
     }
@@ -242,25 +242,30 @@ export function buildAssessmentPlan({ subjects = [], termIds = {}, existing = []
       })
       continue
     }
-    if (ordinal === 12) {
+    // A scheme can say which grades it was actually written from. Anything
+    // outside that is being given exams by extension rather than by evidence,
+    // which is worth saying out loud — Hillgreen's documents cover 1 to 12 but
+    // its class 12 report card was never supplied.
+    const unverified = (scheme?.unverifiedGrades || []).map(Number)
+    if (unverified.includes(ordinal)) {
       warn({
-        key: 'grade12',
-        message: 'No class 12 report card was supplied. Grade 12 is being given the same exams '
-               + 'as 11; class 10 replaces its Term II tests with Pre-Boards, so verify '
-               + 'whether 12 should too.',
+        key: `unverified:${ordinal}`,
+        message: `Grade ${ordinal} is marked unverified in this scheme — it is being given `
+               + 'exams by extension from a neighbouring grade, not from a document. Confirm '
+               + 'before teachers enter marks.',
       }, subject.id)
     }
 
-    recordSplit(subject, ordinal)
+    recordSplit(subject)
 
-    for (const exam of examsForGrade(ordinal)) {
+    for (const exam of examsForGrade(scheme, ordinal)) {
       const termId = termIds[exam.term]
       if (!termId) {
         uncovered.push({ subjectId: subject.id, reason: `no term chosen for Term ${exam.term}` })
         continue
       }
       const out = assessmentsFor({
-        exam, subjectId: subject.id, subjectName: subject.name || subject.id,
+        scheme, exam, subjectId: subject.id, subjectName: subject.name || subject.id,
         gradeOrdinal: ordinal, termId,
       })
       for (const w of out.warnings) warn(w, subject.id)
@@ -301,19 +306,14 @@ export function buildAssessmentPlan({ subjects = [], termIds = {}, existing = []
   }
 }
 
-/** The grading scale the report cards print, for a school that has none. */
-export function templateGradingScale() {
-  return TEMPLATE.gradingScale
-}
-
 /**
  * Whether a school's existing scale says the same thing as the report card's.
  * A mismatch means printed grades will not match entered marks, which is the
  * kind of thing nobody notices until a parent does.
  */
-export function compareGradingScale(scale) {
-  const want = TEMPLATE.gradingScale.levels
+export function compareGradingScale(scale, want = []) {
   const got = Array.isArray(scale?.levels) ? scale.levels : []
+  want = Array.isArray(want) ? want : (want?.levels || [])
   const key = lv => `${String(lv.label).trim().toUpperCase()}:${lv.minPercent}-${lv.maxPercent}`
   const wantKeys = want.map(key).sort()
   const gotKeys = got.map(key).sort()
