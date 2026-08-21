@@ -310,22 +310,67 @@ def apply_records(
     return ZoneWrite(before=before, after=after, added=added, verified=verified, warnings=warnings)
 
 
-def records_from_firebase_dns_updates(dns_updates: dict, host_label: str) -> list[Record]:
+def label_for(fqdn: str, base_domain: str, fallback: str) -> str:
+    """
+    Namecheap host label for a fully-qualified name: 'x.myhpc.in' -> 'x'.
+
+    Namecheap host records carry the LABEL, not the FQDN, and the apex is '@'.
+    A name outside the zone is not ours to write, and returns ''.
+    """
+    fqdn = (fqdn or "").strip().rstrip(".").lower()
+    base = (base_domain or "").strip().rstrip(".").lower()
+    if not fqdn or not base:
+        # Without a zone to measure against there is nothing to strip, and
+        # returning '' would silently discard every record. Defer to the caller.
+        return fallback
+    if fqdn == base:
+        return "@"
+    if fqdn.endswith(f".{base}"):
+        return fqdn[: -(len(base) + 1)]
+    return ""
+
+
+def records_from_firebase_dns_updates(
+    dns_updates: dict, host_label: str, base_domain: str = ""
+) -> list[Record]:
     """
     Translate Firebase Hosting's `requiredDnsUpdates` into Namecheap records.
 
     Firebase returns the records it wants under desired/discovered sets; we only
-    ever act on what it asks us to ADD, and only for the label being provisioned.
-    Record data is taken from the API response rather than hardcoded, because
-    Hosting's serving IPs and the TXT challenge are not ours to guess.
+    ever act on what it asks us to ADD. Record data is taken from the API
+    response rather than hardcoded, because Hosting's serving IPs and the TXT
+    challenge are not ours to guess.
+
+    TWO THINGS THIS GETS RIGHT, both of which silently break certificate issue:
+
+      * THE LABEL COMES FROM THE RECORD, not from the school. Every record used
+        to be written at `host_label`, on the assumption that Hosting only ever
+        asks for A records at the subdomain being provisioned. It does not — the
+        ownership challenge is a TXT at a name Hosting chooses, which is not
+        always the same label. Pinning them all to `host_label` files the
+        challenge under the wrong name, so it is never found, and the domain sits
+        in PENDING until it expires. `host_label` remains the fallback for a
+        record that names nothing.
+      * A record marked `requiredAction: REMOVE` is one Hosting wants GONE. This
+        module is add-only by design, so adding it would be precisely backwards
+        and would leave a stale record contradicting the live one. Those are
+        dropped here rather than merged; removals stay a human decision.
     """
     out: list[Record] = []
     desired = (dns_updates or {}).get("desired", []) or []
     for entry in desired:
+        entry_name = entry.get("domainName") or ""
         for rec in entry.get("records", []) or []:
             rtype = (rec.get("type") or "").upper()
             rdata = rec.get("rdata") or ""
             if not rtype or not rdata:
                 continue
-            out.append(Record(name=host_label, type=rtype, address=rdata))
+            if (rec.get("requiredAction") or "").upper() == "REMOVE":
+                continue
+            name = label_for(rec.get("domainName") or entry_name, base_domain, host_label)
+            if not name:
+                # Outside the zone we manage. Writing it would be a no-op at
+                # best and a wrong record at worst.
+                continue
+            out.append(Record(name=name, type=rtype, address=rdata))
     return out

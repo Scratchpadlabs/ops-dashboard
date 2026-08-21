@@ -23,23 +23,51 @@ async function call(url, payload) {
   if (!user) throw new Error('Not signed in')
   const token = await user.getIdToken()
 
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(payload || {}),
-  })
+  let res
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload || {}),
+    })
+  } catch (e) {
+    // fetch() rejects with a bare "Failed to fetch" for every network-layer
+    // failure, and a blocked CORS preflight is one of them. The distinguishing
+    // detail — that the preflight came back without an
+    // Access-Control-Allow-Origin header — is only in the console, so the UI
+    // showed a two-word error with nowhere to go. The overwhelmingly common
+    // cause is the function being deployed with IAM auth required, which
+    // rejects the browser's anonymous OPTIONS request before the function
+    // runs; see functions/provision_hosting/README.md.
+    throw new Error(
+      `Could not reach ${url.split('/').pop()}. This is a network or CORS-preflight ` +
+        'failure, not a rejection by the function — check that the function is deployed, ' +
+        'is deployed with --allow-unauthenticated, and that this origin is in its ' +
+        `cors_origins allowlist. (${e.message})`,
+    )
+  }
 
   const text = await res.text()
   let body
+  let parsed = true
   try {
     body = text ? JSON.parse(text) : {}
   } catch {
+    parsed = false
     body = { error: text }
   }
   if (!res.ok) throw new Error(body.error || `Request failed (${res.status})`)
+  // A 200 whose body is not JSON is a broken endpoint, not a result. Swallowing
+  // it is how a function returning a malformed body reached the UI as an empty
+  // plan with no error shown anywhere.
+  if (!parsed) {
+    throw new Error(
+      `${url.split('/').pop()} returned ${res.status} with a non-JSON body: ${text.slice(0, 200)}`,
+    )
+  }
   return body
 }
 

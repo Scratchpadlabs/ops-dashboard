@@ -22,6 +22,30 @@ holding a GitHub PAT and Namecheap credentials is a different risk class, so it
 verifies a Firebase ID token and checks the caller against the ops-admin list
 server-side. Keep OPS_ADMIN_EMAILS in step with src/config/opsAdmins.js.
 
+That check — `_require_ops_admin` below — is the ONLY gate, and it deliberately
+runs in-process rather than at the platform edge. These functions are deployed
+with platform auth OPEN, which is not a weakening: it means "Cloud Run performs
+no IAM check", not "anyone may provision a school".
+
+Requiring IAM auth at the edge instead makes them unreachable from a browser,
+for two independent reasons. Both are worth writing down, because the symptom in
+DevTools is a misleading CORS error:
+
+  1. The CORS preflight is anonymous BY SPEC. Browsers never attach an
+     Authorization header to the OPTIONS request. Cloud Run's IAM layer rejects
+     it 403 before the container starts, so the CorsOptions below never runs and
+     no Access-Control-Allow-Origin header is ever emitted. The browser reports
+     "Response to preflight request doesn't pass access control check" and
+     "Failed to fetch" — which reads like a CORS misconfiguration and is not.
+  2. Even past the preflight, IAM wants a GOOGLE-SIGNED OIDC identity token
+     minted for this function's audience. The dashboard sends a FIREBASE ID
+     token. Different credentials, different issuers; a Firebase ID token can
+     only be validated in-process, by fb_auth.verify_id_token. IAM would reject
+     every POST with a 403 as well.
+
+So: platform auth open, application auth strict. That is the standard Firebase
+pattern, and the one the rest of functions/ already follows.
+
 Provisioning is not transactional — a Hosting site can exist while DNS is still
 pending. So each run is written to `hosting_runs/{runId}` step by step, and
 re-running for the same school is idempotent at every stage: the site create
@@ -31,26 +55,27 @@ path, and it is safe.
 
 Deploy (see README.md in this directory):
   gcloud functions deploy hosting_preview   --gen2 --runtime python312 --region asia-south1 \
-    --source . --entry-point hosting_preview --trigger-http --no-allow-unauthenticated \
+    --source . --entry-point hosting_preview --trigger-http --allow-unauthenticated \
     --memory 512MB --timeout 120s --max-instances 3 --project clarified-1501 \
     --vpc-connector ops-egress --egress-settings all \
     --set-secrets NAMECHEAP_API_KEY=NAMECHEAP_API_KEY:latest,NAMECHEAP_API_USER=NAMECHEAP_API_USER:latest,NAMECHEAP_CLIENT_IP=NAMECHEAP_CLIENT_IP:latest
   gcloud functions deploy hosting_provision --gen2 --runtime python312 --region asia-south1 \
-    --source . --entry-point hosting_provision --trigger-http --no-allow-unauthenticated \
+    --source . --entry-point hosting_provision --trigger-http --allow-unauthenticated \
     --memory 512MB --timeout 300s --max-instances 2 --project clarified-1501 \
     --vpc-connector ops-egress --egress-settings all \
     --set-secrets NAMECHEAP_API_KEY=NAMECHEAP_API_KEY:latest,NAMECHEAP_API_USER=NAMECHEAP_API_USER:latest,NAMECHEAP_CLIENT_IP=NAMECHEAP_CLIENT_IP:latest,GITHUB_DISPATCH_PAT=GITHUB_DISPATCH_PAT:latest
   gcloud functions deploy hosting_status    --gen2 --runtime python312 --region asia-south1 \
-    --source . --entry-point hosting_status --trigger-http --no-allow-unauthenticated \
+    --source . --entry-point hosting_status --trigger-http --allow-unauthenticated \
     --memory 256MB --timeout 60s --max-instances 5 --project clarified-1501 \
     --set-secrets GITHUB_DISPATCH_PAT=GITHUB_DISPATCH_PAT:latest
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import firebase_admin
 import google.auth
@@ -89,11 +114,16 @@ GITHUB_REF = os.environ.get("GITHUB_REF_NAME", "main")
 # been a real site id.
 SITE_ID_RE = re.compile(r"^[a-z0-9]([a-z0-9-]{4,28})[a-z0-9]$")
 
+# Anchored with $ on purpose. Origin patterns are matched with re.match, which
+# anchors the START only — an unanchored r"https://.*\.web\.app" also matches
+# https://anything.web.app.attacker.example, which would hand a hostile page a
+# passing preflight. The trailing $ is what makes these an allowlist.
 CORS = options.CorsOptions(
     cors_origins=[
-        r"https://.*\.web\.app",
-        r"https://.*\.firebaseapp\.com",
-        r"http://localhost:\d+",
+        r"^https://[a-z0-9-]+\.web\.app$",
+        r"^https://[a-z0-9-]+\.firebaseapp\.com$",
+        r"^http://localhost:\d+$",
+        r"^http://127\.0\.0\.1:\d+$",
     ],
     cors_methods=["POST", "OPTIONS"],
 )
@@ -120,8 +150,38 @@ def _require_ops_admin(req: https_fn.Request) -> str:
     return email
 
 
+def _json(payload: dict, status: int = 200) -> https_fn.Response:
+    """
+    Serialise explicitly.
+
+    https_fn.Response is a Flask Response, and Flask only special-cases
+    str/bytes — every other object is treated as an ITERABLE OF BODY CHUNKS.
+    Handing it a dict therefore iterates the dict, i.e. its KEYS, and ships them
+    concatenated: {"error": "boom"} goes out as the five bytes b"error", under a
+    Content-Type of application/json. A successful preview went out as
+    b"school_idschool_namesite_id…". The client's JSON.parse then fails on a 200
+    and the UI renders an empty plan or a nonsense error string.
+    """
+    return https_fn.Response(
+        json.dumps(payload, default=str), status=status, mimetype="application/json"
+    )
+
+
 def _json_error(message: str, status: int) -> https_fn.Response:
-    return https_fn.Response({"error": message}, status=status, mimetype="application/json")
+    return _json({"error": message}, status)
+
+
+def _preflight(req: https_fn.Request) -> https_fn.Response | None:
+    """
+    Answer the CORS preflight before any auth runs.
+
+    The decorator normally handles OPTIONS itself, but a preflight that reached
+    _require_ops_admin would come back 401 — and a 401 preflight fails the
+    browser's check exactly as a 403 does. Cheap insurance.
+    """
+    if req.method == "OPTIONS":
+        return https_fn.Response("", status=204)
+    return None
 
 
 def _hosting_session() -> requests.Session:
@@ -224,10 +284,35 @@ def dispatch_build(school_id: str, site_id: str) -> None:
         raise RuntimeError(f"workflow_dispatch failed ({resp.status_code}): {resp.text[:300]}")
 
 
-def latest_run(site_id: str) -> dict:
-    """Most recent deploy-school run, used to report build state."""
+def _parse_ts(value) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def latest_run(site_id: str, dispatched_at=None) -> dict:
+    """
+    The deploy-school run for THIS site, from THIS provisioning run.
+
+    Two ways this reported the wrong build, both of which flip a school to
+    "live" off the back of some other school's green tick:
+
+      * `display_title` is the head COMMIT MESSAGE unless the workflow sets
+        `run-name`, so it never contained the site id and the match never hit.
+        Control fell through to "newest run of this workflow, whichever school".
+        deploy-school.yml now sets run-name to carry the school and site ids, and
+        the blanket fallback is gone — no match now means no build reported,
+        which the UI renders honestly as "not started yet".
+      * A PREVIOUS, already-successful run for the same site still matches. Runs
+        created before this provisioning run are therefore filtered out;
+        without that, re-publishing a live school reports "live" immediately
+        while the new build is still queued.
+    """
     token = os.environ.get("GITHUB_DISPATCH_PAT", "")
-    if not token:
+    if not token or not site_id:
         return {}
     resp = requests.get(
         f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO}"
@@ -236,18 +321,31 @@ def latest_run(site_id: str) -> dict:
             "Authorization": f"Bearer {token}",
             "Accept": "application/vnd.github+json",
         },
-        params={"per_page": 20},
+        params={"per_page": 30},
         timeout=30,
     )
     if not resp.ok:
         return {}
+
+    # A minute of slack: the run row appears a moment after the dispatch call
+    # returns, and GitHub's clock is not this function's clock.
+    floor = _parse_ts(dispatched_at)
+    if floor:
+        floor -= timedelta(minutes=1)
+
+    # Bounded rather than a plain substring: site ids nest, so "hillgreen-high"
+    # occurs inside "hillgreen-high-2" and would match that school's build.
+    pattern = re.compile(rf"(?<![a-z0-9-]){re.escape(site_id)}(?![a-z0-9-])")
+
     for run in resp.json().get("workflow_runs", []):
-        # display_title carries the dispatch inputs for manually dispatched runs;
-        # fall back to returning the newest run rather than nothing.
-        if site_id in (run.get("display_title") or "") or site_id in (run.get("name") or ""):
-            return run
-    runs = resp.json().get("workflow_runs", [])
-    return runs[0] if runs else {}
+        haystack = f"{run.get('display_title') or ''} {run.get('name') or ''}"
+        if not pattern.search(haystack):
+            continue
+        created = _parse_ts(run.get("created_at"))
+        if floor and created and created < floor:
+            continue
+        return run
+    return {}
 
 
 # ── preserve list ────────────────────────────────────────────────────────────
@@ -301,6 +399,9 @@ def _plan(db, school_id: str, site_id: str | None, subdomain: str | None) -> dic
 @https_fn.on_request(cors=CORS, region="asia-south1")
 def hosting_preview(req: https_fn.Request) -> https_fn.Response:
     """Everything provisioning would do, computed against live state. No writes."""
+    early = _preflight(req)
+    if early:
+        return early
     try:
         _require_ops_admin(req)
     except PermissionError as exc:
@@ -313,11 +414,17 @@ def hosting_preview(req: https_fn.Request) -> https_fn.Response:
     except ValueError as exc:
         return _json_error(str(exc), 400)
 
-    session = _hosting_session()
-    existing = session.get(
-        f"{HOSTING_API}/projects/{PROJECT_ID}/sites/{plan['site_id']}", timeout=30
-    )
-    plan["site_exists"] = existing.status_code == 200
+    try:
+        session = _hosting_session()
+        existing = session.get(
+            f"{HOSTING_API}/projects/{PROJECT_ID}/sites/{plan['site_id']}", timeout=30
+        )
+        plan["site_exists"] = existing.status_code == 200
+    except Exception as exc:  # noqa: BLE001
+        # An uncaught exception here becomes a 500 with an HTML body, which the
+        # client cannot parse and the browser may surface as yet another opaque
+        # CORS failure. Report it as JSON the UI can actually display.
+        return _json_error(f"Hosting API unreachable: {exc}", 502)
 
     if body.get("withDomain", True):
         try:
@@ -335,7 +442,7 @@ def hosting_preview(req: https_fn.Request) -> https_fn.Response:
         except NamecheapError as exc:
             plan["dns"] = {"error": str(exc)}
 
-    return https_fn.Response(plan, status=200, mimetype="application/json")
+    return _json(plan)
 
 
 @https_fn.on_request(cors=CORS, region="asia-south1")
@@ -347,6 +454,9 @@ def hosting_provision(req: https_fn.Request) -> https_fn.Response:
     halfway leaves an accurate record of what exists. Re-running is the recovery
     path and is safe at every stage.
     """
+    early = _preflight(req)
+    if early:
+        return early
     try:
         actor = _require_ops_admin(req)
     except PermissionError as exc:
@@ -395,7 +505,7 @@ def hosting_provision(req: https_fn.Request) -> https_fn.Response:
             )
 
             desired = records_from_firebase_dns_updates(
-                domain_doc.get("requiredDnsUpdates", {}), plan["subdomain"]
+                domain_doc.get("requiredDnsUpdates", {}), plan["subdomain"], BASE_DOMAIN
             )
             client = NamecheapClient()
             preserve = load_preserve_records(db)
@@ -422,16 +532,22 @@ def hosting_provision(req: https_fn.Request) -> https_fn.Response:
             )
 
         dispatch_build(plan["school_id"], plan["site_id"])
+        dispatched_at = _now()
         step("build_dispatched", ok=True)
 
-        run_ref.set({"status": "awaiting_build", "updated_at": _now()}, merge=True)
-        return https_fn.Response(
-            {"runId": run_id, "status": "awaiting_build", **plan},
-            status=200,
-            mimetype="application/json",
+        # latest_run() only considers builds created at or after this instant,
+        # so the dispatch time has to survive on the run document.
+        run_ref.set(
+            {"status": "awaiting_build", "dispatched_at": dispatched_at, "updated_at": _now()},
+            merge=True,
         )
+        return _json({"runId": run_id, "status": "awaiting_build", **plan})
 
-    except (NamecheapError, RuntimeError, requests.HTTPError) as exc:
+    except Exception as exc:  # noqa: BLE001
+        # Deliberately broad. Anything escaping here becomes a 500 with an HTML
+        # body that the client cannot parse and the browser may report as one
+        # more opaque CORS failure — the exact confusion this feature already
+        # cost a day to. Fail as JSON, and record it on the run.
         run_ref.set({"status": "failed", "error": str(exc), "updated_at": _now()}, merge=True)
         return _json_error(str(exc), 502)
 
@@ -439,6 +555,9 @@ def hosting_provision(req: https_fn.Request) -> https_fn.Response:
 @https_fn.on_request(cors=CORS, region="asia-south1")
 def hosting_status(req: https_fn.Request) -> https_fn.Response:
     """Poll a run: cert state and build state. Safe to call on a loop."""
+    early = _preflight(req)
+    if early:
+        return early
     try:
         _require_ops_admin(req)
     except PermissionError as exc:
@@ -464,20 +583,34 @@ def hosting_status(req: https_fn.Request) -> https_fn.Response:
             domain_doc = get_custom_domain(_hosting_session(), run["site_id"], run["domain"])
             out["cert_state"] = domain_doc.get("state", "UNKNOWN")
             out["required_dns_updates"] = domain_doc.get("requiredDnsUpdates", {})
-        except requests.HTTPError as exc:
+        except Exception as exc:  # noqa: BLE001 — a cert lookup must never 500 the poll
             out["cert_state"] = f"error: {exc}"
 
-    gh = latest_run(run.get("site_id", ""))
+    gh = latest_run(run.get("site_id", ""), run.get("dispatched_at") or run.get("created_at"))
     if gh:
+        conclusion = gh.get("conclusion")
         out["build"] = {
             "status": gh.get("status"),
-            "conclusion": gh.get("conclusion"),
+            "conclusion": conclusion,
             "url": gh.get("html_url"),
         }
-        if gh.get("conclusion") == "success" and run.get("status") == "awaiting_build":
+        # A finished build is terminal in both directions. Only "success" used to
+        # be recorded, so a red build left the run stuck on "awaiting_build" and
+        # the UI polled "Building" forever with nothing to click but the log.
+        if run.get("status") == "awaiting_build" and gh.get("status") == "completed":
+            if conclusion == "success":
+                out["status"] = "live"
+            else:
+                out["status"] = "failed"
+                out["error"] = f"Build {conclusion or 'did not succeed'} — see the build log."
             db.collection("hosting_runs").document(run["id"]).set(
-                {"status": "live", "updated_at": _now()}, merge=True
+                {
+                    "status": out["status"],
+                    "build_conclusion": conclusion,
+                    "build_url": gh.get("html_url"),
+                    "updated_at": _now(),
+                },
+                merge=True,
             )
-            out["status"] = "live"
 
-    return https_fn.Response(out, status=200, mimetype="application/json")
+    return _json(out)

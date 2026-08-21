@@ -112,6 +112,18 @@
             class="text-blue-600 hover:underline">Open build log</a>
         </div>
 
+        <!-- A failed run used to be reachable only through the Tag in the header
+             and the build log. The reason it failed is on the run document; show
+             it, since re-running is the documented recovery path and ops needs
+             to know what to fix first. -->
+        <div v-if="lastRun.status === 'failed'"
+          class="text-sm text-red-800 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+          {{ lastRun.error || 'Provisioning failed. Check the build log.' }}
+          <div class="text-xs text-red-700 mt-1">
+            Re-running Publish is safe — every step is idempotent and resumes where it stopped.
+          </div>
+        </div>
+
         <div v-if="lastRun.status === 'live'"
           class="text-sm text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
           Live at

@@ -21,6 +21,12 @@
 
 name: Deploy School (teacher + student)
 
+# hosting_status finds this run through the GitHub API by matching the site id
+# against `display_title`, and display_title is the head COMMIT MESSAGE unless
+# run-name is set. Without this line every school's Publish tab reported
+# whichever deploy ran most recently, for any school. Keep the site id in here.
+run-name: Deploy ${{ inputs.school_id }} to site ${{ inputs.site_id }}
+
 on:
   workflow_dispatch:
     inputs:

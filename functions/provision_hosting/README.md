@@ -103,7 +103,7 @@ own whitelist.
 cd functions/provision_hosting
 
 COMMON="--gen2 --runtime python312 --region asia-south1 --source . \
-  --trigger-http --no-allow-unauthenticated --project clarified-1501 \
+  --trigger-http --allow-unauthenticated --project clarified-1501 \
   --vpc-connector ops-egress --egress-settings all"
 
 NC="NAMECHEAP_API_KEY=NAMECHEAP_API_KEY:latest,\
@@ -127,10 +127,66 @@ gcloud functions deploy hosting_status $COMMON \
 The service account these run as needs **Firebase Hosting Admin** on
 `clarified-1501` to create sites and custom domains.
 
-Note `--no-allow-unauthenticated`, unlike the `generate_*` functions. These
-endpoints create Hosting sites, edit live DNS and trigger deploys — they verify a
-Firebase ID token and check the caller against `OPS_ADMIN_EMAILS` in `main.py`.
+These endpoints create Hosting sites, edit live DNS and trigger deploys, so they
+are gated — but the gate is `_require_ops_admin` **inside** `main.py`, which
+verifies a Firebase ID token and checks the caller against `OPS_ADMIN_EMAILS`.
 Keep that set in step with `src/config/opsAdmins.js`.
+
+### Why `--allow-unauthenticated`, on endpoints that hold a GitHub PAT
+
+Because it does not mean "public". It means "Cloud Run runs no IAM check of its
+own", leaving the application's check as the only one — which is what we want,
+and what the rest of `functions/` already does.
+
+Deploying these `--no-allow-unauthenticated` instead does not add a second layer;
+it makes the feature unreachable from a browser entirely, and it does so with an
+error message that points at the wrong thing:
+
+```
+Access to fetch at '…/hosting_preview' from origin 'https://clarified-1501.web.app'
+has been blocked by CORS policy: Response to preflight request doesn't pass access
+control check: No 'Access-Control-Allow-Origin' header is present…
+```
+
+That is not a CORS misconfiguration. Two separate things are broken:
+
+1. **The preflight is anonymous by specification.** Browsers never attach an
+   `Authorization` header to the `OPTIONS` request. Cloud Run's IAM layer
+   rejects it `403` before the container starts, so the `CorsOptions` in
+   `main.py` never executes and no `Access-Control-Allow-Origin` header is ever
+   emitted. The browser can only report the missing header.
+2. **The token is the wrong kind anyway.** IAM wants a *Google-signed OIDC
+   identity token* minted for the function's audience. The dashboard sends a
+   *Firebase ID token* — a different credential from a different issuer, which
+   can only be verified in-process by `fb_auth.verify_id_token`. Even past the
+   preflight, every `POST` would be rejected `403`.
+
+If you ever need platform-level auth here, the browser cannot be the caller: it
+would have to go through a callable (`firebase-functions` `on_call`) or a
+backend that can mint an OIDC token.
+
+Verify a deploy is actually reachable before touching the UI — the preflight is
+the thing to test, and it must come back `204` with the header:
+
+```bash
+curl -i -X OPTIONS \
+  -H 'Origin: https://clarified-1501.web.app' \
+  -H 'Access-Control-Request-Method: POST' \
+  -H 'Access-Control-Request-Headers: authorization,content-type' \
+  https://asia-south1-clarified-1501.cloudfunctions.net/hosting_preview
+```
+
+A `403` here is the IAM flag, every time. Then confirm the gate still bites — an
+unauthenticated POST must be `401` **from the function**, with a JSON body:
+
+```bash
+curl -i -X POST -H 'Content-Type: application/json' -d '{}' \
+  https://asia-south1-clarified-1501.cloudfunctions.net/hosting_preview
+# {"error": "Missing bearer token"}
+```
+
+If that returns `403 Forbidden` with an HTML body, IAM answered, not the
+function, and the origin allowlist never ran.
 
 ---
 
