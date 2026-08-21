@@ -186,6 +186,34 @@ export function buildAssessmentPlan({ subjects = [], termIds = {}, existing = []
   const items = []
   const uncovered = []
 
+  // Every subject whose split could have gone either way, listed with the one
+  // it got — not only the ones that matched a rule.
+  //
+  // The warnings alone are half the picture: they fire when a subject IS
+  // classified practical, and say nothing when one is not. Hillgreen has
+  // "PE Additional" at 70 + 30 and "HPE" at 80 + 20 — the same subject under
+  // two spellings, treated differently, and only one of them visible. A split
+  // is a decision about every senior subject, so every senior subject is shown.
+  const splitsByName = new Map()
+  const recordSplit = (subject, ordinal) => {
+    const { splitName, split, inferred } = splitFor(subject.name || subject.id, ordinal)
+    const varies = ordinal >= TEMPLATE.subjectSplitRules.practical.fromGrade
+                   || splitName !== 'standard'
+    if (!varies) return
+    const key = `${nameKey(subject.name || subject.id)}|${splitName}`
+    if (!splitsByName.has(key)) {
+      splitsByName.set(key, {
+        name: subject.name || subject.id,
+        splitName,
+        written: split.written,
+        internal: split.internal,
+        inferred,
+        subjects: [],
+      })
+    }
+    splitsByName.get(key).subjects.push(subject.id)
+  }
+
   // Grouped by key, not one per subject. The 1.3333 conversion for grades 3-5
   // is one fact about the marks sheet, and Hillgreen produced 59 identical
   // copies of it — enough to bury the seven that were actually different.
@@ -223,6 +251,8 @@ export function buildAssessmentPlan({ subjects = [], termIds = {}, existing = []
       }, subject.id)
     }
 
+    recordSplit(subject, ordinal)
+
     for (const exam of examsForGrade(ordinal)) {
       const termId = termIds[exam.term]
       if (!termId) {
@@ -250,6 +280,16 @@ export function buildAssessmentPlan({ subjects = [], termIds = {}, existing = []
   return {
     items,
     warnings: [...byKey.values()].map(w => ({ ...w, count: w.subjects.length })),
+    // Standard first, so the eye lands on what did NOT get a practical split —
+    // which is where a missed spelling hides.
+    splitReview: [...splitsByName.values()]
+      .map(s => ({ ...s, count: s.subjects.length }))
+      .sort((a, b) => {
+        // Not alphabetical: "standard" is what an unmatched spelling falls
+        // through to, so it goes first, where a wrong one is noticed.
+        const rank = r => (r.splitName === 'standard' ? 0 : 1)
+        return rank(a) - rank(b) || a.name.localeCompare(b.name)
+      }),
     uncovered,
     totals: {
       subjects: subjects.length,

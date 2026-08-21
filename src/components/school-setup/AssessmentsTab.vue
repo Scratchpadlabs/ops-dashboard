@@ -330,6 +330,28 @@
             </div>
           </div>
 
+          <!-- The warnings fire when a subject IS classified practical and say
+               nothing when one is not, so a missed spelling is invisible there.
+               Every senior subject's split is listed instead. -->
+          <div v-if="templatePlan.splitReview.length" class="rounded-lg border border-slate-200 px-3 py-2 mb-3">
+            <div class="text-xs font-semibold text-slate-600 mb-1">
+              Written + internal split, grade 11 and up
+            </div>
+            <div class="text-[11px] space-y-0.5 max-h-40 overflow-auto">
+              <div v-for="(r, i) in templatePlan.splitReview" :key="i" class="flex items-baseline gap-2">
+                <span class="font-mono w-44 truncate" :title="r.subjects.join(', ')">{{ r.name }}</span>
+                <span class="font-semibold" :class="r.splitName === 'standard' ? 'text-slate-500' : 'text-violet-700'">
+                  {{ r.written }} + {{ r.internal }}
+                </span>
+                <span class="text-slate-400">{{ r.splitName }} · {{ r.count }} subject(s)</span>
+              </div>
+            </div>
+            <p class="text-[10px] text-slate-400 mt-1">
+              A subject sitting at 80 + 20 that should not be is a spelling the practical rule
+              missed — the warnings above cannot tell you that.
+            </p>
+          </div>
+
           <div v-if="templatePlan.uncovered.length" class="rounded-lg border border-slate-200 px-3 py-2 mb-3">
             <div class="text-xs font-semibold text-slate-600 mb-1">
               Nothing will be created for these — the documents do not cover them

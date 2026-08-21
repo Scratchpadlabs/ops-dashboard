@@ -135,6 +135,33 @@ check('an inferred practical classification warns',
 check('nothing is planned for an uncovered subject',
       !plan.items.some(i => uncoveredIds.includes(i.subjectId)))
 
+console.log('\nEvery senior subject\'s split is shown, matched or not')
+// The bug this catches: Hillgreen spells the same subject "PE Additional" and
+// "HPE". One matches the practical rule and one does not, and the warnings
+// only mention the one that did — so the mismatch is invisible exactly where
+// it matters.
+const senior = buildAssessmentPlan({
+  subjects: [
+    { id: 'XII Science_Physics', name: 'Physics' },
+    { id: 'XII Commerce_HPE', name: 'HPE' },
+    { id: 'XII Commerce_PE_Additional', name: 'PE Additional' },
+    { id: 'XII Commerce_Accounts', name: 'Accounts' },
+    { id: 'III_English', name: 'English' },
+  ],
+  termIds: { 1: 'term1', 2: 'term2' },
+})
+const byName = Object.fromEntries(senior.splitReview.map(r => [r.name, r]))
+check('a matched practical subject is listed', byName.Physics?.splitName === 'practical')
+check('an UNmatched senior subject is listed too', byName.HPE?.splitName === 'standard',
+      JSON.stringify(senior.splitReview.map(r => r.name)))
+eq('and shows the split it actually got', [byName.HPE?.written, byName.HPE?.internal], [80, 20])
+eq('beside the spelling that did match',
+   [byName['PE Additional']?.written, byName['PE Additional']?.internal], [70, 30])
+check('an ordinary senior subject is listed as standard', byName.Accounts?.splitName === 'standard')
+check('a junior subject is not — its split never varies', !byName.English)
+check('standard rows sort first, so a missed spelling is what the eye lands on',
+      senior.splitReview[0].splitName === 'standard')
+
 console.log('\nOne fact reported once, however many subjects share it')
 // Hillgreen printed the grades 3-5 conversion 59 times, once per subject —
 // enough to bury the seven warnings that were actually different.

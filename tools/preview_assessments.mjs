@@ -165,6 +165,21 @@ if (!VERBOSE && bySubject.size > shown.length) {
   console.log(`\n  …and ${bySubject.size - shown.length} more subject(s). Use --verbose for all.`)
 }
 
+// Where the split could have gone either way, what it went to. Standard first:
+// a subject that SHOULD be practical and was not matched is silent in the
+// warnings, and this is the only place it shows up.
+if (plan.splitReview.length) {
+  console.log(`\n  -- written + internal split, grade 11 and up`)
+  for (const r of plan.splitReview) {
+    const flag = r.splitName === 'standard' ? '   ' : ' * '
+    console.log(`   ${flag}${r.name.padEnd(30)} ${String(r.written).padStart(3)} + `
+              + `${String(r.internal).padEnd(3)}  ${r.splitName.padEnd(14)} `
+              + `${r.count} subject(s)`)
+  }
+  console.log('     (* = matched a practical rule. Anything above at 80 + 20 that should not '
+            + 'be\n      is a spelling the rule missed — the warnings cannot tell you that.)')
+}
+
 if (plan.uncovered.length) {
   console.log(`\n  NOT COVERED — nothing will be created for these:`)
   for (const u of plan.uncovered) console.log(`     ${u.subjectId.padEnd(24)} ${u.reason}`)
