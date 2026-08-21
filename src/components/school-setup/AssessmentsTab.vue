@@ -319,8 +319,14 @@
             <div class="text-xs font-semibold text-amber-800 mb-1">
               {{ templatePlan.warnings.length }} thing(s) to verify
             </div>
-            <div class="text-[11px] text-amber-800 space-y-0.5 max-h-32 overflow-auto">
-              <div v-for="(w, i) in templatePlan.warnings" :key="i">{{ w }}</div>
+            <div class="text-[11px] text-amber-800 space-y-1.5 max-h-40 overflow-auto">
+              <div v-for="(w, i) in templatePlan.warnings" :key="i">
+                <div>{{ w.message }}</div>
+                <div class="text-amber-600 font-mono text-[10px]">
+                  {{ w.count }} subject(s): {{ w.subjects.slice(0, 8).join(', ')
+                  }}<span v-if="w.count > 8"> …(+{{ w.count - 8 }})</span>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -337,8 +343,17 @@
 
           <DataTable :value="templatePlan.items" size="small" stripedRows paginator :rows="8"
                      class="text-xs">
-            <Column field="subjectId" header="Subject" style="width:150px">
+            <Column field="subjectId" header="Subject" style="width:140px">
               <template #body="{ data }"><span class="font-mono text-[11px]">{{ data.subjectId }}</span></template>
+            </Column>
+            <!-- order is scoped to a term (the teacher app queries where
+                 termId == X, then sorts), so Periodic Test-I and Periodic
+                 Test-III both being order 1 is correct and only reads that way
+                 with the term beside it. -->
+            <Column header="Term" style="width:90px">
+              <template #body="{ data }">
+                <span class="text-[11px] text-slate-500">{{ termName(data.termId) }}</span>
+              </template>
             </Column>
             <Column field="name" header="Assessment" />
             <Column field="maxMarks" header="Max" style="width:60px" />
@@ -495,6 +510,10 @@ const scaleCheck = computed(() => {
   }
   return { matches: false }
 })
+
+function termName(id) {
+  return terms.value.find(t => t.id === id)?.name || id
+}
 
 function openTemplate() {
   templatePlan.value = null

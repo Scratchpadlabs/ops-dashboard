@@ -79,7 +79,7 @@ eq('IT is 50 + 50 at grade 1 too — the split beats the grade band', shape('pt2
 check('and says so, because the marks sheet gives no band for that paper',
   assessmentsFor({ exam: EXAMS[1].pt2, subjectId: 'I_IT', subjectName: 'IT',
                    gradeOrdinal: 1, termId: 't' })
-    .warnings.some(w => w.includes('50-mark paper') && w.includes('verify')))
+    .warnings.some(w => w.message.includes('50-mark paper') && w.message.includes('verify')))
 // Term II is Pre-Boards, not periodic tests
 eq('grade 10 Term II is the Pre-Boards',
    examsForGrade(10).filter(e => e.term === 2).map(e => e.name),
@@ -127,13 +127,29 @@ check('pre-primary subjects are reported, not scheduled',
       JSON.stringify(uncoveredIds))
 check('a subject with no readable grade is reported', uncoveredIds.includes('AAM'), JSON.stringify(uncoveredIds))
 check('grade 12 warns that no class 12 card was supplied',
-      plan.warnings.some(w => w.includes('XII_Physics') && w.includes('class 12')),
+      plan.warnings.some(w => w.message.includes('class 12') && w.subjects.includes('XII_Physics')),
       JSON.stringify(plan.warnings))
 check('an inferred practical classification warns',
-      plan.warnings.some(w => w.includes('Physics') && w.includes('verify')),
+      plan.warnings.some(w => w.message.includes('Physics') && w.message.includes('verify')),
       JSON.stringify(plan.warnings))
 check('nothing is planned for an uncovered subject',
       !plan.items.some(i => uncoveredIds.includes(i.subjectId)))
+
+console.log('\nOne fact reported once, however many subjects share it')
+// Hillgreen printed the grades 3-5 conversion 59 times, once per subject —
+// enough to bury the seven warnings that were actually different.
+const many = buildAssessmentPlan({
+  subjects: ['CLB', 'Computer', 'EVS', 'English', 'Hindi', 'Maths']
+    .map(n => ({ id: `III_${n}`, name: n })),
+  termIds: { 1: 'term1', 2: 'term2' },
+})
+const shared = many.warnings.filter(w => w.message.includes('factor of'))
+eq('six subjects sharing one conversion produce one warning', shared.length, 1)
+eq('and it names every subject it applies to', shared[0].count, 6)
+check('the message itself carries no subject id — it is a fact about the paper',
+      !/III_/.test(shared[0].message), shared[0].message)
+check('a subject appears once in the list even across two exams',
+      new Set(shared[0].subjects).size === shared[0].subjects.length)
 
 console.log('\nThe plan itself')
 eq('8 assessments per covered subject (4 exams x written+internal)',

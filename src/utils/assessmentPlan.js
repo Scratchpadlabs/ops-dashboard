@@ -82,7 +82,14 @@ function writtenMaxFor(exam, gradeOrdinal) {
  */
 export function assessmentsFor({ exam, subjectId, subjectName, gradeOrdinal, termId }) {
   const band = writtenMaxFor(exam, gradeOrdinal)
-  if (!band) return { assessments: [], warnings: [`grade ${gradeOrdinal} is outside every band of "${exam.name}"`] }
+  if (!band) {
+    return {
+      assessments: [],
+      notes: [],
+      warnings: [{ key: `noband:${exam.key}:${gradeOrdinal}`,
+                   message: `grade ${gradeOrdinal} is outside every band of "${exam.name}"` }],
+    }
+  }
 
   const { split, splitName, reason, inferred } = splitFor(subjectName, gradeOrdinal)
   const warnings = []
@@ -104,16 +111,23 @@ export function assessmentsFor({ exam, subjectId, subjectName, gradeOrdinal, ter
     ? split.written
     : (band.max ?? split.written)
   if (bandOverridden) {
-    warnings.push(`${exam.name} ${subjectId}: the ${splitName} split makes this a `
-                + `${split.written}-mark paper, where grade ${gradeOrdinal} otherwise sits `
-                + `${band.max}. The marks sheet states the split as a footnote and gives no `
-                + 'band for it — verify this subject is really examined that way here.')
+    warnings.push({
+      key: `band:${splitName}:${band.max}:${split.written}`,
+      message: `The ${splitName} split makes this a ${split.written}-mark paper, where grade `
+             + `${gradeOrdinal} otherwise sits ${band.max}. The marks sheet states the split `
+             + 'as a footnote and gives no band for it — verify this subject is really '
+             + 'examined that way here.',
+    })
   }
 
   if (exam.splitVaries) {
     notes.push(`${splitName} split (${convertTo} + ${internalMax}) — ${reason}`)
     if (inferred) {
-      warnings.push(`"${subjectName}" was classified ${splitName} from its name — verify`)
+      warnings.push({
+        key: `split:${splitName}:${nameKey(subjectName)}`,
+        message: `"${subjectName}" was classified ${splitName} (${convertTo} + ${internalMax}) `
+               + 'from its name — verify',
+      })
     }
   }
 
@@ -121,8 +135,11 @@ export function assessmentsFor({ exam, subjectId, subjectName, gradeOrdinal, ter
   const conversionType = factor === 1 ? 'none' : 'sum_up'
   const conversionFactor = factor === 1 ? null : factor
   if (conversionType === 'sum_up' && !Number.isInteger(factor)) {
-    warnings.push(`${exam.name} ${subjectId}: written ${writtenMax} scaled to ${convertTo} `
-                + `is a factor of ${factor.toFixed(4)} — verify before teachers enter marks`)
+    warnings.push({
+      key: `conversion:${writtenMax}:${convertTo}`,
+      message: `A ${writtenMax}-mark paper scaled to ${convertTo} is a factor of `
+             + `${factor.toFixed(4)} — verify before teachers enter marks`,
+    })
   }
 
   const base = { termId, subjectId, entryType: 'marks', gradingScaleId: null }
@@ -167,8 +184,17 @@ export function assessmentsFor({ exam, subjectId, subjectName, gradeOrdinal, ter
 export function buildAssessmentPlan({ subjects = [], termIds = {}, existing = [] } = {}) {
   const existingById = new Map(existing.map(a => [a.id, a]))
   const items = []
-  const warnings = []
   const uncovered = []
+
+  // Grouped by key, not one per subject. The 1.3333 conversion for grades 3-5
+  // is one fact about the marks sheet, and Hillgreen produced 59 identical
+  // copies of it — enough to bury the seven that were actually different.
+  const byKey = new Map()
+  const warn = (w, subjectId) => {
+    if (!byKey.has(w.key)) byKey.set(w.key, { message: w.message, subjects: [] })
+    const entry = byKey.get(w.key)
+    if (!entry.subjects.includes(subjectId)) entry.subjects.push(subjectId)
+  }
 
   for (const subject of subjects) {
     const gradeToken = String(subject.id || '').includes('_')
@@ -189,9 +215,12 @@ export function buildAssessmentPlan({ subjects = [], termIds = {}, existing = []
       continue
     }
     if (ordinal === 12) {
-      warnings.push(`${subject.id}: no class 12 report card was supplied. Grade 12 is being `
-                  + 'given the same exams as 11; class 10 replaces its Term II tests with '
-                  + 'Pre-Boards, so verify whether 12 should too.')
+      warn({
+        key: 'grade12',
+        message: 'No class 12 report card was supplied. Grade 12 is being given the same exams '
+               + 'as 11; class 10 replaces its Term II tests with Pre-Boards, so verify '
+               + 'whether 12 should too.',
+      }, subject.id)
     }
 
     for (const exam of examsForGrade(ordinal)) {
@@ -204,7 +233,7 @@ export function buildAssessmentPlan({ subjects = [], termIds = {}, existing = []
         exam, subjectId: subject.id, subjectName: subject.name || subject.id,
         gradeOrdinal: ordinal, termId,
       })
-      warnings.push(...out.warnings)
+      for (const w of out.warnings) warn(w, subject.id)
       for (const a of out.assessments) {
         items.push({
           ...a,
@@ -220,7 +249,7 @@ export function buildAssessmentPlan({ subjects = [], termIds = {}, existing = []
 
   return {
     items,
-    warnings: [...new Set(warnings)],
+    warnings: [...byKey.values()].map(w => ({ ...w, count: w.subjects.length })),
     uncovered,
     totals: {
       subjects: subjects.length,

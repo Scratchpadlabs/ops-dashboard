@@ -136,21 +136,29 @@ console.log(`  grading scale      ` + (scaleMatch
   ? `"${scaleMatch.name || scaleMatch.id}" matches the report cards' 8-point bands`
   : 'NONE of this school\'s scales matches the report cards\' 8-point bands'))
 
-// Grouped by subject so the shape of one subject's year is readable, which is
-// what an operator actually checks — not 2,000 rows.
+// Grouped by subject and then by TERM. `order` is only meaningful within a
+// term — the teacher app queries where termId == X and sorts by order — so
+// printing it without the term makes Periodic Test-I and Periodic Test-III
+// both showing order 1 look like a collision when they are in different terms.
+const termName = id => (terms.find(t => t.id === id)?.name) || id
 const bySubject = new Map()
 for (const i of plan.items) {
-  if (!bySubject.has(i.subjectId)) bySubject.set(i.subjectId, [])
-  bySubject.get(i.subjectId).push(i)
+  if (!bySubject.has(i.subjectId)) bySubject.set(i.subjectId, new Map())
+  const byTerm = bySubject.get(i.subjectId)
+  if (!byTerm.has(i.termId)) byTerm.set(i.termId, [])
+  byTerm.get(i.termId).push(i)
 }
-const shown = VERBOSE ? [...bySubject.keys()] : [...bySubject.keys()].slice(0, 6)
+const shown = VERBOSE ? [...bySubject.keys()] : [...bySubject.keys()].slice(0, 3)
 console.log(`\n  -- ${VERBOSE ? 'every' : 'first ' + shown.length} subject(s) of ${bySubject.size}`)
 for (const sid of shown) {
   console.log(`\n  ${sid}`)
-  for (const a of bySubject.get(sid)) {
-    const conv = a.conversionType === 'none' ? '' : `  ${a.conversionType} x${a.conversionFactor}`
-    console.log(`     ${a.status.padEnd(6)} order ${String(a.order).padStart(2)}  `
-              + `${a.name.padEnd(30)} /${String(a.maxMarks).padEnd(4)}${conv}`)
+  for (const [termId, rows] of bySubject.get(sid)) {
+    console.log(`    ${termName(termId)}  (${termId})`)
+    for (const a of rows) {
+      const conv = a.conversionType === 'none' ? '' : `  ${a.conversionType} x${a.conversionFactor.toFixed(4)}`
+      console.log(`       ${a.status.padEnd(6)} order ${String(a.order).padStart(2)}  `
+                + `${a.name.padEnd(30)} /${String(a.maxMarks).padEnd(4)}${conv}`)
+    }
   }
 }
 if (!VERBOSE && bySubject.size > shown.length) {
@@ -164,7 +172,12 @@ if (plan.uncovered.length) {
 
 if (plan.warnings.length) {
   console.log(`\n  ${plan.warnings.length} thing(s) to verify:`)
-  for (const w of plan.warnings) console.log(`     ${w}`)
+  for (const w of plan.warnings) {
+    console.log(`\n     ${w.message}`)
+    const list = w.subjects.slice(0, VERBOSE ? w.subjects.length : 8).join(', ')
+    console.log(`       ${w.count} subject(s): ${list}`
+              + (w.count > 8 && !VERBOSE ? ` …(+${w.count - 8}, --verbose for all)` : ''))
+  }
 }
 
 fs.rmSync(TMP, { recursive: true, force: true })
