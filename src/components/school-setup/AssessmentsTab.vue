@@ -10,6 +10,8 @@
         <Button label="Import CSV" icon="pi pi-upload" size="small" outlined @click="importVisible = true" />
         <Button label="Sample CSV" icon="pi pi-download" size="small" text @click="downloadSample" />
         <Button label="Export CSV" icon="pi pi-file-export" size="small" text :disabled="!selectedTermId" @click="exportCsv" />
+        <Button label="Apply Exam Template" icon="pi pi-sitemap" size="small" severity="secondary"
+                :disabled="!terms.length || !subjects.length" @click="openTemplate" />
         <Button label="New Assessment (Bulk)" icon="pi pi-plus" size="small" :disabled="!selectedTermId" @click="openBuilder" />
       </div>
     </div>
@@ -262,6 +264,112 @@
       </template>
     </Dialog>
 
+
+    <!-- ── Exam template ─────────────────────────────────────────────────
+         The school's exam scheme applied across every subject at once. The
+         numbers come from src/data/assessmentTemplates.json, which is a
+         reading of the school's own marks sheet and report cards — so the one
+         thing this dialog must do is show what it read BEFORE writing it,
+         including everything the documents could not answer. -->
+    <Dialog v-model:visible="templateVisible" header="Apply Exam Template" modal :style="{ width: '760px' }">
+      <div class="space-y-4">
+        <p class="text-sm text-slate-600">
+          Creates the written and internal assessment for every exam, on every subject,
+          in one pass. Doc ids are deterministic, so running it twice updates rather
+          than duplicates.
+        </p>
+
+        <!-- Terms are Firestore ids; nothing in the source documents names them,
+             so ops maps them rather than the template guessing. -->
+        <div class="grid grid-cols-2 gap-3">
+          <div v-for="t in [1, 2]" :key="t">
+            <label class="form-label">Term {{ t === 1 ? 'I' : 'II' }} is this school's *</label>
+            <Select v-model="templateTermIds[t]" :options="terms" optionLabel="name" optionValue="id"
+                    placeholder="Select a term" class="w-full" />
+          </div>
+        </div>
+
+        <div v-if="scaleCheck" class="rounded-lg px-3 py-2 text-[11px]"
+             :class="scaleCheck.matches ? 'bg-emerald-50 text-emerald-800 border border-emerald-100'
+                                        : 'bg-amber-50 text-amber-800 border border-amber-100'">
+          <span v-if="scaleCheck.matches">
+            <i class="pi pi-check-circle mr-1"></i>
+            "{{ scaleCheck.name }}" matches the 8-point scale the report cards print.
+          </span>
+          <span v-else>
+            <i class="pi pi-exclamation-triangle mr-1"></i>
+            No grading scale in this school matches the report cards' 8-point bands
+            (91–100 A1 … 32 and below E). Printed grades will not agree with entered
+            marks. These assessments are entered as marks and reference no scale, so
+            this does not block them — but it is worth fixing in Terms &amp; Scales.
+          </span>
+        </div>
+
+        <div v-if="templatePlan">
+          <div class="flex flex-wrap gap-2 mb-3">
+            <span class="stat stat-ok">{{ templatePlan.totals.create }} to create</span>
+            <span v-if="templatePlan.totals.update" class="stat">{{ templatePlan.totals.update }} to update</span>
+            <span class="stat">{{ templatePlan.totals.subjects }} subject(s) read</span>
+            <span v-if="templatePlan.totals.uncoveredSubjects" class="stat stat-warn">
+              {{ templatePlan.totals.uncoveredSubjects }} subject(s) not covered
+            </span>
+          </div>
+
+          <div v-if="templatePlan.warnings.length" class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 mb-3">
+            <div class="text-xs font-semibold text-amber-800 mb-1">
+              {{ templatePlan.warnings.length }} thing(s) to verify
+            </div>
+            <div class="text-[11px] text-amber-800 space-y-0.5 max-h-32 overflow-auto">
+              <div v-for="(w, i) in templatePlan.warnings" :key="i">{{ w }}</div>
+            </div>
+          </div>
+
+          <div v-if="templatePlan.uncovered.length" class="rounded-lg border border-slate-200 px-3 py-2 mb-3">
+            <div class="text-xs font-semibold text-slate-600 mb-1">
+              Nothing will be created for these — the documents do not cover them
+            </div>
+            <div class="text-[11px] text-slate-500 space-y-0.5 max-h-28 overflow-auto">
+              <div v-for="(u, i) in templatePlan.uncovered" :key="i">
+                <span class="font-mono">{{ u.subjectId }}</span> — {{ u.reason }}
+              </div>
+            </div>
+          </div>
+
+          <DataTable :value="templatePlan.items" size="small" stripedRows paginator :rows="8"
+                     class="text-xs">
+            <Column field="subjectId" header="Subject" style="width:150px">
+              <template #body="{ data }"><span class="font-mono text-[11px]">{{ data.subjectId }}</span></template>
+            </Column>
+            <Column field="name" header="Assessment" />
+            <Column field="maxMarks" header="Max" style="width:60px" />
+            <Column header="Conversion" style="width:130px">
+              <template #body="{ data }">
+                <span v-if="data.conversionType === 'none'" class="text-slate-400">—</span>
+                <span v-else>{{ data.conversionType }} ×{{ Number(data.conversionFactor).toFixed(4).replace(/0+$/, '').replace(/\.$/, '') }}</span>
+              </template>
+            </Column>
+            <Column field="status" header="" style="width:80px">
+              <template #body="{ data }">
+                <span class="text-[10px] px-1.5 py-0.5 rounded"
+                      :class="data.status === 'CREATE' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'">
+                  {{ data.status }}
+                </span>
+              </template>
+            </Column>
+          </DataTable>
+        </div>
+
+        <div v-if="templateError" class="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{{ templateError }}</div>
+        <div v-if="templateProgress" class="text-sm text-slate-500">{{ templateProgress }}</div>
+      </div>
+      <template #footer>
+        <Button label="Cancel" text @click="templateVisible = false" />
+        <Button label="Preview" icon="pi pi-search" outlined :loading="templatePreviewing"
+                :disabled="!templateTermIds[1] || !templateTermIds[2]" @click="previewTemplate" />
+        <Button label="Apply" icon="pi pi-check" :loading="applyingTemplate"
+                :disabled="!templatePlan || !templatePlan.items.length" @click="confirmApplyTemplate" />
+      </template>
+    </Dialog>
   </div>
 </template>
 
@@ -288,6 +396,8 @@ import { schoolCollection, schoolDoc } from '../../firebase/schoolCollections.js
 import { db } from '../../firebase/config'
 import { auth } from '../../firebase/config'
 import { checkEnteredMarks, slugify } from '../../utils/assessmentHelpers.js'
+import { buildAssessmentPlan, compareGradingScale } from '../../utils/assessmentPlan.js'
+import { guardedBatchSet, MODE_CREATE, SchemaViolation } from '../../schemas/guardedWrite.js'
 import { toCsv, downloadCsv } from '../../utils/csv.js'
 
 const props = defineProps({ schoolId: { type: String, default: null } })
@@ -357,6 +467,116 @@ async function loadAssessments() {
     assessments.value = []
   } finally {
     loading.value = false
+  }
+}
+
+// ── Exam template ────────────────────────────────────────────────────────
+// The school's whole exam scheme, applied across every subject at once. The
+// numbers live in src/data/assessmentTemplates.json (a reading of the school's
+// marks sheet and report cards) and the arithmetic in utils/assessmentPlan.js,
+// which is pure and checked against the report cards' own worked examples —
+// node tools/check_assessment_templates.mjs.
+const templateVisible = ref(false)
+const templateTermIds = reactive({ 1: null, 2: null })
+const templatePlan = ref(null)
+const templatePreviewing = ref(false)
+const applyingTemplate = ref(false)
+const templateError = ref('')
+const templateProgress = ref('')
+
+// Which of the school's scales, if any, says what the report cards print. Not a
+// blocker — these assessments are entered as marks and reference no scale —
+// but a school whose scale disagrees prints grades that do not match the marks
+// underneath them, and nobody notices until a parent does.
+const scaleCheck = computed(() => {
+  if (!scales.value.length) return { matches: false }
+  for (const s of scales.value) {
+    if (compareGradingScale(s).matches) return { matches: true, name: s.name || s.id }
+  }
+  return { matches: false }
+})
+
+function openTemplate() {
+  templatePlan.value = null
+  templateError.value = ''
+  templateProgress.value = ''
+  // Two terms and nothing else to go on is the common case — offer it, but as
+  // a starting point the operator confirms, never as a silent default.
+  if (terms.value.length === 2) {
+    const ordered = [...terms.value].sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+    templateTermIds[1] = templateTermIds[1] || ordered[0].id
+    templateTermIds[2] = templateTermIds[2] || ordered[1].id
+  }
+  templateVisible.value = true
+}
+
+async function previewTemplate() {
+  templatePreviewing.value = true
+  templateError.value = ''
+  try {
+    // Every term, not just the selected one: the template spans both.
+    const snap = await getDocs(schoolCollection(props.schoolId, 'assessments'))
+    templatePlan.value = buildAssessmentPlan({
+      subjects: subjects.value,
+      termIds: { 1: templateTermIds[1], 2: templateTermIds[2] },
+      existing: snap.docs.map(d => ({ id: d.id })),
+    })
+  } catch (e) {
+    console.error(e)
+    templateError.value = 'Could not read this school\'s assessments. Check the console.'
+  } finally {
+    templatePreviewing.value = false
+  }
+}
+
+function confirmApplyTemplate() {
+  const t = templatePlan.value.totals
+  confirm.require({
+    message: `Write ${t.create} new and ${t.update} updated assessment(s) across `
+           + `${t.subjects - t.uncoveredSubjects} subject(s)? `
+           + 'Existing assessments with the same id are overwritten; anything created '
+           + 'by hand under a different id is left alone.',
+    header: 'Apply exam template',
+    icon: 'pi pi-sitemap',
+    rejectLabel: 'Cancel', acceptLabel: 'Apply',
+    accept: applyTemplate,
+  })
+}
+
+async function applyTemplate() {
+  applyingTemplate.value = true
+  templateError.value = ''
+  try {
+    const items = templatePlan.value.items
+    let done = 0
+    for (let i = 0; i < items.length; i += 450) {
+      const batch = writeBatch(db)
+      for (const a of items.slice(i, i + 450)) {
+        // MODE_CREATE: these are whole documents, so validate them in full.
+        // A malformed assessment is the kind that reaches a teacher as an
+        // un-fillable column rather than as an error here.
+        guardedBatchSet(batch, 'assessments', schoolDoc(props.schoolId, 'assessments', a.docId), {
+          name: a.name, termId: a.termId, subjectId: a.subjectId, order: a.order,
+          entryType: a.entryType, maxMarks: a.maxMarks,
+          gradingScaleId: a.gradingScaleId, conversionType: a.conversionType,
+          conversionFactor: a.conversionFactor,
+          updated_at: serverTimestamp(), updated_by: auth.currentUser?.email || 'unknown',
+        }, { mode: MODE_CREATE, merge: true })
+      }
+      await batch.commit()
+      done += Math.min(450, items.length - i)
+      templateProgress.value = `Wrote ${done}/${items.length} assessment(s)…`
+    }
+    toast.add({ severity: 'success', summary: 'Exam template applied',
+                detail: `${items.length} assessment(s)`, life: 3000 })
+    templateVisible.value = false
+    await loadAssessments()
+  } catch (e) {
+    console.error(e)
+    templateError.value = e instanceof SchemaViolation ? e.userMessage
+      : 'Something went wrong writing assessments. Check the console.'
+  } finally {
+    applyingTemplate.value = false
   }
 }
 
@@ -800,4 +1020,7 @@ onMounted(loadStatic)
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
+.stat { font-size: 12px; background: #f1f5f9; color: #334155; border-radius: 6px; padding: 3px 8px; }
+.stat-ok   { background: #ecfdf5; color: #047857; }
+.stat-warn { background: #fffbeb; color: #b45309; }
 </style>

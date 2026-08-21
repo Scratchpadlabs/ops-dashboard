@@ -46,6 +46,8 @@ node tools/check_remarks_import.mjs
 # Read-only production inspection (needs application-default credentials)
 python3 tools/class_inventory.py --project clarified-1501
 python3 tools/check_archive.py --project clarified-1501
+node tools/preview_assessments.mjs --project clarified-1501 --school Hillgreen_Highschool
+python3 tools/assessment_inventory.py --project clarified-1501 --school Hillgreen_Highschool
 ```
 
 ## Architecture
