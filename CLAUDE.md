@@ -20,6 +20,7 @@ Substantial docs already exist. Prefer them over re-deriving from code:
 | `AUDIT.md` | Live Firestore schema dump (2026-08-04), per-collection shapes, and the real data problems. Findings are tagged `[LIVE]` / `[CODE]` / `[SPEC]` / `[INFERENCE]` — respect those tags. |
 | `docs/school-setup-page-spec.md` | The School Setup contract, tab by tab. **§6 is the teacher-app consumption contract** — the thing not to break. |
 | `functions/DEPLOY.md` | Every Cloud Function: what it does, why, and its exact deploy command. |
+| `docs/onboarding-a-school.md` | The order a school is set up in, where each artefact goes, and the traps. Written after Hillgreen. |
 
 ## Commands
 
