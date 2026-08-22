@@ -22,6 +22,27 @@
       :on-confirm="runImport"
     />
 
+    <!-- Repairing what the old import already wrote. Scoped to the selected
+         term, because that is the set on screen and the set the entered-marks
+         gate can be checked against. -->
+    <div
+      v-if="selectedTermId && !loading && audit.length"
+      class="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-3"
+    >
+      <i class="pi pi-exclamation-triangle text-amber-500 mt-0.5"></i>
+      <div class="flex-1 text-sm text-amber-800">
+        <div class="font-semibold">
+          {{ audit.length }} assessment(s) in this term need repair<span v-if="auditErrorCount">, {{ auditErrorCount }} seriously</span>.
+        </div>
+        <div class="text-xs text-amber-700 mt-0.5">
+          The import that wrote these has since been fixed, but the documents it already wrote still carry
+          its mistakes — composite marks stored as one long number, every row ordered 1, no conversion
+          fields, and names taken from the subject. Review each proposed change before applying.
+        </div>
+      </div>
+      <Button label="Review repairs" icon="pi pi-wrench" size="small" @click="openRepair" />
+    </div>
+
     <!-- No terms at all is a different state from "pick a term": the school
          has never been set up, and assessments cannot exist without a term. -->
     <ConfigEmptyState
@@ -262,13 +283,67 @@
       </template>
     </Dialog>
 
+    <!-- ── Repair existing assessments ──────────────────────────────────── -->
+    <Dialog v-model:visible="repairVisible" header="Repair Assessments" modal :style="{ width: '900px' }">
+      <div class="space-y-3 pt-2">
+        <p class="text-sm text-slate-600">
+          Every change below is shown before it is made, and nothing is applied to a row you untick.
+          <span class="font-semibold">Max Marks is editable</span> — the suggested value is a reading of the
+          mangled number, not a fact, so check it against the school's own paper before applying.
+        </p>
+
+        <div class="flex items-center gap-3 text-xs">
+          <button type="button" class="text-violet-600 font-semibold" @click="setAllRepairs(true)">Select all</button>
+          <button type="button" class="text-violet-600 font-semibold" @click="setAllRepairs(false)">Select none</button>
+          <span class="text-slate-400">{{ selectedRepairs.length }} of {{ audit.length }} selected</span>
+        </div>
+
+        <div class="border border-slate-200 rounded-lg divide-y divide-slate-100 max-h-[420px] overflow-auto">
+          <div v-for="r in audit" :key="r.id" class="px-3 py-2.5">
+            <div class="flex items-start gap-2.5">
+              <Checkbox v-model="r._selected" binary class="mt-0.5" />
+              <div class="flex-1 min-w-0">
+                <div class="flex items-baseline gap-2 flex-wrap">
+                  <span class="font-mono text-xs text-slate-500 truncate">{{ r.id }}</span>
+                  <span class="text-sm text-slate-800 font-medium">{{ r.doc.name || '(no name)' }}</span>
+                </div>
+                <div
+                  v-for="(iss, idx) in r.issues" :key="idx"
+                  class="text-xs mt-0.5"
+                  :class="iss.severity === 'error' ? 'text-red-600' : 'text-amber-700'"
+                >· {{ iss.message }}</div>
+                <div v-if="!hasFixes(r)" class="text-xs text-slate-400 mt-0.5">
+                  Nothing here can be corrected automatically — open the assessment and fix it by hand.
+                </div>
+              </div>
+              <div v-if="r.needsMaxMarks" class="w-32 shrink-0">
+                <label class="text-[10px] font-semibold text-slate-400 uppercase">Max Marks</label>
+                <InputNumber v-model="r._maxMarks" class="w-full" size="small" :min="1" :maxFractionDigits="2" />
+                <div class="text-[10px] text-slate-400 mt-0.5">was {{ r.doc.maxMarks }}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div v-if="repairError" class="text-sm text-red-500 bg-red-50 rounded-lg px-3 py-2">{{ repairError }}</div>
+      </div>
+      <template #footer>
+        <Button label="Cancel" text @click="repairVisible = false" />
+        <Button
+          :label="`Apply to ${selectedRepairs.length} assessment(s)`"
+          :disabled="!selectedRepairs.length" :loading="repairing"
+          @click="confirmRepair"
+        />
+      </template>
+    </Dialog>
+
     <ConfirmDialog />
   </div>
 </template>
 
 <script setup>
 import { ref, reactive, computed, watch, onMounted } from 'vue'
-import { getDocs, getDoc, query, where, orderBy, writeBatch, serverTimestamp } from 'firebase/firestore'
+import { getDocs, getDoc, query, where, orderBy, writeBatch, serverTimestamp, deleteField } from 'firebase/firestore'
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
 
@@ -290,6 +365,7 @@ import { schoolCollection, schoolDoc } from '../../firebase/schoolCollections.js
 import { db } from '../../firebase/config'
 import { auth } from '../../firebase/config'
 import { checkEnteredMarks, slugify, isCoScholasticArea } from '../../utils/assessmentHelpers.js'
+import { auditAssessments } from '../../utils/assessmentRepair.js'
 import { toCsv, downloadCsv } from '../../utils/csv.js'
 
 const props = defineProps({ schoolId: { type: String, default: null } })
@@ -348,6 +424,9 @@ async function loadStatic() {
     terms.value = tSnap.docs.map(d => ({ id: d.id, ...d.data() }))
     scales.value = gSnap.docs.map(d => ({ id: d.id, ...d.data() }))
     subjects.value = sSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+    // The audit compares against these, so a load that finished after the
+    // assessments did has to re-run it.
+    runAudit()
   } catch (e) {
     console.error('Could not load terms/scales/subjects', e)
   }
@@ -364,6 +443,9 @@ async function loadAssessments() {
     assessments.value = []
   } finally {
     loading.value = false
+    // Audited on every load so the repair banner reflects what is on screen,
+    // including right after a save that fixed (or introduced) something.
+    runAudit()
   }
 }
 
@@ -442,6 +524,145 @@ async function runBuilder() {
     builderError.value = 'Something went wrong. Try again.'
   } finally {
     building.value = false
+  }
+}
+
+// ── Repair existing assessment documents ─────────────────────────────────
+// The import that wrote most of these is fixed (utils/assessmentImport.js),
+// but that does nothing for what it already wrote. This is the cleanup pass:
+// audit what is stored, propose a correction, and let a human confirm every
+// one. Nothing here decides a mark on its own — a recovered maxMarks is
+// presented as an editable suggestion, never applied silently.
+const audit = ref([])
+
+const auditErrorCount = computed(() =>
+  audit.value.filter(r => r.issues.some(i => i.severity === 'error')).length)
+
+function runAudit() {
+  if (!selectedTermId.value) { audit.value = []; return }
+  const results = auditAssessments(assessments.value, {
+    scaleIds: new Set(scales.value.map(s => s.id)),
+    termIds: new Set(terms.value.map(t => t.id)),
+    subjectNames: new Map(subjects.value.map(s => [s.id, s.name || ''])),
+  })
+  audit.value = results.map(r => ({
+    ...r,
+    _selected: true,
+    // Pre-filled with the recovered reading when there is one, otherwise the
+    // stored value — so an implausible mark with no reading still gets a box
+    // to correct by hand rather than being left as the only unfixable row.
+    _maxMarks: r.marksSuggestion !== null
+      ? r.marksSuggestion
+      : (typeof r.doc.maxMarks === 'number' && r.doc.maxMarks > 0 ? r.doc.maxMarks : null),
+  }))
+}
+
+const repairVisible = ref(false)
+const repairing = ref(false)
+const repairError = ref('')
+
+const selectedRepairs = computed(() => audit.value.filter(r => r._selected))
+
+/** True when this row has something the repair can actually write. */
+function hasFixes(r) {
+  return Object.keys(r.patch).length > 0 || r.strip.length > 0 || r.needsMaxMarks
+}
+
+function openRepair() {
+  repairError.value = ''
+  runAudit()
+  repairVisible.value = true
+}
+
+function setAllRepairs(value) {
+  audit.value.forEach(r => { r._selected = value })
+}
+
+// What will actually be written for one row: the auto-fixable patch, plus the
+// operator's Max Marks if they changed it, plus deletions for the fields the
+// old importer left behind.
+function repairUpdateFor(r) {
+  const update = { ...r.patch }
+  const maxMarks = r._maxMarks
+  if (typeof maxMarks === 'number' && maxMarks > 0 && maxMarks !== r.doc.maxMarks) {
+    update.maxMarks = maxMarks
+  }
+  for (const field of r.strip) update[field] = deleteField()
+  return update
+}
+
+function confirmRepair() {
+  repairError.value = ''
+  const rows = selectedRepairs.value.map(r => ({ r, update: repairUpdateFor(r) }))
+    .filter(({ update }) => Object.keys(update).length)
+  if (!rows.length) {
+    repairError.value = 'Nothing to write — the selected rows have no automatic correction. Open each one and fix it by hand.'
+    return
+  }
+  const markChanges = rows.filter(({ update }) => update.maxMarks !== undefined || update.entryType !== undefined)
+  const stripped = rows.reduce((n, { r }) => n + r.strip.length, 0)
+  confirm.require({
+    message: `Update ${rows.length} assessment(s)?`
+      + (markChanges.length ? ` ${markChanges.length} change what marks are scored against — entered marks are checked first.` : '')
+      + (stripped ? ` ${stripped} unused field(s) are removed.` : ''),
+    header: 'Apply Repairs', icon: 'pi pi-wrench',
+    rejectLabel: 'Cancel', acceptLabel: 'Apply',
+    accept: () => applyRepairs(rows),
+  })
+}
+
+async function applyRepairs(rows) {
+  repairing.value = true
+  repairError.value = ''
+  try {
+    // Same gate as the editor and the CSV import: lowering maxMarks or
+    // flipping entryType on an assessment teachers have already marked can
+    // invalidate those values. Checked once per subject, not once per row.
+    const gated = rows.filter(({ update }) => update.maxMarks !== undefined || update.entryType !== undefined)
+    if (gated.length) {
+      const subjectIds = Array.from(new Set(gated.map(({ r }) => r.doc.subjectId)))
+      const checks = await Promise.all(subjectIds.map(sid =>
+        checkEnteredMarks(props.schoolId, selectedTermId.value, sid).catch(() => 'error')))
+      if (checks.includes('error')) {
+        repairError.value = 'Could not verify whether marks have been entered — aborting to be safe.'
+        return
+      }
+      const withEntries = subjectIds.filter((_, i) => checks[i])
+      if (withEntries.length) {
+        const affected = gated.filter(({ r }) => withEntries.includes(r.doc.subjectId))
+        const proceed = await new Promise(resolve => {
+          confirm.require({
+            message: `Teachers have already entered marks for ${withEntries.join(', ')}. `
+              + `Repairing ${affected.length} assessment(s) there changes what those marks are scored against — `
+              + 'the stored marks are NOT rescaled, so they will need re-checking. Continue anyway?',
+            header: 'Entered marks exist', icon: 'pi pi-exclamation-triangle',
+            rejectLabel: 'Cancel', acceptLabel: 'Continue anyway', acceptClass: 'p-button-danger',
+            accept: () => resolve(true), reject: () => resolve(false),
+          })
+        })
+        if (!proceed) return
+      }
+    }
+
+    for (let i = 0; i < rows.length; i += 400) {
+      const batch = writeBatch(db)
+      for (const { r, update } of rows.slice(i, i + 400)) {
+        batch.update(schoolDoc(props.schoolId, 'assessments', r.id), {
+          ...update,
+          updated_at: serverTimestamp(), updated_by: auth.currentUser?.email || 'unknown',
+        })
+      }
+      await batch.commit()
+    }
+
+    repairVisible.value = false
+    toast.add({ severity: 'success', summary: 'Repaired', detail: `${rows.length} assessment(s) updated`, life: 3500 })
+    await loadAssessments()
+  } catch (e) {
+    console.error(e)
+    repairError.value = 'Something went wrong while applying. Re-open this dialog to see what is still outstanding.'
+  } finally {
+    repairing.value = false
   }
 }
 

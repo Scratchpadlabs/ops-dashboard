@@ -159,6 +159,17 @@ know survives after the known ones. `currentClassId.options` still comes from th
   Rows are validated against the assessments schema like students are, `order` sequences within
   (subjectId, termId) and an existing assessment keeps the order it already had. Scheduling and
   syllabus columns have no field on an assessment and are reported, not written.
+- **Repairing assessments already written.** Fixing the writer does nothing for what it already
+  wrote, so `src/utils/assessmentRepair.js` (pinned by `tools/check_assessment_repair.mjs`) audits
+  the stored documents and the Assessments tab surfaces a banner + review dialog for the selected
+  term. It flags an implausible `maxMarks`, an assessment named after its own subject, absent
+  `conversionType`/`conversionFactor`/`gradingScaleId`, a missing/duplicated `order`, dangling
+  term/subject/scale references, and the blueprint fields nothing reads (removed with
+  `deleteField`). A mangled composite mark is *read back* — 804040 → 80 — but only when the digits
+  have one consistent reading (prefix + a breakdown summing to it, or a bare two-part sum);
+  otherwise it declines to guess and asks. Every proposed maxMarks is editable and every row is
+  tickable; a name is never auto-changed. Applying goes through the same entered-marks gate as the
+  editor, and warns explicitly that stored marks are NOT rescaled.
 
 ### 3.5 Assessments (the centerpiece)
 - View: matrix per term — rows = assessment name (grouped template), columns = subjects, cell = configured/missing. Secondary flat table with inline edit.
