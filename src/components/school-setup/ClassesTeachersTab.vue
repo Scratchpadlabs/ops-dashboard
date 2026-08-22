@@ -5,6 +5,22 @@
       <Button label="Add Section" icon="pi pi-plus" size="small" @click="openAddSection" />
     </div>
 
+    <div
+      v-if="!loading && classesMissingSubjects.length"
+      class="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-3"
+    >
+      <i class="pi pi-exclamation-triangle text-amber-500 mt-0.5"></i>
+      <div class="flex-1 text-sm text-amber-800">
+        <div class="font-semibold">{{ classesMissingSubjects.length }} section(s) have an empty subject list.</div>
+        <div class="text-xs text-amber-700 mt-0.5">
+          Sections created by the New School Wizard start with <span class="font-mono">subjects: []</span> — until they're filled,
+          the teacher app has no subjects to show for those classes. Filling attaches each section's grade-matching subjects
+          with the standard topic template; sections that already have subjects are not touched.
+        </div>
+      </div>
+      <Button label="Fill subject lists" icon="pi pi-list-check" size="small" :loading="fillingSubjects" @click="confirmFillSubjectLists" />
+    </div>
+
     <div v-if="loading" class="flex items-center justify-center py-10">
       <ProgressSpinner style="width:28px;height:28px" />
     </div>
@@ -26,7 +42,11 @@
                 class="px-2.5 py-1 rounded-full text-xs font-semibold"
                 :class="classByGradeSection(grade, sec).isActive !== false ? 'bg-blue-50 text-blue-700 hover:bg-blue-100' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'"
                 @click="openSectionEditor(classByGradeSection(grade, sec))"
-              >{{ grade }}_{{ sec }}</button>
+              >{{ grade }}_{{ sec }}<span
+                  class="ml-1 font-normal"
+                  :class="(classByGradeSection(grade, sec).subjects || []).length ? 'opacity-60' : 'text-amber-600'"
+                  v-tooltip="(classByGradeSection(grade, sec).subjects || []).length ? 'Subjects attached' : 'No subjects attached — the teacher app will show nothing for this class'"
+                >{{ (classByGradeSection(grade, sec).subjects || []).length || '·' }}</span></button>
               <button v-else type="button" class="text-xs text-slate-300 hover:text-violet-600" @click="openAddSection(grade, sec)">+ add</button>
             </td>
           </tr>
@@ -85,12 +105,23 @@
             <label class="form-label mb-0">Subjects</label>
           </div>
           <div class="grid grid-cols-2 gap-1 max-h-64 overflow-auto border border-slate-200 rounded-lg p-2">
-            <label v-for="subj in allSubjects" :key="subj.id" class="flex items-center gap-2 text-sm px-1 py-0.5">
+            <label v-for="subj in editorSubjects" :key="subj.id" class="flex items-center gap-2 text-sm px-1 py-0.5">
               <Checkbox v-model="form.subjectIds" :value="subj.id" />
-              <span :class="parseGrade(subj.id) === form.clazz ? 'text-slate-800' : 'text-slate-500'">{{ subj.id }}</span>
+              <span
+                :class="isCoScholasticArea(subj.area) ? 'text-amber-600' : (parseGrade(subj.id) === form.clazz ? 'text-slate-800' : 'text-slate-500')"
+                v-tooltip="isCoScholasticArea(subj.area) ? 'Misfiled Co-Scholastic record, already attached to this class. Uncheck to detach, or move it properly from the Subjects tab.' : ''"
+              >{{ subj.id }}{{ isCoScholasticArea(subj.area) ? ' ⚠' : '' }}</span>
             </label>
           </div>
-          <p class="text-xs text-slate-400 mt-1">Grade-matching subjects are pre-checked when adding a new section; any subject can be attached.</p>
+          <p class="text-xs text-slate-400 mt-1">
+            Grade-matching subjects are pre-checked when adding a new section; any scholastic subject can be attached.
+            Each newly checked subject gets the standard topic template (<span class="font-mono">Term 1 / Term 2 / Optional Activity</span>);
+            subjects already attached keep their completion state.
+          </p>
+          <p v-if="misfiledSubjectCount" class="text-xs text-amber-600 mt-1">
+            {{ misfiledSubjectCount }} Co-Scholastic record(s) in this school's <span class="font-mono">subjects</span> collection are hidden here —
+            they are term-wide activities, not class subjects. Move them from the Subjects tab.
+          </p>
         </div>
 
         <div v-if="formError" class="text-sm text-red-500 bg-red-50 rounded-lg px-3 py-2">{{ formError }}</div>
@@ -138,7 +169,7 @@
 
 <script setup>
 import { ref, reactive, computed, watch, onMounted } from 'vue'
-import { getDocs, setDoc, updateDoc, query, orderBy, serverTimestamp } from 'firebase/firestore'
+import { getDocs, setDoc, updateDoc, query, orderBy, serverTimestamp, writeBatch } from 'firebase/firestore'
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
 
@@ -153,11 +184,13 @@ import ConfirmDialog from 'primevue/confirmdialog'
 
 import { schoolCollection, schoolDoc } from '../../firebase/schoolCollections.js'
 import ConfigEmptyState from './ConfigEmptyState.vue'
-import { auth } from '../../firebase/config'
+import { auth, db } from '../../firebase/config'
 import { regenerateStudentsSchemaClassOptions } from '../../utils/schoolSetupHelpers.js'
 import KbClassifiedInput from '../shared/KbClassifiedInput.vue'
 import { useEducationKB } from '../../composables/useEducationKB.js'
 import { GRADE, SECTION, OTHER } from '../../utils/educationKB.js'
+import { mergeClassSubjects, appendClassSubjects } from '../../utils/classSubjects.js'
+import { isCoScholasticArea } from '../../utils/assessmentHelpers.js'
 
 const props = defineProps({ schoolId: { type: String, default: null } })
 const confirm = useConfirm()
@@ -180,8 +213,73 @@ function parseGrade(id) {
   return (id || '').split('_')[0] || '?'
 }
 
-const allSubjects = computed(() => [...subjects.value].sort((a, b) => a.id.localeCompare(b.id)))
+// Only scholastic subjects belong on a class. A Co-Scholastic record is a
+// term-wide activity in co_scholastic_activities, not a per-class subject —
+// any still sitting in `subjects` is misfiled and is kept out of the
+// checklist so attaching it can't spread the mistake into classes.subjects[].
+const attachableSubjects = computed(() =>
+  [...subjects.value].filter(s => !isCoScholasticArea(s.area)).sort((a, b) => a.id.localeCompare(b.id))
+)
+const misfiledSubjectCount = computed(() => subjects.value.filter(s => isCoScholasticArea(s.area)).length)
+
 const teachers = computed(() => staffs.value.filter(s => s.type === 'teacher'))
+
+function subjectsForGrade(grade) {
+  return attachableSubjects.value.filter(s => parseGrade(s.id) === grade).map(s => s.id)
+}
+
+// ── Classes with an empty subjects[] ────────────────────────────────────
+// A class created by the New School Wizard (or the structure proposer) starts
+// with `subjects: []` and only gets filled when someone opens that section.
+// On a school with dozens of sections that is dozens of dialogs, so the whole
+// backlog is fillable in one action from the grade-matching subject list.
+const classesMissingSubjects = computed(() =>
+  classes.value.filter(c =>
+    c.isActive !== false &&
+    !(c.subjects || []).length &&
+    subjectsForGrade(c.clazz).length
+  )
+)
+
+const fillingSubjects = ref(false)
+
+function confirmFillSubjectLists() {
+  const targets = classesMissingSubjects.value
+  if (!targets.length) return
+  const preview = targets.slice(0, 6).map(c => `${c.id} (${subjectsForGrade(c.clazz).length})`).join(', ')
+  confirm.require({
+    message: `Attach each grade's subjects to ${targets.length} section(s) that currently have none: ${preview}${targets.length > 6 ? `, +${targets.length - 6} more` : ''}. Sections that already have subjects are left untouched.`,
+    header: 'Fill empty subject lists',
+    icon: 'pi pi-list-check',
+    rejectLabel: 'Cancel', acceptLabel: `Fill ${targets.length} section(s)`,
+    accept: () => fillSubjectLists(targets),
+  })
+}
+
+async function fillSubjectLists(targets) {
+  fillingSubjects.value = true
+  try {
+    for (let i = 0; i < targets.length; i += 400) {
+      const batch = writeBatch(db)
+      for (const cls of targets.slice(i, i + 400)) {
+        const next = appendClassSubjects(cls.subjects, subjectsForGrade(cls.clazz))
+        if (!next) continue
+        batch.set(schoolDoc(props.schoolId, 'classes', cls.id), {
+          subjects: next,
+          updated_at: serverTimestamp(), updated_by: auth.currentUser?.email || 'unknown',
+        }, { merge: true })
+      }
+      await batch.commit()
+    }
+    toast.add({ severity: 'success', summary: 'Subject lists filled', detail: `${targets.length} section(s) updated`, life: 3000 })
+    await loadAll()
+  } catch (e) {
+    console.error(e)
+    toast.add({ severity: 'error', summary: 'Error', detail: 'Could not fill subject lists', life: 4000 })
+  } finally {
+    fillingSubjects.value = false
+  }
+}
 
 const allGrades = computed(() => Array.from(new Set(classes.value.map(c => c.clazz))).sort())
 const allSections = computed(() => Array.from(new Set(classes.value.map(c => c.section))).sort())
@@ -216,6 +314,18 @@ const saving = ref(false)
 const formError = ref('')
 const cloneFromClassId = ref(null)
 const form = reactive({ clazz: '', section: '', stage: 'foundation', name: '', isActive: true, subjectIds: [] })
+// What the section editor actually lists. A misfiled subject is hidden so it
+// can't be attached to a new section, but one that is ALREADY attached to the
+// class being edited stays listed — saving rebuilds `subjects[]` from what is
+// checked, so hiding it would silently detach it behind the user's back.
+const editorSubjects = computed(() => {
+  const shown = new Map(attachableSubjects.value.map(s => [s.id, s]))
+  for (const s of (editingClass.value?.subjects || [])) {
+    const doc = subjects.value.find(x => x.id === s.subjectId)
+    if (doc && !shown.has(doc.id)) shown.set(doc.id, doc)
+  }
+  return Array.from(shown.values()).sort((a, b) => a.id.localeCompare(b.id))
+})
 
 const siblingSections = computed(() =>
   classes.value.filter(c => c.clazz === form.clazz && c.id !== editingClass.value?.id)
@@ -227,7 +337,7 @@ function openAddSection(grade, section) {
   const clazz = grade || ''
   Object.assign(form, {
     clazz, section: section || '', stage: 'foundation', name: '', isActive: true,
-    subjectIds: subjects.value.filter(s => parseGrade(s.id) === clazz).map(s => s.id),
+    subjectIds: subjectsForGrade(clazz),
   })
   formError.value = ''
   sectionDialogVisible.value = true
@@ -259,29 +369,6 @@ function validateSection() {
   return ''
 }
 
-// Fixed per-subject topic template — {subjectId}_Term1|Term2|Optional.
-// NOTE: inferred from the spec's description, not verified against a live
-// class doc — double-check against a real school (e.g. SAMARTH) before
-// relying on this for anything beyond TEST_SCHOOL.
-function defaultTopicsForSubject(subjectId) {
-  return [
-    { id: `${subjectId}_Term1`, topic: 'Term 1', isCompleted: false, completedAt: null },
-    { id: `${subjectId}_Term2`, topic: 'Term 2', isCompleted: false, completedAt: null },
-    { id: `${subjectId}_Optional`, topic: 'Optional', isCompleted: false, completedAt: null },
-  ]
-}
-
-// CRITICAL: merge, never clobber — preserve isCompleted/completedAt/topics
-// for subjects that were already assigned.
-function regenerateSubjectsArray(existingSubjects, checkedSubjectIds) {
-  const existingBydId = new Map((existingSubjects || []).map(s => [s.subjectId, s]))
-  return checkedSubjectIds.map(subjectId => {
-    const existing = existingBydId.get(subjectId)
-    if (existing) return existing
-    return { subjectId, teacherId: '', isCompleted: false, completedAt: null, topics: defaultTopicsForSubject(subjectId) }
-  })
-}
-
 async function saveSection() {
   formError.value = validateSection()
   if (formError.value) return
@@ -295,7 +382,7 @@ async function saveSection() {
       stage: form.stage,
       name: form.name.trim() || `${form.clazz.trim()} ${form.section.trim()}`,
       isActive: form.isActive,
-      subjects: regenerateSubjectsArray(existingSubjects, form.subjectIds),
+      subjects: mergeClassSubjects(existingSubjects, form.subjectIds),
       updated_at: serverTimestamp(),
       updated_by: auth.currentUser?.email || 'unknown',
     }

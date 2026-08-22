@@ -38,13 +38,15 @@ Levels must fully cover 0–100 with no overlap (validate).
 ```
 Doc ID pattern: `{Grade}_{SubjectName}` (Roman-numeral grade). A subject used by only
 one section (e.g. `III_Sanskrit`) is still just a subjects doc.
+Scholastic only — a co-scholastic record is a `co_scholastic_activities` doc (§2 below),
+never a subjects doc, whatever its `area` says.
 
 ### classes/{classId}   — per-section, e.g. `III_A`
 ```
 { id, name, clazz: "III", section: "A", stage: "foundation|prepratory|middle|secondary",
   isActive,
   subjects: [ { subjectId, teacherId: "", isCompleted, completedAt,
-                topics: [{ id, topic, isCompleted, completedAt }] } ],
+                topics: [{ id, topic, isCompleted, completedAt, absentList? }] } ],
   smart_sheets: {...}   // LEGACY Google-Sheets URL map — ignore, do not write, ok to hide
 }
 ```
@@ -111,11 +113,16 @@ Admins/principals: no assignments map → see everything (verify how the app dis
 - Curricular goals editor: list of goals, each with a list of competencies (maps of goal-text → [competency texts]). Support "copy goals from another subject" and "copy from another school" (reads the same subjectId or a chosen subject in another school doc).
 - `topics` shown read-only.
 - **`area` routes the write, it is not just a label.** Area `Co-Scholastic` (matched on letters only, so `co scholastic`/`CO_SCHOLASTIC` count) means the record is a term-wide activity: both the Add form and the CSV import write it to `co_scholastic_activities` with that collection's schema (§3.6), never to `subjects`. The form swaps Grade for Term and collects entryType/maxMarks/gradingScaleId/conversionType/conversionFactor/order; the CSV defaults them (`marks` / 10 / null / `none` / null / appended to the term) and requires an explicit `termId` unless the school has exactly one term. Doc ID follows the co-scholastic convention `{termId}_{NameSlug}`.
-- Editing an existing subject always stays in `subjects` — the Area select is locked. Docs written to `subjects` before this routing existed are flagged in the table and moved by `scripts/migrate-co-scholastic-subjects.mjs` (dry-run by default, CSV review log, `--delete-source` to remove the originals).
+- Editing an existing subject never changes its collection on its own — the Area select is locked, because flipping the label alone would leave a co-scholastic record sitting in `subjects`.
+- **Move to Co-Scholastic** is the in-app diversion for anything already misfiled — a per-row `→` action, a "move all" banner over the docs whose `area` is already Co-Scholastic, and a footer action in the edit dialog. It also covers a record the knowledge base never classified (blank `area`), which is how most misfiled rows arrive. The dialog collects the term and one set of marking settings for the whole move, previews each `{subjectId} → {termId}_{NameSlug}` with what will be dropped (`curricular_goals`, `topics` — the activity schema has no field for either) and blocks a row whose target ID is already taken. On confirm, per record: write the activity, re-read it to confirm it landed, detach the subject from every `classes/{id}.subjects[]` that references it, then delete the subjects doc — in that order, so a failure can neither lose the record nor leave a class pointing at a deleted subject.
+- `scripts/migrate-co-scholastic-subjects.mjs` remains the bulk, all-schools version of the same move (dry-run by default, CSV review log, `--delete-source`). It does NOT detach class references — prefer the in-app move for a single school.
+- The Structure proposer (§3.2) applies the same rule: a proposed subject the KB called Co-Scholastic is written to `co_scholastic_activities` under the school's default term, and is not linked into any class's `subjects[]`.
 
 ### 3.4 Classes & Teachers
 - Grid: rows = grade (`clazz`), columns = sections; cell click opens section editor.
-- Section editor: name/stage; **subject checklist** = all subjects of that grade (+ ability to attach any other subject, e.g. `III_Sanskrit` for section D only). Saving regenerates the doc's `subjects` array: for each checked subjectId, build `{ subjectId, teacherId: "", isCompleted: false, completedAt: null, topics: [...] }` where topics come from a fixed template per subject (`{subjectId}_Term1|Term2|Optional` — mirror the pattern in existing docs) — but PRESERVE existing entries' `isCompleted/completedAt/topics` state when the subject was already assigned (merge, don't clobber).
+- Section editor: name/stage; **subject checklist** = all *scholastic* subjects of that grade (+ ability to attach any other scholastic subject, e.g. `III_Sanskrit` for section D only). Co-Scholastic records still sitting in `subjects` are excluded from the checklist and counted in a note pointing at the Subjects tab's move action — they are term-wide, not per-class. Saving regenerates the doc's `subjects` array via `src/utils/classSubjects.js`: for each checked subjectId, build `{ subjectId, teacherId: "", isCompleted: false, completedAt: null, topics: [...] }` — but PRESERVE existing entries' `isCompleted/completedAt/topics` state when the subject was already assigned (merge, don't clobber).
+- **Topic template** (one place: `src/utils/classSubjects.js`, pinned by `tools/check_class_subjects.mjs`). Three topics per subject, ids `{subjectId}_Term1|_Term2|_Optional`, labels **"Term 1 Activity" / "Term 2 Activity" / "Optional Activity"** — taken from a live teacher-populated doc (SAMARTH `classes/III_A`), not from this spec's prose. `absentList` is NOT seeded: it appears only on topics a teacher has completed, so the teacher app writes it.
+- **Empty subject lists.** A section created by the New School Wizard or the structure proposer starts `subjects: []`, and until it is filled the teacher app has nothing to show for that class. The grid shows each cell's subject count (amber `·` when zero) and a banner offers **Fill subject lists**, which appends each affected section's grade-matching scholastic subjects in one batch. It is additive — sections that already have subjects are untouched.
 - **Teacher assignment matrix** per class: rows = staff (type teacher), columns = that class's subjects, checkboxes. Saving writes `staffs/{id}.assignments.{classId}` arrays and keeps `classIds` in sync (union of assignment keys + any manually added class-level access). Never write teacher info into `classes.subjects[].teacherId` (unused by the app).
 - Bulk: "add section" (clones subject list from sibling section), "deactivate section".
 - After any class add/remove/rename: regenerate `config/students_schema` column `currentClassId.options` from live class IDs.

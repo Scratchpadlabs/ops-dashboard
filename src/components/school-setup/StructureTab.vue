@@ -205,6 +205,8 @@ import {
   inferStructure, proposalSummary, STATUS_NEW, STATUS_EXISTING, STATUS_CONFLICT,
 } from '../../utils/structureInference.js'
 import { regenerateStudentsSchemaClassOptions } from '../../utils/schoolSetupHelpers.js'
+import { appendClassSubjects } from '../../utils/classSubjects.js'
+import { isCoScholasticArea, slugify as slugifyText } from '../../utils/assessmentHelpers.js'
 
 const props = defineProps({ schoolId: { type: String, default: null } })
 const confirm = useConfirm()
@@ -212,6 +214,18 @@ const toast = useToast()
 const { loadKB, overlay } = useEducationKB()
 
 const areaOptions = ['Scholastic', 'Co-Scholastic']
+
+// Co-Scholastic proposals are written to co_scholastic_activities, which needs
+// a term and an order — both read from the school, not inferred from imports.
+const terms = ref([])
+const coActivities = ref([])
+// Same defaults the Subjects tab and the migration script use for a record
+// that was never captured with co-scholastic fields.
+const CO_DEFAULTS = { entryType: 'marks', maxMarks: 10, gradingScaleId: null, conversionType: 'none', conversionFactor: null }
+const defaultTermId = computed(() => {
+  const sorted = [...terms.value].sort((a, b) => a.id.localeCompare(b.id))
+  return (sorted.find(t => t.isActive !== false) || sorted[0])?.id || null
+})
 
 const jobs = ref([])
 const selectedJobIds = ref([])
@@ -298,11 +312,15 @@ async function runInference() {
       else teacherRows.push(...rows)
     }
 
-    const [cSnap, sSnap, stSnap] = await Promise.all([
+    const [cSnap, sSnap, stSnap, tSnap, aSnap] = await Promise.all([
       getDocs(schoolCollection(props.schoolId, 'classes')),
       getDocs(schoolCollection(props.schoolId, 'subjects')),
       getDocs(schoolCollection(props.schoolId, 'staffs')),
+      getDocs(schoolCollection(props.schoolId, 'terms')),
+      getDocs(schoolCollection(props.schoolId, 'co_scholastic_activities')),
     ])
+    terms.value = tSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+    coActivities.value = aSnap.docs.map(d => ({ id: d.id, ...d.data() }))
     const existing = {
       classes: cSnap.docs.map(d => ({ id: d.id, ...d.data() })),
       subjects: sSnap.docs.map(d => ({ id: d.id, ...d.data() })),
@@ -325,7 +343,7 @@ async function runInference() {
 function confirmApply() {
   const s = summary.value
   confirm.require({
-    message: `Write ${s.classes} class(es), ${s.subjects} subject(s) and ${s.mappings} subject-class link(s) into ${props.schoolId}'s live setup? Existing records are merged, never replaced.`,
+    message: `Write ${s.classes} class(es), ${s.subjects} subject(s) and ${s.mappings} subject-class link(s) into ${props.schoolId}'s live setup? Existing records are merged, never replaced. Rows marked Co-Scholastic go to co_scholastic_activities, not subjects.`,
     header: 'Apply Proposed Structure',
     icon: 'pi pi-exclamation-triangle',
     rejectLabel: 'Cancel', acceptLabel: 'Apply',
@@ -357,12 +375,50 @@ async function applyProposal() {
     let ops = 0
     const flush = async () => { if (ops) { await batch.commit(); batch = writeBatch(db); ops = 0 } }
 
-    for (const s of acceptedSubjects) {
+    // `area` decides the collection, not just the label. A Co-Scholastic
+    // proposal is a term-wide activity and belongs in co_scholastic_activities
+    // with that collection's schema — writing it into `subjects` is exactly
+    // the misfiling docs/school-setup-page-spec.md §2 forbids.
+    const coSubjects = acceptedSubjects.filter(s => isCoScholasticArea(s.area))
+    const scholasticSubjects = acceptedSubjects.filter(s => !isCoScholasticArea(s.area))
+    const coSubjectKeys = new Set(coSubjects.map(s => s.key))
+    const skippedCo = []
+
+    for (const s of scholasticSubjects) {
       batch.set(schoolDoc(props.schoolId, 'subjects', s.docId),
         { id: s.docId, name: s.name.trim(), area: s.area || '', ...stamp(), ...created() }, { merge: true })
       if (++ops >= 400) await flush()
     }
     await flush()
+
+    let coWritten = 0
+    if (coSubjects.length) {
+      applyProgress.value = 'Writing co-scholastic activities…'
+      const termId = defaultTermId.value
+      if (!termId) {
+        // No term to file them under — leave them alone rather than dropping
+        // them into `subjects` where they'd have to be migrated back out.
+        coSubjects.forEach(s => skippedCo.push(`${s.name} (school has no terms)`))
+      } else {
+        // Activities are term-wide, so the same name across grades is ONE
+        // record. Dedupe on the derived doc ID and append to the term's order.
+        const inTerm = coActivities.value.filter(a => a.termId === termId).map(a => a.order || 0)
+        let nextOrder = inTerm.length ? Math.max(...inTerm) + 1 : 1
+        const seen = new Set(coActivities.value.map(a => a.id))
+        for (const s of coSubjects) {
+          const name = s.name.trim()
+          const docId = `${termId}_${slugifyText(name)}`
+          if (seen.has(docId)) { skippedCo.push(`${name} (already an activity)`); continue }
+          seen.add(docId)
+          batch.set(schoolDoc(props.schoolId, 'co_scholastic_activities', docId), {
+            name, termId, order: nextOrder++, ...CO_DEFAULTS, ...stamp(), ...created(),
+          }, { merge: true })
+          coWritten++
+          if (++ops >= 400) await flush()
+        }
+      }
+      await flush()
+    }
 
     applyProgress.value = 'Writing classes…'
     // Re-read classes so mappings merge onto whatever exists now, including
@@ -384,6 +440,7 @@ async function applyProposal() {
     await flush()
 
     applyProgress.value = 'Linking subjects to classes…'
+    let linksWritten = 0
     // Group by class so each class doc is written once with a merged
     // subjects[] — never overwriting entries (and their isCompleted/topics
     // state) that are already attached.
@@ -392,31 +449,28 @@ async function applyProposal() {
       const classDocId = `${m.grade}_${m.section}`
       if (!bySubjectClass.has(classDocId)) bySubjectClass.set(classDocId, [])
       const subj = p.subjects.find(s => s.key === m.subjectKey)
-      if (subj) bySubjectClass.get(classDocId).push(subj.docId)
+      // A co-scholastic record isn't a class subject — it was written to
+      // co_scholastic_activities above and has no place in classes.subjects[].
+      if (subj && !coSubjectKeys.has(subj.key)) { bySubjectClass.get(classDocId).push(subj.docId); linksWritten++ }
     }
     for (const [classDocId, subjectIds] of bySubjectClass) {
       const cls = liveClasses.get(classDocId)
       if (!cls) continue
-      const existingSubjects = cls.subjects || []
-      const have = new Set(existingSubjects.map(s => s.subjectId))
-      const additions = subjectIds.filter(id => !have.has(id)).map(subjectId => ({
-        subjectId, teacherId: '', isCompleted: false, completedAt: null,
-        topics: [
-          { id: `${subjectId}_Term1`, topic: 'Term 1', isCompleted: false, completedAt: null },
-          { id: `${subjectId}_Term2`, topic: 'Term 2', isCompleted: false, completedAt: null },
-          { id: `${subjectId}_Optional`, topic: 'Optional', isCompleted: false, completedAt: null },
-        ],
-      }))
-      if (!additions.length) continue
+      const nextSubjects = appendClassSubjects(cls.subjects, subjectIds)
+      if (!nextSubjects) continue
       batch.set(schoolDoc(props.schoolId, 'classes', classDocId),
-        { subjects: [...existingSubjects, ...additions], ...stamp() }, { merge: true })
+        { subjects: nextSubjects, ...stamp() }, { merge: true })
       if (++ops >= 400) await flush()
     }
     await flush()
 
     await regenerateStudentsSchemaClassOptions(props.schoolId, Array.from(liveClasses.keys()))
 
-    applyProgress.value = `Done — ${acceptedSubjects.length} subject(s), ${acceptedClasses.length} class(es), ${acceptedMappings.length} link(s) applied.`
+    applyProgress.value = [
+      `Done — ${scholasticSubjects.length} subject(s), ${coWritten} co-scholastic activity(ies), `
+      + `${acceptedClasses.length} class(es), ${linksWritten} link(s) applied.`,
+      skippedCo.length ? `Skipped: ${skippedCo.join(', ')}.` : '',
+    ].filter(Boolean).join(' ')
     toast.add({ severity: 'success', summary: 'Structure applied', life: 3000 })
     // Re-run so the proposal now reflects reality — this is the incremental
     // loop: after applying, everything just written shows as "already set up".

@@ -18,6 +18,24 @@
       :on-confirm="runImport"
     />
 
+    <div
+      v-if="!loading && misfiledSubjects.length"
+      class="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4"
+    >
+      <i class="pi pi-exclamation-triangle text-amber-500 mt-0.5"></i>
+      <div class="flex-1 text-sm text-amber-800">
+        <div class="font-semibold">
+          {{ misfiledSubjects.length }} Co-Scholastic record(s) are filed as subjects.
+        </div>
+        <div class="text-xs text-amber-700 mt-0.5">
+          Co-Scholastic entries are term-wide activities and belong in
+          <span class="font-mono">co_scholastic_activities</span>, not <span class="font-mono">subjects</span>.
+          Moving them rewrites each one in the activity schema, detaches it from every class's subject list and deletes the subjects doc.
+        </div>
+      </div>
+      <Button label="Move to Co-Scholastic" icon="pi pi-arrow-right" size="small" @click="openMoveDialog(misfiledSubjects)" />
+    </div>
+
     <div v-if="loading" class="flex items-center justify-center py-10">
       <ProgressSpinner style="width:28px;height:28px" />
     </div>
@@ -41,7 +59,7 @@
                   v-if="data.area"
                   class="px-2 py-0.5 rounded-full text-xs font-semibold"
                   :class="isCoScholasticArea(data.area) ? 'bg-amber-100 text-amber-700' : 'bg-blue-50 text-blue-700'"
-                  v-tooltip="isCoScholasticArea(data.area) ? 'Misfiled: Co-Scholastic records belong in co_scholastic_activities. Run scripts/migrate-co-scholastic-subjects.mjs to move it.' : ''"
+                  v-tooltip="isCoScholasticArea(data.area) ? 'Misfiled: Co-Scholastic records belong in co_scholastic_activities. Use the → button to move it.' : ''"
                 >{{ data.area }}{{ isCoScholasticArea(data.area) ? ' ⚠' : '' }}</span>
                 <span v-else class="text-xs text-slate-300" v-tooltip="'Not classified — open the subject and let the knowledge base categorize it'">—</span>
               </template>
@@ -49,9 +67,15 @@
             <Column field="curricular_goals" header="Goals" style="width:100px">
               <template #body="{ data }"><span class="text-xs text-slate-400">{{ (data.curricular_goals || []).length }}</span></template>
             </Column>
-            <Column header="" style="width:80px">
+            <Column header="" style="width:110px">
               <template #body="{ data }">
                 <Button icon="pi pi-pencil" text rounded size="small" @click="openEditSubject(data)" />
+                <Button
+                  icon="pi pi-arrow-right" text rounded size="small"
+                  :severity="isCoScholasticArea(data.area) ? 'warning' : 'secondary'"
+                  v-tooltip="'Move to Co-Scholastic — files this as a term-wide activity and removes it from subjects'"
+                  @click="openMoveDialog([data])"
+                />
               </template>
             </Column>
           </DataTable>
@@ -90,6 +114,11 @@
           <Select v-model="form.area" :options="AREA_OPTIONS" placeholder="Not classified" showClear class="w-full" :disabled="!!editingSubject" />
           <p class="text-xs text-slate-400 mt-1">
             Set automatically by the knowledge base from the name — override it here if that's wrong.
+          </p>
+          <p v-if="editingSubject" class="text-xs text-slate-400 mt-1">
+            Area is locked on an existing subject because it decides the collection: if this is really a
+            Co-Scholastic activity, use <span class="font-semibold">Move to Co-Scholastic</span> below — flipping the
+            label alone would leave the record in <span class="font-mono">subjects</span>.
           </p>
         </div>
 
@@ -166,6 +195,11 @@
         <div v-if="formError" class="text-sm text-red-500 bg-red-50 rounded-lg px-3 py-2">{{ formError }}</div>
       </div>
       <template #footer>
+        <Button
+          v-if="editingSubject"
+          label="Move to Co-Scholastic" icon="pi pi-arrow-right" text severity="warning"
+          @click="dialogVisible = false; openMoveDialog([editingSubject])"
+        />
         <Button label="Cancel" text @click="dialogVisible = false" />
         <Button :label="editingSubject ? 'Save Changes' : (isCoScholasticForm ? 'Add Activity' : 'Add Subject')" :loading="saving" @click="saveSubject" />
       </template>
@@ -207,13 +241,84 @@
       </template>
     </Dialog>
 
+    <!-- ── Move Subject(s) → Co-Scholastic ──────────────────────────────── -->
+    <Dialog v-model:visible="moveDialogVisible" header="Move to Co-Scholastic" modal :style="{ width: '640px' }">
+      <div class="space-y-4 pt-2">
+        <p class="text-sm text-slate-600">
+          A Co-Scholastic record is a <span class="font-semibold">term-wide activity</span>, not a per-grade subject.
+          Moving rewrites each one into <span class="font-mono">co_scholastic_activities</span>, detaches it from every class's
+          subject list, and deletes the <span class="font-mono">subjects</span> doc.
+        </p>
+
+        <div v-if="!terms.length" class="text-sm text-red-500 bg-red-50 rounded-lg px-3 py-2">
+          This school has no terms yet — add one in Terms &amp; Scales first.
+        </div>
+
+        <template v-else>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="form-label">Term *</label>
+              <Select v-model="moveForm.termId" :options="terms" optionLabel="name" optionValue="id" placeholder="Select a term" class="w-full" />
+            </div>
+            <div>
+              <label class="form-label">Entry Type *</label>
+              <Select v-model="moveForm.entryType" :options="entryTypeOptions" optionLabel="label" optionValue="value" class="w-full" />
+            </div>
+            <div>
+              <label class="form-label">Max Marks *</label>
+              <InputNumber v-model="moveForm.maxMarks" class="w-full" :min="1" />
+            </div>
+            <div>
+              <label class="form-label">Grading Scale{{ moveForm.entryType === 'grade' || moveForm.conversionType === 'marks_to_grade' ? ' *' : '' }}</label>
+              <Select v-model="moveForm.gradingScaleId" :options="scales" optionLabel="name" optionValue="id" showClear class="w-full" />
+            </div>
+            <div>
+              <label class="form-label">Conversion Type *</label>
+              <Select v-model="moveForm.conversionType" :options="conversionTypeOptions" optionLabel="label" optionValue="value" class="w-full" />
+            </div>
+            <div v-if="moveForm.conversionType === 'sum_up' || moveForm.conversionType === 'sum_down'">
+              <label class="form-label">Conversion Factor *</label>
+              <InputNumber v-model="moveForm.conversionFactor" class="w-full" :min="0.01" :maxFractionDigits="2" />
+            </div>
+          </div>
+          <p class="text-xs text-slate-400 -mt-2">
+            These settings apply to every record in this move — edit them individually afterwards in the Co-Scholastic tab.
+          </p>
+
+          <div class="border border-slate-200 rounded-lg divide-y divide-slate-100 max-h-64 overflow-auto">
+            <div v-for="row in movePlan" :key="row.subject.id" class="px-3 py-2 text-sm">
+              <div class="flex items-center gap-2">
+                <i class="pi text-xs" :class="row.blocked ? 'pi-times-circle text-red-500' : 'pi-arrow-right text-green-600'"></i>
+                <span class="font-mono text-xs text-slate-500">{{ row.subject.id }}</span>
+                <span class="text-slate-300">→</span>
+                <span class="font-mono text-xs" :class="row.blocked ? 'text-red-500' : 'text-slate-700'">{{ row.newId || '—' }}</span>
+              </div>
+              <div v-if="row.notes.length" class="text-xs mt-0.5 ml-5" :class="row.blocked ? 'text-red-500' : 'text-amber-600'">
+                {{ row.notes.join('; ') }}
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <div v-if="moveError" class="text-sm text-red-500 bg-red-50 rounded-lg px-3 py-2">{{ moveError }}</div>
+      </div>
+      <template #footer>
+        <Button label="Cancel" text @click="moveDialogVisible = false" />
+        <Button
+          :label="`Move ${movablePlan.length} record(s)`"
+          :disabled="!movablePlan.length" :loading="moving"
+          @click="confirmMove"
+        />
+      </template>
+    </Dialog>
+
     <ConfirmDialog />
   </div>
 </template>
 
 <script setup>
 import { ref, reactive, computed, watch, onMounted } from 'vue'
-import { getDocs, setDoc, updateDoc, query, orderBy, serverTimestamp, writeBatch } from 'firebase/firestore'
+import { getDocs, getDoc, setDoc, updateDoc, deleteDoc, query, orderBy, serverTimestamp, writeBatch } from 'firebase/firestore'
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
 
@@ -237,6 +342,7 @@ import { toCsv, downloadCsv } from '../../utils/csv.js'
 import { useEducationKB } from '../../composables/useEducationKB.js'
 import { SUBJECT, COSCHOLASTIC, classify as classifyValue } from '../../utils/educationKB.js'
 import { checkEnteredMarksCoScholastic, isCoScholasticArea, slugify as slugifyText } from '../../utils/assessmentHelpers.js'
+import { detachClassSubject } from '../../utils/classSubjects.js'
 
 const props = defineProps({ schoolId: { type: String, default: null } })
 const confirm = useConfirm()
@@ -268,18 +374,24 @@ const conversionTypeOptions = [
 const terms = ref([])
 const scales = ref([])
 const coActivities = ref([])
+// Classes are read here only so a move can detach the subject from every
+// `classes/{id}.subjects[]` that references it — leaving a dangling subjectId
+// behind would break the teacher app's subject dropdown for that class.
+const classes = ref([])
 
 async function loadCoScholasticContext() {
-  if (!props.schoolId) { terms.value = []; scales.value = []; coActivities.value = []; return }
+  if (!props.schoolId) { terms.value = []; scales.value = []; coActivities.value = []; classes.value = []; return }
   try {
-    const [tSnap, gSnap, aSnap] = await Promise.all([
+    const [tSnap, gSnap, aSnap, cSnap] = await Promise.all([
       getDocs(schoolCollection(props.schoolId, 'terms')),
       getDocs(schoolCollection(props.schoolId, 'grading_scales')),
       getDocs(schoolCollection(props.schoolId, 'co_scholastic_activities')),
+      getDocs(schoolCollection(props.schoolId, 'classes')),
     ])
     terms.value = tSnap.docs.map(d => ({ id: d.id, ...d.data() }))
     scales.value = gSnap.docs.map(d => ({ id: d.id, ...d.data() }))
     coActivities.value = aSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+    classes.value = cSnap.docs.map(d => ({ id: d.id, ...d.data() }))
   } catch (e) {
     console.error('Could not load terms/scales/co-scholastic activities', e)
   }
@@ -478,6 +590,162 @@ async function saveSubject() {
     formError.value = e instanceof SchemaViolation ? e.userMessage : 'Something went wrong. Try again.'
   } finally {
     saving.value = false
+  }
+}
+
+// ── Move a misfiled subject into co_scholastic_activities ─────────────────
+// The Subjects tab now routes on `area` at write time, but schools set up
+// before that — and any row whose name the knowledge base couldn't place —
+// still carry co-scholastic records in `subjects`. This is the in-app version
+// of scripts/migrate-co-scholastic-subjects.mjs: same target schema, same
+// defaults, but scoped to one school with the term and marking settings chosen
+// rather than guessed, and it also cleans up the class references the script
+// leaves alone.
+const misfiledSubjects = computed(() => subjects.value.filter(s => isCoScholasticArea(s.area)))
+
+const moveDialogVisible = ref(false)
+const moveTargets = ref([])
+const moving = ref(false)
+const moveError = ref('')
+const moveForm = reactive({ termId: null, ...CO_DEFAULTS })
+
+function classesUsing(subjectId) {
+  return classes.value.filter(c => (c.subjects || []).some(x => x?.subjectId === subjectId))
+}
+
+function openMoveDialog(targets) {
+  moveTargets.value = [...targets]
+  moveError.value = ''
+  Object.assign(moveForm, {
+    termId: terms.value.length ? (terms.value.find(t => t.isActive !== false) || terms.value[0]).id : null,
+    ...CO_DEFAULTS,
+  })
+  moveDialogVisible.value = true
+}
+
+// One row per subject being moved, with everything that changes or blocks it.
+// Recomputes as the term changes, since the target doc ID is term-scoped.
+const movePlan = computed(() => {
+  const termId = moveForm.termId
+  const claimed = new Set()
+  return moveTargets.value.map(subject => {
+    const name = (subject.name || '').trim() || subject.id
+    const newId = termId ? `${termId}_${slugifyText(name)}` : ''
+    const notes = []
+    let blocked = false
+    if (!termId) { notes.push('pick a term first'); blocked = true }
+    else if (coActivities.value.some(a => a.id === newId)) {
+      notes.push(`an activity "${newId}" already exists — rename the subject or edit that activity instead`); blocked = true
+    } else if (claimed.has(newId)) {
+      notes.push(`another record in this move maps to "${newId}"`); blocked = true
+    } else {
+      claimed.add(newId)
+    }
+    const goals = (subject.curricular_goals || []).length
+    const topics = (subject.topics || []).length
+    if (goals) notes.push(`${goals} curricular goal(s) dropped — the activity schema has no field for them`)
+    if (topics) notes.push(`${topics} topic(s) dropped`)
+    const usedBy = classesUsing(subject.id)
+    if (usedBy.length) notes.push(`detached from ${usedBy.length} class(es)`)
+    return { subject, newId, notes, blocked, usedBy }
+  })
+})
+const movablePlan = computed(() => movePlan.value.filter(r => !r.blocked))
+
+function validateMove() {
+  if (!terms.value.length) return 'This school has no terms yet — add one in Terms & Scales first'
+  if (!moveForm.termId) return 'Term is required'
+  if (!moveForm.maxMarks || moveForm.maxMarks <= 0) return 'Max marks must be greater than 0'
+  if (moveForm.conversionType !== 'none' && moveForm.conversionType !== 'marks_to_grade' && !moveForm.conversionFactor) {
+    return 'Conversion factor is required for this conversion type'
+  }
+  if ((moveForm.conversionType === 'marks_to_grade' || moveForm.entryType === 'grade') && !moveForm.gradingScaleId) {
+    return 'Grading scale is required'
+  }
+  return ''
+}
+
+function confirmMove() {
+  moveError.value = validateMove()
+  if (moveError.value) return
+  const rows = movablePlan.value
+  const detaching = rows.reduce((n, r) => n + r.usedBy.length, 0)
+  confirm.require({
+    message: `Move ${rows.length} record(s) into co_scholastic_activities? Each subjects doc is deleted`
+      + (detaching ? `, and ${detaching} class subject-list reference(s) are removed` : '')
+      + '. Curricular goals and topics on these docs are not carried over.',
+    header: 'Move to Co-Scholastic',
+    icon: 'pi pi-exclamation-triangle',
+    rejectLabel: 'Cancel', acceptLabel: 'Move', acceptClass: 'p-button-danger',
+    accept: runMove,
+  })
+}
+
+async function runMove() {
+  moving.value = true
+  moveError.value = ''
+  const rows = movablePlan.value
+  try {
+    // Order within the term continues after whatever is already there.
+    const inTerm = coActivities.value.filter(a => a.termId === moveForm.termId).map(a => a.order || 0)
+    let nextOrder = inTerm.length ? Math.max(...inTerm) + 1 : 1
+
+    // Detaches accumulate per class across the whole move. Writing each one
+    // from its own loaded snapshot would make the second moved subject on a
+    // class restore the first one it had just removed.
+    const classSubjectsNow = new Map()
+
+    for (const row of rows) {
+      const target = schoolDoc(props.schoolId, 'co_scholastic_activities', row.newId)
+      await setDoc(target, {
+        name: (row.subject.name || '').trim() || row.subject.id,
+        termId: moveForm.termId,
+        order: nextOrder++,
+        entryType: moveForm.entryType,
+        maxMarks: moveForm.maxMarks,
+        gradingScaleId: moveForm.gradingScaleId || null,
+        conversionType: moveForm.conversionType,
+        conversionFactor: moveForm.conversionFactor || null,
+        ...(row.subject.name_original ? { name_original: row.subject.name_original } : {}),
+        migrated_from_subject_id: row.subject.id,
+        created_at: serverTimestamp(), created_by: auth.currentUser?.email || 'unknown',
+        updated_at: serverTimestamp(), updated_by: auth.currentUser?.email || 'unknown',
+      }, { merge: true })
+
+      // Only delete the source once the target is confirmed on the server —
+      // same rule the migration script follows, so a failed write can never
+      // lose the record.
+      const written = await getDoc(target)
+      if (!written.exists()) {
+        moveError.value = `"${row.subject.id}" could not be written to co_scholastic_activities — it was left in subjects.`
+        continue
+      }
+
+      // Detach from every class before deleting, so no class is left pointing
+      // at a subjects doc that no longer exists.
+      for (const cls of row.usedBy) {
+        const current = classSubjectsNow.has(cls.id) ? classSubjectsNow.get(cls.id) : cls.subjects
+        const next = detachClassSubject(current, row.subject.id)
+        if (!next) continue
+        classSubjectsNow.set(cls.id, next)
+        await updateDoc(schoolDoc(props.schoolId, 'classes', cls.id), {
+          subjects: next, updated_at: serverTimestamp(), updated_by: auth.currentUser?.email || 'unknown',
+        })
+      }
+
+      await deleteDoc(schoolDoc(props.schoolId, 'subjects', row.subject.id))
+    }
+
+    moveDialogVisible.value = !!moveError.value
+    if (!moveError.value) {
+      toast.add({ severity: 'success', summary: 'Moved to Co-Scholastic', detail: `${rows.length} record(s) — manage them in the Co-Scholastic tab`, life: 4000 })
+    }
+    await Promise.all([loadSubjects(), loadCoScholasticContext()])
+  } catch (e) {
+    console.error(e)
+    moveError.value = 'Something went wrong during the move. Re-open this dialog to see what is left in subjects.'
+  } finally {
+    moving.value = false
   }
 }
 

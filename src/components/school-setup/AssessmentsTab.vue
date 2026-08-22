@@ -61,7 +61,7 @@
         <Column field="subjectId" header="Subject" style="width:150px">
           <template #body="{ data }"><span :class="data._isNew ? 'text-slate-900' : 'text-slate-400'">{{ data.subjectId }}</span></template>
           <template #editor="{ data, field }">
-            <Select v-if="data._isNew" v-model="data[field]" :options="allSubjects" optionLabel="id" optionValue="id" class="w-full" />
+            <Select v-if="data._isNew" v-model="data[field]" :options="assignableSubjects" optionLabel="id" optionValue="id" class="w-full" />
             <span v-else class="text-xs text-slate-400">locked</span>
           </template>
         </Column>
@@ -198,7 +198,7 @@
             >All grades — {{ nameSuffix }}</button>
           </div>
           <div class="grid grid-cols-2 gap-1 max-h-48 overflow-auto border border-slate-200 rounded-lg p-2">
-            <label v-for="subj in allSubjects" :key="subj.id" class="flex items-center gap-2 text-sm px-1 py-0.5">
+            <label v-for="subj in assignableSubjects" :key="subj.id" class="flex items-center gap-2 text-sm px-1 py-0.5">
               <Checkbox v-model="builder.subjectIds" :value="subj.id" />
               <span>{{ subj.id }}</span>
             </label>
@@ -289,7 +289,7 @@ import ConfigEmptyState from './ConfigEmptyState.vue'
 import { schoolCollection, schoolDoc } from '../../firebase/schoolCollections.js'
 import { db } from '../../firebase/config'
 import { auth } from '../../firebase/config'
-import { checkEnteredMarks, slugify } from '../../utils/assessmentHelpers.js'
+import { checkEnteredMarks, slugify, isCoScholasticArea } from '../../utils/assessmentHelpers.js'
 import { toCsv, downloadCsv } from '../../utils/csv.js'
 
 const props = defineProps({ schoolId: { type: String, default: null } })
@@ -312,6 +312,11 @@ const selectedTermId = ref(null)
 const loading = ref(false)
 
 const allSubjects = computed(() => [...subjects.value].sort((a, b) => a.id.localeCompare(b.id)))
+// Assessments are per-subject; a co-scholastic record is term-wide and is
+// marked through co_scholastic_activities instead (§3.6). Any still misfiled in
+// `subjects` stays visible in the matrix — existing assessments against it are
+// real and must not vanish — but can't be picked for a NEW one.
+const assignableSubjects = computed(() => allSubjects.value.filter(s => !isCoScholasticArea(s.area)))
 const gradeList = computed(() => Array.from(new Set(subjects.value.map(s => (s.id || '').split('_')[0]))).sort())
 const subjectNameSuffixes = computed(() =>
   Array.from(new Set(subjects.value.map(s => (s.id || '').split('_').slice(1).join('_')))).filter(Boolean).sort()
@@ -388,13 +393,13 @@ function openBuilder() {
   builderVisible.value = true
 }
 
-function selectAllSubjects() { builder.subjectIds = allSubjects.value.map(s => s.id) }
+function selectAllSubjects() { builder.subjectIds = assignableSubjects.value.map(s => s.id) }
 function selectGrade(grade) {
-  const ids = subjects.value.filter(s => (s.id || '').split('_')[0] === grade).map(s => s.id)
+  const ids = assignableSubjects.value.filter(s => (s.id || '').split('_')[0] === grade).map(s => s.id)
   builder.subjectIds = Array.from(new Set([...builder.subjectIds, ...ids]))
 }
 function selectBySuffix(suffix) {
-  const ids = subjects.value.filter(s => (s.id || '').split('_').slice(1).join('_') === suffix).map(s => s.id)
+  const ids = assignableSubjects.value.filter(s => (s.id || '').split('_').slice(1).join('_') === suffix).map(s => s.id)
   builder.subjectIds = Array.from(new Set([...builder.subjectIds, ...ids]))
 }
 
@@ -571,7 +576,7 @@ function addBlankGridRow() {
   const nextOrder = gridRows.value.length ? Math.max(...gridRows.value.map(r => r.order || 0)) + 1
     : (assessments.value.length ? Math.max(...assessments.value.map(a => a.order || 0)) + 1 : 1)
   const row = {
-    name: '', subjectId: allSubjects.value[0]?.id || '', order: nextOrder, entryType: 'marks',
+    name: '', subjectId: assignableSubjects.value[0]?.id || '', order: nextOrder, entryType: 'marks',
     maxMarks: null, gradingScaleId: null, conversionType: 'none', conversionFactor: null,
     _isNew: true, _dirty: true, _error: '',
   }
