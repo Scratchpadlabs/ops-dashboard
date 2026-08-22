@@ -414,13 +414,17 @@ def _normalize_cell(field, raw_val):
     if field in ("student_name", "father_name", "mother_name"):
         v, _fix = clean_name(_cell_to_str(raw_val))
         return v, None
-    if field == "email":
+    if field in ("email", "father_email", "mother_email"):
         text = _cell_to_str(raw_val)
         v, _fix, valid = clean_email(text)
         return v, (f"invalid email: '{text}'" if text and not valid else None)
-    if field == "dob":
+    # date_of_admission gets the same treatment as dob: the browser side maps
+    # it to a Firestore timestamp and can only read ISO, so a dd/mm/yyyy or
+    # Excel-serial admission date has to be normalized HERE (parse_dob_flexible
+    # handles both) or it reaches the mapper unreadable and is saved empty.
+    if field in ("dob", "date_of_admission"):
         return parse_dob_flexible(raw_val)
-    if field == "contact":
+    if field in ("contact", "father_mobile", "mother_mobile"):
         return clean_phone(_cell_to_str(raw_val))
     if field == "gender":
         return clean_gender(_cell_to_str(raw_val))

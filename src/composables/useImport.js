@@ -25,8 +25,12 @@ import { startProcessImport, commitImportRemote } from '../utils/api.js'
 import { classify, GRADE } from '../utils/educationKB.js'
 import { normalizeSectionValue } from '../utils/classResolver.js'
 import { validateDoc, formatErrors } from '../schemas/schoolSchema.js'
+import { gradeOrder } from '../utils/structureInference.js'
+import { parseMaxMarks, resolveBlueprintSubjects } from '../utils/assessmentImport.js'
+import { isCoScholasticArea } from '../utils/assessmentHelpers.js'
 import { validateCurrentClassId } from '../schemas/currentClassId.js'
 import { mapImportRowToStudent } from '../schemas/studentMapping.js'
+import { ensureStudentsSchema } from '../utils/schoolSetupHelpers.js'
 
 // ── Grade normalization — delegates to the shared education knowledge base
 // (src/utils/educationKB.js), which is seeded from the very same
@@ -198,11 +202,14 @@ export async function loadSectionsByGrade(schoolId) {
  * keyed by name, for matching an explicit subject cell) because this one needs
  * the whole set for a grade, not a lookup by name.
  */
-export async function loadSubjectIdsByGrade(schoolId) {
+export async function loadSubjectIdsByGrade(schoolId, { scholasticOnly = false } = {}) {
   const snap = await getDocs(schoolCollection(schoolId, 'subjects'))
   const byGrade = new Map()
   snap.docs.forEach(d => {
     if (!d.id.includes('_')) return          // ungraded subject (e.g. "AAM")
+    // Assessments are per-subject; a co-scholastic record misfiled into
+    // `subjects` is a term-wide activity and must not collect assessments.
+    if (scholasticOnly && isCoScholasticArea(d.data().area)) return
     const grade = normalizeGrade(d.id.split('_')[0])
     if (!grade) return
     if (!byGrade.has(grade)) byGrade.set(grade, [])
@@ -504,16 +511,47 @@ async function buildSubjectsPlan(schoolId, rows) {
   return summarize('subjects', items)
 }
 
-// Assessments are the one entity where extract.py's schema (exam blueprint:
-// syllabus coverage, instructional days, activity weighting...) doesn't map
-// cleanly onto AssessmentsTab's live schema (name/termId/subjectId/order/
-// entryType/maxMarks/gradingScaleId) — assessments there are scoped to a
-// Term the import can't know about. `termId` must be supplied by the review
-// screen (a Select, same as AssessmentsTab requires) before committing;
-// the richer extracted fields are preserved as extra doc fields for now.
+/**
+ * Exam-blueprint rows -> assessment documents.
+ *
+ * Assessments are the one entity where the extractor's schema (an exam
+ * blueprint: syllabus coverage, instructional days, activity weighting) does
+ * not map cleanly onto the live one (name/termId/subjectId/order/entryType/
+ * maxMarks/gradingScaleId/conversion*). Assessments are scoped to a Term the
+ * import cannot know, so `termId` comes from the review screen's Select; the
+ * blueprint's scheduling and syllabus columns have no field on an assessment
+ * and are reported per row rather than written into fields nothing reads.
+ *
+ * A blueprint row is grade-band-wide, not per-subject, so ONE row becomes one
+ * assessment per subject of that band (see resolveBlueprintSubjects). It used
+ * to be matched to a subject by its own NAME, which is why the committed
+ * assessments came out named after subjects, and its maxMarks came from a
+ * digit-strip that read "80 (40+40)" as 804040. Both are fixed in
+ * utils/assessmentImport.js; this function's job is to turn the result into
+ * schema-valid documents and to say plainly, per row, what it did.
+ */
 async function buildAssessmentsPlan(schoolId, rows, termId) {
   const subjectLookup = await loadSubjectLookup(schoolId)
+  const subjectIdsByGrade = await loadSubjectIdsByGrade(schoolId, { scholasticOnly: true })
+  // Grade bands are resolved against the grades this school HAS, in real grade
+  // order — "Nursery-II" has to work the same as "III-V".
+  const knownGrades = Array.from(subjectIdsByGrade.keys()).sort((a, b) => gradeOrder(a) - gradeOrder(b))
+  const orderedByGrade = new Map(knownGrades.map(g => [g, subjectIdsByGrade.get(g)]))
+
+  const existingSnap = await getDocs(schoolCollection(schoolId, 'assessments'))
+  const existingById = new Map(existingSnap.docs.map(d => [d.id, d.data()]))
+
+  // `order` sequences within (subjectId, termId) and continues after whatever
+  // that pair already has — every row used to be written with order: 1, which
+  // left the teacher app sorting arbitrarily.
+  const nextOrder = new Map()
+  for (const [, a] of existingById) {
+    const key = `${a.subjectId}|${a.termId}`
+    nextOrder.set(key, Math.max(nextOrder.get(key) || 0, (a.order || 0) + 1))
+  }
+
   const items = []
+  const seenDocIds = new Set()
   for (const row of rows) {
     const d = row.data
     if ((row.suggestions || []).length) {
@@ -523,23 +561,82 @@ async function buildAssessmentsPlan(schoolId, rows, termId) {
     const name = (d.assessment || '').trim()
     if (!name) { items.push({ row, status: 'ERROR', reason: 'Missing assessment name' }); continue }
     if (!termId) { items.push({ row, status: 'ERROR', reason: 'Select a Term to commit assessments into.' }); continue }
-    const grade = (d.grade_band || d.stream || '').trim()
-    const subjectId = subjectLookup.get(`${normalizeGrade(grade)}|${name.toLowerCase()}`) || null
-    // No reliable per-row subject match for exam-blueprint rows (they're
-    // usually grade/stream-wide, not per-subject) — flag for manual subject
-    // pick rather than guessing.
-    if (!subjectId) { items.push({ row, status: 'ERROR', reason: 'Could not resolve a subject for this assessment row — commit skipped, add manually in Assessments tab.' }); continue }
-    const maxWritten = parseFloat(String(d.max_written || '').replace(/[^\d.]/g, ''))
-    const docId = `${subjectId}_${termId}_${slugPart(name)}`
-    const payload = {
-      name, termId, subjectId, order: 1, entryType: 'marks',
-      maxMarks: Number.isFinite(maxWritten) ? maxWritten : null, gradingScaleId: null,
-      dateStart: d.date_start || '', dateEnd: d.date_end || '',
-      instructionalDays: d.instructional_days || '', syllabusCovered: d.syllabus_covered || '',
-      examSyllabus: d.exam_syllabus || '', maxWrittenRaw: d.max_written || '',
-      activityWeight: d.activity_weight || '', total: d.total || '', duration: d.duration || '',
+
+    const { maxMarks, source, notes: markNotes } = parseMaxMarks(d)
+    if (maxMarks === null) {
+      items.push({ row, status: 'ERROR', reason: 'No usable marks in total / max_written / activity_weight — the assessment has no maximum to mark against' })
+      continue
     }
-    items.push({ row, status: 'CREATE', docId, payload })
+
+    const { subjectIds, reason } = resolveBlueprintSubjects(d, {
+      normalizeGrade, subjectsByGrade: orderedByGrade, subjectLookup,
+    })
+    if (!subjectIds.length) {
+      items.push({ row, status: 'ERROR', reason: `Could not decide which subjects this row covers — ${reason}` })
+      continue
+    }
+
+    // Notes are written once per ROW, in wording that does not vary across the
+    // fan-out, so the commit dialog's dedupe collapses a 60-subject fan-out
+    // into one line instead of burying the marks warnings under 60 of them.
+    const rowNotes = [
+      `${name}: ${subjectIds.length} assessment(s) — ${reason}`,
+      `maxMarks ${maxMarks} from ${source}`,
+      ...markNotes,
+    ]
+    // A blueprint carries scheduling and syllabus detail the assessment schema
+    // has no field for. Reported rather than written into fields nothing reads
+    // — same rule as the student import.
+    const carried = ['date_start', 'date_end', 'instructional_days', 'syllabus_covered',
+                     'exam_syllabus', 'duration'].filter(k => String(d[k] ?? '').trim())
+    if (carried.length) rowNotes.push(`not saved (no field on an assessment): ${carried.join(', ')}`)
+
+    // One row, one document per subject it covers.
+    for (const subjectId of subjectIds) {
+      const key = `${subjectId}|${termId}`
+      const order = nextOrder.get(key) || 1
+      nextOrder.set(key, order + 1)
+      const docId = `${subjectId}_${termId}_${slugPart(name)}`
+      const payload = {
+        name, termId, subjectId, order,
+        entryType: 'marks',
+        maxMarks,
+        gradingScaleId: null,
+        // Required by the schema and by the teacher app's mark conversion.
+        // A blueprint file never states these, so they take the neutral
+        // values; change them per assessment in the Assessments tab.
+        conversionType: 'none',
+        conversionFactor: null,
+      }
+
+      const check = validateDoc('assessments', payload)
+      if (!check.ok) {
+        items.push({ row, status: 'ERROR', reason: `Does not match the assessment schema — ${formatErrors(check.errors)}` })
+        continue
+      }
+
+      // Two rows in one file naming the same assessment for the same subject
+      // would write the same doc twice; report it instead of letting the last
+      // one win silently.
+      if (seenDocIds.has(docId)) {
+        items.push({ row, status: 'ERROR', reason: `"${name}" appears twice for ${subjectId} in this file — the second row would overwrite the first` })
+        continue
+      }
+      seenDocIds.add(docId)
+
+      const existing = existingById.get(docId)
+      if (!existing) {
+        items.push({ row, status: 'CREATE', docId, payload, notes: rowNotes })
+      } else {
+        // An assessment that already exists keeps the order it was given —
+        // re-importing a blueprint must not reshuffle what the teacher app
+        // shows. `order` is therefore also excluded from the change
+        // comparison, or every re-import would read as changed.
+        payload.order = existing.order || order
+        const same = fieldsEqual(existing, payload, Object.keys(payload).filter(k => k !== 'order'))
+        items.push({ row, docId, payload, notes: rowNotes, status: same ? 'UPDATE_UNCHANGED' : 'UPDATE_CHANGED' })
+      }
+    }
   }
   return summarize('assessments', items)
 }
@@ -587,6 +684,21 @@ export async function commitImport(job, plan, { overwriteExisting } = {}) {
     schoolId: job.school_id, jobId: job.id, entity: plan.entity,
     items, overwriteExisting: !!overwriteExisting,
   })
+
+  // A roster the app can't display isn't imported. config/students_schema is
+  // what renders the student table, and a wizard-created school has none — so
+  // it is created (or brought up to date with the columns this import just
+  // wrote) as part of committing, not left for someone to notice later.
+  // Never fatal: the rows are already written, and the hygiene panel offers
+  // the same repair.
+  if (plan.entity === 'students' && result.written) {
+    try {
+      const classesSnap = await getDocs(schoolCollection(job.school_id, 'classes'))
+      await ensureStudentsSchema(job.school_id, classesSnap.docs.map(d => d.id))
+    } catch (e) {
+      console.error('Could not refresh config/students_schema after the import', e)
+    }
+  }
 
   return { written: result.written, skipped: plan.items.length - result.written }
 }

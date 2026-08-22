@@ -1,9 +1,21 @@
 /**
  * Import row → student document, in the shape the teacher app actually reads.
  *
- * PERSISTED (2026-08-04 decision): admNo, grEmisSts and aadhaarNumber. Every
- * other extra source column is review-only — listed in UNMAPPED_SOURCE_FIELDS
- * and reported per row.
+ * PERSISTED: everything the parser can read off the file. The 2026-08-04
+ * decision persisted only admNo, grEmisSts and aadhaarNumber and left the rest
+ * review-only; that was reversed on 2026-08-22 — a roster import has to land
+ * ALL the data the file carried, because the source file is not kept and
+ * whatever is dropped here is simply gone. Each source column now has a named
+ * home on the student document (see SOURCE_FIELD_MAP), and those homes are
+ * declared in schoolSchema.js / school_schema.py so they validate rather than
+ * arriving as unknown fields.
+ *
+ * The ONE exception is `address`, still not persisted: it is in the
+ * extractor's BANNED_KEYS and is not in STUDENT_SCHEMA_KEYS, so it never
+ * reaches a review row in the first place. Persisting it is a privacy
+ * decision, not an import one — every student doc is readable by any signed-in
+ * app user under the current firestore.rules (see schoolSchema.js on
+ * aadhaarNumber), so it needs a rules change first.
  *
  * THE BUG THIS FIXES (AUDIT.md §3.2): buildStudentsPlan mapped extractor
  * fields 1:1 into the student doc, so every import wrote
@@ -74,19 +86,35 @@ export function toPhoneNo(raw) {
 }
 
 /**
- * Extractor fields with no home in the student schema. Dropped deliberately,
- * and surfaced per row so an operator can see what the file carried that the
- * app has nowhere to put.
+ * Source column → student document field, for every column that is carried
+ * through verbatim as a trimmed string.
+ *
+ * Naming follows the live documents' camelCase (`admNo`, `grEmisSts`,
+ * `phoneNo`), not the extractor's snake_case. Columns needing a type
+ * conversion (mobiles → number, admission date → timestamp) are handled in
+ * mapImportRowToStudent instead and are NOT listed here.
  */
-export const UNMAPPED_SOURCE_FIELDS = [
-  'sr_no', 'roll_no', 'mother_name', 'father_name', 'city', 'address',
-  // Decision (Sid, 2026-08-04): parsed and shown in Review, deliberately NOT
-  // persisted — the student document has one phoneNo/email and no parent
-  // contact fields. Surfaced per row rather than dropped in silence.
-  'father_mobile', 'father_email', 'mother_mobile', 'mother_email',
-  'branch_name', 'board', 'enrollment_code', 'date_of_admission', 'status',
-  'using_transport',
-]
+export const SOURCE_FIELD_MAP = {
+  sr_no: 'srNo',
+  roll_no: 'rollNo',
+  father_name: 'fatherName',
+  mother_name: 'motherName',
+  father_email: 'fatherEmail',
+  mother_email: 'motherEmail',
+  city: 'city',
+  branch_name: 'branchName',
+  board: 'board',
+  enrollment_code: 'enrollmentCode',
+  status: 'status',
+  using_transport: 'usingTransport',
+}
+
+/**
+ * Source columns the parser reads but that are still not written. `address` is
+ * the only one — see the module header. Kept as a named list (rather than an
+ * empty concept) so a row carrying one is still reported, not silently lost.
+ */
+export const UNMAPPED_SOURCE_FIELDS = ['address']
 
 /** Digits only — an Aadhaar cell arrives as "1234 5678 9012" or "1234-5678-9012". */
 export function toAadhaar(raw) {
@@ -126,6 +154,21 @@ export function mapImportRowToStudent(row, { classId } = {}) {
     warnings.push(`Aadhaar "${aadhaarRaw}" is not 12 digits — saved as empty`)
   }
 
+  // Parent mobiles follow phoneNo's convention (stored as a number), so an
+  // unusable value is reported the same way rather than written half-formed.
+  const fatherMobile = toPhoneNo(d.father_mobile)
+  if (String(d.father_mobile ?? '').trim() && fatherMobile === null) {
+    warnings.push(`father's mobile "${d.father_mobile}" is not a usable number — saved as empty`)
+  }
+  const motherMobile = toPhoneNo(d.mother_mobile)
+  if (String(d.mother_mobile ?? '').trim() && motherMobile === null) {
+    warnings.push(`mother's mobile "${d.mother_mobile}" is not a usable number — saved as empty`)
+  }
+
+  const doa = String(d.date_of_admission ?? '').trim()
+  const dateOfAdmission = toDateOfBirth(doa)
+  if (doa && !dateOfAdmission) warnings.push(`date of admission "${doa}" is unreadable — saved as empty`)
+
   const payload = {
     name,
     firstName,
@@ -140,6 +183,12 @@ export function mapImportRowToStudent(row, { classId } = {}) {
     admNo: String(d.adm_no ?? '').trim(),
     grEmisSts: String(d.gr_emis_sts ?? '').trim(),
     aadhaarNumber,
+    fatherMobile,
+    motherMobile,
+    dateOfAdmission,
+  }
+  for (const [sourceKey, field] of Object.entries(SOURCE_FIELD_MAP)) {
+    payload[field] = String(d[sourceKey] ?? '').trim()
   }
 
   return { payload, dropped, warnings }

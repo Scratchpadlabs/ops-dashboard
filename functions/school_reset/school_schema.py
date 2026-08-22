@@ -268,6 +268,26 @@ SCHOOL_SCHEMAS = {
             # firestore.rules read grant — narrowing that needs a rules change.
             "aadhaarNumber": _opt(STRING, allowEmpty=True, pattern=AADHAAR_RE,
                                   hint="12 digits"),
+            # ── Roster columns persisted from the import (2026-08-22) ──
+            # A roster file is not kept after an import, so anything the
+            # parser can read has a home here rather than being dropped.
+            # Every one is optional and may be empty: schools supply wildly
+            # different column sets.
+            "srNo": _opt(STRING, allowEmpty=True),
+            "rollNo": _opt(STRING, allowEmpty=True),
+            "fatherName": _opt(STRING, allowEmpty=True),
+            "motherName": _opt(STRING, allowEmpty=True),
+            "fatherMobile": _opt(NUMBER, nullable=True),
+            "motherMobile": _opt(NUMBER, nullable=True),
+            "fatherEmail": _opt(STRING, allowEmpty=True),
+            "motherEmail": _opt(STRING, allowEmpty=True),
+            "city": _opt(STRING, allowEmpty=True),
+            "branchName": _opt(STRING, allowEmpty=True),
+            "board": _opt(STRING, allowEmpty=True),
+            "enrollmentCode": _opt(STRING, allowEmpty=True),
+            "dateOfAdmission": _opt(TIMESTAMP, nullable=True),
+            "status": _opt(STRING, allowEmpty=True),
+            "usingTransport": _opt(STRING, allowEmpty=True),
         },
     },
     "staffs": {
@@ -429,7 +449,7 @@ def validate_current_class_id(value, student_id=None, class_ids=None):
 _ISO_RE = re.compile(r"^(\d{4})-(\d{2})-(\d{2})")
 
 TIMESTAMP_FIELDS = {
-    "students": ["dateOfBirth"],
+    "students": ["dateOfBirth", "dateOfAdmission"],
 }
 
 

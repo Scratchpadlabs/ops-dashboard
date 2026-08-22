@@ -157,10 +157,20 @@ SCHEMAS = {
         "required": ["subject"],
     },
     "assessments": {
-        "row": ["stream", "grade_band", "assessment", "date_start", "date_end",
-                "instructional_days", "syllabus_covered", "exam_syllabus",
-                "max_written", "activity_weight", "total", "duration"],
-        "hints": "Dates as YYYY-MM-DD. Keep composite marks like '80 (40+40)' verbatim in max_written.",
+        # `subject` is optional and usually absent: a blueprint row describes an
+        # exam for a whole grade band, and the browser fans it out over that
+        # band's subjects (see src/utils/assessmentImport.js). It is read when
+        # the file DOES name one subject per row, so those rows land on that
+        # subject instead of the whole band.
+        "row": ["stream", "grade_band", "subject", "assessment", "date_start",
+                "date_end", "instructional_days", "syllabus_covered",
+                "exam_syllabus", "max_written", "activity_weight", "total",
+                "duration"],
+        "hints": ("Dates as YYYY-MM-DD. Keep composite marks like '80 (40+40)' "
+                  "verbatim in max_written, and put the overall paper total in "
+                  "`total` when the file states one. subject: only when the row "
+                  "is for ONE named subject; leave empty for a grade-wide exam "
+                  "blueprint."),
         "required": ["assessment"],
     },
 }

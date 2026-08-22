@@ -89,7 +89,17 @@ Admins/principals: no assignments map → see everything (verify how the app dis
 
 ### config/{students_schema | teachers_schema}
 `{ columns: [{ key, label, type: "text"|"date"|"select", editable, order, options? }] }`
-`students_schema` currently hardcodes class options — must be regenerated from live classes (§3.4).
+`students_schema` is what renders the student table — a school without it has no table at all,
+which is the state every wizard-created school starts in. Built and repaired by
+`ensureStudentsSchema`/`buildStudentsSchemaColumns` in `src/utils/schoolSetupHelpers.js`
+(pinned by `tools/check_students_schema.mjs`), under two rules:
+1. **`ID` is always the first column** — it is how a row is identified in the app.
+2. Every field a roster import can write has a column, so imported data is visible rather than
+   sitting unreferenced on the student document.
+A stored column's `label`/`type`/`editable` are a human's choices and are never overwritten; only
+the order is normalized and missing columns appended, and a school-added column the list doesn't
+know survives after the known ones. `currentClassId.options` still comes from the live class list
+(§3.4). It is rebuilt after every student import commit, and from the Overview hygiene panel.
 
 ### Operational collections — NOT edited by this page
 `students`, `smart_sheet_entries` (+`entries` sub), `attendance_sheets` (+`entries`),
@@ -126,6 +136,29 @@ Admins/principals: no assignments map → see everything (verify how the app dis
 - **Teacher assignment matrix** per class: rows = staff (type teacher), columns = that class's subjects, checkboxes. Saving writes `staffs/{id}.assignments.{classId}` arrays and keeps `classIds` in sync (union of assignment keys + any manually added class-level access). Never write teacher info into `classes.subjects[].teacherId` (unused by the app).
 - Bulk: "add section" (clones subject list from sibling section), "deactivate section".
 - After any class add/remove/rename: regenerate `config/students_schema` column `currentClassId.options` from live class IDs.
+
+### 3.4b Imports — what actually gets written
+- **Students.** Everything the parser reads is persisted. The 2026-08-04 decision to keep
+  srNo/rollNo/parent contacts/branch/board/enrollment/admission-date/status/transport review-only
+  was reversed on 2026-08-22: the source file is not kept, so anything dropped at commit is gone.
+  `src/schemas/studentMapping.js` maps each source column to a camelCase field matching the live
+  documents' convention, and those fields are declared in `schoolSchema.js` / `school_schema.py`
+  so they validate instead of arriving as unknown. `address` is still NOT written — it is in the
+  extractor's BANNED_KEYS, and persisting it is a privacy decision (every student doc is readable
+  by any signed-in app user under the current `firestore.rules`), not an import one.
+  Parent mobiles and the admission date are normalized in `tabular_parser._normalize_cell`
+  alongside `contact`/`dob`, so they arrive as a number and an ISO date rather than raw text.
+- **Assessments** are exam *blueprints*: one row describes an exam for a whole grade band, not for
+  one subject. `src/utils/assessmentImport.js` (pinned by `tools/check_assessment_import.mjs`)
+  owns both halves of that:
+  - **Subjects** come from the row's `grade_band`/`stream` — the row fans out to one assessment per
+    subject of that band (co-scholastic records excluded), or to one named subject when the file
+    has a `subject` column. The assessment's own NAME never selects the subject.
+  - **maxMarks** reads `total` when the file states one, else `max_written + activity_weight`, else
+    `max_written`, parsing the composite forms these files use (`80 (40+40)` → 80, `40+40` → 80).
+  Rows are validated against the assessments schema like students are, `order` sequences within
+  (subjectId, termId) and an existing assessment keeps the order it already had. Scheduling and
+  syllabus columns have no field on an assessment and are reported, not written.
 
 ### 3.5 Assessments (the centerpiece)
 - View: matrix per term — rows = assessment name (grouped template), columns = subjects, cell = configured/missing. Secondary flat table with inline edit.

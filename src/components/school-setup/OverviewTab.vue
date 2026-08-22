@@ -53,7 +53,7 @@ import ConfirmDialog from 'primevue/confirmdialog'
 
 import { schoolCollection, schoolDoc, rootSchoolDoc } from '../../firebase/schoolCollections.js'
 import { auth } from '../../firebase/config'
-import { regenerateStudentsSchemaClassOptions } from '../../utils/schoolSetupHelpers.js'
+import { regenerateStudentsSchemaClassOptions, ensureStudentsSchema, buildStudentsSchemaColumns } from '../../utils/schoolSetupHelpers.js'
 
 const props = defineProps({ schoolId: { type: String, default: null }, school: { type: Object, default: null } })
 const emit = defineEmits(['saved'])
@@ -163,16 +163,27 @@ async function runScan() {
       }
     })
 
-    // 5. students_schema class options vs live class list
-    if (studentsSchema.exists()) {
+    // 5. students_schema: exists at all, leads with ID, and covers what an
+    // import writes. Without it the app has no student table to render.
+    const liveIds = Array.from(classIds).sort()
+    if (!studentsSchema.exists()) {
+      found.push({ message: 'config/students_schema is missing — the student table has no columns to render', actionLabel: 'Create', action: 'rebuild-students-schema' })
+    } else {
       const columns = studentsSchema.data().columns || []
       const col = columns.find(c => c.key === 'currentClassId')
       if (col) {
-        const liveIds = Array.from(classIds).sort()
         const currentOptions = [...(col.options || [])].sort()
         if (JSON.stringify(liveIds) !== JSON.stringify(currentOptions)) {
           found.push({ message: `config/students_schema currentClassId options (${currentOptions.length}) don't match live classes (${liveIds.length})`, actionLabel: 'Fix', action: 'fix-schema' })
         }
+      }
+      const rebuilt = buildStudentsSchemaColumns(columns, liveIds)
+      if (columns[0]?.key !== 'id') {
+        found.push({ message: `config/students_schema does not lead with the ID column (first is "${columns[0]?.key || 'nothing'}")`, actionLabel: 'Rebuild', action: 'rebuild-students-schema' })
+      } else if (rebuilt.added.length) {
+        found.push({ message: `config/students_schema is missing ${rebuilt.added.length} column(s) an import writes: ${rebuilt.added.join(', ')}`, actionLabel: 'Rebuild', action: 'rebuild-students-schema' })
+      } else if (rebuilt.reordered) {
+        found.push({ message: 'config/students_schema column order does not match the standard layout', actionLabel: 'Rebuild', action: 'rebuild-students-schema' })
       }
     }
 
@@ -198,6 +209,27 @@ function runWarningAction(w) {
           await runScan()
         } catch (e) {
           toast.add({ severity: 'error', summary: 'Error', detail: 'Could not delete', life: 3000 })
+        }
+      },
+    })
+  } else if (w.action === 'rebuild-students-schema') {
+    confirm.require({
+      message: 'Rebuild config/students_schema? ID becomes the first column and any column an import writes but the schema lacks is appended. Existing columns keep their label, type and editable flag — only the order changes.',
+      header: 'Rebuild Student Schema', icon: 'pi pi-wrench',
+      rejectLabel: 'Cancel', acceptLabel: 'Rebuild',
+      accept: async () => {
+        try {
+          const classesSnap = await getDocs(schoolCollection(props.schoolId, 'classes'))
+          const res = await ensureStudentsSchema(props.schoolId, classesSnap.docs.map(d => d.id))
+          toast.add({
+            severity: 'success', summary: res.created ? 'Created' : 'Rebuilt',
+            detail: res.added.length ? `${res.added.length} column(s) added` : `${res.columns.length} column(s)`,
+            life: 3000,
+          })
+          await runScan()
+        } catch (e) {
+          console.error(e)
+          toast.add({ severity: 'error', summary: 'Error', detail: 'Could not rebuild the schema', life: 3000 })
         }
       },
     })
