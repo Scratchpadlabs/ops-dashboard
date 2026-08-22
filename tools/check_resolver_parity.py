@@ -10,10 +10,10 @@ import os
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, os.path.join(ROOT, "functions", "shared"))
+sys.path.insert(0, os.path.join(ROOT, "functions"))
 
-from class_resolver import (  # noqa: E402
-    parse_class_value, notation_of, ordinal_to_token,
+from shared.class_resolver import (  # noqa: E402
+    parse_class_value, notation_of, ordinal_to_token, class_id_key,
 )
 
 # Every format the task names, plus the ones that caused real bugs. Keep this
@@ -53,6 +53,17 @@ NOTATION_CASES = [
     ["LKG_A", "UKG_B"],
 ]
 
+# class_id_key folds a class DOC ID for comparison — the rung that lets a file
+# carrying "Play_Group_A" in one column find the class School Setup wrote.
+# Both ends must fold identically or the Cloud Function's "not configured"
+# warning and the commit planner's match would disagree on the same row.
+CLASS_ID_KEY_CASES = [
+    "Play_Group_A", "play group a", "PLAY-GROUP-A", "  Play-Group.A  ",
+    "8_KALAM", "8-KALAM", "8 kalam", "III_A", "iii/a", "SCI_CBSE_A",
+    "11_SCI_A", "UKG_JERRY", "Nursery_A", "", "   ", "___", "_A_", None,
+    "a.b-c d_e", "Smr_Sr_A",
+]
+
 ORDINAL_CASES = [
     (1, "roman"), (1, "numeric"), (2, "roman"), (2, "numeric"),
     (12, "roman"), (12, "numeric"), (0, "roman"), (-1, "roman"),
@@ -61,7 +72,7 @@ ORDINAL_CASES = [
 
 
 def main():
-    out = {"parse": [], "notation": [], "ordinal_to_token": []}
+    out = {"parse": [], "notation": [], "ordinal_to_token": [], "class_id_key": []}
 
     for raw in PARSE_CASES:
         p = parse_class_value(raw)
@@ -81,6 +92,9 @@ def main():
             "ordinal": ordinal, "notation": notation,
             "token": ordinal_to_token(ordinal, notation),
         })
+
+    for raw in CLASS_ID_KEY_CASES:
+        out["class_id_key"].append({"raw": raw, "key": class_id_key(raw)})
 
     dest = os.path.join(ROOT, "tools", ".resolver_fixtures.json")
     with open(dest, "w", encoding="utf-8") as f:

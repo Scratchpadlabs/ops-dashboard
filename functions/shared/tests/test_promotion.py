@@ -8,10 +8,10 @@ nobody.
 import os
 import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 
-from class_resolver import build_school_context  # noqa: E402
-from promotion import (  # noqa: E402
+from shared.class_resolver import build_school_context  # noqa: E402
+from shared.promotion import (  # noqa: E402
     ACTION_PROMOTE, ACTION_GRADUATE, ACTION_UNCHANGED, ACTION_BLOCKED,
     GRADUATED, build_promotion_plan, summarize, plan_to_csv, plan_fingerprint,
 )

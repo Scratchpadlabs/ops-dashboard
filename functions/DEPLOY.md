@@ -1,5 +1,98 @@
 # Cloud Functions — Deploy Guide
 
+## Shared code (`functions/shared`)
+
+Class resolution lives in **exactly one place**: `functions/shared/`, a normal
+Python package holding `class_resolver.py`, `promotion.py`, `school_schema.py`
+and `education_kb.json`. Three functions import it —
+`generate_import`, `school_reset` and `assign_survey` — as
+`from shared.class_resolver import ...`. There are no copies anywhere in the
+repo, so there is nothing to keep in step and nothing that can drift.
+
+It used to be otherwise: the same four files existed as per-folder copies
+mirrored by `tools/sync_shared.py`, and a fix to one copy did not reach the
+others until someone remembered to run the sync. That script is gone.
+
+**Deploy these three with `tools/deploy_function.sh`, not bare `gcloud`.**
+
+```
+tools/deploy_function.sh <function-folder> <gcloud functions deploy args...>
+```
+
+`gcloud functions deploy --source .` uploads exactly one directory, so the
+shared package has to be inside the uploaded tree. The script builds a
+throwaway staging directory — the function folder plus `shared/` — and points
+`--source` at it, then deletes it. It is rebuilt from the repo on every
+deploy, so a deploy always ships current shared logic; nothing is ever written
+back into the working tree. Pass the gcloud flags exactly as before but **drop
+`--source`** (the script rejects it) and do not `cd` into the function folder.
+
+The other functions (`generate_invoice`, `generate_agreement`,
+`generate_quotation`, `generate_pending_letter`, `generate_onboarding`,
+`provision_hosting`) use no shared code and still deploy with plain `gcloud`.
+
+Locally, `functions/` is what makes `import shared.*` resolve: each function
+folder's `pytest.ini` puts it on the path (`pythonpath = . ..`), and the
+scripts under `tools/` insert it explicitly. Run a function's tests from its
+own folder:
+
+```
+cd functions/generate_import && python -m pytest      # likewise school_reset,
+cd functions/shared          && python -m pytest      # assign_survey, shared
+```
+
+---
+
+## create_auth_accounts (Tools -> Auth Accounts)
+
+Creates the Firebase Auth account for everyone a school has registered but not
+yet given a sign-in. Replaces two hand-run Node scripts that needed a service
+account key on a laptop and had the school id edited into the source each time.
+
+Registering someone — via the Register tool or a roster import — writes their
+record with `needsAuthCreation: true`. Nothing in a browser can create the Auth
+account, because that is Admin SDK only, so this callable is the second half.
+
+- One callable for both `students` and `staffs`; the two scripts were identical
+  apart from the collection.
+- Preview and apply are the SAME call with `dryRun` flipped, so the number on
+  the confirm button is the number that happens.
+- `needsAuthCreation` is the queue and a person is cleared only once their
+  account exists, so a run is resumable — `limit` bounds one call (default 200,
+  max 500) and the response says whether more remain.
+- An email that already has an Auth account is LINKED rather than failed. The
+  scripts recorded that as a failure, so the person stayed flagged for ever and
+  every later run retried them.
+- A record with no email, or whose id is under 6 characters (Firebase's minimum
+  password length), is reported and skipped rather than failing the run.
+
+**The first-time password is the person's own id**, exactly as the scripts did,
+because that is what the teacher and student apps hand out. It is weak and
+guessable and worth changing — but as a deliberate change to how those apps
+onboard, not as a side effect of automating this. Passwords are never returned
+by the callable or written to its log.
+
+### Files needed in the folder:
+- main.py ✅
+- requirements.txt ✅
+
+### Deploy:
+No shared code, so plain gcloud.
+```
+cd functions/create_auth_accounts
+
+gcloud functions deploy create_auth_accounts \
+  --gen2 --runtime python312 --region asia-south1 \
+  --source . --entry-point create_auth_accounts \
+  --trigger-http --allow-unauthenticated --project clarified-1501 \
+  --memory 512MB --timeout 540s --max-instances 3
+```
+No secrets. The runtime service account's existing `roles/editor` does not cover
+Auth admin — if account creation fails with a permission error, grant it
+`roles/firebaseauth.admin`.
+
+---
+
 ## generate_pending_letter (v2: compose dialog, draft/render modes)
 
 PDF per school listing outstanding pending items from the Data Receivable
@@ -85,35 +178,39 @@ Server-side because the task requires it at scale: a 3000-student school is
 - survey_rules.py ✅ (pure decision logic + matrix, unit-tested)
 - survey_reports.py ✅ (pure report row builders, unit-tested)
 - requirements.txt ✅ (includes openpyxl for XLSX)
+- `functions/shared` — staged in by the deploy script, see [Shared code](#shared-code-functionsshared)
 
 ### Deploy:
+Run from the repo root (the script resolves paths itself; do NOT `cd` into
+the function folder, and do NOT pass `--source`).
 ```
-cd functions/assign_survey
-
-gcloud functions deploy assign_survey \
+tools/deploy_function.sh assign_survey assign_survey \
   --gen2 --runtime python312 --region asia-south1 \
-  --source . --entry-point assign_survey \
+  --entry-point assign_survey \
   --trigger-http --allow-unauthenticated --project clarified-1501 \
   --memory 512MB --timeout 540s --max-instances 3
 
-gcloud functions deploy survey_matrix \
+tools/deploy_function.sh assign_survey survey_matrix \
   --gen2 --runtime python312 --region asia-south1 \
-  --source . --entry-point survey_matrix \
+  --entry-point survey_matrix \
   --trigger-http --allow-unauthenticated --project clarified-1501 \
   --memory 1024MB --timeout 300s --max-instances 3
 
-gcloud functions deploy survey_report \
+tools/deploy_function.sh assign_survey survey_report \
   --gen2 --runtime python312 --region asia-south1 \
-  --source . --entry-point survey_report \
+  --entry-point survey_report \
   --trigger-http --allow-unauthenticated --project clarified-1501 \
   --memory 1024MB --timeout 300s --max-instances 3
 
-gcloud functions deploy class_detail \
+tools/deploy_function.sh assign_survey class_detail \
   --gen2 --runtime python312 --region asia-south1 \
-  --source . --entry-point class_detail \
+  --entry-point class_detail \
   --trigger-http --allow-unauthenticated --project clarified-1501 \
   --memory 512MB --timeout 120s --max-instances 3
 ```
+(First argument is the source folder under `functions/`, second is the
+Cloud Function name — they differ for every callable except `assign_survey`
+itself.)
 
 No secrets and no new IAM: these are plain Firestore readers/writers, covered
 by the runtime service account's existing `roles/editor`. No firestore.rules
@@ -176,38 +273,38 @@ archive step exists and why it is not optional.
 - main.py ✅
 - reset_rules.py ✅ (pure promotion/diff/id logic, 44 unit tests)
 - requirements.txt ✅
+- `functions/shared` — staged in by the deploy script, see [Shared code](#shared-code-functionsshared)
 
 ### Deploy:
+Run from the repo root; no `cd`, no `--source`.
 ```
-cd functions/school_reset
-
-gcloud functions deploy check_new_school \
+tools/deploy_function.sh school_reset check_new_school \
   --gen2 --runtime python312 --region asia-south1 \
-  --source . --entry-point check_new_school \
+  --entry-point check_new_school \
   --trigger-http --allow-unauthenticated --project clarified-1501 \
   --memory 512MB --timeout 60s --max-instances 3
 
-gcloud functions deploy school_state \
+tools/deploy_function.sh school_reset school_state \
   --gen2 --runtime python312 --region asia-south1 \
-  --source . --entry-point school_state \
+  --entry-point school_state \
   --trigger-http --allow-unauthenticated --project clarified-1501 \
   --memory 512MB --timeout 120s --max-instances 3
 
-gcloud functions deploy archive_school \
+tools/deploy_function.sh school_reset archive_school \
   --gen2 --runtime python312 --region asia-south1 \
-  --source . --entry-point archive_school \
+  --entry-point archive_school \
   --trigger-http --allow-unauthenticated --project clarified-1501 \
   --memory 1024MB --timeout 540s --max-instances 3
 
-gcloud functions deploy reset_preview \
+tools/deploy_function.sh school_reset reset_preview \
   --gen2 --runtime python312 --region asia-south1 \
-  --source . --entry-point reset_preview \
+  --entry-point reset_preview \
   --trigger-http --allow-unauthenticated --project clarified-1501 \
   --memory 1024MB --timeout 300s --max-instances 3
 
-gcloud functions deploy reset_execute \
+tools/deploy_function.sh school_reset reset_execute \
   --gen2 --runtime python312 --region asia-south1 \
-  --source . --entry-point reset_execute \
+  --entry-point reset_execute \
   --trigger-http --allow-unauthenticated --project clarified-1501 \
   --memory 1024MB --timeout 540s --max-instances 3
 ```
@@ -237,23 +334,21 @@ Three more callables in the SAME `functions/school_reset` folder, so they
 deploy from the same source directory:
 
 ```
-cd ~/ops-dashboard/functions/school_reset
-
-gcloud functions deploy scan_classes \
+tools/deploy_function.sh school_reset scan_classes \
   --gen2 --runtime python312 --region asia-south1 \
-  --source . --entry-point scan_classes \
+  --entry-point scan_classes \
   --trigger-http --allow-unauthenticated --project clarified-1501 \
   --memory 1024MB --timeout 300s --max-instances 3
 
-gcloud functions deploy save_class_map \
+tools/deploy_function.sh school_reset save_class_map \
   --gen2 --runtime python312 --region asia-south1 \
-  --source . --entry-point save_class_map \
+  --entry-point save_class_map \
   --trigger-http --allow-unauthenticated --project clarified-1501 \
   --memory 512MB --timeout 120s --max-instances 3
 
-gcloud functions deploy class_health \
+tools/deploy_function.sh school_reset class_health \
   --gen2 --runtime python312 --region asia-south1 \
-  --source . --entry-point class_health \
+  --entry-point class_health \
   --trigger-http --allow-unauthenticated --project clarified-1501 \
   --memory 1024MB --timeout 540s --max-instances 2
 ```
@@ -268,19 +363,10 @@ gcloud functions deploy class_health \
 - `class_health` — read-only resolution report across every active school;
   the in-app twin of `tools/class_inventory.py`.
 
-**IMPORTANT — `functions/shared` is mirrored, not imported.** `gcloud
-functions deploy --source .` uploads one folder, so `class_resolver.py`,
-`promotion.py` and `education_kb.json` are COPIES kept in step by
-`tools/sync_shared.py`. Before deploying, always:
-
-```
-python3 tools/sync_shared.py            # copy canonical -> function folders
-python3 tools/sync_shared.py --check    # verify (exit 1 on drift)
-```
-
-A test in each function folder (`tests/test_shared_sync.py`) fails on drift,
-so a stale copy cannot reach production silently. Editing the copy instead of
-`functions/shared/` is the mistake to avoid — the sync overwrites it.
+**`functions/shared` is imported, not copied** — see
+[Shared code](#shared-code-functionsshared) below. There is no sync step to
+run before deploying; `tools/deploy_function.sh` stages the package into the
+uploaded tree itself.
 
 ### Students deliberately parked outside the app
 
@@ -375,23 +461,22 @@ rather than a guess — the UI then just asks the human to pick the type.
 
 ### Deploy:
 ```
-cd functions/generate_import
-
-gcloud functions deploy classify_value \
+tools/deploy_function.sh generate_import classify_value \
   --gen2 --runtime python312 --region asia-south1 \
-  --source . --entry-point classify_value \
+  --entry-point classify_value \
   --trigger-http --allow-unauthenticated --project clarified-1501 \
   --memory 512MB --timeout 60s --max-instances 3 \
   --set-secrets OPENAI_API_KEY=OPENAI_API_KEY:latest \
   --set-env-vars MODEL=gpt-4o-mini
 ```
 
-**`education_kb.json` must be deployed with this folder** — it is the single
-seed file the browser bundle imports too (`src/utils/educationKB.js`), which
-is exactly why it lives here rather than in `src/`: `--source .` picks it up
-automatically, so the deployed parser and the shipped frontend can never
-disagree about what a subject is. Redeploy `process_import` as well after
-editing it, since its cleaning stage reads the same file.
+**`education_kb.json` lives in `functions/shared/`** and is the single seed
+file the browser bundle imports too (`src/utils/educationKB.js`), which is
+exactly why it lives in the repo rather than only in `src/`:
+`tools/deploy_function.sh` stages it into every function that needs it, so the
+deployed parser and the shipped frontend can never disagree about what a
+subject is. Redeploy `process_import` as well after editing it, since its
+cleaning stage reads the same file.
 
 Firestore: `kb_entries` is a new top-level collection (ops-admin read/write,
 see firestore.rules). No IAM changes — the runtime service account's existing
@@ -436,11 +521,9 @@ needs `roles/datastore.user` + `roles/storage.objectViewer` at minimum.)
 
 ### Deploy:
 ```
-cd functions/generate_import
-
-gcloud functions deploy process_import \
+tools/deploy_function.sh generate_import process_import \
   --gen2 --runtime python312 --region asia-south1 \
-  --source . --entry-point process_import \
+  --entry-point process_import \
   --trigger-http --allow-unauthenticated --project clarified-1501 \
   --memory 1024MB --timeout 540s --max-instances 3 \
   --set-secrets OPENAI_API_KEY=OPENAI_API_KEY:latest \
@@ -449,13 +532,14 @@ gcloud functions deploy process_import \
 # MODEL override, or set it to a Claude model — to extract from .pdf
 # uploads, which the OpenAI path can't handle; see call_openai_compatible)
 
-gcloud functions deploy commit_import \
+tools/deploy_function.sh generate_import commit_import \
   --gen2 --runtime python312 --region asia-south1 \
-  --source . --entry-point commit_import \
+  --entry-point commit_import \
   --trigger-http --allow-unauthenticated --project clarified-1501 \
   --memory 512MB --timeout 120s --max-instances 3
 ```
-This repo deploys via plain `gcloud functions deploy`, not
+This repo deploys via plain `gcloud functions deploy` (wrapped by
+`tools/deploy_function.sh` where shared code is involved), not
 `firebase deploy --only functions` — that means the memory/timeout_sec/
 max_instances/secrets arguments on the `@https_fn.on_call(...)` decorators in
 main.py are NOT read at deploy time (only the Firebase CLI's own build

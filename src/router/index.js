@@ -17,6 +17,7 @@ import Expenses from '../views/Expenses.vue'
 import Settings from '../views/Settings.vue'
 import Login from '../views/Login.vue'
 import { isOpsAdmin } from '../config/opsAdmins.js'
+import { isPathHiddenFor } from '../config/navAccess.js'
 
 const routes = [
   { path: '/login',        component: Login,        name: 'login', meta: { public: true } },
@@ -63,6 +64,11 @@ router.beforeEach(async (to) => {
     return { path: '/' }
   }
   if (to.meta.opsAdminOnly && !isOpsAdmin(user?.email)) {
+    return { name: 'home' }
+  }
+  // A hidden page must also be unreachable by typing its URL, or hiding the
+  // sidebar link only makes it harder to find.
+  if (isPathHiddenFor(user?.email, to.path)) {
     return { name: 'home' }
   }
   return true

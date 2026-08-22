@@ -86,6 +86,12 @@
       </div>
     </div>
 
+    <!-- Registered students already exist by the time this runs, so filling in
+         their details is a different job from the roster import above: it
+         matches and never creates. Inside the same reauth gate, because it
+         writes student PII. -->
+    <StudentDetailsImport class="mb-5" />
+
     <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
       <div class="px-5 py-3 border-b border-slate-100 text-sm font-bold text-slate-900">Recent Imports</div>
       <DataTable :value="jobs" size="small" stripedRows @row-click="e => goToReview(e.data)" class="cursor-pointer">
@@ -123,6 +129,7 @@ import { useRouter } from 'vue-router'
 import { getDocs, query, orderBy, limit } from 'firebase/firestore'
 import Select from 'primevue/select'
 import Password from 'primevue/password'
+import StudentDetailsImport from '../components/import/StudentDetailsImport.vue'
 import Button from 'primevue/button'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'

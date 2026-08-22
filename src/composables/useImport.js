@@ -22,37 +22,24 @@ import {
   schoolCollection, importAliasDoc,
 } from '../firebase/schoolCollections.js'
 import { startProcessImport, commitImportRemote } from '../utils/api.js'
-import { classify, GRADE } from '../utils/educationKB.js'
-import { normalizeSectionValue } from '../utils/classResolver.js'
+import {
+  normalizeGrade, normalizeSection, buildClassLookup, resolveClassId, describeClassMiss,
+} from '../utils/classLookup.js'
 import { validateDoc, formatErrors } from '../schemas/schoolSchema.js'
 import { gradeOrder } from '../utils/structureInference.js'
 import { parseMaxMarks, resolveBlueprintSubjects } from '../utils/assessmentImport.js'
 import { isCoScholasticArea } from '../utils/assessmentHelpers.js'
 import { validateCurrentClassId } from '../schemas/currentClassId.js'
-import { mapImportRowToStudent } from '../schemas/studentMapping.js'
+import { mapImportRowToStudent, dropBlankOptionalFields } from '../schemas/studentMapping.js'
+import { extraColumnsFor, newSchemaColumnsFor } from '../utils/studentEnrichment.js'
 import { ensureStudentsSchema } from '../utils/schoolSetupHelpers.js'
+// Re-exported for ImportReview.vue, which drives the schema step from the plan.
+export { newSchemaColumnsFor }
 
-// ── Grade normalization — delegates to the shared education knowledge base
-// (src/utils/educationKB.js), which is seeded from the very same
-// education_kb.json that functions/generate_import/education_kb.py reads.
-// The review UI needs the same "does this row's class-section exist" answer
-// the Cloud Function used when it raised the flag, and the only way to
-// guarantee that is one shared vocabulary rather than two hand-synced
-// roman-numeral tables (which is what this used to be). ─────────────────────
-export function normalizeGrade(g) {
-  const s = (g || '').trim()
-  if (!s) return ''
-  // expect: GRADE is correct here — every caller already knows this value
-  // came from a grade column, the context that lets a bare 'V' read as 5.
-  const r = classify(s, { expect: GRADE })
-  return r.type === GRADE && r.canonical ? r.canonical : s.toUpperCase()
-}
-// Board tokens stripped, so a teacher row's "SCI_CBSE_A" resolves to the same
-// class as the configured "SCI_A". One rule, shared with the Cloud Function's
-// normalize_section and the wizard's class derivation.
-export function normalizeSection(s) {
-  return normalizeSectionValue(s)
-}
+// Re-exported for ImportReview.vue, which has always imported it from this
+// module; the definition moved to utils/classLookup.js with the rest of the
+// class matching.
+export { normalizeGrade, normalizeSection }
 
 function slugPart(s) {
   return (s || '').trim().replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_|_$/g, '')
@@ -130,40 +117,11 @@ export async function setRowExcluded(jobId, rowId, excluded) {
 }
 
 // ── School config lookups (shared by the commit planner) ───────────────────
+// The matching itself lives in src/utils/classLookup.js — pure, so it can be
+// checked without a live school (node tools/check_class_lookup.mjs).
 async function loadClassLookup(schoolId) {
   const snap = await getDocs(schoolCollection(schoolId, 'classes'))
-  const classLookup = new Map()
-  const subjectsByClass = new Map()
-  snap.docs.forEach(d => {
-    const c = { id: d.id, ...d.data() }
-    classLookup.set(`${normalizeGrade(c.clazz)}|${normalizeSection(c.section)}`, c.id)
-    subjectsByClass.set(c.id, (c.subjects || []).map(s => s.subjectId).filter(Boolean))
-  })
-  return { classLookup, subjectsByClass }
-}
-
-/**
- * Why a (grade, section) missed classLookup, in words an operator can act on.
- *
- * "Class-section not configured for this school." was the entire message, on
- * every one of the rows, with no indication of what was looked for or what
- * exists — so a school whose Classes collection is simply empty looked exactly
- * like one section being misspelled. Both are common and the fixes are
- * completely different, so the message has to tell them apart.
- */
-function describeClassMiss(classLookup, rawGrade, rawSection) {
-  if (classLookup.size === 0) {
-    return 'School Setup has no classes configured at all — set up the class structure before importing.'
-  }
-  const grade = normalizeGrade(rawGrade)
-  const section = normalizeSection(rawSection)
-  const sameGrade = [...classLookup.keys()]
-    .filter(k => k.split('|')[0] === grade)
-    .map(k => k.split('|')[1] || '(no section)')
-  const looked = `looked for grade "${grade}" section "${section || '(none)'}"`
-  return sameGrade.length
-    ? `Class-section not configured — ${looked}. Grade "${grade}" has: ${sameGrade.sort().join(', ')}.`
-    : `Class-section not configured — ${looked}, and grade "${grade}" has no classes at all in School Setup.`
+  return buildClassLookup(snap.docs.map(d => ({ id: d.id, ...d.data() })))
 }
 
 async function loadSubjectLookup(schoolId) {
@@ -340,7 +298,8 @@ function fieldsEqual(a, b, keys) {
 }
 
 async function buildStudentsPlan(schoolId, rows) {
-  const { classLookup } = await loadClassLookup(schoolId)
+  const lookup = await loadClassLookup(schoolId)
+  const { classLookup } = lookup
   const classIds = Array.from(new Set(classLookup.values()))
   // One fetch for the whole existing roster instead of a getDoc per row —
   // matters at the 1000+ row scale imports are sized for.
@@ -349,26 +308,60 @@ async function buildStudentsPlan(schoolId, rows) {
   const usedIds = new Map() // dedupe doc ids within this batch
   const items = []
 
+  // Does this file carry the school's own student ids? Decided ONCE for the
+  // whole file, not per row: a file that names its students by id is a
+  // different kind of file from one that does not, and switching between the
+  // two mid-import is what produced a duplicate for every student. One row
+  // carrying an id is enough — the rows that then lack one are the error.
+  const idMode = rows.some(r => String(r.data?.student_id ?? '').trim())
+  const unregisteredIds = []
+
   for (const row of rows) {
     const d = row.data
     if ((row.suggestions || []).length) {
       items.push({ row, status: 'SUGGESTION_PENDING', reason: 'Resolve suggested fixes before committing' })
       continue
     }
-    const classId = classLookup.get(`${normalizeGrade(d.grade)}|${normalizeSection(d.section)}`)
+    const classId = resolveClassId(lookup, d.grade, d.section)
     if (!classId) {
-      items.push({ row, status: 'ERROR', reason: describeClassMiss(classLookup, d.grade, d.section) })
+      items.push({ row, status: 'ERROR', reason: describeClassMiss(lookup, d.grade, d.section) })
       continue
     }
-    const base = slugPart(d.roll_no) || slugPart(d.student_name) || 'student'
-    let docId = `${classId}_${base}`
-    const dupeCount = (usedIds.get(docId) || 0) + 1
-    usedIds.set(docId, dupeCount)
-    if (dupeCount > 1) docId = `${docId}_${dupeCount}`
 
-    // Mapped, not copied: source columns the student schema has no home for
-    // are dropped and reported rather than written into fields nothing reads.
-    const { payload, dropped, warnings } = mapImportRowToStudent(d, { classId })
+    // ── Which document does this row belong to? ──────────────────────────
+    // With an id, the row updates the student that already carries it and
+    // NOTHING is created: registration mints the document (and its auth
+    // account), the import fills it in. An id nobody holds is an error, never
+    // a new student — a typo would otherwise become a real pupil who can
+    // never log in, and a stale export would rebuild a roster ops had cleaned.
+    let docId
+    let studentId = ''
+    if (idMode) {
+      studentId = String(d.student_id ?? '').trim()
+      if (!studentId) {
+        items.push({ row, status: 'ERROR',
+                     reason: 'This file names students by id, but this row has no id. '
+                           + 'Fill in the ID column or remove the row.' })
+        continue
+      }
+      if (!existingById.has(studentId)) {
+        unregisteredIds.push({ id: studentId, name: d.student_name || '', row: row.id })
+        items.push({ row, status: 'ERROR',
+                     reason: `No registered student with id "${studentId}". `
+                           + 'Register and authenticate this student first — the import fills '
+                           + 'in existing students and never creates one.' })
+        continue
+      }
+      docId = studentId
+    } else {
+      const base = slugPart(d.roll_no) || slugPart(d.student_name) || 'student'
+      docId = `${classId}_${base}`
+      const dupeCount = (usedIds.get(docId) || 0) + 1
+      usedIds.set(docId, dupeCount)
+      if (dupeCount > 1) docId = `${docId}_${dupeCount}`
+    }
+
+    const { payload, carried, dropped, warnings } = mapImportRowToStudent(d, { classId })
 
     // The class value is the one field where live data is genuinely broken,
     // so it is checked on its own terms as well as by the schema.
@@ -386,22 +379,40 @@ async function buildStudentsPlan(schoolId, rows) {
 
     const notes = [...warnings]
     if (classCheck.severity === 'warning') notes.push(classCheck.message)
-    if (dropped.length) notes.push(`no field in the student schema for: ${dropped.join(', ')} — not saved`)
 
-    const item = { row, docId, payload, notes, derived: { firstName: payload.firstName, lastName: payload.lastName } }
+    // Everything the file carried that the student schema has no NAMED field
+    // for, from both directions: columns the extractor recognises but has
+    // nowhere to put (father_mobile, board, address) and columns it does not
+    // recognise at all (House, Bus Route). One list, so config/students_schema
+    // sees them all and the payload writes them all.
+    const extraColumns = [...carried, ...extraColumnsFor(row.extras)]
+    const extraFields = Object.fromEntries(extraColumns.map(c => [c.key, c.value]))
+    if (dropped.length) {
+      notes.push(`about the file, not the student — not saved: ${dropped.join(', ')}`)
+    }
+    if (extraColumns.length) {
+      notes.push(`extra column(s) saved as: ${extraColumns.map(c => c.key).sort().join(', ')}`)
+    }
+
+    let finalPayload = { ...payload, ...extraFields }
+    if (idMode) finalPayload = dropBlankOptionalFields({ ...finalPayload, id: docId })
+
+    const item = { row, docId, payload: finalPayload, extraColumns, notes,
+                   derived: { firstName: payload.firstName, lastName: payload.lastName } }
     const existing = existingById.get(docId)
     if (!existing) {
       items.push({ ...item, status: 'CREATE' })
     } else {
-      const same = fieldsEqual(existing, payload, Object.keys(payload))
+      const same = fieldsEqual(existing, finalPayload, Object.keys(finalPayload))
       items.push({ ...item, status: same ? 'UPDATE_UNCHANGED' : 'UPDATE_CHANGED' })
     }
   }
-  return summarize('students', items)
+  return { ...summarize('students', items), idMode, unregisteredIds }
 }
 
 async function buildTeachersPlan(schoolId, rows) {
-  const { classLookup } = await loadClassLookup(schoolId)
+  const lookup = await loadClassLookup(schoolId)
+  const { classLookup } = lookup
   const subjectLookup = await loadSubjectLookup(schoolId)
   const subjectIdsByGrade = await loadSubjectIdsByGrade(schoolId)
   const { byEmail, byName } = await loadStaffLookup(schoolId)
@@ -414,14 +425,14 @@ async function buildTeachersPlan(schoolId, rows) {
       items.push({ row, status: 'SUGGESTION_PENDING', reason: 'Resolve suggested fixes before committing' })
       continue
     }
-    const classId = classLookup.get(`${normalizeGrade(d.grade)}|${normalizeSection(d.section)}`)
+    const classId = resolveClassId(lookup, d.grade, d.section)
     const subject = (d.subject || '').replace(/\?$/, '').trim()
     if (!d.teacher_name?.trim()) {
       items.push({ row, status: 'ERROR', reason: 'Missing teacher name' })
       continue
     }
     if (!classId) {
-      items.push({ row, status: 'ERROR', reason: describeClassMiss(classLookup, d.grade, d.section) })
+      items.push({ row, status: 'ERROR', reason: describeClassMiss(lookup, d.grade, d.section) })
       continue
     }
     const subjectId = subject ? subjectLookup.get(`${normalizeGrade(d.grade)}|${subject.toLowerCase()}`) : null

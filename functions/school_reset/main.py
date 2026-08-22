@@ -44,15 +44,15 @@ import firebase_admin
 from firebase_admin import firestore
 from firebase_functions import https_fn, options
 
-from school_schema import validate_current_class_id
+from shared.school_schema import validate_current_class_id
 from reset_rules import (
     build_reset_diff, verify_archive, find_similar_schools, validate_school_id,
 )
-from class_resolver import (
+from shared.class_resolver import (
     build_school_context, resolve_class, distinct_class_values, CONF_HIGH,
     CONF_MEDIUM, looks_like_sentinel,
 )
-from promotion import (
+from shared.promotion import (
     ACTION_PROMOTE, ACTION_GRADUATE, plan_fingerprint, plan_to_csv,
 )
 

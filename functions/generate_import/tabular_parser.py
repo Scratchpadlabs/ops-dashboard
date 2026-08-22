@@ -330,6 +330,10 @@ def _match_field(canon, alias_lookup):
 
 
 def _score_header_row(row, alias_lookup):
+    """`unmapped` is [(column index, header text)] — the index matters because
+    a column this dictionary does not recognize still carries values a school
+    wants on its students (see _parse_row's `extras`), and finding them again
+    later needs to know which column they came from."""
     col_map, labels, unmapped = {}, [], []
     used_fields = set()
     score = 0
@@ -341,7 +345,7 @@ def _score_header_row(row, alias_lookup):
         field = _match_field(canonicalize(text), alias_lookup)
         if field is None or field in used_fields:
             if text:
-                unmapped.append(text)
+                unmapped.append((idx, text))
             continue
         col_map[idx] = field
         used_fields.add(field)
@@ -442,7 +446,8 @@ def _normalize_cell(field, raw_val):
 
 # --------------------------------------------------------------- sheet/row -
 def _parse_row(raw_row, col_map, metadata_hints, sheet_name, row_num, hidden,
-               result, header_text_key, required_field, schema_keys):
+               result, header_text_key, required_field, schema_keys,
+               extra_map=None):
     if _is_row_empty(raw_row):
         return
     if _row_text_key(raw_row) == header_text_key:
@@ -486,8 +491,19 @@ def _parse_row(raw_row, col_map, metadata_hints, sheet_name, row_num, hidden,
             "sheet": sheet_name, "row": row_num, "field": required_field,
             "message": f"missing {required_field.replace('_', ' ')}", "severity": "error",
         })
-    result["rows"].append({"data": data, "sheet": sheet_name, "row": row_num,
-                            "hidden_sheet": hidden, "excluded": excluded})
+    # Columns this parser has no field for, kept under their own header text.
+    # Every school's file carries some — "Board", "House", "Bus Route" — and
+    # dropping them meant a school could never get its own data into its own
+    # students. Carried verbatim and unvalidated; what (if anything) reaches a
+    # student document is decided later, by a human, in the review screen.
+    extras = {}
+    for idx, label in (extra_map or {}).items():
+        value = collapse_ws(_cell_to_str(raw_row[idx] if idx < len(raw_row) else None))
+        if value:
+            extras[label] = value
+
+    result["rows"].append({"data": data, "extras": extras, "sheet": sheet_name,
+                            "row": row_num, "hidden_sheet": hidden, "excluded": excluded})
 
 
 def _parse_sheet(sheet_name, rows, hidden, result, alias_lookup, required_field,
@@ -501,7 +517,12 @@ def _parse_sheet(sheet_name, rows, hidden, result, alias_lookup, required_field,
         return
 
     score, start_idx, span, col_map, labels, unmapped = best
-    result["unmapped_headers"].extend(_dedupe_labels(unmapped))
+    # Deduped in the same order, so two columns both headed "Remarks" become
+    # "Remarks" and "Remarks_2" in the report AND under the same names in each
+    # row's extras — one column, one name, everywhere.
+    extra_labels = _dedupe_labels([text for _, text in unmapped])
+    extra_map = {idx: label for (idx, _), label in zip(unmapped, extra_labels)}
+    result["unmapped_headers"].extend(extra_labels)
     metadata_hints = _extract_metadata_hints(rows[:start_idx])
     header_text_key = _row_text_key(labels)
     result["sheets_parsed"].append(sheet_name)
@@ -511,7 +532,8 @@ def _parse_sheet(sheet_name, rows, hidden, result, alias_lookup, required_field,
         row_num = start_idx + span + offset + 1  # 1-indexed source row number
         try:
             _parse_row(raw_row, col_map, metadata_hints, sheet_name, row_num, hidden,
-                       result, header_text_key, required_field, schema_keys)
+                       result, header_text_key, required_field, schema_keys,
+                       extra_map)
         except Exception as e:
             result["errors"].append({"sheet": sheet_name, "row": row_num, "field": None,
                                       "message": f"row failed to parse: {e}", "severity": "error"})

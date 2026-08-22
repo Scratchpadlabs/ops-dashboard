@@ -142,11 +142,11 @@
     </div>
 
     <Toast />
-    <!-- ONE app-wide instance. useConfirm().require() broadcasts to every
-         mounted ConfirmDialog, and PrimeVue's <TabPanels> mounts all panels at
-         once — so the 13 School Setup tabs that each declared their own opened
-         13 stacked modals per confirm, and accepting one left 12 modal masks
-         covering the page until a reload. Views must not declare their own. -->
+    <!-- Exactly ONE ConfirmDialog for the whole app. PrimeVue's confirmation
+         service is a singleton: every mounted ConfirmDialog answers the same
+         confirm.require() call, so a dialog per component meant one click
+         opened one dialog per mounted component — 23 of them existed, 14 of
+         those School Setup tabs that are all mounted at once. -->
     <ConfirmDialog />
     <CelebrationOverlay />
     <GlobalSearchModal />
@@ -160,6 +160,7 @@ import { signOut, onAuthStateChanged } from 'firebase/auth'
 import { auth } from './firebase/config'
 import { opsCollection } from './firebase/collections.js'
 import { isOpsAdmin } from './config/opsAdmins.js'
+import { isPathHiddenFor } from './config/navAccess.js'
 import { getDocs } from 'firebase/firestore'
 import { activeYear, availableYears, computeCurrentAcademicYear } from './composables/useAcademicYear.js'
 import { isSearchOpen } from './composables/useGlobalSearch.js'
@@ -295,7 +296,11 @@ const baseNavItems = [
 
 const ADMIN_ONLY_NAV_PATHS = ['/school-setup', '/import', '/surveys']
 const navItems = computed(() =>
-  baseNavItems.filter(item => !ADMIN_ONLY_NAV_PATHS.includes(item.to) || isOpsAdmin(currentUserEmail.value))
+  baseNavItems.filter(item =>
+    (!ADMIN_ONLY_NAV_PATHS.includes(item.to) || isOpsAdmin(currentUserEmail.value)) &&
+    // Per-person hiding, separate from the admin role — see config/navAccess.js.
+    !isPathHiddenFor(currentUserEmail.value, item.to)
+  )
 )
 
 const pageTitles = {

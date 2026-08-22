@@ -21,7 +21,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'derive-'))
 fs.mkdirSync(TMP, { recursive: true })
 
-const seed = fs.readFileSync(path.join(ROOT, 'functions/generate_import/education_kb.json'), 'utf8')
+const seed = fs.readFileSync(path.join(ROOT, 'functions/shared/education_kb.json'), 'utf8')
 fs.writeFileSync(path.join(TMP, 'seed.json'), seed)
 
 let cr = fs.readFileSync(path.join(ROOT, 'src/utils/classResolver.js'), 'utf8')

@@ -193,6 +193,11 @@ export const SCHOOL_SCHEMAS = {
       label: f(STRING),
       order: f(NUMBER, { min: 1 }),
       remarks: f(ARRAY, { minLength: 1 }),
+      // Which classes this category applies to. The grade band lives in the doc
+      // ID prefix (`Foundational_Discipline`); this is that band resolved to the
+      // school's actual class ids, so the teacher app does not have to parse it.
+      // Optional: a category with no classIds applies wherever the app decides.
+      classIds: opt(ARRAY),
     },
     check(doc, errors) {
       const remarks = Array.isArray(doc.remarks) ? doc.remarks : []
@@ -253,25 +258,6 @@ export const SCHOOL_SCHEMAS = {
       // PII. Readable by every signed-in app user under the current
       // firestore.rules read grant — narrowing that needs a rules change.
       aadhaarNumber: opt(STRING, { allowEmpty: true, pattern: AADHAAR_RE, hint: '12 digits' }),
-      // ── Roster columns persisted from the import (2026-08-22) ───────────
-      // A roster file is not kept after an import, so anything the parser can
-      // read has a home here rather than being dropped. Every one is optional
-      // and may be empty: schools supply wildly different column sets.
-      srNo: opt(STRING, { allowEmpty: true }),
-      rollNo: opt(STRING, { allowEmpty: true }),
-      fatherName: opt(STRING, { allowEmpty: true }),
-      motherName: opt(STRING, { allowEmpty: true }),
-      fatherMobile: opt(NUMBER, { nullable: true }),
-      motherMobile: opt(NUMBER, { nullable: true }),
-      fatherEmail: opt(STRING, { allowEmpty: true }),
-      motherEmail: opt(STRING, { allowEmpty: true }),
-      city: opt(STRING, { allowEmpty: true }),
-      branchName: opt(STRING, { allowEmpty: true }),
-      board: opt(STRING, { allowEmpty: true }),
-      enrollmentCode: opt(STRING, { allowEmpty: true }),
-      dateOfAdmission: opt(TIMESTAMP, { nullable: true }),
-      status: opt(STRING, { allowEmpty: true }),
-      usingTransport: opt(STRING, { allowEmpty: true }),
     },
   },
 

@@ -1,21 +1,9 @@
 /**
  * Import row → student document, in the shape the teacher app actually reads.
  *
- * PERSISTED: everything the parser can read off the file. The 2026-08-04
- * decision persisted only admNo, grEmisSts and aadhaarNumber and left the rest
- * review-only; that was reversed on 2026-08-22 — a roster import has to land
- * ALL the data the file carried, because the source file is not kept and
- * whatever is dropped here is simply gone. Each source column now has a named
- * home on the student document (see SOURCE_FIELD_MAP), and those homes are
- * declared in schoolSchema.js / school_schema.py so they validate rather than
- * arriving as unknown fields.
- *
- * The ONE exception is `address`, still not persisted: it is in the
- * extractor's BANNED_KEYS and is not in STUDENT_SCHEMA_KEYS, so it never
- * reaches a review row in the first place. Persisting it is a privacy
- * decision, not an import one — every student doc is readable by any signed-in
- * app user under the current firestore.rules (see schoolSchema.js on
- * aadhaarNumber), so it needs a rules change first.
+ * PERSISTED (2026-08-04 decision): admNo, grEmisSts and aadhaarNumber. Every
+ * other extra source column is review-only — listed in UNMAPPED_SOURCE_FIELDS
+ * and reported per row.
  *
  * THE BUG THIS FIXES (AUDIT.md §3.2): buildStudentsPlan mapped extractor
  * fields 1:1 into the student doc, so every import wrote
@@ -86,40 +74,83 @@ export function toPhoneNo(raw) {
 }
 
 /**
- * Source column → student document field, for every column that is carried
- * through verbatim as a trimmed string.
+ * Extractor fields the student schema has no named field for, CARRIED anyway.
  *
- * Naming follows the live documents' camelCase (`admNo`, `grEmisSts`,
- * `phoneNo`), not the extractor's snake_case. Columns needing a type
- * conversion (mobiles → number, admission date → timestamp) are handled in
- * mapImportRowToStudent instead and are NOT listed here.
+ * These were dropped until 2026-08-20 (decision, Sid, 2026-08-04: "parsed and
+ * shown in Review, deliberately NOT persisted — the student document has one
+ * phoneNo/email and no parent contact fields"). That is now reversed: a school
+ * registers its students, then imports its own export to fill them in, and
+ * every parent contact in Hillgreen's file was landing in a "not saved" note
+ * instead of on the student. Ops asked for one step that writes them.
+ *
+ * The KEY is what fieldKeyFor() would produce from the school's own header, so
+ * a value written by this import and the same value written by the enrichment
+ * screen land on the same field rather than beside each other. The LABEL is
+ * what config/students_schema shows.
+ *
+ * They stay OUT of school_schema.js on purpose: the teacher app does not read
+ * them, so they are unknown-but-written fields (a schema warning, never an
+ * error), which is exactly what they are.
  */
-export const SOURCE_FIELD_MAP = {
-  sr_no: 'srNo',
-  roll_no: 'rollNo',
-  father_name: 'fatherName',
-  mother_name: 'motherName',
-  father_email: 'fatherEmail',
-  mother_email: 'motherEmail',
-  city: 'city',
-  branch_name: 'branchName',
-  board: 'board',
-  enrollment_code: 'enrollmentCode',
-  status: 'status',
-  using_transport: 'usingTransport',
+export const CARRIED_SOURCE_FIELDS = {
+  roll_no: { key: 'rollNo', label: 'Roll No' },
+  father_name: { key: 'fatherName', label: 'Father Name' },
+  father_mobile: { key: 'fatherMobile', label: 'Father Mobile' },
+  father_email: { key: 'fatherEmail', label: 'Father Email' },
+  mother_name: { key: 'motherName', label: 'Mother Name' },
+  mother_mobile: { key: 'motherMobile', label: 'Mother Mobile' },
+  mother_email: { key: 'motherEmail', label: 'Mother Email' },
+  address: { key: 'address', label: 'Address' },
+  city: { key: 'city', label: 'City' },
+  branch_name: { key: 'branchName', label: 'Branch Name' },
+  board: { key: 'board', label: 'Board' },
+  enrollment_code: { key: 'enrollmentCode', label: 'Enrollment Code' },
+  date_of_admission: { key: 'dateOfAdmission', label: 'Date Of Admission' },
+  status: { key: 'status', label: 'Status' },
+  using_transport: { key: 'usingTransport', label: 'Using Transport' },
 }
 
 /**
- * Source columns the parser reads but that are still not written. `address` is
- * the only one — see the module header. Kept as a named list (rather than an
- * empty concept) so a row carrying one is still reported, not silently lost.
+ * Fields that are about the FILE, not the student. Still dropped, still
+ * reported — a spreadsheet's serial number is not data about a child.
  */
-export const UNMAPPED_SOURCE_FIELDS = ['address']
+export const UNMAPPED_SOURCE_FIELDS = ['sr_no']
 
 /** Digits only — an Aadhaar cell arrives as "1234 5678 9012" or "1234-5678-9012". */
 export function toAadhaar(raw) {
   const digits = String(raw ?? '').replace(/\D/g, '')
   return digits.length === 12 ? digits : ''
+}
+
+/**
+ * The fields school_schema.js marks required for a student. They are always
+ * written, empty or not — dropping one makes the Cloud Function's
+ * validate_doc reject the whole row as "required".
+ */
+export const REQUIRED_STUDENT_KEYS = ['name', 'firstName', 'lastName', 'currentClassId', 'type']
+
+/**
+ * Blank optional fields removed, so a merge write cannot erase what is there.
+ *
+ * Only for the register-then-enrich flow, where each row updates a student
+ * that already exists. A blank cell in a spreadsheet means "this file does not
+ * say", not "delete what you know" — and Hillgreen's export has an empty Email
+ * column on all 1622 rows while every registered student has a real
+ * shh1612@hillgreen.com. Writing that payload through a merge would wipe the
+ * address the auth account was created with, on every student, silently.
+ *
+ * Not applied when the import is creating students: a create wants the full
+ * shape, blanks included, so the document has every field the teacher app
+ * expects to read.
+ */
+export function dropBlankOptionalFields(payload) {
+  const out = {}
+  for (const [k, v] of Object.entries(payload || {})) {
+    const blank = v === null || v === undefined || (typeof v === 'string' && !v.trim())
+    if (blank && !REQUIRED_STUDENT_KEYS.includes(k)) continue
+    out[k] = v
+  }
+  return out
 }
 
 /**
@@ -146,6 +177,12 @@ export function mapImportRowToStudent(row, { classId } = {}) {
 
   const dropped = UNMAPPED_SOURCE_FIELDS.filter(k => String(d[k] ?? '').trim())
 
+  // {key, label, value} rather than a plain object: the students_schema step
+  // needs the school's own label and the value's shape, not just the key.
+  const carried = Object.entries(CARRIED_SOURCE_FIELDS)
+    .map(([field, { key, label }]) => ({ key, label, value: String(d[field] ?? '').trim() }))
+    .filter(c => c.value)
+
   // Aadhaar: 12 digits or nothing. A partial/garbled value is reported and
   // dropped rather than written half-formed.
   const aadhaarRaw = String(d.aadhaar ?? '').trim()
@@ -153,21 +190,6 @@ export function mapImportRowToStudent(row, { classId } = {}) {
   if (aadhaarRaw && !aadhaarNumber) {
     warnings.push(`Aadhaar "${aadhaarRaw}" is not 12 digits — saved as empty`)
   }
-
-  // Parent mobiles follow phoneNo's convention (stored as a number), so an
-  // unusable value is reported the same way rather than written half-formed.
-  const fatherMobile = toPhoneNo(d.father_mobile)
-  if (String(d.father_mobile ?? '').trim() && fatherMobile === null) {
-    warnings.push(`father's mobile "${d.father_mobile}" is not a usable number — saved as empty`)
-  }
-  const motherMobile = toPhoneNo(d.mother_mobile)
-  if (String(d.mother_mobile ?? '').trim() && motherMobile === null) {
-    warnings.push(`mother's mobile "${d.mother_mobile}" is not a usable number — saved as empty`)
-  }
-
-  const doa = String(d.date_of_admission ?? '').trim()
-  const dateOfAdmission = toDateOfBirth(doa)
-  if (doa && !dateOfAdmission) warnings.push(`date of admission "${doa}" is unreadable — saved as empty`)
 
   const payload = {
     name,
@@ -183,13 +205,7 @@ export function mapImportRowToStudent(row, { classId } = {}) {
     admNo: String(d.adm_no ?? '').trim(),
     grEmisSts: String(d.gr_emis_sts ?? '').trim(),
     aadhaarNumber,
-    fatherMobile,
-    motherMobile,
-    dateOfAdmission,
-  }
-  for (const [sourceKey, field] of Object.entries(SOURCE_FIELD_MAP)) {
-    payload[field] = String(d[sourceKey] ?? '').trim()
   }
 
-  return { payload, dropped, warnings }
+  return { payload, carried, dropped, warnings }
 }

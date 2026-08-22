@@ -242,10 +242,10 @@ check('the missing students_schema is reported', /students_schema is missing/.te
 // Scoped to the Overview panel — every tab panel is mounted, so a bare
 // button match can land on a hidden one in another tab.
 const ov = page.locator('[id$="tabpanel_overview"]')
-await ov.locator('button:has-text("Create"), button:has-text("Rebuild")').first().click()
+await ov.locator('button:has-text("Create"), button:has-text("Fix order")').first().click()
 await page.waitForTimeout(1200)
 await shot('41-schema-confirm')
-await acceptConfirm('Rebuild')
+await acceptConfirm('Fix order')
 await page.waitForTimeout(5000)
 await maskGone()
 await shot('42-overview-after')
@@ -255,13 +255,21 @@ const cols = schema?.columns || []
 console.log('       columns:', cols.map(c => c.key).join(', '))
 check('config/students_schema now exists', !!schema)
 check('ID is the first column', cols[0]?.key === 'id', cols[0])
+check('ID is not editable', cols[0]?.editable === false)
 check('order is 1..n', cols.every((c, i) => c.order === i + 1))
 check('the class column carries the live class list',
   (cols.find(c => c.key === 'currentClassId')?.options || []).length === 6,
   cols.find(c => c.key === 'currentClassId')?.options)
-for (const k of ['rollNo', 'fatherName', 'motherMobile', 'dateOfAdmission']) {
-  check(`"${k}" — a field the import now writes — has a column`, cols.some(c => c.key === k))
+// Which columns a school HAS is the enrichment flow's decision (it derives
+// them from that school's own CSV headers). Creating the doc must seed the
+// core identity/contact columns and stop there — not invent a column per
+// field an import COULD write.
+for (const k of ['name', 'currentClassId', 'dateOfBirth', 'admNo']) {
+  check(`"${k}" is seeded`, cols.some(c => c.key === k))
 }
+check('no roster column is invented for the school',
+  !cols.some(c => ['rollNo', 'fatherName', 'motherMobile', 'branchName'].includes(c.key)),
+  cols.map(c => c.key))
 
 console.log(failures ? `\n${failures} FAILURE(S)` : '\nALL E2E CHECKS PASSED')
 await browser.close()

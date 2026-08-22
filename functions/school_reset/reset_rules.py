@@ -20,8 +20,9 @@ explicit, itemized diff rather than an implied side effect.
 """
 
 # ── Class resolution and promotion now live in ONE place ────────────────────
-# functions/shared/class_resolver.py + promotion.py, mirrored into this folder
-# by tools/sync_shared.py (gcloud uploads only `--source .`).
+# functions/shared/class_resolver.py + promotion.py, imported directly. There
+# is no copy in this folder: tools/deploy_function.sh stages the shared package
+# into the tree it hands gcloud, so a deploy always ships current logic.
 #
 # What used to be here — split_class_id, next_grade, promote_class_id,
 # school_uses_numeric_grades, build_promotion_plan — was the second of three
@@ -33,10 +34,10 @@ explicit, itemized diff rather than an implied side effect.
 # observed on NAVODAYA CENTRAL SCHOOL, 650 of 650.
 #
 # Nothing about promotion is decided in this module any more.
-from class_resolver import (  # noqa: F401
+from shared.class_resolver import (  # noqa: F401
     GRADUATED, build_school_context, resolve_class,
 )
-from promotion import (
+from shared.promotion import (
     ACTION_PROMOTE, ACTION_GRADUATE, ACTION_UNCHANGED, ACTION_BLOCKED,
     build_promotion_plan, summarize, plan_fingerprint, plan_to_csv,  # noqa: F401
 )

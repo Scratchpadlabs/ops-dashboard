@@ -1,0 +1,272 @@
+{
+  "$source": [
+    "Hillgreen Highschool & Junior College, supplied 2026-08-20:",
+    "  marks_conversion.xlsx  — 'Classwise Marks Distribution 2026 (For All Exams)'",
+    "  Report_Card_Model_class_1_to_8.pdf, _class_9.pdf, _class_10.pdf, _class_11.pdf",
+    "Every number here is read off those documents. Nothing is inferred except",
+    "where $inferred says so, and the planner reports each inference per subject."
+  ],
+  "$note": "This is the EXAMPLE scheme, offered by name when a school starts from one. It is never applied on its own — a school's scheme lives at schools/{id}/config/exam_scheme. See src/utils/examScheme.js.",
+  "$scope": {
+    "coversGrades": [
+      1,
+      12
+    ],
+    "notCovered": [
+      "Pre-primary (Play Group, Nursery, LKG, UKG). The marks sheet starts at",
+      "class 1 and no pre-primary report card was supplied. Hillgreen has five",
+      "such classes, so the planner reports them rather than guessing a scheme.",
+      "Grade 12. No class 12 report card was supplied. Class 10 replaces its",
+      "Term II periodic tests with Pre-Boards; whether 12 does the same is",
+      "unverified, so it is reported, not assumed."
+    ]
+  },
+  "unverifiedGrades": [
+    12
+  ],
+  "$unverifiedGradesWhy": "No class 12 report card was supplied. Class 10 replaces its Term II periodic tests with Pre-Boards; whether 12 does the same is unknown, so 12 takes 11's exams by extension and says so.",
+  "gradingScale": {
+    "name": "CBSE 8-point",
+    "$source": "Identical on all four report cards: 'Grades are awarded on a 8 - point grading scale'",
+    "levels": [
+      {
+        "label": "A1",
+        "minPercent": 91,
+        "maxPercent": 100
+      },
+      {
+        "label": "A2",
+        "minPercent": 81,
+        "maxPercent": 90
+      },
+      {
+        "label": "B1",
+        "minPercent": 71,
+        "maxPercent": 80
+      },
+      {
+        "label": "B2",
+        "minPercent": 61,
+        "maxPercent": 70
+      },
+      {
+        "label": "C1",
+        "minPercent": 51,
+        "maxPercent": 60
+      },
+      {
+        "label": "C2",
+        "minPercent": 41,
+        "maxPercent": 50
+      },
+      {
+        "label": "D",
+        "minPercent": 33,
+        "maxPercent": 40
+      },
+      {
+        "label": "E",
+        "minPercent": 0,
+        "maxPercent": 32
+      }
+    ]
+  },
+  "splits": {
+    "$comment": [
+      "How a 100-mark exam divides into written + internal. PT-I and PT-III are",
+      "always 40 + 10; only the 100-mark exams vary.",
+      "Read off the class 11 card (English 69/80 + 20/20, Maths 32/80 + 20/20,",
+      "PE 47/70 + 29/30, Physics 31/70 + 30/30, Chemistry 35/70 + 30/30), the",
+      "class 10 card (Science 23/80 + 12/20, IT 17/50 + 48/50) and the marks",
+      "sheet's '80 Marks /70' and '20 Marks/30 Marks' columns."
+    ],
+    "standard": {
+      "written": 80,
+      "internal": 20
+    },
+    "practical": {
+      "written": 70,
+      "internal": 30
+    },
+    "halfPractical": {
+      "written": 50,
+      "internal": 50
+    }
+  },
+  "subjectSplitRules": {
+    "$comment": [
+      "Which split a subject takes. halfPractical is named outright by the marks",
+      "sheet ('In some papers like IT and AI Written is 50 and internal/prcatical",
+      "is altogether 50'). The practical list is an INFERENCE from the class 11",
+      "card, where PE, Physics and Chemistry are 70+30 while English and Maths",
+      "are 80+20 — and it applies only from grade 11, because the class 10 card",
+      "puts Science at 80+20. The planner reports every subject it classified so",
+      "ops corrects the list rather than discovering it on a report card."
+    ],
+    "halfPractical": {
+      "$inferred": false,
+      "fromGrade": 1,
+      "names": [
+        "it",
+        "information technology",
+        "ai",
+        "artificial intelligence",
+        "computer application",
+        "computer applications"
+      ]
+    },
+    "practical": {
+      "$inferred": true,
+      "fromGrade": 11,
+      "names": [
+        "physics",
+        "chemistry",
+        "biology",
+        "pe",
+        "physical education",
+        "home science",
+        "psychology",
+        "computer science",
+        "biotechnology",
+        "geography",
+        "physical edu"
+      ]
+    }
+  },
+  "exams": [
+    {
+      "key": "pt1",
+      "name": "Periodic Test-I",
+      "term": 1,
+      "order": 1,
+      "total": 50,
+      "convertTo": 40,
+      "internal": 10,
+      "$source": "marks sheet row 'PT 1'; class 11 card Term II shows the same 40+10 shape for PT-III",
+      "writtenBands": [
+        {
+          "minGrade": 1,
+          "maxGrade": 2,
+          "max": 20
+        },
+        {
+          "minGrade": 3,
+          "maxGrade": 12,
+          "max": 40
+        }
+      ]
+    },
+    {
+      "key": "pt2",
+      "name": "Periodic Test-II",
+      "term": 1,
+      "order": 2,
+      "total": 100,
+      "splitVaries": true,
+      "$source": "marks sheet row 'PT 2'",
+      "writtenBands": [
+        {
+          "minGrade": 1,
+          "maxGrade": 2,
+          "max": 40
+        },
+        {
+          "minGrade": 3,
+          "maxGrade": 5,
+          "max": 60
+        },
+        {
+          "minGrade": 6,
+          "maxGrade": 12,
+          "max": null
+        }
+      ]
+    },
+    {
+      "key": "pt3",
+      "name": "Periodic Test-III",
+      "term": 2,
+      "order": 1,
+      "total": 50,
+      "convertTo": 40,
+      "internal": 10,
+      "$source": "marks sheet row 'PT 3'; class 11 card 'Periodic Test- III(50)' with Theory /40 + Practical/Internal /10",
+      "writtenBands": [
+        {
+          "minGrade": 1,
+          "maxGrade": 2,
+          "max": 20
+        },
+        {
+          "minGrade": 3,
+          "maxGrade": 12,
+          "max": 40
+        }
+      ]
+    },
+    {
+      "key": "pt4",
+      "name": "Periodic Test-IV",
+      "term": 2,
+      "order": 2,
+      "total": 100,
+      "splitVaries": true,
+      "$source": "marks sheet row 'PT 4 /Prelim'; class 11 card 'Periodic Test- IV(100)'",
+      "writtenBands": [
+        {
+          "minGrade": 1,
+          "maxGrade": 2,
+          "max": 40
+        },
+        {
+          "minGrade": 3,
+          "maxGrade": 5,
+          "max": 60
+        },
+        {
+          "minGrade": 6,
+          "maxGrade": 12,
+          "max": null
+        }
+      ]
+    }
+  ],
+  "gradeOverrides": {
+    "10": {
+      "$source": "class 10 card: Term II is 'Pre-Board - I (100)' and 'Pre-Board - II (100)', Grand Total (200), overall (350) = 150 + 200",
+      "replaceTerm": 2,
+      "exams": [
+        {
+          "key": "pb1",
+          "name": "Pre-Board - I",
+          "term": 2,
+          "order": 1,
+          "total": 100,
+          "splitVaries": true,
+          "writtenBands": [
+            {
+              "minGrade": 10,
+              "maxGrade": 10,
+              "max": null
+            }
+          ]
+        },
+        {
+          "key": "pb2",
+          "name": "Pre-Board - II",
+          "term": 2,
+          "order": 2,
+          "total": 100,
+          "splitVaries": true,
+          "writtenBands": [
+            {
+              "minGrade": 10,
+              "maxGrade": 10,
+              "max": null
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

@@ -15,9 +15,9 @@ import sys
 from datetime import datetime
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, os.path.join(ROOT, "functions", "shared"))
+sys.path.insert(0, os.path.join(ROOT, "functions"))
 
-from school_schema import SCHOOL_SCHEMAS, validate_doc  # noqa: E402
+from shared.school_schema import SCHOOL_SCHEMAS, validate_doc  # noqa: E402
 
 OUT = os.path.join(ROOT, "tools", ".schema_fixtures.json")
 

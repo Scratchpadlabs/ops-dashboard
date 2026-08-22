@@ -35,17 +35,13 @@ VOCABULARY (education_kb.json)
     that already exists.
 """
 
-import json
-import os
 import re
 
-_DIR = os.path.dirname(os.path.abspath(__file__))
+from . import load_kb
 
-# The KB ships alongside this module (see tools/sync_shared.py — the canonical
-# copy lives in functions/shared and is mirrored into each deployable folder,
-# because gcloud uploads only `--source .`).
-with open(os.path.join(_DIR, "education_kb.json"), encoding="utf-8") as _f:
-    KB = json.load(_f)
+# The KB ships inside this package, so it travels wherever the package does —
+# including into the staged tree tools/deploy_function.sh hands to gcloud.
+KB = load_kb()
 
 # ── Ordering ────────────────────────────────────────────────────────────────
 # Ordinals are the whole point: promotion is `ordinal + 1`, and the
@@ -120,6 +116,25 @@ def strip_board_tokens(value):
 def normalize_section_value(raw):
     """THE section normalization: board stripped, upper-cased."""
     return strip_board_tokens(raw).upper()
+
+
+_CLASS_ID_SEPARATORS = re.compile(r"[\s_\-/.]+")
+
+
+def class_id_key(value):
+    """Comparison key for a class DOCUMENT id.
+
+    "Play_Group_A", "play group a" and "PLAY-GROUP-A" all reduce to
+    "play_group_a", so an id typed into a spreadsheet can be compared with one
+    School Setup wrote. Deliberately knows nothing about grades — it is not a
+    parser, only a fold. Twin: classIdKey in src/utils/classResolver.js.
+
+    Exists because a school's export can carry the class as ONE complete id
+    instead of a Class + Section pair (Hillgreen's 2026-27 export), which the
+    (grade, section) lookup cannot see.
+    """
+    folded = _CLASS_ID_SEPARATORS.sub("_", str(value if value is not None else "").strip().lower())
+    return folded.strip("_")
 
 
 SECTION_FIELDS = ("section", "sec", "division", "div", "Section")

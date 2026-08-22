@@ -3,10 +3,11 @@
  *
  * Byte-for-byte the same seeded knowledge as the import parser: both this
  * module and functions/generate_import/education_kb.py read the SAME
- * education_kb.json. That file lives in the Cloud Function's source folder
- * because `gcloud functions deploy --source .` only uploads that folder —
- * keeping the seed there means the deployed parser and this bundle can never
- * drift, and there is no copy step to forget. Vite inlines the JSON at build.
+ * functions/shared/education_kb.json. The seed lives in the shared package
+ * because every Cloud Function that resolves a class imports it from there,
+ * and tools/deploy_function.sh stages that package into the tree it hands
+ * gcloud — so the deployed parser and this bundle can never drift, and there
+ * is no copy step to forget. Vite inlines the JSON at build.
  *
  * This is a direct port of education_kb.py: same bands, same precedence, same
  * similarity metric (normalized Levenshtein, chosen precisely because it
@@ -16,7 +17,7 @@
  * Deterministic first, LLM last resort, human confirm always, cache forever —
  * nothing here calls a model or writes to the overlay.
  */
-import SEED from '../../functions/generate_import/education_kb.json'
+import SEED from '../../functions/shared/education_kb.json'
 
 export const SUBJECT = 'subject'
 export const COSCHOLASTIC = 'coscholastic'

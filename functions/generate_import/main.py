@@ -75,11 +75,12 @@ from normalize import (
 )
 import education_kb as kb
 from tabular_parser import parse_tabular_file
-# Mirrored from functions/shared/ by tools/sync_shared.py — see that script for
-# why these are copies rather than imports.
-from school_schema import (
+# ONE copy, imported — functions/shared/ is staged into the deploy tree by
+# tools/deploy_function.sh (see that script and functions/shared/__init__.py).
+from shared.school_schema import (
     validate_doc, format_errors, validate_current_class_id, coerce_wire_payload,
 )
+from shared.class_resolver import class_id_key
 
 # Must run at module load, not lazily inside a handler: the on_call framework
 # verifies the caller's Firebase Auth ID token BEFORE our function body ever
@@ -185,6 +186,32 @@ SCHEMAS = {
 # and student apps — the write path being ops-admin-only does not narrow that.
 # Restricting who can READ Aadhaar needs a rules change, not a code change.
 BANNED_KEYS = {"sssm_id", "sssm", "caste", "category", "religion", "address"}
+
+# Header-level twin of the above, for the DETERMINISTIC path's `extras` — the
+# columns the alias dictionary has no field for, carried through so a school
+# can get its own data onto its own students.
+#
+# Shorter than BANNED_KEYS on purpose: "address" and "category" were allowed
+# on 2026-08-20 by explicit decision, the same way "aadhaar" was on 2026-08-04,
+# and the same consequence applies — firestore.rules lets any signed-in user of
+# the teacher and student apps read every student document, so an allowed field
+# is a readable field. Narrowing that needs a rules change, not a code change.
+# Matched against canonicalize(header), so "Caste Category" and "caste-category"
+# are the same header.
+BANNED_EXTRA_TOKENS = ("sssm", "caste", "religion")
+
+
+def is_banned_extra(header):
+    """Whether a column header names something golden rule 3 forbids storing.
+
+    Substring, not equality: the header is a school's own free text, so the
+    ban has to catch "Caste", "Caste Category", "Student Caste (SC/ST)" and
+    "SSSM ID" alike. Over-matching here costs a column an operator can add by
+    hand; under-matching writes a caste record into a document every signed-in
+    app user can read.
+    """
+    key = canonicalize(header)
+    return any(token in key for token in BANNED_EXTRA_TOKENS)
 
 # ------------------------------------------------------------- preprocess ---
 def xlsx_to_tsv(raw: bytes) -> str:
@@ -575,7 +602,62 @@ def _already_flagged(existing, field):
     return any(f.get("field") == field for f in (existing or []))
 
 
-def validate_students(rows, class_lookup, sections_by_grade, existing_flags=None):
+def resolve_by_doc_id(class_by_doc_id, raw_grade, raw_section):
+    """The class a row names by its DOCUMENT id, or None.
+
+    A school's export can carry the class as ONE complete id instead of a
+    Class + Section pair — Hillgreen's 2026-27 export dropped its Section
+    column and put "Play_Group_A" / "8_KALAM" straight into Class. Because
+    STUDENT_HEADER_ALIASES maps "class" onto grade, the (grade, section)
+    lookup cannot see those, and every row was told its grade was "not
+    configured for this school" when the class was configured all along.
+
+    Only ever consulted AFTER the (grade, section) lookup misses, and an id
+    that is not configured still returns None — this cannot invent a class.
+
+    Twin of resolveClassId's fallback rungs in src/utils/classLookup.js: the
+    commit planner in the browser and this validator have to agree about the
+    same row, or the review screen warns about what the commit then accepts.
+    """
+    if not class_by_doc_id:
+        return None
+    gkey = class_id_key(raw_grade)
+    if gkey and gkey in class_by_doc_id:
+        return class_by_doc_id[gkey]
+    skey = class_id_key(raw_section)
+    if gkey and skey and f"{gkey}_{skey}" in class_by_doc_id:
+        return class_by_doc_id[f"{gkey}_{skey}"]
+    return None
+
+
+UNRECOGNIZED_GRADE_PREFIX = "unrecognized grade value:"
+
+
+def drop_unrecognized_grade_flags(cleaned, class_by_doc_id):
+    """Retract the parser's "unrecognized grade value" once the school config
+    shows the value was a class id all along.
+
+    tabular_parser reads each cell with no knowledge of the school, so a
+    Class cell holding a whole class id ("8_KALAM") is correctly reported as
+    not being a grade. Only here, after load_school_config, can that be
+    resolved — and on Hillgreen's 2026-27 export it was every single row:
+    1621 warnings about 52 classes the school has configured.
+
+    A row whose class does NOT resolve keeps its warning, which is the whole
+    point: the report should be short enough that the real one is visible.
+    """
+    for c in cleaned:
+        d = c.get("data") or {}
+        if not resolve_by_doc_id(class_by_doc_id, d.get("grade"), d.get("section")):
+            continue
+        c["flags"] = [f for f in c["flags"]
+                      if not (f.get("field") == "grade"
+                              and str(f.get("message", "")).startswith(UNRECOGNIZED_GRADE_PREFIX))]
+    return cleaned
+
+
+def validate_students(rows, class_lookup, sections_by_grade, existing_flags=None,
+                      class_by_doc_id=None):
     flags_by_row = [[] for _ in rows]
     seen_names = {}
     dobs_by_grade = {}
@@ -602,8 +684,17 @@ def validate_students(rows, class_lookup, sections_by_grade, existing_flags=None
                 dobs_by_grade.setdefault(r.get("grade", ""), []).append(d)
         if not r.get("gender", "").strip() and not _already_flagged(prior, "gender"):
             flags_by_row[i].append(_flag("gender", "missing gender"))
-        if not r.get("contact", "").strip() and not _already_flagged(prior, "contact"):
-            flags_by_row[i].append(_flag("contact", "missing contact number"))
+        # A parent's number counts. father_mobile and mother_mobile are written
+        # to the student document since 2026-08-20 (CARRIED_SOURCE_FIELDS in
+        # src/schemas/studentMapping.js), so a row carrying one is not missing
+        # a contact — it just does not fill the column this check used to read
+        # alone. On Hillgreen's export that was 1472 of 1622 rows warned while
+        # every single one carried a father's number; a warning on 90% of a
+        # file is one nobody reads.
+        has_contact = any(r.get(k, "").strip()
+                          for k in ("contact", "father_mobile", "mother_mobile"))
+        if not has_contact and not _already_flagged(prior, "contact"):
+            flags_by_row[i].append(_flag("contact", "no contact number in any column"))
 
         key = (normalize_grade(r.get("grade")), normalize_section(r.get("section")),
                r.get("student_name", "").strip().lower())
@@ -615,7 +706,7 @@ def validate_students(rows, class_lookup, sections_by_grade, existing_flags=None
         grade = normalize_grade(r.get("grade"))
         section = normalize_section(r.get("section"))
         gkey = (grade, section)
-        if gkey not in class_lookup:
+        if gkey not in class_lookup and not resolve_by_doc_id(class_by_doc_id, r.get("grade"), r.get("section")):
             if grade and grade not in sections_by_grade:
                 flags_by_row[i].append(_flag("grade", f"grade '{grade}' not configured for this school"))
             elif section:
@@ -636,7 +727,8 @@ def validate_students(rows, class_lookup, sections_by_grade, existing_flags=None
 
     return flags_by_row
 
-def validate_teachers(rows, class_lookup, sections_by_grade, subject_names_by_grade):
+def validate_teachers(rows, class_lookup, sections_by_grade, subject_names_by_grade,
+                      class_by_doc_id=None):
     flags_by_row = [[] for _ in rows]
 
     # Group by normalized teacher identity to find zero-assignment teachers.
@@ -656,7 +748,7 @@ def validate_teachers(rows, class_lookup, sections_by_grade, subject_names_by_gr
         grade = normalize_grade(r.get("grade"))
         section = normalize_section(r.get("section"))
         gkey = (grade, section)
-        if grade and gkey not in class_lookup:
+        if grade and gkey not in class_lookup and not resolve_by_doc_id(class_by_doc_id, r.get("grade"), r.get("section")):
             if grade not in sections_by_grade:
                 flags_by_row[i].append(_flag("grade", f"grade '{grade}' not configured for this school"))
             elif section:
@@ -708,7 +800,8 @@ def validate_required_fields(entity, rows):
         flags_by_row.append(flags)
     return flags_by_row
 
-def core_subject_coverage_flags(rows, class_lookup, subjects_by_class, core_subjects_by_grade):
+def core_subject_coverage_flags(rows, class_lookup, subjects_by_class, core_subjects_by_grade,
+                                class_by_doc_id=None):
     """Job-level (not per-row) check: any (class, core subject) with zero
     teacher rows covering it. Best-effort — 'core' comes from live subjects'
     `area` field when present, else falls back to every subject already
@@ -717,7 +810,7 @@ def core_subject_coverage_flags(rows, class_lookup, subjects_by_class, core_subj
     covered = set()
     for r in rows:
         gkey = (normalize_grade(r.get("grade")), normalize_section(r.get("section")))
-        classId = class_lookup.get(gkey)
+        classId = class_lookup.get(gkey) or resolve_by_doc_id(class_by_doc_id, r.get("grade"), r.get("section"))
         subject = r.get("subject", "").strip().rstrip("?")
         if classId and subject:
             covered.add((classId, subject.lower()))
@@ -738,6 +831,10 @@ def load_school_config(db, school_id, entity):
     """Returns a dict bundle (not a tuple — too many fields now that cleaning
     needs canonical-keyed lookups alongside the original membership checks):
       class_lookup            (grade, section) -> classId, unchanged
+      class_by_doc_id         class_id_key(doc id) -> classId, for the rows
+                               whose file names the class by its whole id
+                               rather than as a Class + Section pair
+                               (see resolve_by_doc_id)
       subjects_by_class       classId -> [subjectId, ...], unchanged
       sections_by_grade       grade -> {canonical_section: display_section},
                                for match_value() in clean_students_rows/
@@ -755,6 +852,7 @@ def load_school_config(db, school_id, entity):
     classes_ref = db.collection("schools").document(school_id).collection("classes")
     classes = [{"id": d.id, **d.to_dict()} for d in classes_ref.stream()]
     class_lookup = {}
+    class_by_doc_id = {}
     subjects_by_class = {}
     sections_by_grade = {}
     for c in classes:
@@ -762,6 +860,7 @@ def load_school_config(db, school_id, entity):
         section_display = (c.get("section") or "").strip()
         section_norm = normalize_section(section_display)
         class_lookup[(grade, section_norm)] = c["id"]
+        class_by_doc_id[class_id_key(c["id"])] = c["id"]
         subjects_by_class[c["id"]] = [s.get("subjectId") for s in (c.get("subjects") or []) if s.get("subjectId")]
         if section_display:
             sections_by_grade.setdefault(grade, {})[canonicalize(section_display)] = section_norm
@@ -785,6 +884,7 @@ def load_school_config(db, school_id, entity):
 
     return {
         "class_lookup": class_lookup,
+        "class_by_doc_id": class_by_doc_id,
         "subjects_by_class": subjects_by_class,
         "sections_by_grade": sections_by_grade,
         "subject_names_by_grade": subject_names_by_grade,
@@ -837,9 +937,16 @@ def _process_one_file(entity, name, raw, job_diag):
                              for w in warn_by_key.get(key, [])]
                             + [_flag(e["field"], e["message"], severity=e.get("severity", "error"))
                                for e in err_by_key.get(key, [])])
+            extras = {k: v for k, v in (r.get("extras") or {}).items()
+                      if not is_banned_extra(k)}
+            dropped = sorted(k for k in (r.get("extras") or {}) if is_banned_extra(k))
+            if dropped:
+                extra_flags = extra_flags + [_flag(
+                    None, f"not stored (golden rule 3): {', '.join(dropped)}")]
             provenance.append({
                 "source_file": name, "sheet": r["sheet"], "row": r["row"],
                 "excluded_default": bool(r.get("excluded")), "extra_flags": extra_flags,
+                "extras": extras,
             })
     elif not terminal:
         used_fallback = True
@@ -1025,18 +1132,22 @@ def process_import(req: https_fn.CallableRequest):
                 extra = (c.get("provenance") or {}).get("extra_flags") or []
                 if extra:
                     c["flags"] = extra + c["flags"]
+            drop_unrecognized_grade_flags(cleaned, cfg["class_by_doc_id"])
 
         cleaned_data = [c["data"] for c in cleaned]
         if entity == "students":
             validation_flags = validate_students(
                 cleaned_data, cfg["class_lookup"], cfg["sections_by_grade"],
-                existing_flags=[c["flags"] for c in cleaned])
+                existing_flags=[c["flags"] for c in cleaned],
+                class_by_doc_id=cfg["class_by_doc_id"])
             class_level_flags = []
         elif entity == "teachers":
             validation_flags = validate_teachers(
-                cleaned_data, cfg["class_lookup"], cfg["sections_by_grade"], cfg["subject_names_by_grade"])
+                cleaned_data, cfg["class_lookup"], cfg["sections_by_grade"], cfg["subject_names_by_grade"],
+                class_by_doc_id=cfg["class_by_doc_id"])
             class_level_flags = core_subject_coverage_flags(
-                cleaned_data, cfg["class_lookup"], cfg["subjects_by_class"], cfg["core_subjects_by_grade"])
+                cleaned_data, cfg["class_lookup"], cfg["subjects_by_class"], cfg["core_subjects_by_grade"],
+                class_by_doc_id=cfg["class_by_doc_id"])
         else:
             validation_flags = validate_required_fields(entity, cleaned_data)
             class_level_flags = []
@@ -1062,7 +1173,8 @@ def process_import(req: https_fn.CallableRequest):
                 if not excluded_default:
                     included_row_count += 1
                 batch.set(rows_ref.document(str(j)), {
-                    "data": c["data"], "flags": c["flags"],
+                    "data": c["data"], "extras": prov.get("extras") or {},
+                    "flags": c["flags"],
                     "fixes": c["fixes"], "suggestions": c["suggestions"],
                     "edited": False, "excluded": excluded_default,
                     "source_file": prov.get("source_file"), "source_sheet": prov.get("sheet"),

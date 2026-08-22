@@ -28,7 +28,7 @@ if (!fs.existsSync(RESULTS)) {
 
 // Load the real module with only the JSON import substituted.
 const src = fs.readFileSync(path.join(ROOT, 'src/utils/classResolver.js'), 'utf8')
-const seed = fs.readFileSync(path.join(ROOT, 'functions/generate_import/education_kb.json'), 'utf8')
+const seed = fs.readFileSync(path.join(ROOT, 'functions/shared/education_kb.json'), 'utf8')
 const patched = src.replace(/^import SEED from .*$/m, `const SEED = ${seed};`)
 if (patched === src) {
   console.error('Could not find the SEED import line — parity harness needs updating.')
@@ -45,7 +45,7 @@ try {
   fs.unlinkSync(tmp)
 }
 
-const { parseClassValue, notationOf, ordinalToToken } = mod
+const { parseClassValue, notationOf, ordinalToToken, classIdKey } = mod
 const fixtures = JSON.parse(fs.readFileSync(RESULTS, 'utf8'))
 
 let failures = 0
@@ -76,7 +76,13 @@ for (const row of fixtures.ordinal_to_token) {
   }
 }
 
-const total = fixtures.parse.length + fixtures.notation.length + fixtures.ordinal_to_token.length
+for (const row of fixtures.class_id_key) {
+  const js = classIdKey(row.raw)
+  if (js !== row.key) report('classIdKey', row.raw, 'key', row.key, js)
+}
+
+const total = fixtures.parse.length + fixtures.notation.length
+  + fixtures.ordinal_to_token.length + fixtures.class_id_key.length
 if (failures) {
   console.error(`\nFAIL — ${failures} mismatch(es) across ${total} fixtures.`)
   console.error('The Python and JS resolvers have drifted. Fix both, then re-run.')

@@ -256,7 +256,9 @@ its academic data. **Q9.**
 
 ### 3.6 Shared class resolution — the compatibility layer
 `src/utils/classResolver.js` ⟷ `functions/shared/class_resolver.py`, hand-ported twins kept in step
-by `tools/check_resolver_parity.{mjs,py}` and mirrored by `tools/sync_shared.py` **[CODE]**.
+by `tools/check_resolver_parity.{mjs,py}` **[CODE]**. On the Python side `functions/shared` is a
+package imported by every function that needs it — one copy, no mirroring; `tools/deploy_function.sh`
+stages it into the deployed tree (it replaced `tools/sync_shared.py` and its per-folder copies).
 Two earlier independent parsers were deleted for the failures in §2.3. 🟢 **Any migration must go
 through this module, not around it.**
 

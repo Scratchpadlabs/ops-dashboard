@@ -19,7 +19,7 @@ Jr-KG spelling list, and one subject alias dictionary in the codebase.
 import difflib
 import re
 
-from class_resolver import normalize_section_value
+from shared.class_resolver import normalize_section_value
 from datetime import date, datetime, timedelta
 
 import education_kb as kb
@@ -374,6 +374,16 @@ def match_value(raw, alias_type, valid_canon_to_display, aliases):
 # `import_unknown_headers` (see main.py) specifically to grow this list from
 # real data instead of guesswork.
 STUDENT_HEADER_ALIASES = {
+    # The school's OWN student id, and the spine of the register-then-enrich
+    # flow: ops registers students (which mints schools/{id}/students/{docId}),
+    # authenticates them, then imports a file carrying that same id so each row
+    # updates its student instead of creating a second one. Without this the
+    # column is an unmapped header, dropped at parse time, and the commit
+    # planner has no choice but to mint a doc id from class + name — which is
+    # how Hillgreen ended up with 1621 duplicate students beside 1621 real ones.
+    "student_id": ["id", "student id", "studentid", "student code", "student no",
+                   "unique id", "unique student id", "student unique id",
+                   "registration id", "registration no", "reg no", "reg id"],
     "sr_no": ["sno", "sr no", "s.no", "serial", "serial no", "serial number", "sl no"],
     "adm_no": ["adm no", "admission no", "admission number",
                "admission no/reference code", "admission no / reference code",
@@ -419,15 +429,15 @@ STUDENT_HEADER_ALIASES = {
     "contact": ["contact", "mobile", "phone", "sms mobile", "contact no",
                 "contact number", "mobile no", "mobile number", "phone no",
                 "mobilenumber", "mobile number primary", "primary mobile"],
-    # "address" is intentionally recognized here (so header-scoring correctly
-    # identifies the header row and doesn't waste an "unmapped column" slot
-    # on it) but deliberately EXCLUDED from STUDENT_SCHEMA_KEYS below — main.
-    # py's BANNED_KEYS already forbids extracting student addresses via the
-    # LLM path (golden rule 3); the deterministic path honors the same rule
-    # by only ever storing fields present in schema_keys (see
-    # tabular_parser._parse_row) — a recognized-but-out-of-schema column is
-    # silently dropped, never persisted, same belt-and-braces pattern as
-    # extract_file()'s schema-key filter.
+    # In STUDENT_SCHEMA_KEYS since 2026-08-20. It was recognized-but-excluded
+    # before that (so header scoring saw it without the value ever being
+    # stored), which was golden rule 3's belt-and-braces on the deterministic
+    # path. Ops then decided to persist addresses, the same way aadhaar was
+    # decided on 2026-08-04 — and the same consequence applies: firestore.rules
+    # lets any signed-in user of the teacher and student apps read every
+    # student document, so a persisted address is a readable address.
+    # Narrowing that needs a rules change, not a code change. BANNED_KEYS in
+    # main.py still blocks the LLM path from inventing one.
     "address": ["address", "residential address", "home address"],
     "city": ["city", "town"],
     "email": ["email", "e-mail", "email id", "email address"],
@@ -436,22 +446,22 @@ STUDENT_HEADER_ALIASES = {
 # Everything the parser will carry through to Review. Being here does NOT mean
 # a field reaches Firestore — src/schemas/studentMapping.js decides that, and
 # most of these are deliberately review-only (see REVIEW_ONLY_STUDENT_KEYS).
-STUDENT_SCHEMA_KEYS = ["grade", "section", "roll_no", "student_name", "gender",
+STUDENT_SCHEMA_KEYS = ["student_id", "grade", "section", "roll_no", "student_name", "gender",
+                        "address",
                         "dob", "sr_no", "adm_no", "gr_emis_sts", "aadhaar",
                         "mother_name", "father_name", "contact", "email", "city",
                         "father_mobile", "father_email", "mother_mobile",
                         "mother_email", "branch_name", "board", "enrollment_code",
                         "date_of_admission", "status", "using_transport"]
 
-# Parsed and shown in Review so an operator can see the file was read
-# correctly, but never written to a student document — the real schema has no
-# home for them. Surfaced in the UI as an explicit mapping decision rather
-# than dropped in silence.
-REVIEW_ONLY_STUDENT_KEYS = ["father_mobile", "father_email", "mother_mobile",
-                             "mother_email", "branch_name", "board",
-                             "enrollment_code", "date_of_admission", "status",
-                             "using_transport", "sr_no", "roll_no",
-                             "mother_name", "father_name", "city", "address"]
+# Parsed and shown in Review, but never written to a student document.
+#
+# This list was almost everything the file carried until 2026-08-20 — parent
+# contacts, board, admission date, address — all of it shown and then dropped.
+# Ops now writes them (see CARRIED_SOURCE_FIELDS in src/schemas/
+# studentMapping.js), so the only thing left is the one field that really is
+# about the spreadsheet rather than the child: its serial number.
+REVIEW_ONLY_STUDENT_KEYS = ["sr_no"]
 STUDENT_REQUIRED_FIELD = "student_name"
 
 

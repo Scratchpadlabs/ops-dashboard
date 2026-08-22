@@ -4,9 +4,9 @@ Education knowledge base — what a value MEANS, not just what it says.
 
 The one place that knows a scholastic subject from a co-scholastic area,
 recognizes a grade system, and spots a section naming pattern. Seeded from
-education_kb.json (shared byte-for-byte with the browser side,
-src/utils/educationKB.js — see that file's header for why the JSON lives in
-this directory), extended at runtime by the Firestore `kb_entries` overlay.
+functions/shared/education_kb.json (shared byte-for-byte with the browser
+side, src/utils/educationKB.js, which imports that same file), extended at
+runtime by the Firestore `kb_entries` overlay.
 
 Design contract, in priority order:
   1. DETERMINISTIC FIRST  — exact canonical hit, then alias hit, then the
@@ -21,14 +21,11 @@ Design contract, in priority order:
 Pure/stdlib-only and side-effect free (the Firestore overlay is passed IN,
 never fetched here), so tests import it without firebase_admin.
 """
-import json
-import os
 import re
 
-_DIR = os.path.dirname(os.path.abspath(__file__))
+from shared import load_kb
 
-with open(os.path.join(_DIR, "education_kb.json"), encoding="utf-8") as _f:
-    SEED = json.load(_f)
+SEED = load_kb()
 
 # ---------------------------------------------------------------- types -----
 SUBJECT = "subject"

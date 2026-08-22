@@ -92,23 +92,27 @@
              the student schema has no home for. Both used to vanish silently. -->
         <div v-if="(job.unmapped_headers || []).length || reviewOnlyPresent.length"
              class="mt-3 border-t border-slate-100 pt-3">
-          <div class="text-xs font-semibold text-slate-600 mb-1.5">Columns not written to the student record</div>
+          <div class="text-xs font-semibold text-slate-600 mb-1.5">Columns outside the fixed mapping</div>
           <div v-if="(job.unmapped_headers || []).length" class="mb-1.5">
-            <div class="text-[11px] text-slate-500 mb-1">Not recognized — no field matches this header:</div>
+            <div class="text-[11px] text-slate-500 mb-1">
+              No named field matches these headers, so each is written under its own camelCase key
+              and offered for <span class="font-mono">config/students_schema</span> after the commit:
+            </div>
             <div class="flex flex-wrap gap-1">
               <span v-for="h in job.unmapped_headers" :key="h"
-                class="px-2 py-0.5 rounded bg-red-50 border border-red-100 text-[11px] font-mono text-red-700">{{ h }}</span>
+                class="px-2 py-0.5 rounded bg-blue-50 border border-blue-100 text-[11px] font-mono text-blue-700">{{ h }}</span>
             </div>
           </div>
           <div v-if="reviewOnlyPresent.length">
-            <div class="text-[11px] text-slate-500 mb-1">Read and shown below, but the student schema has no field for them:</div>
+            <div class="text-[11px] text-slate-500 mb-1">Read, shown below, and deliberately not saved — about the file, not the student:</div>
             <div class="flex flex-wrap gap-1">
               <span v-for="c in reviewOnlyPresent" :key="c"
                 class="px-2 py-0.5 rounded bg-amber-50 border border-amber-100 text-[11px] font-mono text-amber-800">{{ colLabel(c) }}</span>
             </div>
           </div>
           <p class="text-[11px] text-slate-400 mt-1.5">
-            Adding a field for any of these is a schema decision — say so and it gets added deliberately, not guessed.
+            A caste, religion or SSSM column is dropped before it reaches Firestore at all (golden rule 3)
+            and will not appear here.
           </p>
         </div>
         <div v-if="(job.class_level_flags || []).length" class="mt-3 border-t border-slate-100 pt-3">
@@ -253,6 +257,38 @@
           </div>
         </div>
 
+        <!-- A file naming students by their own id is a different kind of
+             import: it fills in students that exist and creates nobody. Said
+             plainly, because the counts alone look identical to a roster. -->
+        <div v-if="plan.idMode" class="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-[11px] text-blue-800">
+          <i class="pi pi-id-card mr-1"></i>
+          This file names students by their own id, so each row updates the student that already
+          carries it. No student is created — register and authenticate first, then import.
+        </div>
+
+        <!-- The actionable half of "skipped": these ids are not in the school
+             yet, and the fix is to register them, not to edit the file. -->
+        <div v-if="plan.unregisteredIds?.length" class="rounded-lg border border-red-200 bg-red-50 px-3 py-2">
+          <div class="flex items-start justify-between gap-2 mb-1">
+            <div class="text-xs font-semibold text-red-700">
+              {{ plan.unregisteredIds.length }} id(s) are not registered in {{ schoolName }}
+            </div>
+            <Button label="Copy ids" icon="pi pi-copy" size="small" text @click="copyUnregisteredIds" />
+          </div>
+          <p class="text-[11px] text-red-700 mb-1">
+            Register and authenticate these students in Tools first, then run this import again.
+            They are skipped, never created.
+          </p>
+          <div class="text-[11px] text-red-700 font-mono space-y-0.5 max-h-32 overflow-auto">
+            <div v-for="u in plan.unregisteredIds.slice(0, 200)" :key="u.id">
+              {{ u.id }}<span v-if="u.name" class="text-red-400 font-sans"> — {{ u.name }}</span>
+            </div>
+            <div v-if="plan.unregisteredIds.length > 200" class="text-red-400 font-sans">
+              …and {{ plan.unregisteredIds.length - 200 }} more. Use "Copy ids" for the full list.
+            </div>
+          </div>
+        </div>
+
         <!-- Nothing is writable, so "Confirm Commit" would be a no-op button
              the operator presses and learns nothing from. -->
         <div v-if="!plan.summary.create && !plan.summary.changed && !plan.summary.unchanged"
@@ -323,13 +359,42 @@
         <Button label="Confirm Commit" :loading="committing" @click="confirmCommit" />
       </template>
     </Dialog>
+
+    <!-- ── students_schema columns — a SEPARATE decision ─────────────────────
+         Deliberately not part of the commit. This array is what the import
+         mapper offers ops on every future roster and what the teacher app
+         reads, so growing it is a bigger step than writing one student's
+         fields, and it happens only when someone says so. -->
+    <Dialog v-model:visible="schemaConfirmVisible" header="Add columns to students_schema"
+            modal :style="{ width: '520px' }">
+      <div class="space-y-3">
+        <p class="text-sm text-slate-600">
+          This file carried {{ pendingSchemaColumns.length }} column(s)
+          {{ schoolName }}'s <span class="font-mono text-xs">config/students_schema</span> does not
+          list yet. They have been written onto the students; adding them here also makes them
+          mappable on every future import, and visible to the teacher app.
+        </p>
+        <div class="flex flex-wrap gap-1.5">
+          <span v-for="c in pendingSchemaColumns" :key="c.key"
+                class="text-xs bg-slate-100 text-slate-600 rounded px-2 py-0.5 font-mono"
+                v-tooltip="`${c.label} — ${c.type}`">{{ c.key }}</span>
+        </div>
+        <p class="text-[11px] text-slate-400">
+          Existing columns are never touched — this only appends.
+        </p>
+      </div>
+      <template #footer>
+        <Button label="Not now" text @click="schemaConfirmVisible = false" />
+        <Button label="Add columns" icon="pi pi-plus" :loading="addingColumns" @click="addSchemaColumns" />
+      </template>
+    </Dialog>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getDocs, getDoc, query, orderBy } from 'firebase/firestore'
+import { getDocs, getDoc, query, orderBy, setDoc, serverTimestamp } from 'firebase/firestore'
 import { ref as storageRef, getDownloadURL } from 'firebase/storage'
 import { useToast } from 'primevue/usetoast'
 import Papa from 'papaparse'
@@ -346,12 +411,13 @@ import ProgressSpinner from 'primevue/progressspinner'
 
 import { useStepUpAuth } from '../composables/useStepUpAuth.js'
 import { storage } from '../firebase/config'
-import { rootSchoolDoc, schoolCollection } from '../firebase/schoolCollections.js'
+import { rootSchoolDoc, schoolCollection, schoolDoc } from '../firebase/schoolCollections.js'
 import {
   listenJob, listenRows, updateRowData, setRowExcluded, buildCommitPlan, commitImport,
   normalizeGrade, canonicalize, resolveFieldValue, resolveFieldValueForAllMatching,
-  loadSectionsByGrade, loadSubjectsByGrade,
+  loadSectionsByGrade, loadSubjectsByGrade, newSchemaColumnsFor,
 } from '../composables/useImport.js'
+import { auth } from '../firebase/config'
 import ImportFieldResolver from '../components/shared/ImportFieldResolver.vue'
 import { useEducationKB } from '../composables/useEducationKB.js'
 import { TYPE_LABELS, SUBJECT, SECTION, UNKNOWN } from '../utils/educationKB.js'
@@ -689,6 +755,10 @@ watch(sourceFilesVisible, async (visible) => {
 const terms = ref([])
 const selectedTermId = ref(null)
 const plan = ref(null)
+const schemaConfirmVisible = ref(false)
+const pendingSchemaColumns = ref([])
+const existingSchemaColumns = ref([])
+const addingColumns = ref(false)
 
 // Surfaced in the commit dialog: the derived name split and any per-row notes
 // (dropped source columns, unreadable dates) that buildStudentsPlan attached.
@@ -765,12 +835,61 @@ async function openCommitConfirm() {
   }
 }
 
+function copyUnregisteredIds() {
+  const text = (plan.value?.unregisteredIds || []).map(u => u.id).join('\n')
+  navigator.clipboard.writeText(text).then(
+    () => toast.add({ severity: 'success', summary: 'Copied',
+                      detail: `${plan.value.unregisteredIds.length} id(s)`, life: 2000 }),
+    () => toast.add({ severity: 'error', summary: 'Could not copy', life: 2500 }))
+}
+
+/**
+ * students_schema is offered AFTER the commit, not as part of it.
+ *
+ * The fields are already on the students either way — this array is what the
+ * import mapper shows on the next roster and what the teacher app reads, so
+ * growing it is a decision about the school's shape rather than about this
+ * file, and it gets asked separately.
+ */
+async function offerSchemaColumns() {
+  if (job.value?.entity !== 'students') return
+  const snap = await getDoc(schoolDoc(job.value.school_id, 'config', 'students_schema')).catch(() => null)
+  existingSchemaColumns.value = snap?.exists?.() ? (snap.data().columns || []) : []
+  pendingSchemaColumns.value = newSchemaColumnsFor(plan.value, existingSchemaColumns.value)
+  if (pendingSchemaColumns.value.length) schemaConfirmVisible.value = true
+}
+
+async function addSchemaColumns() {
+  addingColumns.value = true
+  try {
+    // Append only. Rewriting the array wholesale would drop anything the
+    // teacher app or a hand edit put there that this file knows nothing about.
+    await setDoc(schoolDoc(job.value.school_id, 'config', 'students_schema'), {
+      columns: [...existingSchemaColumns.value, ...pendingSchemaColumns.value],
+      updated_at: serverTimestamp(),
+      updated_by: auth.currentUser?.email || 'unknown',
+    }, { merge: true })
+    toast.add({ severity: 'success', summary: 'Schema columns added',
+                detail: `${pendingSchemaColumns.value.length} column(s)`, life: 3000 })
+    schemaConfirmVisible.value = false
+  } catch (e) {
+    console.error(e)
+    toast.add({ severity: 'error', summary: 'Could not update students_schema',
+                detail: e.message, life: 4000 })
+  } finally {
+    addingColumns.value = false
+  }
+}
+
 async function confirmCommit() {
   committing.value = true
   try {
     const result = await commitImport(job.value, plan.value, { overwriteExisting: overwriteExisting.value })
     commitConfirmVisible.value = false
     toast.add({ severity: 'success', summary: 'Committed', detail: `${result.written} record(s) written`, life: 3000 })
+    // Only worth asking when something was actually written — a commit that
+    // wrote nothing has not shown this file belongs to this school.
+    if (result.written > 0) await offerSchemaColumns()
   } catch (e) {
     console.error(e)
     toast.add({ severity: 'error', summary: 'Commit failed', detail: e.message, life: 4000 })

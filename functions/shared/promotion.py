@@ -21,7 +21,7 @@ The plan this returns IS the preview and IS the execution input. There is no
 second implementation to drift.
 """
 
-from class_resolver import (  # noqa: F401  (re-exported for callers)
+from .class_resolver import (  # noqa: F401  (re-exported for callers)
     GRADUATED, EXCLUDED, CONF_NONE, resolve_class, build_school_context,
     ordinal_to_token, compose_class_id, describe_unresolved,
 )

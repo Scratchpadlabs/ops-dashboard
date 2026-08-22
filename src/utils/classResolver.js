@@ -15,7 +15,7 @@
  * confidence 'none', its raw string and the field it came from, so the UI can
  * render `classId: "1st Std" (unrecognized)` instead of a bare arrow.
  */
-import SEED from '../../functions/generate_import/education_kb.json'
+import SEED from '../../functions/shared/education_kb.json'
 
 export const CONF_HIGH = 'high'
 export const CONF_MEDIUM = 'medium'
@@ -70,6 +70,26 @@ export function stripBoardTokens(value) {
 /** THE section normalization: board stripped, upper-cased. */
 export function normalizeSectionValue(raw) {
   return stripBoardTokens(raw).toUpperCase()
+}
+
+const CLASS_ID_SEPARATORS = /[\s_\-/.]+/g
+
+/**
+ * Comparison key for a class DOCUMENT id.
+ *
+ * "Play_Group_A", "play group a" and "PLAY-GROUP-A" all reduce to
+ * "play_group_a", so an id typed into a spreadsheet can be compared with one
+ * School Setup wrote. Deliberately knows nothing about grades — it is not a
+ * parser, only a fold. Twin: class_id_key in functions/shared/class_resolver.py.
+ *
+ * Exists because a school's export can carry the class as ONE complete id
+ * instead of a Class + Section pair (Hillgreen's 2026-27 export), which the
+ * (grade, section) lookup cannot see.
+ */
+export function classIdKey(value) {
+  return String(value ?? '').trim().toLowerCase()
+    .replace(CLASS_ID_SEPARATORS, '_')
+    .replace(/^_+|_+$/g, '')
 }
 
 export const CLASS_ID_FIELDS = ['classId', 'currentClassId', 'class_id', 'classID',

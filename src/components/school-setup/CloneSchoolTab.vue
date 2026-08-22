@@ -28,7 +28,7 @@
       </div>
 
       <div>
-        <label class="form-label mb-2 block">Also copy (opt-in — confirm with Sid before relying on these)</label>
+        <label class="form-label mb-2 block">Also copy (opt-in — not confirmed as belonging in a clone)</label>
         <div class="grid grid-cols-2 gap-1.5">
           <label v-for="opt in optInOptions" :key="opt.key" class="flex items-center gap-2 text-sm">
             <Checkbox v-model="selected" :value="opt.key" />
@@ -60,6 +60,7 @@ import { schoolCollection, schoolDoc, rootSchoolDoc } from '../../firebase/schoo
 import { db } from '../../firebase/config'
 import { auth } from '../../firebase/config'
 import { slugify } from '../../utils/assessmentHelpers.js'
+import { isJunkDoc } from '../../utils/schoolSetupHelpers.js'
 
 const props = defineProps({ schoolId: { type: String, default: null }, school: { type: Object, default: null } })
 const confirm = useConfirm()
@@ -77,10 +78,13 @@ const standardOptions = [
   { key: 'assessments', label: 'Assessments' },
   { key: 'classes', label: 'Classes (structure only, no teachers/progress)' },
   { key: 'config', label: 'Config Schemas' },
-]
-const optInOptions = [
+  // Confirmed by ops: playbooks and activities go to every new school, so they
+  // are standard rather than opt-in (spec §9 Q3). Avatars stay opt-in — never
+  // confirmed either way.
   { key: 'playbooks', label: 'Playbooks' },
   { key: 'activities', label: 'Activities' },
+]
+const optInOptions = [
   { key: 'avatars', label: 'Avatars' },
 ]
 
@@ -128,17 +132,24 @@ async function runClone() {
   try {
     const targetSchoolId = targetId.value.trim()
     const ops = [] // { ref, data }
+    const skipped = [] // ids of stub docs deliberately not copied
 
     ops.push({ ref: rootSchoolDoc(targetSchoolId), data: { id: targetSchoolId, name: targetName.value.trim(), isActive: true, created_at: serverTimestamp(), created_by: auth.currentUser?.email || 'unknown' } })
 
     for (const key of selected.value) {
       if (key === 'config') {
         const snap = await getDocs(schoolCollection(props.schoolId, 'config')).catch(() => null)
-        ;(snap?.docs || []).forEach(d => ops.push({ ref: schoolDoc(targetSchoolId, 'config', d.id), data: d.data() }))
+        ;(snap?.docs || []).forEach(d => {
+          if (isJunkDoc(d.data())) { skipped.push(`config/${d.id}`); return }
+          ops.push({ ref: schoolDoc(targetSchoolId, 'config', d.id), data: d.data() })
+        })
         continue
       }
       const snap = await getDocs(schoolCollection(props.schoolId, key))
       snap.docs.forEach(d => {
+        // Bootstrap stubs are never worth carrying into a fresh school, and a
+        // clone is exactly how one school's leftovers become every school's.
+        if (isJunkDoc(d.data())) { skipped.push(`${key}/${d.id}`); return }
         let data = { ...d.data() }
         if (key === 'classes') {
           data = {
@@ -162,8 +173,19 @@ async function runClone() {
       progress.message = `Wrote ${progress.done}/${progress.total} doc(s)...`
     }
 
-    progress.message = `Done — ${progress.done} doc(s) written to "${targetSchoolId}".`
-    toast.add({ severity: 'success', summary: 'School cloned', detail: targetSchoolId, life: 3000 })
+    // Say what was left behind rather than dropping it silently — if a doc is
+    // missing from the new school, this is the first place to look.
+    const skipNote = skipped.length
+      ? ` Skipped ${skipped.length} stub doc(s) carrying only "a": ${skipped.join(', ')}.`
+      : ''
+    if (skipped.length) console.info('Clone skipped stub docs:', skipped)
+    progress.message = `Done — ${progress.done} doc(s) written to "${targetSchoolId}".${skipNote}`
+    toast.add({
+      severity: 'success',
+      summary: 'School cloned',
+      detail: skipped.length ? `${targetSchoolId} — ${skipped.length} stub doc(s) skipped` : targetSchoolId,
+      life: 4000,
+    })
   } catch (e) {
     console.error(e)
     formError.value = 'Something went wrong during cloning. Check the console — some docs may have been written.'

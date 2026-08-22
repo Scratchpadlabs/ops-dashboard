@@ -84,6 +84,9 @@
           <div>
             <label class="form-label">Stage *</label>
             <Select v-model="form.stage" :options="stageOptions" optionLabel="label" optionValue="value" class="w-full" />
+            <p v-if="stageMismatch" class="text-xs text-amber-700 bg-amber-50 rounded px-2 py-1 mt-1">
+              {{ stageMismatch }}
+            </p>
           </div>
         </div>
         <div>
@@ -183,6 +186,7 @@ import ProgressSpinner from 'primevue/progressspinner'
 import { schoolCollection, schoolDoc } from '../../firebase/schoolCollections.js'
 import ConfigEmptyState from './ConfigEmptyState.vue'
 import { auth, db } from '../../firebase/config'
+import { stageForGrade, STAGE_LABELS } from '../../utils/stages.js'
 import { regenerateStudentsSchemaClassOptions } from '../../utils/schoolSetupHelpers.js'
 import KbClassifiedInput from '../shared/KbClassifiedInput.vue'
 import { useEducationKB } from '../../composables/useEducationKB.js'
@@ -336,6 +340,17 @@ const editorSubjects = computed(() => {
   return Array.from(shown.values()).sort((a, b) => a.id.localeCompare(b.id))
 })
 
+// Existing classes were all written as 'foundation' before the stage was
+// derived, so most stored values are wrong. Flag the disagreement rather than
+// rewriting it silently — the stage is a dropdown someone may have set on
+// purpose, and this tab must not overwrite authored work.
+const stageMismatch = computed(() => {
+  const derived = stageForGrade(form.clazz)
+  if (!derived || derived === form.stage) return ''
+  return `Grade ${form.clazz} is ${STAGE_LABELS[derived]} (${derived}), but this class is set to `
+       + `${STAGE_LABELS[form.stage] || form.stage}. Change it above if that is wrong.`
+})
+
 const siblingSections = computed(() =>
   classes.value.filter(c => c.clazz === form.clazz && c.id !== editingClass.value?.id)
 )
@@ -345,7 +360,10 @@ function openAddSection(grade, section) {
   cloneFromClassId.value = null
   const clazz = grade || ''
   Object.assign(form, {
-    clazz, section: section || '', stage: 'foundation', name: '', isActive: true,
+    clazz, section: section || '', stage: stageForGrade(clazz) || 'foundation',
+    name: '', isActive: true,
+    // subjectsForGrade excludes co-scholastic records still misfiled in
+    // `subjects` — they are term-wide activities, not class subjects.
     subjectIds: subjectsForGrade(clazz),
   })
   formError.value = ''

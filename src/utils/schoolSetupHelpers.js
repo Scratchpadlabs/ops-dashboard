@@ -25,97 +25,94 @@ export async function regenerateStudentsSchemaClassOptions(schoolId, liveClassId
   }
 }
 
+// A bootstrap artifact, not data: a doc whose ONLY field is `a`. These were
+// written to bring a collection into existence and appear across terms,
+// grading_scales, assessments and co_scholastic_activities in the reference
+// school (AUDIT.md §1.5b). The Overview hygiene panel offers to delete them and
+// Clone School refuses to copy them, so a new school cannot inherit them.
+//
+// Deliberately narrow. A doc carrying `a` ALONGSIDE real fields (SAMARTH's
+// `csa1` does) is a real doc with a stray field and is left alone — dropping it
+// would lose configuration. Nothing is matched on name: a class genuinely
+// called "Sample House" must not vanish because of its spelling.
+export function isJunkDoc(data) {
+  const keys = Object.keys(data || {})
+  return keys.length === 1 && keys[0] === 'a'
+}
+
 // ── config/students_schema ──────────────────────────────────────────────────
 // The doc the teacher/student app reads to lay out its student table:
 //   { columns: [{ key, label, type, editable, order, options? }] }
 //
-// Nothing generated it before — it was only ever patched (class options
-// above), so a school set up through the wizard either had no schema doc at
-// all or one that predated the roster columns an import now writes. Two rules
-// come out of that:
+// WHO OWNS WHAT. Which columns a school HAS is decided by the enrichment flow
+// (src/utils/studentEnrichment.js + the "Add columns to students_schema"
+// dialog in ImportReview): it derives them from that school's own CSV headers
+// and appends, never rewriting, so nothing a hand edit or the teacher app put
+// there is lost. This file does NOT second-guess that and never invents a
+// column for an existing schema.
 //
-//   1. `ID` is ALWAYS the first column. It is how a row is identified in the
-//      app, and a schema that buries it (or omits it) makes the table unusable.
-//   2. Every field an import can write has a column, so imported data is
-//      actually visible instead of sitting unreferenced on the document.
+// What was missing, and all this adds:
+//   1. The doc was never CREATED. A wizard-built school had none at all, so
+//      its student table had no columns to render.
+//   2. `ID` was not guaranteed first. It is how a row is identified in the
+//      app; a schema that buries it (or omits it) makes the table unusable.
 //
-// Existing columns are preserved as-is — label, type and editable are a
-// human's choices and are never overwritten; only ordering is normalized and
-// missing columns are appended.
+// So: create from the defaults when absent; otherwise move `id` to the front
+// and leave every other column exactly as stored — same order, same labels,
+// same types.
 
-// Key → default column definition, in the order the app should show them.
-// `ID` first by rule 1; `currentClassId` carries live class IDs as options.
+// Used ONLY when creating a schema from nothing, and for the `id` column's
+// definition. Not a canonical list an existing schema is conformed to.
 export const STUDENT_SCHEMA_COLUMNS = [
   { key: 'id', label: 'ID', type: 'text', editable: false },
   { key: 'name', label: 'Name', type: 'text', editable: true },
   { key: 'firstName', label: 'First Name', type: 'text', editable: true },
   { key: 'lastName', label: 'Last Name', type: 'text', editable: true },
   { key: 'currentClassId', label: 'Class', type: 'select', editable: true },
-  { key: 'rollNo', label: 'Roll No', type: 'text', editable: true },
-  { key: 'srNo', label: 'Sr No', type: 'text', editable: true },
-  { key: 'admNo', label: 'Admission No', type: 'text', editable: true },
-  { key: 'grEmisSts', label: 'GR / EMIS / STS No', type: 'text', editable: true },
-  { key: 'enrollmentCode', label: 'Enrollment Code', type: 'text', editable: true },
   { key: 'gender', label: 'Gender', type: 'text', editable: true },
   { key: 'dateOfBirth', label: 'Date of Birth', type: 'date', editable: true },
-  { key: 'dateOfAdmission', label: 'Date of Admission', type: 'date', editable: true },
   { key: 'phoneNo', label: 'Contact', type: 'text', editable: true },
   { key: 'email', label: 'Email', type: 'text', editable: true },
-  { key: 'fatherName', label: "Father's Name", type: 'text', editable: true },
-  { key: 'fatherMobile', label: "Father's Mobile", type: 'text', editable: true },
-  { key: 'fatherEmail', label: "Father's Email", type: 'text', editable: true },
-  { key: 'motherName', label: "Mother's Name", type: 'text', editable: true },
-  { key: 'motherMobile', label: "Mother's Mobile", type: 'text', editable: true },
-  { key: 'motherEmail', label: "Mother's Email", type: 'text', editable: true },
-  { key: 'city', label: 'City', type: 'text', editable: true },
-  { key: 'branchName', label: 'Branch', type: 'text', editable: true },
-  { key: 'board', label: 'Board', type: 'text', editable: true },
-  { key: 'usingTransport', label: 'Transport', type: 'text', editable: true },
-  { key: 'status', label: 'Status', type: 'text', editable: true },
+  { key: 'admNo', label: 'Admission No', type: 'text', editable: true },
+  { key: 'grEmisSts', label: 'GR / EMIS / STS No', type: 'text', editable: true },
   { key: 'aadhaarNumber', label: 'Aadhaar', type: 'text', editable: true },
 ]
 
-const DEFAULT_ORDER = STUDENT_SCHEMA_COLUMNS.map(c => c.key)
+const ID_COLUMN = STUDENT_SCHEMA_COLUMNS[0]
 
 /**
- * Build the corrected `columns` array from whatever is stored today.
+ * The corrected `columns` array for what is stored today.
  *
  * Pure and exported so tools/check_students_schema.mjs can pin the rules
  * without a Firestore round-trip.
  *
- * @param {Array}  existingColumns  columns as stored (may be empty/undefined)
- * @param {Array}  liveClassIds     class IDs for the currentClassId options
- * @returns {{columns: Array, added: string[], reordered: boolean}}
+ * @param {Array} existingColumns  columns as stored (may be empty/undefined)
+ * @param {Array} liveClassIds     class IDs for the currentClassId options
+ * @returns {{columns: Array, created: boolean, addedId: boolean, movedId: boolean}}
  */
 export function buildStudentsSchemaColumns(existingColumns, liveClassIds = []) {
   const existing = (existingColumns || []).filter(c => c && c.key)
-  const byKey = new Map(existing.map(c => [c.key, c]))
+  const fromScratch = !existing.length
 
-  // Preserve a column the school added by hand that this list knows nothing
-  // about — it keeps its relative position after the known ones.
-  const extraKeys = existing.map(c => c.key).filter(k => !DEFAULT_ORDER.includes(k))
-  const order = [...DEFAULT_ORDER, ...extraKeys]
-
-  const added = []
-  const columns = []
-  for (const key of order) {
-    const stored = byKey.get(key)
-    const preset = STUDENT_SCHEMA_COLUMNS.find(c => c.key === key)
-    // A column no school has and no import writes isn't invented — only `id`
-    // is mandatory, the rest appear once they exist or are known presets.
-    if (!stored && !preset) continue
-    if (!stored) added.push(key)
-    const col = stored
-      ? { ...stored }
-      : { key, label: preset.label, type: preset.type, editable: preset.editable }
-    col.order = columns.length + 1
-    if (key === 'currentClassId') col.options = [...liveClassIds].sort()
-    columns.push(col)
+  let columns
+  let addedId = false
+  if (fromScratch) {
+    columns = STUDENT_SCHEMA_COLUMNS.map(c => ({ ...c }))
+  } else {
+    const idCol = existing.find(c => c.key === 'id')
+    addedId = !idCol
+    // Everything else keeps the order it is stored in — this only lifts `id`.
+    const rest = existing.filter(c => c.key !== 'id')
+    columns = [idCol ? { ...idCol } : { ...ID_COLUMN }, ...rest.map(c => ({ ...c }))]
   }
 
-  const reordered = existing.length !== columns.length
-    || existing.some((c, i) => c.key !== columns[i]?.key)
-  return { columns, added, reordered }
+  columns.forEach((c, i) => {
+    c.order = i + 1
+    if (c.key === 'currentClassId') c.options = [...liveClassIds].sort()
+  })
+
+  const movedId = !fromScratch && !addedId && existing[0]?.key !== 'id'
+  return { columns, created: fromScratch, addedId, movedId }
 }
 
 /**
@@ -139,5 +136,5 @@ export async function ensureStudentsSchema(schoolId, liveClassIds = []) {
       created_by: auth.currentUser?.email || 'unknown',
     }),
   }, { merge: true })
-  return { ...result, created: !snap.exists() }
+  return result
 }
