@@ -337,12 +337,11 @@
       </template>
     </Dialog>
 
-    <ConfirmDialog />
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, computed, watch, onMounted } from 'vue'
+import { ref, reactive, computed, watch, onMounted, inject } from 'vue'
 import { getDocs, getDoc, query, where, orderBy, writeBatch, serverTimestamp, deleteField } from 'firebase/firestore'
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
@@ -357,7 +356,6 @@ import Select from 'primevue/select'
 import Checkbox from 'primevue/checkbox'
 import Textarea from 'primevue/textarea'
 import ProgressSpinner from 'primevue/progressspinner'
-import ConfirmDialog from 'primevue/confirmdialog'
 import CsvImportDialog from './CsvImportDialog.vue'
 import ConfigEmptyState from './ConfigEmptyState.vue'
 
@@ -1015,6 +1013,12 @@ function exportCsv() {
 
 watch(() => props.schoolId, () => { loadStatic(); assessments.value = []; selectedTermId.value = null })
 watch(selectedTermId, () => { loadAssessments(); exitGridMode() })
+// Reload when this tab becomes the active one: sibling tabs edit the same
+// collections and every panel stays mounted, so what was loaded on mount
+// goes stale the moment another tab writes (see SchoolSetup.vue).
+const activeSetupTab = inject('activeSetupTab', null)
+if (activeSetupTab) watch(activeSetupTab, v => { if (v === 'assessments') { loadStatic(); loadAssessments() } })
+
 onMounted(loadStatic)
 </script>
 

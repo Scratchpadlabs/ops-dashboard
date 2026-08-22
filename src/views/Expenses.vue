@@ -475,7 +475,6 @@
 
     <input ref="rowReceiptInputEl" type="file" accept="image/*,application/pdf" class="hidden" @change="onRowReceiptFileSelected" />
 
-    <ConfirmDialog />
   </div>
 </template>
 
@@ -504,7 +503,6 @@ import DatePicker from 'primevue/datepicker'
 import Textarea from 'primevue/textarea'
 import ToggleSwitch from 'primevue/toggleswitch'
 import ProgressSpinner from 'primevue/progressspinner'
-import ConfirmDialog from 'primevue/confirmdialog'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import MultiSelect from 'primevue/multiselect'

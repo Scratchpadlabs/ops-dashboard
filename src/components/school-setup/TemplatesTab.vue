@@ -85,7 +85,6 @@
       </template>
     </Dialog>
 
-    <ConfirmDialog />
   </div>
 </template>
 
@@ -105,7 +104,6 @@ import Select from 'primevue/select'
 import Checkbox from 'primevue/checkbox'
 import RadioButton from 'primevue/radiobutton'
 import ProgressSpinner from 'primevue/progressspinner'
-import ConfirmDialog from 'primevue/confirmdialog'
 
 import { schoolCollection, schoolDoc, rootSchoolsCollection, configTemplatesCollection } from '../../firebase/schoolCollections.js'
 import { db } from '../../firebase/config'

@@ -288,6 +288,12 @@ const loadingSchools = ref(false)
 // Lets a config tab's empty state send the user somewhere useful without
 // threading an emit through every tab component.
 provide('goToSetupTab', (tab) => { activeTab.value = tab })
+// PrimeVue mounts EVERY tab panel, so a tab loads its data once and then sits
+// on it while a sibling edits the same collections — move a co-scholastic
+// record out of `subjects` and Classes & Teachers would still offer it, and
+// attaching it would write a subjectId that no longer exists. Tabs that read
+// cross-tab data watch this and reload when they become the active one.
+provide('activeSetupTab', activeTab)
 
 const selectedSchoolId = ref(null)
 const creatingTestSchool = ref(false)

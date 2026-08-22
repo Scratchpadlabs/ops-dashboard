@@ -163,12 +163,11 @@
       </template>
     </Dialog>
 
-    <ConfirmDialog />
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, computed, watch, onMounted } from 'vue'
+import { ref, reactive, computed, watch, onMounted, inject } from 'vue'
 import { getDocs, setDoc, updateDoc, query, orderBy, serverTimestamp, writeBatch } from 'firebase/firestore'
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
@@ -180,7 +179,6 @@ import Select from 'primevue/select'
 import ToggleButton from 'primevue/togglebutton'
 import Checkbox from 'primevue/checkbox'
 import ProgressSpinner from 'primevue/progressspinner'
-import ConfirmDialog from 'primevue/confirmdialog'
 
 import { schoolCollection, schoolDoc } from '../../firebase/schoolCollections.js'
 import ConfigEmptyState from './ConfigEmptyState.vue'
@@ -259,6 +257,17 @@ function confirmFillSubjectLists() {
 async function fillSubjectLists(targets) {
   fillingSubjects.value = true
   try {
+    // Re-read before writing. A subject moved to co_scholastic_activities from
+    // the Subjects tab is gone, and attaching it here would write a subjectId
+    // that resolves to nothing — the teacher app's subject dropdown breaks on
+    // exactly that. The tab-activation reload above normally keeps this fresh;
+    // this makes it impossible to get wrong.
+    await loadAll()
+    targets = classesMissingSubjects.value
+    if (!targets.length) {
+      toast.add({ severity: 'info', summary: 'Nothing to fill', detail: 'Every section already has its subjects', life: 3000 })
+      return
+    }
     for (let i = 0; i < targets.length; i += 400) {
       const batch = writeBatch(db)
       for (const cls of targets.slice(i, i + 400)) {
@@ -482,6 +491,12 @@ async function saveTeacherMatrix() {
 }
 
 watch(() => props.schoolId, loadAll)
+// Reload when this tab becomes the active one: sibling tabs edit the same
+// collections and every panel stays mounted, so what was loaded on mount
+// goes stale the moment another tab writes (see SchoolSetup.vue).
+const activeSetupTab = inject('activeSetupTab', null)
+if (activeSetupTab) watch(activeSetupTab, v => { if (v === 'classes-teachers') { loadAll() } })
+
 onMounted(() => { loadAll(); loadKB() })
 </script>
 

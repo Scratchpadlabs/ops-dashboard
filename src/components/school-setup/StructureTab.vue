@@ -177,7 +177,6 @@
       </div>
     </template>
 
-    <ConfirmDialog />
   </div>
 </template>
 
@@ -194,7 +193,6 @@ import Checkbox from 'primevue/checkbox'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import ProgressSpinner from 'primevue/progressspinner'
-import ConfirmDialog from 'primevue/confirmdialog'
 
 import { db, auth } from '../../firebase/config'
 import {

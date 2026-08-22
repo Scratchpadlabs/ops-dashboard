@@ -231,3 +231,41 @@ Student/staff registration (existing app), survey/playbook content management, r
 2. Ops-user identity for `lastEditedBy` — how does the dashboard auth identify Sid/Ruchika?
 3. Are playbooks/activities/avatars/surveys per-school copies of central content (→ belong in Clone School), or synced by another pipeline?
 4. Should stages be a fixed enum (foundation/prepratory/middle/secondary) or configurable?
+
+## 8. Running it locally
+
+The whole page can be exercised against the Firebase emulators, with a school
+seeded to carry the real defects rather than tidy fixtures:
+
+```
+npm run emulators        # auth + firestore + storage
+npm run seed:emulator    # Hillgreen-like school; wipes it first
+npm run dev:emulate      # VITE_USE_EMULATORS=1 vite
+node e2e/school-setup-repairs.mjs
+```
+
+`src/firebase/config.js` connects to the emulators only when
+`import.meta.env.DEV && VITE_USE_EMULATORS === '1'` — Vite replaces that
+statically, so a production build drops the branch and can never point at
+localhost. Sign in as `sid` / `emulator-password` (the seed creates the
+ops-admin the page's allowlist requires).
+
+`e2e/school-setup-repairs.mjs` drives the four repairs through the real UI and
+asserts by reading Firestore back afterwards, not by reading the screen. It is
+what caught the four defects in §9.
+
+### 9. Things the tabs share, and the traps that come with it
+
+PrimeVue's `<TabPanels>` mounts **every** panel at once. Two consequences bit
+hard enough to be worth stating:
+
+- **One `<ConfirmDialog />`, app-wide** (`App.vue`). `useConfirm().require()`
+  broadcasts to every mounted instance, so the 13 tabs that each declared their
+  own opened 13 stacked modals per confirm — and accepting one left 12 modal
+  masks covering the page until a reload. No view declares its own.
+- **A tab's data goes stale while it sits mounted.** `SchoolSetup` provides
+  `activeSetupTab`; tabs that read cross-tab collections watch it and reload
+  when they become active. Anything that WRITES based on another tab's data
+  re-reads first regardless (`fillSubjectLists`) — attaching a subject that the
+  Subjects tab just moved out would write a `subjectId` resolving to nothing,
+  which is exactly what breaks the teacher app's subject dropdown.

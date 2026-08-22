@@ -142,6 +142,12 @@
     </div>
 
     <Toast />
+    <!-- ONE app-wide instance. useConfirm().require() broadcasts to every
+         mounted ConfirmDialog, and PrimeVue's <TabPanels> mounts all panels at
+         once — so the 13 School Setup tabs that each declared their own opened
+         13 stacked modals per confirm, and accepting one left 12 modal masks
+         covering the page until a reload. Views must not declare their own. -->
+    <ConfirmDialog />
     <CelebrationOverlay />
     <GlobalSearchModal />
   </div>
@@ -164,6 +170,7 @@ import {
 } from './composables/useTaskNotifications.js'
 import { useToast } from 'primevue/usetoast'
 import Toast from 'primevue/toast'
+import ConfirmDialog from 'primevue/confirmdialog'
 import CelebrationOverlay from './components/shared/CelebrationOverlay.vue'
 import GlobalSearchModal from './components/shared/GlobalSearchModal.vue'
 

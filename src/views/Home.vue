@@ -257,7 +257,6 @@
       </template>
     </Dialog>
 
-    <ConfirmDialog />
   </div>
 </template>
 
@@ -275,7 +274,6 @@ import Button from 'primevue/button'
 import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
 import ProgressSpinner from 'primevue/progressspinner'
-import ConfirmDialog from 'primevue/confirmdialog'
 
 // ── Animated number component ──────────────────────────────────────────────
 const AnimatedNumber = defineComponent({

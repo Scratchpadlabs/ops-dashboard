@@ -127,7 +127,6 @@
       </div>
     </div>
 
-    <ConfirmDialog />
   </div>
 </template>
 
@@ -140,7 +139,6 @@ import { useConfirm } from 'primevue/useconfirm'
 import { opsCollection, opsDoc } from '../firebase/collections.js'
 import { usePaymentPlans } from '../composables/usePaymentPlans.js'
 import { planPercentTotal, ordinal } from '../utils/paymentMath.js'
-import ConfirmDialog from 'primevue/confirmdialog'
 
 import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'

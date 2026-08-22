@@ -123,7 +123,6 @@
       </template>
     </Dialog>
 
-    <ConfirmDialog />
   </div>
 </template>
 
@@ -143,7 +142,6 @@ import InputText from 'primevue/inputtext'
 import ToggleButton from 'primevue/togglebutton'
 import Select from 'primevue/select'
 import ProgressSpinner from 'primevue/progressspinner'
-import ConfirmDialog from 'primevue/confirmdialog'
 
 import { schoolCollection, schoolDoc, rootSchoolsCollection } from '../../firebase/schoolCollections.js'
 import ConfigEmptyState from './ConfigEmptyState.vue'

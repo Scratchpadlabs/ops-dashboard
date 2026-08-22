@@ -35,12 +35,11 @@
       </div>
     </div>
 
-    <ConfirmDialog />
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, watch, onMounted } from 'vue'
+import { ref, reactive, watch, onMounted, inject } from 'vue'
 import { getDocs, updateDoc, deleteDoc, getDoc, serverTimestamp } from 'firebase/firestore'
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
@@ -49,7 +48,6 @@ import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
 import ToggleButton from 'primevue/togglebutton'
 import ProgressSpinner from 'primevue/progressspinner'
-import ConfirmDialog from 'primevue/confirmdialog'
 
 import { schoolCollection, schoolDoc, rootSchoolDoc } from '../../firebase/schoolCollections.js'
 import { auth } from '../../firebase/config'
@@ -253,6 +251,12 @@ function runWarningAction(w) {
 }
 
 watch(() => props.schoolId, runScan)
+// Reload when this tab becomes the active one: sibling tabs edit the same
+// collections and every panel stays mounted, so what was loaded on mount
+// goes stale the moment another tab writes (see SchoolSetup.vue).
+const activeSetupTab = inject('activeSetupTab', null)
+if (activeSetupTab) watch(activeSetupTab, v => { if (v === 'overview') { runScan() } })
+
 onMounted(runScan)
 </script>
 

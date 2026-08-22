@@ -25,7 +25,9 @@
       <i class="pi pi-exclamation-triangle text-amber-500 mt-0.5"></i>
       <div class="flex-1 text-sm text-amber-800">
         <div class="font-semibold">
-          {{ misfiledSubjects.length }} Co-Scholastic record(s) are filed as subjects.
+          {{ misfiledSubjects.length }} Co-Scholastic record(s) are filed as subjects<span
+            v-if="unclassifiedCoCount"
+          >, {{ unclassifiedCoCount }} of them unclassified until the knowledge base learned the name</span>.
         </div>
         <div class="text-xs text-amber-700 mt-0.5">
           Co-Scholastic entries are term-wide activities and belong in
@@ -61,6 +63,11 @@
                   :class="isCoScholasticArea(data.area) ? 'bg-amber-100 text-amber-700' : 'bg-blue-50 text-blue-700'"
                   v-tooltip="isCoScholasticArea(data.area) ? 'Misfiled: Co-Scholastic records belong in co_scholastic_activities. Use the → button to move it.' : ''"
                 >{{ data.area }}{{ isCoScholasticArea(data.area) ? ' ⚠' : '' }}</span>
+                <span
+                  v-else-if="areaFor(data.name) === AREA_CO_SCHOLASTIC"
+                  class="px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-700"
+                  v-tooltip="'Stored unclassified, but the knowledge base now reads this name as Co-Scholastic — use the → button to move it.'"
+                >Co-Scholastic? ⚠</span>
                 <span v-else class="text-xs text-slate-300" v-tooltip="'Not classified — open the subject and let the knowledge base categorize it'">—</span>
               </template>
             </Column>
@@ -305,19 +312,18 @@
       <template #footer>
         <Button label="Cancel" text @click="moveDialogVisible = false" />
         <Button
-          :label="`Move ${movablePlan.length} record(s)`"
+          :label="`Move ${movablePlan.length} record(s) → ${moveWriteCount} activity(ies)`"
           :disabled="!movablePlan.length" :loading="moving"
           @click="confirmMove"
         />
       </template>
     </Dialog>
 
-    <ConfirmDialog />
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, computed, watch, onMounted } from 'vue'
+import { ref, reactive, computed, watch, onMounted, inject } from 'vue'
 import { getDocs, getDoc, setDoc, updateDoc, deleteDoc, query, orderBy, serverTimestamp, writeBatch } from 'firebase/firestore'
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
@@ -330,7 +336,6 @@ import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
 import Select from 'primevue/select'
 import ProgressSpinner from 'primevue/progressspinner'
-import ConfirmDialog from 'primevue/confirmdialog'
 import CsvImportDialog from './CsvImportDialog.vue'
 import ConfigEmptyState from './ConfigEmptyState.vue'
 import KbClassifiedInput from '../shared/KbClassifiedInput.vue'
@@ -601,7 +606,17 @@ async function saveSubject() {
 // defaults, but scoped to one school with the term and marking settings chosen
 // rather than guessed, and it also cleans up the class references the script
 // leaves alone.
-const misfiledSubjects = computed(() => subjects.value.filter(s => isCoScholasticArea(s.area)))
+// Two ways a subjects doc is really a co-scholastic record:
+//   - it is tagged Co-Scholastic and was written to `subjects` anyway; or
+//   - its `area` is blank because the knowledge base could not place the name
+//     when it was written, and the KB HAS since learned it. That second case is
+//     how most of them actually arrive — Hillgreen's Conc/Dict/Linguistic/CLB/
+//     KRT/V_Edu were all stored unclassified — so leaving it out would mean the
+//     bulk move quietly skipped the majority of them.
+// A doc explicitly tagged Scholastic is never second-guessed here: that is a
+// human's answer, and the → button on the row is there to override it.
+const misfiledSubjects = computed(() => subjects.value.filter(s =>
+  isCoScholasticArea(s.area) || (!s.area && areaFor(s.name) === AREA_CO_SCHOLASTIC)))
 
 const moveDialogVisible = ref(false)
 const moveTargets = ref([])
@@ -625,32 +640,51 @@ function openMoveDialog(targets) {
 
 // One row per subject being moved, with everything that changes or blocks it.
 // Recomputes as the term changes, since the target doc ID is term-scoped.
+//
+// A co-scholastic activity is TERM-WIDE, so the per-grade copies a school
+// keeps in `subjects` (I_KRT, II_KRT, III_KRT) are three filings of ONE
+// activity. They therefore collapse into a single target: the activity is
+// written once and every one of those source docs is removed. Treating the
+// second and third as conflicts instead would move one and strand the rest as
+// permanently-misfiled duplicates.
 const movePlan = computed(() => {
   const termId = moveForm.termId
-  const claimed = new Set()
+  const firstFor = new Map()
   return moveTargets.value.map(subject => {
     const name = (subject.name || '').trim() || subject.id
     const newId = termId ? `${termId}_${slugifyText(name)}` : ''
     const notes = []
     let blocked = false
-    if (!termId) { notes.push('pick a term first'); blocked = true }
-    else if (coActivities.value.some(a => a.id === newId)) {
-      notes.push(`an activity "${newId}" already exists — rename the subject or edit that activity instead`); blocked = true
-    } else if (claimed.has(newId)) {
-      notes.push(`another record in this move maps to "${newId}"`); blocked = true
+    let mergedInto = null
+
+    if (!termId) {
+      notes.push('pick a term first'); blocked = true
+    } else if (coActivities.value.some(a => a.id === newId)) {
+      // A pre-existing activity is a real conflict — it may already carry
+      // marking settings and entered marks, so it is never overwritten here.
+      notes.push(`an activity "${newId}" already exists — rename the subject or edit that activity instead`)
+      blocked = true
+    } else if (firstFor.has(newId)) {
+      mergedInto = firstFor.get(newId)
+      notes.push(`same term-wide activity as ${mergedInto} — merged into one "${newId}", this subjects doc is removed`)
     } else {
-      claimed.add(newId)
+      firstFor.set(newId, subject.id)
     }
+
     const goals = (subject.curricular_goals || []).length
     const topics = (subject.topics || []).length
     if (goals) notes.push(`${goals} curricular goal(s) dropped — the activity schema has no field for them`)
     if (topics) notes.push(`${topics} topic(s) dropped`)
     const usedBy = classesUsing(subject.id)
     if (usedBy.length) notes.push(`detached from ${usedBy.length} class(es)`)
-    return { subject, newId, notes, blocked, usedBy }
+    return { subject, newId, notes, blocked, mergedInto, usedBy }
   })
 })
 const movablePlan = computed(() => movePlan.value.filter(r => !r.blocked))
+const unclassifiedCoCount = computed(() =>
+  misfiledSubjects.value.filter(s => !s.area).length)
+// The activities that actually get written — one per distinct target ID.
+const moveWriteCount = computed(() => new Set(movablePlan.value.map(r => r.newId)).size)
 
 function validateMove() {
   if (!terms.value.length) return 'This school has no terms yet — add one in Terms & Scales first'
@@ -671,7 +705,7 @@ function confirmMove() {
   const rows = movablePlan.value
   const detaching = rows.reduce((n, r) => n + r.usedBy.length, 0)
   confirm.require({
-    message: `Move ${rows.length} record(s) into co_scholastic_activities? Each subjects doc is deleted`
+    message: `Move ${rows.length} record(s) into ${moveWriteCount.value} co_scholastic_activities doc(s)? Each subjects doc is deleted`
       + (detaching ? `, and ${detaching} class subject-list reference(s) are removed` : '')
       + '. Curricular goals and topics on these docs are not carried over.',
     header: 'Move to Co-Scholastic',
@@ -695,8 +729,31 @@ async function runMove() {
     // class restore the first one it had just removed.
     const classSubjectsNow = new Map()
 
+    // Detach from every class before deleting, so no class is left pointing at
+    // a subjects doc that no longer exists.
+    const detachAndDelete = async (row) => {
+      for (const cls of row.usedBy) {
+        const current = classSubjectsNow.has(cls.id) ? classSubjectsNow.get(cls.id) : cls.subjects
+        const next = detachClassSubject(current, row.subject.id)
+        if (!next) continue
+        classSubjectsNow.set(cls.id, next)
+        await updateDoc(schoolDoc(props.schoolId, 'classes', cls.id), {
+          subjects: next, updated_at: serverTimestamp(), updated_by: auth.currentUser?.email || 'unknown',
+        })
+      }
+      await deleteDoc(schoolDoc(props.schoolId, 'subjects', row.subject.id))
+    }
+
+    const writtenActivityIds = new Set()
     for (const row of rows) {
       const target = schoolDoc(props.schoolId, 'co_scholastic_activities', row.newId)
+      // Written once per activity; the sibling rows that merged into it skip
+      // straight to detaching and deleting their own subjects doc.
+      if (writtenActivityIds.has(row.newId)) {
+        await detachAndDelete(row)
+        continue
+      }
+      writtenActivityIds.add(row.newId)
       await setDoc(target, {
         name: (row.subject.name || '').trim() || row.subject.id,
         termId: moveForm.termId,
@@ -721,24 +778,12 @@ async function runMove() {
         continue
       }
 
-      // Detach from every class before deleting, so no class is left pointing
-      // at a subjects doc that no longer exists.
-      for (const cls of row.usedBy) {
-        const current = classSubjectsNow.has(cls.id) ? classSubjectsNow.get(cls.id) : cls.subjects
-        const next = detachClassSubject(current, row.subject.id)
-        if (!next) continue
-        classSubjectsNow.set(cls.id, next)
-        await updateDoc(schoolDoc(props.schoolId, 'classes', cls.id), {
-          subjects: next, updated_at: serverTimestamp(), updated_by: auth.currentUser?.email || 'unknown',
-        })
-      }
-
-      await deleteDoc(schoolDoc(props.schoolId, 'subjects', row.subject.id))
+      await detachAndDelete(row)
     }
 
     moveDialogVisible.value = !!moveError.value
     if (!moveError.value) {
-      toast.add({ severity: 'success', summary: 'Moved to Co-Scholastic', detail: `${rows.length} record(s) — manage them in the Co-Scholastic tab`, life: 4000 })
+      toast.add({ severity: 'success', summary: 'Moved to Co-Scholastic', detail: `${rows.length} record(s) → ${moveWriteCount.value} activity(ies) — manage them in the Co-Scholastic tab`, life: 4000 })
     }
     await Promise.all([loadSubjects(), loadCoScholasticContext()])
   } catch (e) {
@@ -979,6 +1024,12 @@ function exportCsv() {
 }
 
 watch(() => props.schoolId, () => { loadSubjects(); loadCoScholasticContext() })
+// Reload when this tab becomes the active one: sibling tabs edit the same
+// collections and every panel stays mounted, so what was loaded on mount
+// goes stale the moment another tab writes (see SchoolSetup.vue).
+const activeSetupTab = inject('activeSetupTab', null)
+if (activeSetupTab) watch(activeSetupTab, v => { if (v === 'subjects') { loadSubjects(); loadCoScholasticContext() } })
+
 onMounted(() => { loadSubjects(); loadCoScholasticContext(); loadOtherSchools(); loadKB() })
 </script>
 

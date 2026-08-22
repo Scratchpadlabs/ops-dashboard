@@ -121,7 +121,6 @@
       </template>
     </Dialog>
 
-    <ConfirmDialog />
   </div>
 </template>
 
@@ -133,7 +132,6 @@ import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Dialog from 'primevue/dialog'
 import ProgressSpinner from 'primevue/progressspinner'
-import ConfirmDialog from 'primevue/confirmdialog'
 
 import KbClassifiedInput from '../shared/KbClassifiedInput.vue'
 import { useEducationKB } from '../../composables/useEducationKB.js'

@@ -278,7 +278,6 @@
       </template>
     </Dialog>
 
-    <ConfirmDialog />
   </div>
 </template>
 
@@ -303,7 +302,6 @@ import Textarea from 'primevue/textarea'
 import MultiSelect from 'primevue/multiselect'
 import Select from 'primevue/select'
 import ProgressSpinner from 'primevue/progressspinner'
-import ConfirmDialog from 'primevue/confirmdialog'
 import PaymentPlanPicker from '../components/shared/PaymentPlanPicker.vue'
 import PaymentSegmentBar from '../components/shared/PaymentSegmentBar.vue'
 import { usePaymentPlans } from '../composables/usePaymentPlans.js'
