@@ -3,6 +3,12 @@
     <div class="flex items-center justify-between mb-3">
       <div class="text-sm font-bold text-slate-900">Subjects</div>
       <div class="flex gap-2">
+        <Button
+          v-if="subjectsNeedingRepair.length"
+          label="Repair All Topics" icon="pi pi-wrench" size="small" outlined severity="warning"
+          :loading="repairingAll" @click="repairAllSubjects"
+          v-tooltip="`${subjectsNeedingRepair.length} subject(s) missing the Term1/Term2/Optional topics structure`"
+        />
         <Button label="Import CSV" icon="pi pi-upload" size="small" outlined @click="importVisible = true" />
         <Button label="Sample CSV" icon="pi pi-download" size="small" text @click="downloadSample" />
         <Button label="Export CSV" icon="pi pi-file-export" size="small" text @click="exportCsv" />
@@ -49,8 +55,15 @@
             <Column field="curricular_goals" header="Goals" style="width:100px">
               <template #body="{ data }"><span class="text-xs text-slate-400">{{ (data.curricular_goals || []).length }}</span></template>
             </Column>
-            <Column header="" style="width:80px">
+            <Column header="" style="width:120px">
               <template #body="{ data }">
+                <Button
+                  v-if="subjectNeedsTopicRepair(data)"
+                  icon="pi pi-wrench" text rounded size="small" severity="warning"
+                  :loading="repairingId === data.id"
+                  v-tooltip="'Missing Term1/Term2/Optional topics — click to repair'"
+                  @click="repairSubject(data)"
+                />
                 <Button icon="pi pi-pencil" text rounded size="small" @click="openEditSubject(data)" />
               </template>
             </Column>
@@ -159,7 +172,7 @@
         <div v-if="editingSubject && (editingSubject.topics || []).length">
           <label class="form-label">Topics (read-only)</label>
           <div class="bg-slate-50 rounded-lg p-3 text-xs text-slate-500 max-h-32 overflow-auto">
-            <div v-for="(t, i) in editingSubject.topics" :key="i">{{ typeof t === 'string' ? t : (t.topic || JSON.stringify(t)) }}</div>
+            <div v-for="(t, i) in editingSubject.topics" :key="i">{{ typeof t === 'string' ? t : (t.name || t.topic || JSON.stringify(t)) }}</div>
           </div>
         </div>
 
@@ -237,6 +250,7 @@ import { toCsv, downloadCsv } from '../../utils/csv.js'
 import { useEducationKB } from '../../composables/useEducationKB.js'
 import { SUBJECT, COSCHOLASTIC, classify as classifyValue } from '../../utils/educationKB.js'
 import { checkEnteredMarksCoScholastic, isCoScholasticArea, slugify as slugifyText } from '../../utils/assessmentHelpers.js'
+import { defaultTopicsForSubject, subjectNeedsTopicRepair, repairedTopicsFor } from '../../utils/subjectTopics.js'
 
 const props = defineProps({ schoolId: { type: String, default: null } })
 const confirm = useConfirm()
@@ -318,6 +332,55 @@ async function loadSubjects() {
     subjects.value = []
   } finally {
     loading.value = false
+  }
+}
+
+// ── Topic repair (Term1/Term2/Optional survey machinery) ────────────────────
+const subjectsNeedingRepair = computed(() => subjects.value.filter(subjectNeedsTopicRepair))
+const repairingId = ref(null)
+const repairingAll = ref(false)
+
+async function repairSubject(subject) {
+  repairingId.value = subject.id
+  try {
+    await guardedUpdateDoc('subjects', schoolDoc(props.schoolId, 'subjects', subject.id), {
+      topics: repairedTopicsFor(subject),
+      updated_at: serverTimestamp(),
+      updated_by: auth.currentUser?.email || 'unknown',
+    })
+    await loadSubjects()
+    toast.add({ severity: 'success', summary: 'Topics repaired', detail: subject.id, life: 2500 })
+  } catch (e) {
+    console.error('Could not repair topics', e)
+    toast.add({ severity: 'error', summary: 'Repair failed', detail: e instanceof SchemaViolation ? e.userMessage : 'Something went wrong.', life: 4000 })
+  } finally {
+    repairingId.value = null
+  }
+}
+
+async function repairAllSubjects() {
+  repairingAll.value = true
+  try {
+    const targets = subjectsNeedingRepair.value
+    for (let i = 0; i < targets.length; i += 450) {
+      const chunk = targets.slice(i, i + 450)
+      const batch = writeBatch(db)
+      chunk.forEach(s => {
+        batch.update(schoolDoc(props.schoolId, 'subjects', s.id), {
+          topics: repairedTopicsFor(s),
+          updated_at: serverTimestamp(),
+          updated_by: auth.currentUser?.email || 'unknown',
+        })
+      })
+      await batch.commit()
+    }
+    await loadSubjects()
+    toast.add({ severity: 'success', summary: 'Topics repaired', detail: `${targets.length} subject(s)`, life: 3000 })
+  } catch (e) {
+    console.error('Could not repair topics', e)
+    toast.add({ severity: 'error', summary: 'Repair failed', detail: 'Something went wrong. Some subjects may be unrepaired.', life: 4000 })
+  } finally {
+    repairingAll.value = false
   }
 }
 
@@ -467,6 +530,7 @@ async function saveSubject() {
       await guardedUpdateDoc('subjects', schoolDoc(props.schoolId, 'subjects', editingSubject.value.id), payload)
     } else {
       payload.id = form.id.trim()
+      payload.topics = defaultTopicsForSubject(payload.id)
       payload.created_at = serverTimestamp()
       payload.created_by = auth.currentUser?.email || 'unknown'
       await guardedSetDoc('subjects', schoolDoc(props.schoolId, 'subjects', form.id.trim()), payload, { merge: false })
@@ -615,7 +679,10 @@ async function writeImportChunks(rows, collectionName) {
       const payload = { ...r.payload, updated_at: serverTimestamp(), updated_by: auth.currentUser?.email || 'unknown' }
       if (r._status === 'CREATE') {
         // co_scholastic_activities docs carry no `id` field (see spec §2).
-        if (collectionName === 'subjects') payload.id = r.id
+        if (collectionName === 'subjects') {
+          payload.id = r.id
+          payload.topics = defaultTopicsForSubject(r.id)
+        }
         payload.created_at = serverTimestamp()
         payload.created_by = auth.currentUser?.email || 'unknown'
       }

@@ -205,6 +205,7 @@ import {
   inferStructure, proposalSummary, STATUS_NEW, STATUS_EXISTING, STATUS_CONFLICT,
 } from '../../utils/structureInference.js'
 import { regenerateStudentsSchemaClassOptions } from '../../utils/schoolSetupHelpers.js'
+import { defaultTopicsForSubject } from '../../utils/subjectTopics.js'
 
 const props = defineProps({ schoolId: { type: String, default: null } })
 const confirm = useConfirm()
@@ -359,7 +360,7 @@ async function applyProposal() {
 
     for (const s of acceptedSubjects) {
       batch.set(schoolDoc(props.schoolId, 'subjects', s.docId),
-        { id: s.docId, name: s.name.trim(), area: s.area || '', ...stamp(), ...created() }, { merge: true })
+        { id: s.docId, name: s.name.trim(), area: s.area || '', topics: defaultTopicsForSubject(s.docId), ...stamp(), ...created() }, { merge: true })
       if (++ops >= 400) await flush()
     }
     await flush()
