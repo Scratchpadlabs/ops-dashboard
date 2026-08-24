@@ -1,0 +1,315 @@
+{
+  "school": "Hillgreen High School",
+  "academicYear": "2025-26",
+  "sources": [
+    "marks_conversion.xlsx — 'Classwise Marks Distribution 2026 (For All Exams)'",
+    "Report_Card_Model_class_1_to_8.pdf",
+    "Report_Card_Model_class_9.pdf",
+    "Report_Card_Model_class_10.pdf"
+  ],
+  "terms": [
+    {
+      "name": "Term 1",
+      "academicYear": "2025-26",
+      "isActive": true
+    },
+    {
+      "name": "Term 2",
+      "academicYear": "2025-26",
+      "isActive": true
+    }
+  ],
+  "scales": {
+    "scholastic": {
+      "name": "Hillgreen 8 Point Scale",
+      "levels": [
+        {
+          "label": "E",
+          "minPercent": 0,
+          "maxPercent": 32
+        },
+        {
+          "label": "D",
+          "minPercent": 33,
+          "maxPercent": 40
+        },
+        {
+          "label": "C2",
+          "minPercent": 41,
+          "maxPercent": 50
+        },
+        {
+          "label": "C1",
+          "minPercent": 51,
+          "maxPercent": 60
+        },
+        {
+          "label": "B2",
+          "minPercent": 61,
+          "maxPercent": 70
+        },
+        {
+          "label": "B1",
+          "minPercent": 71,
+          "maxPercent": 80
+        },
+        {
+          "label": "A2",
+          "minPercent": 81,
+          "maxPercent": 90
+        },
+        {
+          "label": "A1",
+          "minPercent": 91,
+          "maxPercent": 100
+        }
+      ]
+    },
+    "coScholastic": {
+      "name": "Hillgreen Co Scholastic Scale",
+      "levels": [
+        {
+          "label": "D",
+          "minPercent": 0,
+          "maxPercent": 25
+        },
+        {
+          "label": "C",
+          "minPercent": 26,
+          "maxPercent": 50
+        },
+        {
+          "label": "B",
+          "minPercent": 51,
+          "maxPercent": 75
+        },
+        {
+          "label": "A",
+          "minPercent": 76,
+          "maxPercent": 100
+        }
+      ]
+    }
+  },
+  "bands": [
+    {
+      "id": "grades-1-2",
+      "minGrade": 1,
+      "maxGrade": 2,
+      "expectedTermTotal": {
+        "Term 1": 150,
+        "Term 2": 150
+      },
+      "exams": [
+        {
+          "term": "Term 1",
+          "name": "PT 1",
+          "written": 20,
+          "convertedTo": 40,
+          "internal": 10
+        },
+        {
+          "term": "Term 1",
+          "name": "PT 2",
+          "written": 40,
+          "convertedTo": 80,
+          "internal": 20
+        },
+        {
+          "term": "Term 2",
+          "name": "PT 3",
+          "written": 20,
+          "convertedTo": 40,
+          "internal": 10
+        },
+        {
+          "term": "Term 2",
+          "name": "PT 4",
+          "written": 40,
+          "convertedTo": 80,
+          "internal": 20
+        }
+      ]
+    },
+    {
+      "id": "grades-3-5",
+      "minGrade": 3,
+      "maxGrade": 5,
+      "expectedTermTotal": {
+        "Term 1": 150,
+        "Term 2": 150
+      },
+      "exams": [
+        {
+          "term": "Term 1",
+          "name": "PT 1",
+          "written": 40,
+          "convertedTo": 40,
+          "internal": 10
+        },
+        {
+          "term": "Term 1",
+          "name": "PT 2",
+          "written": 60,
+          "convertedTo": 80,
+          "internal": 20
+        },
+        {
+          "term": "Term 2",
+          "name": "PT 3",
+          "written": 40,
+          "convertedTo": 40,
+          "internal": 10
+        },
+        {
+          "term": "Term 2",
+          "name": "PT 4",
+          "written": 60,
+          "convertedTo": 80,
+          "internal": 20
+        }
+      ]
+    },
+    {
+      "id": "grades-6-9",
+      "minGrade": 6,
+      "maxGrade": 9,
+      "expectedTermTotal": {
+        "Term 1": 150,
+        "Term 2": 150
+      },
+      "exams": [
+        {
+          "term": "Term 1",
+          "name": "PT 1",
+          "written": 40,
+          "convertedTo": 40,
+          "internal": 10
+        },
+        {
+          "term": "Term 1",
+          "name": "PT 2",
+          "written": 80,
+          "convertedTo": 80,
+          "internal": 20
+        },
+        {
+          "term": "Term 2",
+          "name": "PT 3",
+          "written": 40,
+          "convertedTo": 40,
+          "internal": 10
+        },
+        {
+          "term": "Term 2",
+          "name": "PT 4",
+          "written": 80,
+          "convertedTo": 80,
+          "internal": 20
+        }
+      ]
+    },
+    {
+      "id": "grade-10",
+      "minGrade": 10,
+      "maxGrade": 10,
+      "note": "Term 2 follows Report_Card_Model_class_10.pdf (two 100-mark pre-boards), NOT marks_conversion.xlsx (which specifies PT 3 = 50 for classes 3-12). See docs/hillgreen-assessment-pattern.md, open question Q2.",
+      "expectedTermTotal": {
+        "Term 1": 150,
+        "Term 2": 200
+      },
+      "exams": [
+        {
+          "term": "Term 1",
+          "name": "PT 1",
+          "written": 40,
+          "convertedTo": 40,
+          "internal": 10
+        },
+        {
+          "term": "Term 1",
+          "name": "PT 2",
+          "written": 80,
+          "convertedTo": 80,
+          "internal": 20
+        },
+        {
+          "term": "Term 2",
+          "name": "Pre-Board 1",
+          "written": 80,
+          "convertedTo": 80,
+          "internal": 20
+        },
+        {
+          "term": "Term 2",
+          "name": "Pre-Board 2",
+          "written": 80,
+          "convertedTo": 80,
+          "internal": 20
+        }
+      ]
+    },
+    {
+      "id": "grades-11-12",
+      "minGrade": 11,
+      "maxGrade": 12,
+      "note": "UNCONFIRMED — no model report card was supplied for 11-12. Mirrors the 6-12 row of marks_conversion.xlsx with PT 4 named 'Prelim'. See open question Q5.",
+      "exams": [
+        {
+          "term": "Term 1",
+          "name": "PT 1",
+          "written": 40,
+          "convertedTo": 40,
+          "internal": 10
+        },
+        {
+          "term": "Term 1",
+          "name": "PT 2",
+          "written": 80,
+          "convertedTo": 80,
+          "internal": 20
+        },
+        {
+          "term": "Term 2",
+          "name": "PT 3",
+          "written": 40,
+          "convertedTo": 40,
+          "internal": 10
+        },
+        {
+          "term": "Term 2",
+          "name": "Prelim",
+          "written": 80,
+          "convertedTo": 80,
+          "internal": 20
+        }
+      ]
+    }
+  ],
+  "subjectOverrides": [
+    {
+      "match": [
+        "IT",
+        "Information Technology",
+        "AI",
+        "Artificial Intelligence"
+      ],
+      "appliesToExamTotal": 100,
+      "written": 50,
+      "convertedTo": 100,
+      "internal": 50,
+      "note": "marks_conversion.xlsx footnote: 'In some papers like IT and AI Written is 50 and internal/practical is altogether 50.' Confirmed against Class 10 Pre-Board I/II (theory /50, practical /50). Applied only to 100-mark exams — the Class 10 card shows no split on the 50-mark PTs. See open question Q3."
+    }
+  ],
+  "coScholastic": {
+    "note": "co_scholastic_activities has no grade dimension — these are written school-wide per term. Hillgreen's activity list varies by grade (1-8: ART/CRAFT, DANCE, PE; IX adds WORK EXPERIENCE; X: HEALTH AND PHYSICAL EDUCATION, WORK EXPERIENCE, ART EDUCATION, DANCE). The union is emitted. See open question Q4.",
+    "activities": [
+      "ART/CRAFT",
+      "DANCE",
+      "PE",
+      "WORK EXPERIENCE",
+      "HEALTH AND PHYSICAL EDUCATION",
+      "ART EDUCATION"
+    ]
+  }
+}

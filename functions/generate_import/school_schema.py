@@ -92,11 +92,24 @@ def _check_grading_scale(doc, errors):
     usable = [lv for lv in levels if isinstance(lv, dict)
               and isinstance(lv.get("minPercent"), (int, float))
               and isinstance(lv.get("maxPercent"), (int, float))]
+    # Bands are INTEGER and contiguous — next.min == prev.max + 1 — which is
+    # what the editor in TermsScalesTab.validateLevelsCoverage enforces.
+    # Checking only for overlap was looser than the editor: a scale written
+    # 33-40 / 41-50 read as valid here while leaving 40.5% with no grade at
+    # all, and grand-total percentages are fractional constantly
+    # (61/150 = 40.67%).
     usable.sort(key=lambda lv: lv["minPercent"])
     for i in range(1, len(usable)):
         if usable[i]["minPercent"] <= usable[i - 1]["maxPercent"]:
             errors.append(("levels",
                            f'"{usable[i - 1].get("label")}" and "{usable[i].get("label")}" overlap'))
+        elif usable[i]["minPercent"] != usable[i - 1]["maxPercent"] + 1:
+            errors.append((
+                "levels",
+                f'gap between "{usable[i - 1].get("label")}" '
+                f'(ends {usable[i - 1]["maxPercent"]}%) and "{usable[i].get("label")}" '
+                f'(starts {usable[i]["minPercent"]}%)',
+            ))
     if usable:
         if usable[0]["minPercent"] > 0:
             errors.append(("levels", "does not cover 0% — lowest band starts above 0"))

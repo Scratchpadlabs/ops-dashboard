@@ -1,0 +1,145 @@
+# Hillgreen High School — assessment pattern
+
+What the school gave us, how it maps onto `assessments` / `co_scholastic_activities`,
+and what is still unanswered. The machine-readable form is
+`tools/patterns/hillgreen.json`; this file is the reasoning behind it.
+
+**Source documents** (2026-08, from the school)
+
+| File | What it fixes |
+|---|---|
+| `marks_conversion.xlsx` | "Classwise Marks Distribution 2026 (For All Exams)" — the marks scheme |
+| `Report_Card_Model_class_1_to_8.pdf` | Grade I sample — layout, grading scale, co-scholastic list |
+| `Report_Card_Model_class_9.pdf` | Grade IX sample — adds "Scholastic Areas II" and a cross-term overall |
+| `Report_Card_Model_class_10.pdf` | Grade X sample — the only one showing the theory/internal split |
+
+## 1. The scheme
+
+| Exam | Classes | Written | → Converted to | Internal | Total |
+|---|---|---|---|---|---|
+| PT 1 | 1–2 | 20 | 40 | 10 | 50 |
+| PT 1 | 3–12 | 40 | 40 | 10 | 50 |
+| PT 2 | 1–2 | 40 | 80 / 70 | 20 / 30 | 100 |
+| PT 2 | 3–5 | 60 | 80 / 70 | 20 / 30 | 100 |
+| PT 2 | 6–12 | 80 / 70 | 80 / 70 | 20 / 30 | 100 |
+| PT 3 | 1–2 | 20 | 40 | 10 | 50 |
+| PT 3 | 3–12 | 40 | 40 | 10 | 50 |
+| PT 4 / Prelim | 1–2 | 40 | 80 / 70 | 20 / 30 | 100 |
+| PT 4 / Prelim | 3–5 | 60 | 80 / 70 | 20 / 30 | 100 |
+| PT 4 / Prelim | 6–12 | 80 / 70 | 80 / 70 | 20 / 30 | 100 |
+
+Sheet footnote: *"In some papers like IT and AI Written is 50 and internal/practical
+is altogether 50."*
+
+Term I is PT 1 + PT 2 (150). Term II is PT 3 + PT 4 (150). Grade X instead runs two
+100-mark pre-boards in Term II (200), for a 350 grand total.
+
+Grading is an 8-point scale applied to the **percentage**, at every level — each
+exam, each grand total, and the all-subjects total row. Verified against the samples:
+grade I English PT 1 = 35/50 = 70% → B2; the 113/150 grand total = 75.3% → B1.
+
+## 2. How it maps
+
+**One assessment doc per column a teacher types into.** `maxMarks` is always the real
+max of the paper in front of them; the conversion is display-only. A grade 3 teacher
+enters 47 out of 60 and the sheet shows "62.67 / 80" — they never convert by hand.
+
+So `PT 2` for grades 3–5 becomes two docs:
+
+| name | maxMarks | conversionType | conversionFactor | teacher sees |
+|---|---|---|---|---|
+| PT 2 Written | 60 | `sum_down` | 0.75 | out of 80 |
+| PT 2 Internal | 20 | `none` | — | out of 20 |
+
+**`sum_down`, not `sum_up`.** `conversionFactor` is capped at two decimals in the UI,
+so 60 → 80 as `sum_up` needs 1.33 and yields 79.8. `sum_down` divides
+(`maxMarks / factor`), so 60 ÷ 0.75 = 80 exactly. Every other Hillgreen ratio is a
+clean `sum_up 2` (20→40, 40→80, 50→100) or needs no conversion at all.
+`conversionFor()` in the generator picks whichever side is exact and refuses the row
+if neither is.
+
+**Graded subjects skip the split.** The Subjects tab already records `entryType` per
+subject, so a "Scholastic Areas II" subject (grade IX/X Marathi) generates one graded
+column per exam instead of a written/internal pair — there are no marks to convert.
+
+**Totalling is not modelled.** Summing, grand totals and the cross-term overall happen
+in the school's Excel sheets, not in Firestore. Nothing here computes a total, which
+is why the contradiction in Q1 below does not block configuration: every number a
+teacher enters is captured, and Excel decides what to add.
+
+## 3. Generating it
+
+```
+node tools/build_school_assessments.mjs \
+  --pattern tools/patterns/hillgreen.json \
+  --subjects <Subjects tab -> Export CSV> \
+  --out build/hillgreen-config
+```
+
+Import the four files **in order** — each references doc IDs the previous one creates:
+
+| File | Where |
+|---|---|
+| `1_terms.csv` | Terms & Scales → Terms → Import CSV |
+| `2_grading_scales.csv` | Terms & Scales → Grading Scales → Import CSV |
+| `3_assessments.csv` | Assessments → Import CSV |
+| `4_co_scholastic.csv` | Co-Scholastic → Import CSV |
+
+Doc IDs are deterministic, so the generated files can reference them before the
+import runs: terms are `Term_1_2025_26` / `Term_2_2025_26`, scales are
+`Hillgreen_8_Point_Scale` / `Hillgreen_Co_Scholastic_Scale`.
+
+The generator validates every row against the tabs' own rules and checks that no two
+rows collide on `{subjectId}_{termId}_{slug(name)}`. A collision would silently merge
+two assessments into one doc and drop a column from every teacher's sheet — and an
+assessment doc ID can never be renamed once marks exist (AUDIT.md §4). It exits
+non-zero rather than writing importable-looking rubbish.
+
+## 4. Where the schema strains
+
+**Co-scholastic has no grade dimension and no exam dimension.** `co_scholastic_activities`
+docs are term-wide for the whole school, and their doc ID is `{termId}_{slug(name)}`.
+Hillgreen grades each activity at all four exams, so the exam has to be baked into the
+name (`ART/CRAFT PT 1`) or the second doc overwrites the first. The activity list also
+varies by grade (1–8: ART/CRAFT, DANCE, PE; IX adds WORK EXPERIENCE; X: HEALTH AND
+PHYSICAL EDUCATION, WORK EXPERIENCE, ART EDUCATION, DANCE) with nowhere to record that,
+so the generator emits the union. See Q4.
+
+**Height and weight have nowhere to live.** The report card's Health & Discipline block
+wants a per-term height and weight per student. No collection models it. Attendance at
+least exists as sheet entries, though keyed by month or day rather than the per-term
+present/total pair the card prints.
+
+**The grading scale bands are integers.** `TermsScalesTab.validateLevelsCoverage`
+requires `next.min === prev.max + 1`, so Hillgreen's scale (0–32, 33–40, 41–50, …) is
+exactly what the editor wants. But that means a fractional percentage lands in no
+band, and grand-total percentages are fractional constantly (61/150 = 40.67%).
+**Whatever computes the grade must round or floor to an integer percentage first.**
+`schoolSchema.js` used to be looser than the editor here — it checked only for overlap,
+so a genuinely gapped scale passed server-side validation; it now enforces the same
+contiguity rule.
+
+## 5. Open questions for the school
+
+1. **Do internal marks count towards the total?** `marks_conversion.xlsx` says
+   Total = converted written + internal. The class 10 model card computes every total
+   as **theory scaled to 100, with the internal column discarded** — Pre-Board I IT is
+   printed as 34 (17/50 × 2) while theory + practical would be 65; Science is 29
+   (23/80 × 1.25) not 35. The two documents contradict each other. We capture both
+   numbers either way, so this blocks the Excel template, not the config.
+2. **Is grade 10's Term II really two 100-mark pre-boards?** The sheet says PT 3 is
+   50 marks for all of classes 3–12; the model card shows Pre-Board I and II at 100
+   each and a 350 grand total. The card is assumed correct — confirm.
+3. **Does the IT/AI 50+50 split apply to the 50-mark PTs too,** or only the 100-mark
+   exams? The card only ever shows IT split in Term II. Currently applied to 100-mark
+   exams only.
+4. **Which co-scholastic activities apply to which grades?** The collection is
+   school-wide per term, so today every grade sees the union of all six.
+5. **Grades 11–12 and pre-primary.** The sheet covers 1–12 but we have no model card
+   for 11–12 (the pattern mirrors the 6–12 row with PT 4 named "Prelim" — unconfirmed).
+   Pre-Nursery and Nursery are not covered at all and are skipped by the generator.
+6. **Which subjects use 70 + 30 rather than 80 + 20?** The sheet writes "80/70" and
+   "20/30" throughout without saying when. No sampled subject uses 70/30, so the
+   pattern defaults to 80 + 20; add a `subjectOverrides` entry when the school answers.
+7. **Grade X Marathi** is graded at PT 1, PT 2 and Pre-Board 1 on the card but not
+   Pre-Board 2. Assumed an omission — the generator emits all four.

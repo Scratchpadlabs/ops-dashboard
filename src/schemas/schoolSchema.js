@@ -93,13 +93,20 @@ export const SCHOOL_SCHEMAS = {
           errors.push({ field: `levels[${i}]`, reason: 'minPercent is above maxPercent' })
         }
       })
-      // Spec: levels must cover 0–100 with no overlap.
+      // Spec: levels must cover 0–100 with no overlap. Bands are INTEGER and
+      // contiguous — `next.min === prev.max + 1` — which is what the editor in
+      // TermsScalesTab.validateLevelsCoverage enforces. Checking only for
+      // overlap was looser than the editor: a scale written 33–40 / 41–50 read
+      // as valid here while leaving 40.5% with no grade at all, and grand-total
+      // percentages are fractional constantly (61/150 = 40.67%).
       const sorted = levels
         .filter(lv => lv && typeof lv.minPercent === 'number' && typeof lv.maxPercent === 'number')
         .slice().sort((a, b) => a.minPercent - b.minPercent)
       for (let i = 1; i < sorted.length; i++) {
         if (sorted[i].minPercent <= sorted[i - 1].maxPercent) {
           errors.push({ field: 'levels', reason: `"${sorted[i - 1].label}" and "${sorted[i].label}" overlap` })
+        } else if (sorted[i].minPercent !== sorted[i - 1].maxPercent + 1) {
+          errors.push({ field: 'levels', reason: `gap between "${sorted[i - 1].label}" (ends ${sorted[i - 1].maxPercent}%) and "${sorted[i].label}" (starts ${sorted[i].minPercent}%)` })
         }
       }
       if (sorted.length) {
