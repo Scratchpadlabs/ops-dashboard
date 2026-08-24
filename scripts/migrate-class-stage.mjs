@@ -41,6 +41,14 @@
  * Only `stage` is ever written. Nothing else on the class doc is touched — in
  * particular the `subjects` array, which is the expensive thing to rebuild.
  *
+ * The report also carries a read-only `section_check`. Class docs written
+ * before splitClassId existed were built with `cid.split('_')`, which drops
+ * everything past the second part, so `11_SCI_A` and `11_SCI_B` both stored
+ * section "SCI" and grade+section lookups could not tell them apart. Those
+ * rows are flagged MISMATCH and left alone: a section is part of the class's
+ * identity and other collections key off it, so repairing one is a decision,
+ * not a migration.
+ *
  * Auth: application default credentials.
  *   GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json node scripts/...
  * or `gcloud auth application-default login` with access to the project.
@@ -67,7 +75,7 @@ writeFileSync(path.join(TMP, 'classResolver.js'),
   readFileSync(path.join(ROOT, 'src/utils/classResolver.js'), 'utf8')
     .replace(/import SEED from ['"][^'"]+['"]/,
       `import fs from 'node:fs'\nconst SEED = JSON.parse(fs.readFileSync('${path.join(TMP, 'seed.json')}','utf8'))`))
-const { parseClassValue } = await import(path.join(TMP, 'classResolver.js'))
+const { parseClassValue, splitClassId } = await import(path.join(TMP, 'classResolver.js'))
 
 const DEFAULT_PROJECT = 'clarified-1501'
 const BATCH_LIMIT = 400
@@ -86,7 +94,8 @@ const projectId = value('project', process.env.GOOGLE_CLOUD_PROJECT || DEFAULT_P
 const stamp = new Date().toISOString().replace(/[:.]/g, '-')
 const outPath = value('out', `./class-stage-migration-${stamp}.csv`)
 
-const COLUMNS = ['school', 'classId', 'clazz', 'gradeOrdinal', 'stage_before', 'stage_after', 'action', 'note']
+const COLUMNS = ['school', 'classId', 'clazz', 'gradeOrdinal', 'stage_before', 'stage_after', 'action',
+  'section_stored', 'section_from_id', 'section_check', 'note']
 
 function writeReport(rows) {
   const esc = v => {
@@ -114,10 +123,23 @@ async function buildPlan(db) {
       const ordinal = parseClassValue(rawGrade).gradeOrdinal
       const after = stageForGrade(ordinal)
 
+      // Read-only cross-check, never written. Class docs created before
+      // splitClassId existed were built with `cid.split('_')`, which drops
+      // everything past the second part — `11_SCI_A` and `11_SCI_B` both
+      // stored section "SCI" and became indistinguishable to
+      // classByGradeSection. Repairing a section is not this script's job:
+      // section is part of the class's identity and other collections key off
+      // it, so this only reports, and a human decides.
+      const sectionStored = data.section ?? ''
+      const sectionFromId = splitClassId(cls.id).section
       const row = {
         school: school.id, classId: cls.id, clazz: rawGrade,
         gradeOrdinal: ordinal === null ? '' : ordinal,
-        stage_before: before, stage_after: after ?? '', action: '', note: '',
+        stage_before: before, stage_after: after ?? '', action: '',
+        section_stored: sectionStored,
+        section_from_id: sectionFromId,
+        section_check: sectionStored === sectionFromId ? 'OK' : 'MISMATCH',
+        note: '',
       }
       if (after === null) {
         row.action = 'SKIP'
@@ -172,6 +194,17 @@ async function main() {
   writeReport(plan)
   console.log(`${plan.length} class doc(s) across ${schools} school(s): ${fixes} to fix, ${ok} already correct, ${skips} skipped.`)
   console.log(`Report: ${outPath}`)
+
+  const sectionMismatches = plan.filter(r => r.section_check === 'MISMATCH')
+  if (sectionMismatches.length) {
+    console.log(`\n${sectionMismatches.length} class(es) store a section that disagrees with their doc ID:`)
+    for (const r of sectionMismatches.slice(0, 10)) {
+      console.log(`  ${r.school}/${r.classId}  stored "${r.section_stored}"  id says "${r.section_from_id}"`)
+    }
+    if (sectionMismatches.length > 10) console.log(`  ... and ${sectionMismatches.length - 10} more — see the CSV.`)
+    console.log('  REPORTED ONLY — this script never writes `section`. Two classes sharing a')
+    console.log('  stored section cannot be told apart by grade+section lookups.')
+  }
 
   if (skips) console.log(`\n${skips} class(es) have an unreadable grade and are left alone — see the CSV.`)
   if (!fixes) return
