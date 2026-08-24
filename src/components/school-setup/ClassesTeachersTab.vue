@@ -2,7 +2,10 @@
   <div class="pt-4">
     <div class="flex items-center justify-between mb-3">
       <div class="text-sm font-bold text-slate-900">Classes &amp; Teachers</div>
-      <Button label="Add Section" icon="pi pi-plus" size="small" @click="openAddSection" />
+      <div class="flex gap-2">
+        <Button label="Bulk Assign Subjects" icon="pi pi-sparkles" size="small" outlined :disabled="!classes.length || !subjects.length" @click="openBulkAssign" />
+        <Button label="Add Section" icon="pi pi-plus" size="small" @click="openAddSection" />
+      </div>
     </div>
 
     <div v-if="loading" class="flex items-center justify-center py-10">
@@ -87,7 +90,7 @@
           <div class="grid grid-cols-2 gap-1 max-h-64 overflow-auto border border-slate-200 rounded-lg p-2">
             <label v-for="subj in allSubjects" :key="subj.id" class="flex items-center gap-2 text-sm px-1 py-0.5">
               <Checkbox v-model="form.subjectIds" :value="subj.id" />
-              <span :class="parseGrade(subj.id) === form.clazz ? 'text-slate-800' : 'text-slate-500'">{{ subj.id }}</span>
+              <span :class="subjectBelongsToClass(subj, { clazz: form.clazz, section: form.section }) ? 'text-slate-800' : 'text-slate-500'">{{ subj.id }}</span>
             </label>
           </div>
           <p class="text-xs text-slate-400 mt-1">Grade-matching subjects are pre-checked when adding a new section; any subject can be attached.</p>
@@ -132,13 +135,63 @@
       </template>
     </Dialog>
 
+    <!-- ── Bulk Assign Subjects ────────────────────────────────────────────
+         Additive only: a class's existing subjects (including ones a school
+         deliberately attached outside its grade, per spec §3.3) are never
+         removed here. This only fills in what a class is missing, using the
+         same grade+stream match the per-class checklist pre-checks with. ── -->
+    <Dialog v-model:visible="bulkVisible" header="Bulk Assign Subjects" modal :style="{ width: '760px' }">
+      <div class="space-y-4 pt-2">
+        <p class="text-xs text-slate-400">
+          Adds every subject whose grade (and, above grade 10, stream) matches a class, if it
+          is not already attached. Nothing already on a class is ever removed — unpick a row
+          you don't want touched, or fine-tune afterwards from that class's own edit dialog.
+        </p>
+
+        <div v-if="bulkReadyRows.length">
+          <div class="flex items-center justify-between mb-2">
+            <label class="form-label mb-0">{{ bulkReadyRows.length }} class(es) with subjects to add</label>
+            <button type="button" class="text-xs text-violet-600 font-semibold" @click="toggleAllBulkRows">
+              {{ bulkReadyRows.every(r => r.included) ? 'Deselect all' : 'Select all' }}
+            </button>
+          </div>
+          <div class="border border-slate-200 rounded-lg max-h-72 overflow-auto divide-y divide-slate-100">
+            <label v-for="row in bulkReadyRows" :key="row.classId" class="flex items-start gap-2 px-3 py-2 text-sm">
+              <Checkbox v-model="row.included" binary class="mt-0.5" />
+              <span class="flex-1">
+                <span class="font-medium text-slate-700">{{ row.classId }}</span>
+                <span class="text-slate-400"> — {{ row.currentIds.length }} existing, </span>
+                <span class="text-emerald-600">+{{ row.toAdd.length }}: {{ row.toAdd.join(', ') }}</span>
+              </span>
+            </label>
+          </div>
+        </div>
+        <div v-else class="text-sm text-slate-400 py-4 text-center border border-slate-200 rounded-lg">
+          No class is missing a grade/stream-matching subject.
+        </div>
+
+        <div v-if="bulkNoMatchRows.length">
+          <label class="form-label">{{ bulkNoMatchRows.length }} class(es) with no matching subject — needs a manual pick</label>
+          <p class="text-xs text-slate-400">
+            {{ bulkNoMatchRows.map(r => r.classId).join(', ') }}
+          </p>
+        </div>
+
+        <div v-if="bulkError" class="text-sm text-red-500 bg-red-50 rounded-lg px-3 py-2">{{ bulkError }}</div>
+      </div>
+      <template #footer>
+        <Button label="Cancel" text @click="bulkVisible = false" />
+        <Button :label="`Add to ${bulkIncludedCount} class(es)`" :loading="bulkSaving" :disabled="!bulkIncludedCount" @click="runBulkAssign" />
+      </template>
+    </Dialog>
+
     <ConfirmDialog />
   </div>
 </template>
 
 <script setup>
 import { ref, reactive, computed, watch, onMounted } from 'vue'
-import { getDocs, setDoc, updateDoc, query, orderBy, serverTimestamp } from 'firebase/firestore'
+import { getDocs, setDoc, updateDoc, writeBatch, query, orderBy, serverTimestamp } from 'firebase/firestore'
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
 
@@ -152,6 +205,7 @@ import ProgressSpinner from 'primevue/progressspinner'
 import ConfirmDialog from 'primevue/confirmdialog'
 
 import { schoolCollection, schoolDoc } from '../../firebase/schoolCollections.js'
+import { db } from '../../firebase/config'
 import ConfigEmptyState from './ConfigEmptyState.vue'
 import { auth } from '../../firebase/config'
 import { regenerateStudentsSchemaClassOptions } from '../../utils/schoolSetupHelpers.js'
@@ -360,6 +414,73 @@ async function saveSection() {
     formError.value = 'Something went wrong. Try again.'
   } finally {
     saving.value = false
+  }
+}
+
+// ── Bulk Assign Subjects ─────────────────────────────────────────────────
+// Additive only — see the dialog's own note. A row's `toAdd` is the same
+// subjectBelongsToClass() match the per-class checklist pre-checks with, so
+// what this proposes is exactly what clicking through each class by hand
+// and accepting the pre-check would produce.
+const bulkVisible = ref(false)
+const bulkSaving = ref(false)
+const bulkError = ref('')
+const bulkRows = ref([])
+
+const bulkReadyRows = computed(() => bulkRows.value.filter(r => r.toAdd.length > 0))
+const bulkNoMatchRows = computed(() => bulkRows.value.filter(r => r.toAdd.length === 0 && r.currentIds.length === 0))
+const bulkIncludedCount = computed(() => bulkReadyRows.value.filter(r => r.included).length)
+
+function openBulkAssign() {
+  bulkError.value = ''
+  bulkRows.value = classes.value.map(cls => {
+    const currentIds = (cls.subjects || []).map(s => s.subjectId)
+    const currentSet = new Set(currentIds)
+    const toAdd = subjects.value
+      .filter(s => subjectBelongsToClass(s, cls) && !currentSet.has(s.id))
+      .map(s => s.id)
+    return {
+      classId: cls.id, currentIds, toAdd,
+      included: toAdd.length > 0 && cls.isActive !== false,
+    }
+  })
+  bulkVisible.value = true
+}
+
+function toggleAllBulkRows() {
+  const nextValue = !bulkReadyRows.value.every(r => r.included)
+  bulkReadyRows.value.forEach(r => { r.included = nextValue })
+}
+
+async function runBulkAssign() {
+  const rows = bulkReadyRows.value.filter(r => r.included)
+  if (!rows.length) return
+  bulkSaving.value = true
+  bulkError.value = ''
+  try {
+    for (let i = 0; i < rows.length; i += 450) {
+      const chunk = rows.slice(i, i + 450)
+      const batch = writeBatch(db)
+      for (const row of chunk) {
+        const cls = classes.value.find(c => c.id === row.classId)
+        const existingSubjects = cls?.subjects || []
+        const checkedSubjectIds = [...row.currentIds, ...row.toAdd]
+        batch.set(schoolDoc(props.schoolId, 'classes', row.classId), {
+          subjects: regenerateSubjectsArray(existingSubjects, checkedSubjectIds),
+          updated_at: serverTimestamp(), updated_by: auth.currentUser?.email || 'unknown',
+        }, { merge: true })
+      }
+      await batch.commit()
+    }
+    bulkVisible.value = false
+    toast.add({ severity: 'success', summary: 'Subjects assigned', detail: `${rows.length} class(es) updated`, life: 2500 })
+    await loadAll()
+    await regenerateStudentsSchemaClassOptions(props.schoolId, classes.value.map(c => c.id))
+  } catch (e) {
+    console.error(e)
+    bulkError.value = 'Something went wrong. Try again — no class already written is re-applied.'
+  } finally {
+    bulkSaving.value = false
   }
 }
 
