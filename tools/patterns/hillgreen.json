@@ -302,6 +302,13 @@
       "note": "marks_conversion.xlsx footnote: 'In some papers like IT and AI Written is 50 and internal/practical is altogether 50.' Confirmed against Class 10 Pre-Board I/II (theory /50, practical /50). Applied only to 100-mark exams — the Class 10 card shows no split on the 50-mark PTs. See open question Q3."
     }
   ],
+  "gradedSubjects": {
+    "_note": "Subject IDs entered as a graded 'Scholastic Areas II' column per exam (A1..E, no Written/Internal split) instead of the default marked pair. This is NOT derived from the Subjects tab CSV -- that export's entryType column is blank on every row; it exists only for Co-Scholastic routing, not to describe a scholastic subject's marking style. Each ID below is backed by an actual model report card: Report_Card_Model_class_9.pdf and _class_10.pdf both show a 'Scholastic Areas II: Periodic Test...' row for Marathi with letter grades only. No other subject in any of the three sample cards is shown this way. Grades I-VIII, and every XI/XII subject, default to marked until evidence says otherwise.",
+    "ids": [
+      "IX_Marathi",
+      "X_Marathi"
+    ]
+  },
   "coScholastic": {
     "note": "co_scholastic_activities has no grade dimension — these are written school-wide per term. Hillgreen's activity list varies by grade (1-8: ART/CRAFT, DANCE, PE; IX adds WORK EXPERIENCE; X: HEALTH AND PHYSICAL EDUCATION, WORK EXPERIENCE, ART EDUCATION, DANCE). The union is emitted. See open question Q4.",
     "activities": [

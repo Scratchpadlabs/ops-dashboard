@@ -152,11 +152,15 @@ for (const row of subjectRows) {
   // any marks entered against them are orphaned. Better to ship no rows.
   if (band.pending) { pending.push(subjectId); pendingBands.add(band.id); continue }
 
-  // The Subjects tab already records whether a subject is marked or graded.
-  // A graded subject (Hillgreen's "Scholastic Areas II", e.g. IX Marathi) is
-  // one column per exam, not a written/internal pair — there are no marks to
-  // convert.
-  const isGraded = (row.entryType || 'marks').trim() === 'grade'
+  // NOT read from the subjects CSV: that export's entryType column is blank
+  // on every real-world row (it exists only for Co-Scholastic routing — see
+  // isCoScholasticArea — not to describe a scholastic subject's marking
+  // style). Trusting it here was validated only against a hand-typed sample
+  // file, never against a real Subjects tab export, and broke silently the
+  // first time it met one. gradedSubjects.ids in the pattern is the real
+  // signal: an explicit, evidence-backed list rather than a field nothing
+  // actually populates.
+  const isGraded = (pattern.gradedSubjects?.ids || []).includes(subjectId)
 
   const orderByTerm = new Map()
   for (const exam of band.exams) {

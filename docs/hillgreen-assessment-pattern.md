@@ -13,6 +13,11 @@ and what is still unanswered. The machine-readable form is
 | `Report_Card_Model_class_9.pdf` | Grade IX sample — adds "Scholastic Areas II" and a cross-term overall |
 | `Report_Card_Model_class_10.pdf` | Grade X sample — the only one showing the theory/internal split |
 
+**Status (2026-08-24):** grades I–X generated and ready to import (632 assessment rows,
+80 subjects) — see `tools/patterns/hillgreen_subjects.csv` for the source export and §3
+for the command. Co-scholastic is imported and live for Hillgreen. Grades XI–XII remain
+blocked on Q5 below.
+
 ## 1. The scheme
 
 | Exam | Classes | Written | → Converted to | Internal | Total |
@@ -58,9 +63,21 @@ clean `sum_up 2` (20→40, 40→80, 50→100) or needs no conversion at all.
 `conversionFor()` in the generator picks whichever side is exact and refuses the row
 if neither is.
 
-**Graded subjects skip the split.** The Subjects tab already records `entryType` per
-subject, so a "Scholastic Areas II" subject (grade IX/X Marathi) generates one graded
-column per exam instead of a written/internal pair — there are no marks to convert.
+**Graded subjects skip the split — but not by reading the Subjects tab.** The Subjects
+tab's CSV export has an `entryType` column, and it looks like exactly the signal needed
+to tell a graded "Scholastic Areas II" subject (grade IX/X Marathi) from a marked one.
+It isn't: that column is blank on every real row Hillgreen exported. It exists only for
+Co-Scholastic routing (§3.3 of the spec), not to describe a scholastic subject's marking
+style — a subject doc has no field for that at all. Trusting it here was only ever
+validated against a hand-typed sample file; the first real export broke it silently
+(everything would have generated as marked, Marathi included).
+
+The real signal is `gradedSubjects.ids` in `tools/patterns/hillgreen.json`: an explicit
+list, backed only by what a model report card actually shows. Right now that's exactly
+two IDs — `IX_Marathi` and `X_Marathi` — because those are the only two subjects either
+sample card prints as a letter-grade-only "Scholastic Areas II" row. Everything else,
+including every subject in grades I–VIII and all of XI–XII, defaults to marked until a
+card (or the school) says otherwise.
 
 **Totalling is not modelled.** Summing, grand totals and the cross-term overall happen
 in the school's Excel sheets, not in Firestore. Nothing here computes a total, which
@@ -76,10 +93,11 @@ node tools/build_school_assessments.mjs \
   --out build/hillgreen-config
 ```
 
-`hillgreen_subjects.csv` holds the 55 senior-school subjects the school supplied in
-2026-08 (X, XI Humanities, XI Science, XII Commerce, XII Science). Grades 1–9 are still
-to come; replace the file with the Subjects tab's own **Export CSV** once the school is
-fully loaded, so the IDs are read from Firestore rather than transcribed.
+`hillgreen_subjects.csv` is the Subjects tab's own **Export CSV** (All Years), covering
+every grade currently in Firestore — I through XII, 135 subjects. It replaced an earlier,
+hand-typed placeholder covering only X/XI/XII once the school's full Subjects tab was
+populated and the real export could be pulled instead. Re-export and overwrite this file
+whenever a subject is added, renamed, or removed.
 
 Import the four files **in order** — each references doc IDs the previous one creates:
 
@@ -108,13 +126,12 @@ non-zero rather than writing importable-looking rubbish.
 
 ## 4. Where the schema strains
 
-**Co-scholastic has no grade dimension and no exam dimension.** `co_scholastic_activities`
-docs are term-wide for the whole school, and their doc ID is `{termId}_{slug(name)}`.
-Hillgreen grades each activity at all four exams, so the exam has to be baked into the
-name (`ART/CRAFT PT 1`) or the second doc overwrites the first. The activity list also
-varies by grade (1–8: ART/CRAFT, DANCE, PE; IX adds WORK EXPERIENCE; X: HEALTH AND
-PHYSICAL EDUCATION, WORK EXPERIENCE, ART EDUCATION, DANCE) with nowhere to record that,
-so the generator emits the union. See Q4.
+**Co-scholastic had no grade dimension — fixed 2026-08.** `co_scholastic_activities`
+now carries a `classIds` array (empty/absent = every class, as before; a non-empty array
+scopes the activity to just those classes). Hillgreen's real activity data has been
+re-imported against it. The exam dimension is unchanged: doc ID is still
+`{termId}_{slug(name)}`, so an activity graded at all four exams still needs the exam
+baked into the name (`ART/CRAFT PT 1`) or the second doc overwrites the first.
 
 **Height and weight have nowhere to live.** The report card's Health & Discipline block
 wants a per-term height and weight per student. No collection models it. Attendance at
@@ -144,8 +161,10 @@ contiguity rule.
 3. **Does the IT/AI 50+50 split apply to the 50-mark PTs too,** or only the 100-mark
    exams? The card only ever shows IT split in Term II. Currently applied to 100-mark
    exams only.
-4. **Which co-scholastic activities apply to which grades?** The collection is
-   school-wide per term, so today every grade sees the union of all six.
+4. **Which co-scholastic activities apply to which grades?** RESOLVED at the schema
+   level — `co_scholastic_activities.classIds` (added 2026-08) scopes an activity to
+   specific classes instead of the whole school. Hillgreen's data has already been
+   re-imported with real `classIds`.
 5. **Grades 11–12 — BLOCKING, 44 of the 55 subjects supplied so far.** No model report
    card covers XI–XII, so it is unknown whether they follow the 6–12 row of the sheet
    (PT 3 + Prelim) or run two 100-mark pre-boards like grade X. The `grades-11-12` band
@@ -158,13 +177,20 @@ contiguity rule.
    pattern defaults to 80 + 20; add a `subjectOverrides` entry when the school answers.
 7. **Grade X Marathi** is graded at PT 1, PT 2 and Pre-Board 1 on the card but not
    Pre-Board 2. Assumed an omission — the generator emits all four.
-8. **Is `X_Seva` marked or graded?** Seva reads like a graded activity rather than a
-   marked paper, but it is currently emitted as marked (Written + Internal). It is the
-   only subject in the confirmed X band where this is in doubt — `HPE` and
-   `PE_Additional` raise the same question but appear only in the pending XI–XII band.
-   To switch any subject, set its `entryType` to `grade` in the subjects CSV before
-   running the generator; it then emits one graded column per exam instead of a pair.
+8. **Is `Seva` marked or graded?** Both `IX_Seva` and `X_Seva` read like a graded
+   activity rather than a marked paper, but both are currently emitted as marked
+   (Written + Internal) — no report card shows Seva at all, so there is no evidence
+   either way. `HPE` and `PE_Additional` raise the same question in the pending
+   XI–XII band. To switch a subject to graded, add its ID to `gradedSubjects.ids`
+   in `tools/patterns/hillgreen.json` (see §2) — never the subjects CSV, which
+   carries no such signal.
 9. **Grade X subject list vs the model card.** The card shows a single "Science" and
    "Social studies"; the live list has `X_Biology`, `X_Chemistry`, `X_Physics` and
    `X_Social_Studies`. The live list is used. Confirm the card is simply an older
    sample and not a different reporting grouping.
+10. **`II_Conc` and `*_Kaushal_Bodh` (VI–VIII) — no evidence either way.** Neither
+    appears in any of the three sample report cards or the marks sheet. Both are
+    currently generated as marked, on the same footing as every other subject in
+    their band — the marks sheet's own title is "For All Exams," with no carve-out.
+    If either is actually graded, or on a different scheme entirely, add it to
+    `gradedSubjects.ids` or a new `subjectOverrides` entry.
