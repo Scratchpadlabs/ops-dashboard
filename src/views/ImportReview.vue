@@ -390,10 +390,10 @@ function throttledActivity() {
 }
 
 const COLUMNS = {
-  students: ['grade', 'section', 'roll_no', 'student_name', 'gender', 'dob', 'sr_no', 'adm_no',
-             'gr_emis_sts', 'aadhaar', 'mother_name', 'father_name', 'contact', 'email', 'city',
-             'father_mobile', 'father_email', 'mother_mobile', 'mother_email', 'branch_name',
-             'board', 'enrollment_code', 'date_of_admission', 'status', 'using_transport'],
+  students: ['enrollment_code', 'student_name', 'grade', 'section', 'roll_no', 'gender', 'dob',
+             'sr_no', 'adm_no', 'gr_emis_sts', 'aadhaar', 'mother_name', 'father_name', 'contact',
+             'email', 'city', 'father_mobile', 'father_email', 'mother_mobile', 'mother_email',
+             'branch_name', 'board', 'date_of_admission', 'status', 'using_transport'],
   teachers: ['teacher_name', 'email', 'class_teacher_of', 'subject', 'grade', 'section'],
   subjects: ['stream', 'grade_band', 'subject', 'area'],
   assessments: ['stream', 'grade_band', 'assessment', 'date_start', 'date_end', 'instructional_days', 'syllabus_covered', 'exam_syllabus', 'max_written', 'activity_weight', 'total', 'duration'],
@@ -406,7 +406,7 @@ const COLUMNS = {
  * from the data, only from the default view.
  */
 const ESSENTIAL_COLUMNS = {
-  students: ['grade', 'section', 'roll_no', 'student_name', 'gender', 'dob', 'contact'],
+  students: ['enrollment_code', 'student_name', 'grade', 'section', 'roll_no', 'gender', 'dob', 'contact'],
   teachers: ['teacher_name', 'email', 'subject', 'grade', 'section'],
   subjects: ['grade_band', 'subject', 'area'],
   assessments: ['grade_band', 'assessment', 'date_start', 'date_end', 'max_written', 'total'],

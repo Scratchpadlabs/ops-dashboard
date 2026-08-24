@@ -436,11 +436,11 @@ STUDENT_HEADER_ALIASES = {
 # Everything the parser will carry through to Review. Being here does NOT mean
 # a field reaches Firestore — src/schemas/studentMapping.js decides that, and
 # most of these are deliberately review-only (see REVIEW_ONLY_STUDENT_KEYS).
-STUDENT_SCHEMA_KEYS = ["grade", "section", "roll_no", "student_name", "gender",
-                        "dob", "sr_no", "adm_no", "gr_emis_sts", "aadhaar",
+STUDENT_SCHEMA_KEYS = ["enrollment_code", "student_name", "grade", "section", "roll_no",
+                        "gender", "dob", "sr_no", "adm_no", "gr_emis_sts", "aadhaar",
                         "mother_name", "father_name", "contact", "email", "city",
                         "father_mobile", "father_email", "mother_mobile",
-                        "mother_email", "branch_name", "board", "enrollment_code",
+                        "mother_email", "branch_name", "board",
                         "date_of_admission", "status", "using_transport"]
 
 # Parsed and shown in Review so an operator can see the file was read
