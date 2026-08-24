@@ -7,7 +7,7 @@
       </div>
       <div class="flex gap-2">
         <Button :label="gridMode ? 'Exit Grid Edit' : 'Grid Edit'" icon="pi pi-table" size="small" outlined :disabled="!selectedTermId" @click="gridMode ? exitGridMode() : enterGridMode()" />
-        <Button label="Import CSV" icon="pi pi-upload" size="small" outlined @click="importVisible = true" />
+        <Button label="Import CSV" icon="pi pi-upload" size="small" outlined @click="openImport" />
         <Button label="Sample CSV" icon="pi pi-download" size="small" text @click="downloadSample" />
         <Button label="Export CSV" icon="pi pi-file-export" size="small" text :disabled="!selectedTermId" @click="exportCsv" />
         <Button label="New Assessment (Bulk)" icon="pi pi-plus" size="small" :disabled="!selectedTermId" @click="openBuilder" />
@@ -691,6 +691,16 @@ async function saveAllGrid() {
 // ── CSV import/export ────────────────────────────────────────────────────
 const ASSESSMENT_CSV_COLUMNS = ['name', 'subjectId', 'termId', 'order', 'entryType', 'maxMarks', 'gradingScaleId', 'conversionType', 'conversionFactor']
 const importVisible = ref(false)
+
+// Re-read terms, grading scales and subjects before validating an import.
+// loadStatic otherwise runs only on mount and on a schoolId change, and every
+// School Setup tab is mounted at once — so importing grading scales (or
+// subjects) on another tab leaves this one holding the list it read before
+// they existed, and every row that references one is rejected as "Unknown".
+async function openImport() {
+  await loadStatic()
+  importVisible.value = true
+}
 
 async function classifyImportRow(raw) {
   const name = (raw.name || '').trim()

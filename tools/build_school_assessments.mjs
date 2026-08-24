@@ -206,6 +206,10 @@ const activities = []
 {
   const examNamesByTerm = new Map()
   for (const band of pattern.bands) {
+    // A pending band contributes no columns here either. Its exam names are a
+    // guess, and co-scholastic has no grade dimension to confine them to — an
+    // unconfirmed "Prelim" would show up as a column for every grade.
+    if (band.pending) continue
     for (const exam of band.exams) {
       const termId = termIdOf.get(exam.term)
       if (!examNamesByTerm.has(termId)) examNamesByTerm.set(termId, new Set())
