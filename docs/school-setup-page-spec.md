@@ -64,7 +64,8 @@ Teacher app queries: `where termId == X && subjectId == Y`, sorts by `order` cli
 missing-index error, so verify the index exists in clarified-1501.)
 
 ### co_scholastic_activities/{id}
-Same shape as assessments minus `subjectId` (term-wide): `{ name, termId, order, entryType, maxMarks, gradingScaleId, conversionType, conversionFactor }`.
+Same shape as assessments minus `subjectId`, plus `classIds`: `{ name, termId, order, entryType, maxMarks, gradingScaleId, conversionType, conversionFactor, classIds }`.
+`classIds` is an array of `classes` doc IDs (added 2026-08, per Hillgreen). Absent or empty means the activity applies to every class in the school — a doc written before this field existed is still "all classes", never "no classes". A non-empty array scopes it to just those classes. Not enforced referentially: the UI validates each ID against the live `classes` collection before writing, but nothing blocks a class being deleted out from under a reference afterward.
 
 ### remark_categories/{id}
 `{ label, order, remarks: [{ key, text, type: "positive"|"negative", order }] }`

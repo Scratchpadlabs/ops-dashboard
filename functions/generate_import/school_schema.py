@@ -228,6 +228,14 @@ SCHOOL_SCHEMAS = {
     },
     "co_scholastic_activities": {
         "label": "Co-Scholastic activities",
+        # Same as assessments minus subjectId - term-wide, PLUS classIds: an
+        # activity used to apply to every class in the school by default
+        # (there was no field to say otherwise). classIds scopes it - absent
+        # or empty still means "every class" for backward compatibility with
+        # docs written before this field existed; a non-empty array narrows
+        # it to just those class doc IDs. Entries are not validated against
+        # the live classes collection here - a school-schema check has no
+        # Firestore access - CoScholasticTab.vue does that itself.
         "fields": {
             "name": _f(STRING),
             "termId": _f(STRING),
@@ -237,6 +245,7 @@ SCHOOL_SCHEMAS = {
             "gradingScaleId": _f(STRING, nullable=True),
             "conversionType": _f(STRING, enum=CONVERSION_TYPES),
             "conversionFactor": _f(NUMBER, nullable=True),
+            "classIds": _opt(ARRAY),
         },
         "check": _check_marked_item,
     },

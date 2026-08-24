@@ -35,6 +35,31 @@ export async function checkEnteredMarksCoScholastic(schoolId, termId) {
   return checks.some(Boolean)
 }
 
+/**
+ * Parse a "classIds" CSV cell into a clean array of class doc IDs.
+ *
+ * A cell holding several IDs has to be quoted in the source file to survive
+ * CSV parsing as one field at all — Papa/csv already strips exactly one
+ * layer of that quoting. But a value typed straight into an Excel cell to
+ * protect an internal comma, then exported to CSV, picks up a SECOND layer:
+ * Excel's own export quoting wraps the literal quote characters the person
+ * typed, so what Papa hands back after ITS unwrap still has one leftover
+ * quote character on each end — "III_A,IV_B" as a literal five-plus-char
+ * string, not a clean III_A,IV_B. Stripping quote characters in a loop
+ * (rather than once) makes this forgiving of either layering without
+ * silently keeping a stray quote INSIDE a real class ID.
+ */
+export function parseClassIdsCell(raw) {
+  let text = (raw ?? '').toString().trim()
+  while (text.length >= 2 && text.startsWith('"') && text.endsWith('"')) {
+    text = text.slice(1, -1).trim()
+  }
+  if (!text) return []
+  return Array.from(new Set(
+    text.split(/[,;]/).map(s => s.trim()).filter(Boolean)
+  ))
+}
+
 export function slugify(text) {
   return (text || '').trim().replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_|_$/g, '')
 }
