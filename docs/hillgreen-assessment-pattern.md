@@ -72,9 +72,14 @@ teacher enters is captured, and Excel decides what to add.
 ```
 node tools/build_school_assessments.mjs \
   --pattern tools/patterns/hillgreen.json \
-  --subjects <Subjects tab -> Export CSV> \
+  --subjects tools/patterns/hillgreen_subjects.csv \
   --out build/hillgreen-config
 ```
+
+`hillgreen_subjects.csv` holds the 55 senior-school subjects the school supplied in
+2026-08 (X, XI Humanities, XI Science, XII Commerce, XII Science). Grades 1–9 are still
+to come; replace the file with the Subjects tab's own **Export CSV** once the school is
+fully loaded, so the IDs are read from Firestore rather than transcribed.
 
 Import the four files **in order** — each references doc IDs the previous one creates:
 
@@ -88,6 +93,12 @@ Import the four files **in order** — each references doc IDs the previous one 
 Doc IDs are deterministic, so the generated files can reference them before the
 import runs: terms are `Term_1_2025_26` / `Term_2_2025_26`, scales are
 `Hillgreen_8_Point_Scale` / `Hillgreen_Co_Scholastic_Scale`.
+
+Assessment doc IDs keep their term segment — `X_Maths_Term_1_2025_26_PT_1_Written`.
+It is the **subject** IDs that must stay free of any term (`X_Maths`, never
+`X_Maths_Term_1`), which they are: nothing in the Subjects tab writes a term into a
+subject ID. Confirmed 2026-08, so `AssessmentsTab.runBuilder`'s
+`{subjectId}_{termId}_{slug(name)}` is unchanged.
 
 The generator validates every row against the tabs' own rules and checks that no two
 rows collide on `{subjectId}_{termId}_{slug(name)}`. A collision would silently merge
@@ -135,11 +146,25 @@ contiguity rule.
    exams only.
 4. **Which co-scholastic activities apply to which grades?** The collection is
    school-wide per term, so today every grade sees the union of all six.
-5. **Grades 11–12 and pre-primary.** The sheet covers 1–12 but we have no model card
-   for 11–12 (the pattern mirrors the 6–12 row with PT 4 named "Prelim" — unconfirmed).
-   Pre-Nursery and Nursery are not covered at all and are skipped by the generator.
+5. **Grades 11–12 — BLOCKING, 44 of the 55 subjects supplied so far.** No model report
+   card covers XI–XII, so it is unknown whether they follow the 6–12 row of the sheet
+   (PT 3 + Prelim) or run two 100-mark pre-boards like grade X. The `grades-11-12` band
+   is marked `"pending": true` and the generator emits **nothing** for it: a wrong doc ID
+   cannot be renamed once marks exist, so the wrong docs would have to be deleted and any
+   marks against them orphaned. Clear the flag once the school answers.
+   Pre-Nursery and Nursery are not covered by the sheet at all and are skipped.
 6. **Which subjects use 70 + 30 rather than 80 + 20?** The sheet writes "80/70" and
    "20/30" throughout without saying when. No sampled subject uses 70/30, so the
    pattern defaults to 80 + 20; add a `subjectOverrides` entry when the school answers.
 7. **Grade X Marathi** is graded at PT 1, PT 2 and Pre-Board 1 on the card but not
    Pre-Board 2. Assumed an omission — the generator emits all four.
+8. **Is `X_Seva` marked or graded?** Seva reads like a graded activity rather than a
+   marked paper, but it is currently emitted as marked (Written + Internal). It is the
+   only subject in the confirmed X band where this is in doubt — `HPE` and
+   `PE_Additional` raise the same question but appear only in the pending XI–XII band.
+   To switch any subject, set its `entryType` to `grade` in the subjects CSV before
+   running the generator; it then emits one graded column per exam instead of a pair.
+9. **Grade X subject list vs the model card.** The card shows a single "Science" and
+   "Social studies"; the live list has `X_Biology`, `X_Chemistry`, `X_Physics` and
+   `X_Social_Studies`. The live list is used. Confirm the card is simply an older
+   sample and not a different reporting grouping.

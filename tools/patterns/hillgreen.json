@@ -253,7 +253,8 @@
       "id": "grades-11-12",
       "minGrade": 11,
       "maxGrade": 12,
-      "note": "UNCONFIRMED — no model report card was supplied for 11-12. Mirrors the 6-12 row of marks_conversion.xlsx with PT 4 named 'Prelim'. See open question Q5.",
+      "pending": true,
+      "note": "PENDING CONFIRMATION FROM THE SCHOOL — no model report card was supplied for 11-12, so it is unknown whether they follow the 6-12 row of marks_conversion.xlsx (PT 3 + Prelim) or run two 100-mark pre-boards like grade X. The exams below are the 6-12 reading and are NOT emitted while `pending` is true. See docs/hillgreen-assessment-pattern.md Q5.",
       "exams": [
         {
           "term": "Term 1",

@@ -110,6 +110,8 @@ const coScholasticScaleId = scaleDocId(pattern.scales.coScholastic.name)
 
 const warnings = []
 const skipped = []
+const pending = []
+const pendingBands = new Set()
 
 /** Grade band for an ordinal, or null when the pattern does not cover it. */
 function bandFor(ordinal) {
@@ -143,6 +145,12 @@ for (const row of subjectRows) {
 
   const band = bandFor(ordinal)
   if (!band) { skipped.push(`${subjectId}: grade ${ordinal} is outside every band in the pattern`); continue }
+
+  // A band the school has not confirmed emits nothing. Assessment doc IDs can
+  // never be renamed once marks exist (AUDIT.md §4), so a guess that turns out
+  // wrong cannot be corrected in place — the wrong docs have to be deleted and
+  // any marks entered against them are orphaned. Better to ship no rows.
+  if (band.pending) { pending.push(subjectId); pendingBands.add(band.id); continue }
 
   // The Subjects tab already records whether a subject is marked or graded.
   // A graded subject (Hillgreen's "Scholastic Areas II", e.g. IX Marathi) is
@@ -298,6 +306,11 @@ console.log(`  4_co_scholastic.csv   Co-Scholastic tab -> Import CSV`)
 console.log(`\nTerm doc IDs: ${[...termIdOf.values()].join(', ')}`)
 console.log(`Scale doc IDs: ${scholasticScaleId}, ${coScholasticScaleId}`)
 
+if (pending.length) {
+  console.log(`\n${pending.length} subject(s) NOT emitted — band(s) awaiting confirmation: ${[...pendingBands].join(', ')}`)
+  console.log(`  Import what is here, or wait — re-running after the pattern is confirmed`)
+  console.log(`  only ADDS rows, it never changes an ID already written.`)
+}
 if (skipped.length) {
   console.log(`\n${skipped.length} subject(s) skipped:`)
   skipped.forEach(s => console.log(`  - ${s}`))
