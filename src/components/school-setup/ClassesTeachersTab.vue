@@ -159,6 +159,7 @@ import KbClassifiedInput from '../shared/KbClassifiedInput.vue'
 import { useEducationKB } from '../../composables/useEducationKB.js'
 import { GRADE, SECTION, OTHER } from '../../utils/educationKB.js'
 import { parseClassValue } from '../../utils/classResolver.js'
+import { stageForGrade, FOUNDATION } from '../../utils/classStage.js'
 
 const props = defineProps({ schoolId: { type: String, default: null } })
 const confirm = useConfirm()
@@ -269,7 +270,9 @@ function openAddSection(grade, section) {
   cloneFromClassId.value = null
   const clazz = grade || ''
   Object.assign(form, {
-    clazz, section: section || '', stage: 'foundation', name: '', isActive: true,
+    clazz, section: section || '',
+    stage: stageForGrade(parseClassValue(clazz).gradeOrdinal) || FOUNDATION,
+    name: '', isActive: true,
     subjectIds: subjects.value.filter(s => subjectBelongsToClass(s, { clazz, section })).map(s => s.id),
   })
   formError.value = ''

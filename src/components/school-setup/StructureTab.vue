@@ -205,6 +205,8 @@ import {
   inferStructure, proposalSummary, STATUS_NEW, STATUS_EXISTING, STATUS_CONFLICT,
 } from '../../utils/structureInference.js'
 import { regenerateStudentsSchemaClassOptions } from '../../utils/schoolSetupHelpers.js'
+import { parseClassValue } from '../../utils/classResolver.js'
+import { stageForGrade, FOUNDATION } from '../../utils/classStage.js'
 
 const props = defineProps({ schoolId: { type: String, default: null } })
 const confirm = useConfirm()
@@ -374,7 +376,9 @@ async function applyProposal() {
       if (liveClasses.has(c.docId)) continue
       const doc = {
         id: c.docId, clazz: c.clazz, section: c.section,
-        name: `${c.clazz} ${c.section}`, stage: 'foundation', isActive: true, subjects: [],
+        name: `${c.clazz} ${c.section}`,
+        stage: stageForGrade(parseClassValue(c.clazz).gradeOrdinal) || FOUNDATION,
+        isActive: true, subjects: [],
         ...stamp(), ...created(),
       }
       batch.set(schoolDoc(props.schoolId, 'classes', c.docId), doc, { merge: true })

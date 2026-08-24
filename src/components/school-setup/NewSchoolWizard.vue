@@ -350,6 +350,8 @@ import { db, auth } from '../../firebase/config'
 import { checkNewSchoolRemote, schoolStateRemote } from '../../utils/api.js'
 import { slugifySchoolId } from '../../utils/wizardHelpers.js'
 import { deriveClassStructure } from '../../utils/deriveClasses.js'
+import { parseClassValue } from '../../utils/classResolver.js'
+import { stageForGrade, FOUNDATION } from '../../utils/classStage.js'
 import {
   STUDENT_COLUMNS, TEACHER_COLUMNS, studentTemplateCsv, teacherTemplateCsv, downloadCsv,
 } from '../../utils/importTemplates.js'
@@ -801,7 +803,8 @@ async function commitStep(key) {
         const [clazz, section] = cid.split('_')
         batch.set(schoolDoc(sid, 'classes', cid), {
           id: cid, clazz, section, name: `${clazz} ${section}`,
-          stage: 'foundation', isActive: true, subjects: [],
+          stage: stageForGrade(parseClassValue(clazz).gradeOrdinal) || FOUNDATION,
+          isActive: true, subjects: [],
           created_at: serverTimestamp(), created_by: auth.currentUser?.email || 'unknown',
           created_via: 'new_school_wizard',
         }, { merge: true })
