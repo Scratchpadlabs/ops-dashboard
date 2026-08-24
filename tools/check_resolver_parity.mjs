@@ -45,7 +45,7 @@ try {
   fs.unlinkSync(tmp)
 }
 
-const { parseClassValue, notationOf, ordinalToToken } = mod
+const { parseClassValue, notationOf, ordinalToToken, splitClassId } = mod
 const fixtures = JSON.parse(fs.readFileSync(RESULTS, 'utf8'))
 
 let failures = 0
@@ -76,7 +76,14 @@ for (const row of fixtures.ordinal_to_token) {
   }
 }
 
-const total = fixtures.parse.length + fixtures.notation.length + fixtures.ordinal_to_token.length
+for (const row of fixtures.split_class_id) {
+  const js = splitClassId(row.class_id)
+  if (js.gradeToken !== row.grade_token) report('splitClassId', row.class_id, 'gradeToken', row.grade_token, js.gradeToken)
+  if (js.section !== row.section) report('splitClassId', row.class_id, 'section', row.section, js.section)
+}
+
+const total = fixtures.parse.length + fixtures.notation.length
+  + fixtures.ordinal_to_token.length + fixtures.split_class_id.length
 if (failures) {
   console.error(`\nFAIL — ${failures} mismatch(es) across ${total} fixtures.`)
   console.error('The Python and JS resolvers have drifted. Fix both, then re-run.')

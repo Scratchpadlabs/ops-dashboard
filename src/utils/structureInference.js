@@ -20,6 +20,7 @@
  * and performs the writes.
  */
 import { classify, SUBJECT, COSCHOLASTIC, SECTION, GRADE, UNKNOWN } from './educationKB.js'
+import { splitClassId } from './classResolver.js'
 
 // Grade/section normalization is the KB's, identical to the import parser's,
 // so a class inferred here matches the class an import row resolves to.
@@ -222,7 +223,7 @@ function buildFlags({ classes, subjects, classSubjects, studentRows, teacherRows
   }
   for (const s of existingStaffs) {
     for (const cid of s.classIds || []) {
-      const [g, sec] = String(cid).split('_')
+      const { gradeToken: g, section: sec } = splitClassId(cid)
       if (g && sec) classTeacherKeys.add(`${normGrade(g)}|${normSection(sec)}`)
     }
   }

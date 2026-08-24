@@ -245,6 +245,25 @@ export function composeClassId(gradeToken, section, separator = '_') {
   return section ? `${gradeToken}${separator}${section}` : gradeToken
 }
 
+/**
+ * The inverse of composeClassId: `{gradeToken}{separator}{section}`.
+ *
+ * Splits on the FIRST separator only. A section legitimately contains the
+ * separator — Hillgreen has `11_SCI_A`, whose section is `SCI_A` — so
+ * `id.split('_')` and a two-name destructure silently drops everything past
+ * the second part, turning `11_SCI_A` and `11_SCI_B` into the same class.
+ *
+ * A gradeless id returns the whole string as the grade and an empty section,
+ * mirroring composeClassId(token, '') === token.
+ */
+export function splitClassId(classId, separator = '_') {
+  const id = (classId ?? '').toString()
+  if (!id) return { gradeToken: '', section: '' }
+  const at = id.indexOf(separator)
+  if (at === -1) return { gradeToken: id, section: '' }
+  return { gradeToken: id.slice(0, at), section: id.slice(at + separator.length) }
+}
+
 /** Everything resolution needs about ONE school, computed once. */
 export function buildSchoolContext(classIds = [], classMap = {}, separator = null) {
   const ids = [...(classIds || [])]

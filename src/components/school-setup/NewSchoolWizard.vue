@@ -350,7 +350,7 @@ import { db, auth } from '../../firebase/config'
 import { checkNewSchoolRemote, schoolStateRemote } from '../../utils/api.js'
 import { slugifySchoolId } from '../../utils/wizardHelpers.js'
 import { deriveClassStructure } from '../../utils/deriveClasses.js'
-import { parseClassValue } from '../../utils/classResolver.js'
+import { parseClassValue, splitClassId } from '../../utils/classResolver.js'
 import { stageForGrade, FOUNDATION } from '../../utils/classStage.js'
 import {
   STUDENT_COLUMNS, TEACHER_COLUMNS, studentTemplateCsv, teacherTemplateCsv, downloadCsv,
@@ -800,7 +800,7 @@ async function commitStep(key) {
     for (let i = 0; i < classes.length; i += 400) {
       const batch = writeBatch(db)
       for (const cid of classes.slice(i, i + 400)) {
-        const [clazz, section] = cid.split('_')
+        const { gradeToken: clazz, section } = splitClassId(cid)
         batch.set(schoolDoc(sid, 'classes', cid), {
           id: cid, clazz, section, name: `${clazz} ${section}`,
           stage: stageForGrade(parseClassValue(clazz).gradeOrdinal) || FOUNDATION,

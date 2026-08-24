@@ -345,6 +345,26 @@ def compose_class_id(grade_token, section, separator="_"):
     return f"{grade_token}{separator}{section}" if section else grade_token
 
 
+def split_class_id(class_id, separator="_"):
+    """The inverse of compose_class_id: {grade_token}{separator}{section}.
+
+    Splits on the FIRST separator only. A section legitimately contains the
+    separator - Hillgreen has "11_SCI_A", whose section is "SCI_A" - so a
+    plain split drops everything past the second part and collapses
+    "11_SCI_A" and "11_SCI_B" into the same class.
+
+    A gradeless id returns the whole string as the grade and an empty
+    section, mirroring compose_class_id(token, "") == token.
+    """
+    text = "" if class_id is None else str(class_id)
+    if not text:
+        return {"grade_token": "", "section": ""}
+    grade_token, sep, section = text.partition(separator)
+    if not sep:
+        return {"grade_token": text, "section": ""}
+    return {"grade_token": grade_token, "section": section}
+
+
 def build_school_context(class_ids=None, class_map=None, separator=None):
     """Everything resolution needs about ONE school, computed once per run.
 

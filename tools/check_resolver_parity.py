@@ -13,7 +13,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "functions", "shared"))
 
 from class_resolver import (  # noqa: E402
-    parse_class_value, notation_of, ordinal_to_token,
+    parse_class_value, notation_of, ordinal_to_token, split_class_id,
 )
 
 # Every format the task names, plus the ones that caused real bugs. Keep this
@@ -60,8 +60,16 @@ ORDINAL_CASES = [
 ]
 
 
+# A section that itself contains the separator is the case a plain split
+# breaks: "11_SCI_A" must keep section "SCI_A", not "SCI".
+SPLIT_CASES = [
+    "11_SCI_A", "11_SCI_B", "10_KALAM", "III_A", "1_ASHOKA",
+    "XII Commerce_C", "NoSeparator", "", "_leading", "trailing_",
+]
+
+
 def main():
-    out = {"parse": [], "notation": [], "ordinal_to_token": []}
+    out = {"parse": [], "notation": [], "ordinal_to_token": [], "split_class_id": []}
 
     for raw in PARSE_CASES:
         p = parse_class_value(raw)
@@ -81,6 +89,9 @@ def main():
             "ordinal": ordinal, "notation": notation,
             "token": ordinal_to_token(ordinal, notation),
         })
+
+    for raw in SPLIT_CASES:
+        out["split_class_id"].append({"class_id": raw, **split_class_id(raw)})
 
     dest = os.path.join(ROOT, "tools", ".resolver_fixtures.json")
     with open(dest, "w", encoding="utf-8") as f:
