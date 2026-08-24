@@ -1,8 +1,8 @@
 <template>
   <Dialog
     :visible="visible" @update:visible="close"
-    header="Copy survey from another school"
-    modal :style="{ width: '640px' }" :closable="!copying"
+    header="Copy surveys from another school"
+    modal :style="{ width: '680px' }" :closable="!copying"
   >
     <div class="space-y-4 pt-1">
       <div>
@@ -14,39 +14,51 @@
       </div>
 
       <div v-if="sourceSchoolId">
-        <label class="form-label">Survey</label>
+        <div class="flex items-center justify-between mb-1.5">
+          <label class="form-label mb-0">Surveys to copy</label>
+          <button v-if="sourceSurveys.length" type="button" class="text-xs text-violet-600 hover:underline"
+            @click="toggleAll">{{ allSelected ? 'Clear all' : 'Select all' }}</button>
+        </div>
         <div v-if="loadingSurveys" class="text-sm text-slate-400 py-2">Loading surveys…</div>
         <div v-else-if="!sourceSurveys.length" class="text-sm text-slate-400 py-2">
           No real surveys found for this school.
         </div>
-        <Select
-          v-else v-model="selectedSurveyId" :options="sourceSurveys" optionLabel="label" optionValue="id"
-          placeholder="Pick a survey" class="w-full" filter
-        />
-      </div>
 
-      <div v-if="selectedSurvey" class="border border-slate-200 rounded-lg p-3 bg-slate-50 space-y-1">
-        <div class="text-sm font-semibold text-slate-800">{{ selectedSurvey.label }}</div>
-        <div class="text-xs text-slate-500">{{ selectedSurvey.questionCount }} question(s) · {{ windowLabel(selectedSurvey) }}</div>
-      </div>
+        <div v-else class="border border-slate-200 rounded-lg divide-y divide-slate-100 max-h-64 overflow-auto">
+          <div v-for="s in sourceSurveys" :key="s.id" class="p-2.5">
+            <label class="flex items-start gap-2 cursor-pointer">
+              <Checkbox v-model="selectedIds" :value="s.id" class="mt-0.5" />
+              <div class="min-w-0 flex-1">
+                <div class="text-sm font-medium text-slate-800">{{ s.label }}</div>
+                <div class="text-xs text-slate-500">{{ s.questionCount }} question(s) · {{ windowLabel(s) }}</div>
+              </div>
+            </label>
 
-      <div v-if="selectedSurvey">
-        <label class="form-label">New survey ID in {{ targetSchoolName }}</label>
-        <InputText v-model="targetSurveyId" class="w-full font-mono text-sm" @update:modelValue="idChecked = false" />
-        <div v-if="idChecked && idExists" class="text-xs text-amber-700 mt-1">
-          <i class="pi pi-exclamation-triangle text-xs mr-1"></i>
-          A survey with this ID already exists in {{ targetSchoolName }} — copying will overwrite it.
+            <!-- Per-survey target id, only shown once picked — most copies
+                 keep the source id, so this stays out of the way otherwise. -->
+            <div v-if="selectedIds.includes(s.id)" class="mt-2 ml-6 flex items-center gap-2">
+              <span class="text-xs text-slate-400 whitespace-nowrap">ID in {{ targetSchoolName }}</span>
+              <InputText v-model="targetIds[s.id]" class="font-mono text-xs" style="max-width:220px"
+                @update:modelValue="idsChecked = false" />
+              <span v-if="idsChecked && collisions[s.id]" class="text-xs text-amber-700 whitespace-nowrap">
+                <i class="pi pi-exclamation-triangle text-xs mr-0.5"></i>will overwrite
+              </span>
+            </div>
+          </div>
         </div>
       </div>
 
       <div v-if="formError" class="text-sm text-red-500 bg-red-50 rounded-lg px-3 py-2">{{ formError }}</div>
+      <div v-if="progress.total" class="text-sm text-slate-500">
+        Copying {{ progress.done }} / {{ progress.total }}…
+      </div>
     </div>
 
     <template #footer>
       <Button label="Cancel" text :disabled="copying" @click="close" />
       <Button
-        label="Copy survey" icon="pi pi-copy"
-        :disabled="!selectedSurvey || !targetSurveyId.trim()" :loading="copying"
+        :label="`Copy ${selectedIds.length || ''} survey${selectedIds.length !== 1 ? 's' : ''}`" icon="pi pi-copy"
+        :disabled="!selectedIds.length || !allTargetIdsFilled" :loading="copying"
         @click="confirmCopy"
       />
     </template>
@@ -55,24 +67,26 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue'
-import { getDoc, getDocs, setDoc } from 'firebase/firestore'
+import { ref, reactive, computed, watch } from 'vue'
+import { getDoc, getDocs, writeBatch } from 'firebase/firestore'
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
 import Dialog from 'primevue/dialog'
 import Select from 'primevue/select'
+import Checkbox from 'primevue/checkbox'
 import InputText from 'primevue/inputtext'
 import Button from 'primevue/button'
 import ConfirmDialog from 'primevue/confirmdialog'
 
 import { surveysCollection, surveyDoc } from '../../firebase/schoolCollections.js'
+import { db } from '../../firebase/config'
 
 /**
- * Copies one survey doc, verbatim, from a source school into the currently
- * selected (target) school under a new/reused doc id. An independent
- * duplicate — nothing links the copy back to its source afterward, so
- * editing either one never touches the other. See CloneSchoolTab.vue for
- * the same pattern at whole-school scope.
+ * Copies one or more survey docs, verbatim, from a source school into the
+ * currently selected (target) school — each under its own new/reused doc id.
+ * Independent duplicates: nothing links a copy back to its source
+ * afterward, so editing one never touches another. See CloneSchoolTab.vue
+ * for the same pattern at whole-school scope.
  */
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -88,19 +102,27 @@ const toast = useToast()
 const sourceSchoolId = ref(null)
 const sourceSurveys = ref([])
 const loadingSurveys = ref(false)
-const selectedSurveyId = ref(null)
-const targetSurveyId = ref('')
-const idChecked = ref(false)
-const idExists = ref(false)
+const selectedIds = ref([])
+const targetIds = reactive({}) // sourceId -> target survey id
+const idsChecked = ref(false)
+const collisions = reactive({}) // sourceId -> bool (target id already exists)
 const formError = ref('')
 const copying = ref(false)
+const progress = reactive({ total: 0, done: 0 })
 let sourceDocsById = {}
 
 const sourceSchoolOptions = computed(() =>
   props.schools.filter(s => s.id !== props.targetSchoolId))
 
-const selectedSurvey = computed(() =>
-  sourceSurveys.value.find(s => s.id === selectedSurveyId.value) || null)
+const allSelected = computed(() =>
+  sourceSurveys.value.length > 0 && selectedIds.value.length === sourceSurveys.value.length)
+
+const allTargetIdsFilled = computed(() =>
+  selectedIds.value.every(id => (targetIds[id] || '').trim()))
+
+function toggleAll() {
+  selectedIds.value = allSelected.value ? [] : sourceSurveys.value.map(s => s.id)
+}
 
 function windowLabel(s) {
   const fmt = (ms) => ms ? new Date(ms).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : null
@@ -141,6 +163,11 @@ async function loadSourceSurveys(schoolId) {
         expiresAt: toMillis(data.expiresAt),
       }
     }).sort((a, b) => a.label.localeCompare(b.label))
+    // Default: every real survey selected, target id = source id — copying
+    // "the standard set" as-is is the common case, per-row edits are the
+    // exception.
+    selectedIds.value = sourceSurveys.value.map(s => s.id)
+    sourceSurveys.value.forEach(s => { targetIds[s.id] = s.id })
   } catch (e) {
     formError.value = e.message || 'Could not load surveys for that school.'
   } finally {
@@ -149,31 +176,31 @@ async function loadSourceSurveys(schoolId) {
 }
 
 watch(sourceSchoolId, (id) => {
-  selectedSurveyId.value = null
-  targetSurveyId.value = ''
+  selectedIds.value = []
+  Object.keys(targetIds).forEach(k => delete targetIds[k])
+  idsChecked.value = false
   if (id) loadSourceSurveys(id)
-})
-watch(selectedSurveyId, (id) => {
-  targetSurveyId.value = id || ''
-  idChecked.value = false
 })
 
 async function confirmCopy() {
   formError.value = ''
-  const newId = targetSurveyId.value.trim()
-  if (!newId) { formError.value = 'A target survey ID is required.'; return }
+  idsChecked.value = true
+  Object.keys(collisions).forEach(k => delete collisions[k])
 
-  idChecked.value = true
-  const targetSnap = await getDoc(surveyDoc(props.targetSchoolId, newId))
-  idExists.value = targetSnap.exists()
+  await Promise.all(selectedIds.value.map(async (sourceId) => {
+    const targetId = (targetIds[sourceId] || '').trim()
+    const snap = await getDoc(surveyDoc(props.targetSchoolId, targetId))
+    collisions[sourceId] = snap.exists()
+  }))
 
-  const message = idExists.value
-    ? `A survey "${newId}" already exists in ${props.targetSchoolName}. Overwrite it with the copy of "${selectedSurvey.value.label}"?`
-    : `Copy "${selectedSurvey.value.label}" into ${props.targetSchoolName} as "${newId}"?`
+  const overwriteCount = selectedIds.value.filter(id => collisions[id]).length
+  const message = overwriteCount
+    ? `Copy ${selectedIds.value.length} survey(s) into ${props.targetSchoolName}? ${overwriteCount} will overwrite an existing survey with the same ID.`
+    : `Copy ${selectedIds.value.length} survey(s) into ${props.targetSchoolName}?`
 
   confirm.require({
-    message, header: 'Copy survey', icon: 'pi pi-exclamation-triangle',
-    rejectLabel: 'Cancel', acceptLabel: idExists.value ? 'Overwrite' : 'Copy',
+    message, header: 'Copy surveys', icon: 'pi pi-exclamation-triangle',
+    rejectLabel: 'Cancel', acceptLabel: overwriteCount ? 'Overwrite & copy' : 'Copy',
     accept: runCopy,
   })
 }
@@ -181,15 +208,27 @@ async function confirmCopy() {
 async function runCopy() {
   copying.value = true
   formError.value = ''
+  progress.total = selectedIds.value.length
+  progress.done = 0
   try {
-    const newId = targetSurveyId.value.trim()
-    const sourceData = sourceDocsById[selectedSurveyId.value]
-    await setDoc(surveyDoc(props.targetSchoolId, newId), { ...sourceData, id: newId })
-    toast.add({ severity: 'success', summary: 'Survey copied', detail: `${newId} in ${props.targetSchoolName}`, life: 4000 })
-    emit('copied', { id: newId })
+    const batch = writeBatch(db)
+    const copiedIds = []
+    for (const sourceId of selectedIds.value) {
+      const targetId = targetIds[sourceId].trim()
+      const sourceData = sourceDocsById[sourceId]
+      batch.set(surveyDoc(props.targetSchoolId, targetId), { ...sourceData, id: targetId })
+      copiedIds.push(targetId)
+    }
+    await batch.commit()
+    progress.done = progress.total
+    toast.add({
+      severity: 'success', summary: 'Surveys copied',
+      detail: `${copiedIds.length} survey(s) copied into ${props.targetSchoolName}`, life: 4000,
+    })
+    emit('copied', { ids: copiedIds })
     close()
   } catch (e) {
-    formError.value = e.message || 'Could not copy the survey.'
+    formError.value = e.message || 'Could not copy these surveys — nothing was changed.'
   } finally {
     copying.value = false
   }
@@ -203,10 +242,13 @@ watch(() => props.visible, (v) => {
   if (v) return
   sourceSchoolId.value = null
   sourceSurveys.value = []
-  selectedSurveyId.value = null
-  targetSurveyId.value = ''
+  selectedIds.value = []
+  Object.keys(targetIds).forEach(k => delete targetIds[k])
+  Object.keys(collisions).forEach(k => delete collisions[k])
   formError.value = ''
-  idChecked.value = false
+  idsChecked.value = false
+  progress.total = 0
+  progress.done = 0
 })
 </script>
 
