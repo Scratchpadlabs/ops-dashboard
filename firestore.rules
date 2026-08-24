@@ -40,15 +40,24 @@ service cloud.firestore {
                         // this collection is otherwise owned by the teacher app, so
                         // verify against the real deployed rules before applying,
                         // per the stale-rules warning above.
-                        'students'];
+                        'students',
+                        // 'surveys' added for the Surveys page's copy-across-schools
+                        // and edit-name/window features (both direct client writes,
+                        // same isOpsAdmin gate as every other School Setup write —
+                        // see CopySurveyDialog.vue / SurveyDetailDialog.vue). Verify
+                        // against the real deployed rules before applying, per the
+                        // stale-rules warning above.
+                        'surveys'];
     }
     // Survey assignment (functions/assign_survey) writes each recipient's
     // surveyInbox array and logs each run to
-    // schools/{id}/survey_assignments/{runId}. Both happen through the Admin
-    // SDK, which bypasses these rules entirely — nothing extra is granted
-    // here on purpose. The dashboard only READS surveys and run history,
-    // which the authenticated-read rule above already covers, and it never
-    // writes a survey document at all.
+    // schools/{id}/survey_assignments/{runId}. That happens through the
+    // Admin SDK, which bypasses these rules entirely — nothing extra is
+    // granted here on its account. Copying a survey between schools and
+    // editing a survey's name/date window ARE granted here (see the
+    // 'surveys' entry in the writable-collection list above) — both are
+    // small, single-document, ops-admin-only writes from the dashboard
+    // itself, unlike the roster-scale assignment writes above.
 
     // Sheets Status (Phase 5) only toggles isFrozen / deletes empty stray docs
     // on existing smart_sheet_entries — never creates sheets (teacher app

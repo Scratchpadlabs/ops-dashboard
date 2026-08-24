@@ -17,6 +17,8 @@
       <div class="flex gap-2">
         <Button label="Refresh" icon="pi pi-refresh" size="small" text
           :loading="loadingMatrix" :disabled="!schoolId" @click="reload(true)" />
+        <Button label="Copy survey" icon="pi pi-copy" size="small" outlined
+          :disabled="!schoolId" @click="copyVisible = true" />
         <Button label="Download report" icon="pi pi-download" size="small" outlined
           :disabled="!schoolId || !surveys.length" @click="reportVisible = true" />
       </div>
@@ -92,6 +94,7 @@
           @select-row="onSelectRow"
           @select-column="onSelectColumn"
           @toggle-expand="onToggleExpand"
+          @view-survey="onViewSurvey"
         >
           <template #drilldown="{ classId }">
             <ClassDrilldown
@@ -193,6 +196,21 @@
       :filters="reportFilters"
       :visible-survey-ids="visibleSurveyIds"
     />
+
+    <CopySurveyDialog
+      v-model:visible="copyVisible"
+      :target-school-id="schoolId"
+      :target-school-name="currentSchoolName"
+      :schools="schools"
+      @copied="onSurveyCopied"
+    />
+
+    <SurveyDetailDialog
+      v-model:visible="detailVisible"
+      :school-id="schoolId"
+      :survey-id="detailSurveyId"
+      @saved="onSurveyEdited"
+    />
   </div>
 </template>
 
@@ -212,6 +230,8 @@ import SurveyMatrix from '../components/surveys/SurveyMatrix.vue'
 import SelectionActionDialog from '../components/surveys/SelectionActionDialog.vue'
 import ClassDrilldown from '../components/surveys/ClassDrilldown.vue'
 import ReportDialog from '../components/surveys/ReportDialog.vue'
+import CopySurveyDialog from '../components/surveys/CopySurveyDialog.vue'
+import SurveyDetailDialog from '../components/surveys/SurveyDetailDialog.vue'
 import {
   useSurveys, gradeOf, STATUS_NOT_ASSIGNED, STATUS_PENDING, STATUS_COMPLETED,
 } from '../composables/useSurveys.js'
@@ -257,6 +277,10 @@ const actionMode = ref('assign')
 // than from matrix cells — the dialog switches to an ids scope.
 const studentScope = ref({ studentIds: [], surveyIds: [], classId: null })
 const reportVisible = ref(false)
+const copyVisible = ref(false)
+const detailVisible = ref(false)
+const detailSurveyId = ref(null)
+const currentSchoolName = computed(() => schools.value.find(s => s.id === schoolId.value)?.name || schoolId.value || '')
 
 const filters = reactive({ classIds: [], grades: [], status: 'all', activeWindowOnly: false })
 
@@ -382,6 +406,21 @@ async function onApplied() {
 }
 async function onDrilldownChanged() {
   await refreshRuns()
+}
+
+function onViewSurvey(surveyId) {
+  detailSurveyId.value = surveyId
+  detailVisible.value = true
+}
+// Copying/editing a survey doc changes its name/date window, which the
+// matrix's column labels and window dot read straight from the survey doc —
+// force a reload so those reflect the change immediately rather than on the
+// next cache expiry.
+async function onSurveyCopied() {
+  await reload(true)
+}
+async function onSurveyEdited() {
+  await reload(true)
 }
 
 // ── Data ────────────────────────────────────────────────────────────────────

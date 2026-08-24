@@ -8,7 +8,11 @@
  * composable is the client half — it holds the loaded matrix, the roster used
  * for drill-down, and the filter state.
  *
- * Nothing here ever writes to a survey document.
+ * Nothing here ever writes to a survey document — assignment only ever
+ * touches each recipient's inbox array. Copying a survey between schools and
+ * editing a survey's name/date window DO write survey docs directly, but
+ * that logic lives in CopySurveyDialog.vue / SurveyDetailDialog.vue instead
+ * of here: both are one-off, single-document forms, not shared matrix state.
  */
 import { ref, computed } from 'vue'
 import { getDocs, query, orderBy, limit, onSnapshot } from 'firebase/firestore'

@@ -38,8 +38,13 @@ export const kbEntriesCollection = () => collection(db, 'kb_entries')
 export const kbEntryDoc = (id) => doc(db, 'kb_entries', id)
 
 // Surveys and their assignment runs live under the teacher-app school tree.
-// Survey docs themselves are READ-ONLY from this dashboard — assignment only
-// ever writes each recipient's inbox array (see functions/assign_survey).
+// Assignment (functions/assign_survey) only ever writes each recipient's
+// inbox array, never the survey doc itself. The dashboard DOES write survey
+// docs directly for two ops-admin-only features: copying a survey from one
+// school to another, and editing a survey's name/date window (see
+// CopySurveyDialog.vue / SurveyDetailDialog.vue) — both small, single-doc
+// writes, gated by firestore.rules' isOpsAdmin() like every other School
+// Setup collection.
 export const surveysCollection = (schoolId) => collection(db, 'schools', schoolId, 'surveys')
 export const surveyDoc = (schoolId, surveyId) => doc(db, 'schools', schoolId, 'surveys', surveyId)
 export const surveyAssignmentsCollection = (schoolId) => collection(db, 'schools', schoolId, 'survey_assignments')

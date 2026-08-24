@@ -38,11 +38,18 @@
             </th>
             <th
               v-for="s in surveys" :key="s.id"
-              class="bg-slate-50 border-b border-slate-200 px-1.5 py-2 text-center cursor-pointer hover:bg-slate-100 transition-colors"
+              class="bg-slate-50 border-b border-slate-200 px-1.5 py-2 text-center cursor-pointer hover:bg-slate-100 transition-colors relative group"
               style="min-width:74px; max-width:96px"
               v-tooltip.bottom="headerTooltip(s)"
               @click="$emit('select-column', s.id, $event)"
             >
+              <button
+                type="button" class="absolute top-0.5 right-0.5 text-slate-300 hover:text-violet-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                title="View / edit survey details"
+                @click.stop="$emit('view-survey', s.id)"
+              >
+                <i class="pi pi-pencil text-[10px]"></i>
+              </button>
               <div class="text-xs font-semibold text-slate-700 cell-truncate">{{ shortLabel(s) }}</div>
               <span class="inline-block w-1.5 h-1.5 rounded-full mt-0.5" :class="windowDotClass(s)"></span>
             </th>
@@ -140,7 +147,7 @@ const props = defineProps({
 })
 const emit = defineEmits([
   'update:metric', 'update:visible-survey-ids',
-  'select-cells', 'select-row', 'select-column', 'toggle-expand',
+  'select-cells', 'select-row', 'select-column', 'toggle-expand', 'view-survey',
 ])
 
 const metrics = [
