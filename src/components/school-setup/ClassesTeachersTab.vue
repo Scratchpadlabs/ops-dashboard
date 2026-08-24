@@ -158,6 +158,7 @@ import { regenerateStudentsSchemaClassOptions } from '../../utils/schoolSetupHel
 import KbClassifiedInput from '../shared/KbClassifiedInput.vue'
 import { useEducationKB } from '../../composables/useEducationKB.js'
 import { GRADE, SECTION, OTHER } from '../../utils/educationKB.js'
+import { parseClassValue } from '../../utils/classResolver.js'
 
 const props = defineProps({ schoolId: { type: String, default: null } })
 const confirm = useConfirm()
@@ -178,6 +179,48 @@ const loading = ref(false)
 
 function parseGrade(id) {
   return (id || '').split('_')[0] || '?'
+}
+
+/**
+ * Does this subject belong to this class?
+ *
+ * Never compare the two grade tokens as strings. A school writes its subjects
+ * and its classes in whatever notation it already used: Hillgreen's subjects
+ * are Roman (`X_Biology`) while its classes are Arabic (`clazz: "10"`), so
+ * `parseGrade(subjectId) === clazz` matched NOTHING for any class in the
+ * school and every subject checklist opened empty. Compare grade ORDINALS
+ * through the shared resolver instead — that is what it is for.
+ *
+ * Senior subjects also carry a stream in the grade token —
+ * `XI Science_Biology` vs `XI Humanities_Economics` — and both resolve to
+ * ordinal 11. Matching on the ordinal alone would pre-check every Humanities
+ * subject for a Science section, and a section saved without unticking them
+ * attaches subjects that class does not study. So a subject that names a
+ * stream is offered only to a class whose section names the same one
+ * (`11_SCI_A` -> SCI -> Science), compared on a prefix because sections
+ * abbreviate. A class with no recognisable stream (`11_D`) is offered only
+ * the streamless subjects of its grade — tick the rest deliberately.
+ */
+const STREAM_MIN_LENGTH = 3
+function streamsAgree(subjectStream, cls) {
+  if (!subjectStream) return true
+  const norm = v => (v || '').toString().toLowerCase().replace(/[^a-z]/g, '')
+  const want = norm(subjectStream)
+  if (!want) return true
+  return (cls.section || '').split(/[^a-zA-Z]+/).some(token => {
+    const got = norm(token)
+    if (got.length < STREAM_MIN_LENGTH) return false
+    return want.startsWith(got) || got.startsWith(want)
+  })
+}
+
+function subjectBelongsToClass(subject, cls) {
+  const subjectGrade = parseClassValue(parseGrade(subject.id))
+  if (subjectGrade.gradeOrdinal === null) return false
+  const classGrade = parseClassValue(cls.clazz)
+  if (classGrade.gradeOrdinal === null) return false
+  if (subjectGrade.gradeOrdinal !== classGrade.gradeOrdinal) return false
+  return streamsAgree(subjectGrade.section, cls)
 }
 
 const allSubjects = computed(() => [...subjects.value].sort((a, b) => a.id.localeCompare(b.id)))
@@ -227,7 +270,7 @@ function openAddSection(grade, section) {
   const clazz = grade || ''
   Object.assign(form, {
     clazz, section: section || '', stage: 'foundation', name: '', isActive: true,
-    subjectIds: subjects.value.filter(s => parseGrade(s.id) === clazz).map(s => s.id),
+    subjectIds: subjects.value.filter(s => subjectBelongsToClass(s, { clazz, section })).map(s => s.id),
   })
   formError.value = ''
   sectionDialogVisible.value = true
