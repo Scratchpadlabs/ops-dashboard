@@ -6,6 +6,11 @@
         <Button label="Import CSV" icon="pi pi-upload" size="small" outlined @click="importVisible = true" />
         <Button label="Sample CSV" icon="pi pi-download" size="small" text @click="downloadSample" />
         <Button label="Export CSV" icon="pi pi-file-export" size="small" text @click="exportCsv" />
+        <Button
+          label="Backfill Goals" icon="pi pi-sparkles" size="small" outlined
+          :loading="backfilling" :disabled="!subjects.length" @click="backfillGoals"
+          v-tooltip="'Copy curricular goals into subjects with 0 goals from a matching grade+subject at another school'"
+        />
         <Button label="Add Subject" icon="pi pi-plus" size="small" @click="openAddSubject" />
       </div>
     </div>
@@ -235,6 +240,7 @@ import { guardedSetDoc, guardedUpdateDoc, SchemaViolation } from '../../schemas/
 import { db, auth } from '../../firebase/config'
 import { toCsv, downloadCsv } from '../../utils/csv.js'
 import { useEducationKB } from '../../composables/useEducationKB.js'
+import { loadGoalsLibrary, normalizeGrade } from '../../composables/useImport.js'
 import { SUBJECT, COSCHOLASTIC, classify as classifyValue } from '../../utils/educationKB.js'
 import { checkEnteredMarksCoScholastic, isCoScholasticArea, slugify as slugifyText } from '../../utils/assessmentHelpers.js'
 
@@ -529,6 +535,62 @@ function copyGoalsFromSchool() {
   copySchoolDialogVisible.value = false
   copySchoolError.value = ''
   toast.add({ severity: 'success', summary: 'Goals copied', detail: 'Review and save to apply', life: 2500 })
+}
+
+// ── Backfill goals for existing subjects ─────────────────────────────────
+// For subjects already sitting at 0 goals (imported before curricular_goals
+// was auto-fetched, or added by hand and never filled in) — same
+// grade+name match against other schools that "Copy from another school"
+// does one subject at a time, but as one bulk pass over every 0-goal
+// subject in this school.
+const backfilling = ref(false)
+
+async function backfillGoals() {
+  if (!props.schoolId) return
+  backfilling.value = true
+  try {
+    const goalsLibrary = await loadGoalsLibrary(props.schoolId)
+    const candidates = subjects.value.filter(s => !(s.curricular_goals || []).length)
+    const matches = candidates
+      .map(s => ({ subject: s, goals: goalsLibrary.get(`${normalizeGrade(parseGrade(s.id))}|${(s.name || '').trim().toLowerCase()}`) }))
+      .filter(m => m.goals && m.goals.length)
+
+    if (!matches.length) {
+      toast.add({ severity: 'info', summary: 'Nothing to backfill', detail: 'No matching goals found at other schools for subjects with 0 goals.', life: 3500 })
+      return
+    }
+
+    const proceed = await new Promise(resolve => {
+      confirm.require({
+        message: `${matches.length} of ${candidates.length} subject(s) with 0 goals have a matching subject at another school. Copy those curricular goals in now?`,
+        header: 'Backfill Curricular Goals', icon: 'pi pi-sparkles',
+        rejectLabel: 'Cancel', acceptLabel: `Copy ${matches.length}`,
+        accept: () => resolve(true), reject: () => resolve(false),
+      })
+    })
+    if (!proceed) return
+
+    for (let i = 0; i < matches.length; i += 450) {
+      const chunk = matches.slice(i, i + 450)
+      const batch = writeBatch(db)
+      chunk.forEach(({ subject, goals }) => {
+        batch.set(schoolDoc(props.schoolId, 'subjects', subject.id), {
+          curricular_goals: goals.map(g => ({ ...g })),
+          updated_at: serverTimestamp(),
+          updated_by: auth.currentUser?.email || 'unknown',
+        }, { merge: true })
+      })
+      await batch.commit()
+    }
+
+    toast.add({ severity: 'success', summary: 'Goals backfilled', detail: `${matches.length} subject(s) updated`, life: 3000 })
+    await loadSubjects()
+  } catch (e) {
+    console.error('Backfill goals failed', e)
+    toast.add({ severity: 'error', summary: 'Error', detail: 'Could not backfill goals. Check console.', life: 4000 })
+  } finally {
+    backfilling.value = false
+  }
 }
 
 // ── CSV import/export ────────────────────────────────────────────────────

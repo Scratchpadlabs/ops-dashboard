@@ -488,7 +488,7 @@ async function buildTeachersPlan(schoolId, rows) {
 // scanned once per plan build and indexed by that grade|name key, then a new
 // subject row is auto-filled from it. Only CREATE rows are touched — an
 // existing subject's own curricular_goals are never overwritten by import.
-async function loadGoalsLibrary(schoolId) {
+export async function loadGoalsLibrary(schoolId) {
   const goalsByKey = new Map() // `${normGrade}|${normName}` -> curricular_goals
   try {
     const schoolsSnap = await getDocs(rootSchoolsCollection())
