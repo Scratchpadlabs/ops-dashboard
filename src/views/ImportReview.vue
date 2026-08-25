@@ -236,6 +236,9 @@
           <div class="bg-slate-50 text-slate-500 rounded-lg px-3 py-2">{{ plan.summary.unchanged }} unchanged</div>
           <div class="bg-blue-50 text-blue-700 rounded-lg px-3 py-2">{{ plan.summary.autoFixed }} auto-fixed</div>
         </div>
+        <div v-if="plan.summary.goalsAutoFetched" class="bg-violet-50 text-violet-700 rounded-lg px-3 py-2 text-sm">
+          <i class="pi pi-sparkles mr-1"></i>{{ plan.summary.goalsAutoFetched }} new subject(s) got curricular goals copied in from a matching class/subject at another school — review them in the Subjects tab after committing.
+        </div>
         <div v-if="plan.summary.suggestionsPending" class="bg-amber-50 text-amber-700 rounded-lg px-3 py-2 text-sm">
           <i class="pi pi-exclamation-triangle mr-1"></i>{{ plan.summary.suggestionsPending }} row(s) have a pending suggestion — resolve them in the table above before committing (they'll be skipped otherwise).
         </div>

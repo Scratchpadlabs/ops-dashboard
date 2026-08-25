@@ -19,7 +19,7 @@ import { ref as storageRef, uploadBytes } from 'firebase/storage'
 import { db, storage, auth } from '../firebase/config'
 import {
   stagingImportsCollection, stagingImportDoc, stagingImportRowsCollection,
-  schoolCollection, importAliasDoc,
+  schoolCollection, importAliasDoc, rootSchoolsCollection,
 } from '../firebase/schoolCollections.js'
 import { startProcessImport, commitImportRemote } from '../utils/api.js'
 import { classify, GRADE } from '../utils/educationKB.js'
@@ -482,8 +482,46 @@ async function buildTeachersPlan(schoolId, rows) {
   return summarize('teachers', items)
 }
 
+// Curricular goals for a brand-new subject aren't typed by hand — they're the
+// same goal set another school already keeps for the same grade + subject
+// (e.g. Grade III English). Every other school's subjects collection is
+// scanned once per plan build and indexed by that grade|name key, then a new
+// subject row is auto-filled from it. Only CREATE rows are touched — an
+// existing subject's own curricular_goals are never overwritten by import.
+async function loadGoalsLibrary(schoolId) {
+  const goalsByKey = new Map() // `${normGrade}|${normName}` -> curricular_goals
+  try {
+    const schoolsSnap = await getDocs(rootSchoolsCollection())
+    const otherSchoolIds = schoolsSnap.docs.map(d => d.id).filter(id => id !== schoolId)
+    const subjectSnaps = await Promise.all(
+      otherSchoolIds.map(id => getDocs(schoolCollection(id, 'subjects')).catch(() => null))
+    )
+    subjectSnaps.forEach(snap => {
+      if (!snap) return
+      snap.docs.forEach(d => {
+        const data = d.data()
+        const goals = data.curricular_goals || []
+        if (!goals.length) return
+        const grade = d.id.includes('_') ? d.id.split('_')[0] : ''
+        const name = (data.name || '').trim().toLowerCase()
+        if (!name) return
+        const key = `${normalizeGrade(grade)}|${name}`
+        // Keep the richest match seen so far if more than one school has it.
+        const existing = goalsByKey.get(key)
+        if (!existing || goals.length > existing.length) goalsByKey.set(key, goals)
+      })
+    })
+  } catch (e) {
+    console.error('Could not load curricular goals library', e)
+  }
+  return goalsByKey
+}
+
 async function buildSubjectsPlan(schoolId, rows) {
-  const snap = await getDocs(schoolCollection(schoolId, 'subjects'))
+  const [snap, goalsLibrary] = await Promise.all([
+    getDocs(schoolCollection(schoolId, 'subjects')),
+    loadGoalsLibrary(schoolId),
+  ])
   const existingById = new Map(snap.docs.map(d => [d.id, d.data()]))
   const items = []
   for (const row of rows) {
@@ -498,8 +536,13 @@ async function buildSubjectsPlan(schoolId, rows) {
     const docId = `${slugPart(grade) || 'UNSPECIFIED'}_${slugPart(name)}`
     const payload = { name, area: d.area || '' }
     const existing = existingById.get(docId)
-    if (!existing) items.push({ row, status: 'CREATE', docId, payload })
-    else items.push({ row, status: fieldsEqual(existing, payload, ['name', 'area']) ? 'UPDATE_UNCHANGED' : 'UPDATE_CHANGED', docId, payload })
+    if (!existing) {
+      const goals = goalsLibrary.get(`${normalizeGrade(grade)}|${name.toLowerCase()}`)
+      if (goals && goals.length) payload.curricular_goals = goals.map(g => ({ ...g }))
+      items.push({ row, status: 'CREATE', docId, payload })
+    } else {
+      items.push({ row, status: fieldsEqual(existing, payload, ['name', 'area']) ? 'UPDATE_UNCHANGED' : 'UPDATE_CHANGED', docId, payload })
+    }
   }
   return summarize('subjects', items)
 }
@@ -558,6 +601,7 @@ function summarize(entity, items) {
     changed: items.filter(i => i.status === 'UPDATE_CHANGED').length,
     unchanged: items.filter(i => i.status === 'UPDATE_UNCHANGED').length,
     autoFixed: items.filter(i => committable(i) && (i.row?.fixes || []).length > 0).length,
+    goalsAutoFetched: items.filter(i => i.status === 'CREATE' && (i.payload?.curricular_goals || []).length > 0).length,
     suggestionsPending: items.filter(i => i.status === 'SUGGESTION_PENDING').length,
     errors: items.filter(i => i.status === 'ERROR').length,
   }
