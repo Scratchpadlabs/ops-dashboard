@@ -193,6 +193,11 @@ export const SCHOOL_SCHEMAS = {
       label: f(STRING),
       order: f(NUMBER, { min: 1 }),
       remarks: f(ARRAY, { minLength: 1 }),
+      // Classes this category applies to — derived from the doc-ID band
+      // prefix (e.g. `Foundational_...`) matched against classes' `stage`.
+      // Confirmed live (e.g. schools/Hillgreen_Highschool/remark_categories);
+      // not previously tracked by this schema.
+      classIds: opt(ARRAY),
     },
     check(doc, errors) {
       const remarks = Array.isArray(doc.remarks) ? doc.remarks : []

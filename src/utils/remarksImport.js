@@ -45,11 +45,46 @@ export function categoryDocId(band, category) {
   return b ? `${b}_${c}` : c
 }
 
-function keyNumber(key) {
+export function keyNumber(key) {
   // Tolerates a band prefix, so auto-allocation keeps counting past
   // `foundational_r8` and not just `r8`.
   const m = /(?:^|_)r(\d+)$/.exec(key || '')
   return m ? parseInt(m[1], 10) : 0
+}
+
+// classIds — which classes a category applies to, derived from its band.
+//
+// Not prefix-matching: STAGES (schoolSchema.js) carries a live, load-bearing
+// misspelling — "prepratory" — that "Preparatory" does not reduce to by
+// case-folding alone. An explicit lookup avoids silently mismatching every
+// Preparatory category.
+const BAND_TO_STAGE = {
+  foundation: 'foundation', foundational: 'foundation',
+  preparatory: 'prepratory', prepratory: 'prepratory',
+  middle: 'middle',
+  secondary: 'secondary',
+}
+
+export function stageForBand(band) {
+  return BAND_TO_STAGE[slugPart(band).toLowerCase()] || ''
+}
+
+/**
+ * @param {string} band  e.g. 'Foundational', or '' for an unbanded category
+ * @param {Array} classes  live `classes` docs ({id, stage, isActive, ...})
+ * @returns {string[]} classIds this category applies to
+ *
+ * No band means "applies to all grades" (today's meaning of an unprefixed
+ * doc ID) — every active class. A known band means every active class at
+ * that stage. An unrecognized band string returns no classes rather than
+ * guessing.
+ */
+export function classIdsForCategory(band, classes) {
+  const stage = stageForBand(band)
+  const active = (classes || []).filter(c => c.isActive !== false)
+  if (!band) return active.map(c => c.id)
+  if (!stage) return []
+  return active.filter(c => c.stage === stage).map(c => c.id)
 }
 
 /**
@@ -195,7 +230,7 @@ export function groupRemarkRows(validRows, categories) {
   const byDoc = new Map()
   for (const r of validRows) {
     if (!byDoc.has(r.docId)) {
-      byDoc.set(r.docId, { docId: r.docId, label: r.label, order: r.categoryOrder, remarks: [] })
+      byDoc.set(r.docId, { docId: r.docId, band: r.band, label: r.label, order: r.categoryOrder, remarks: [] })
     }
     const g = byDoc.get(r.docId)
     if (g.order == null && r.categoryOrder != null) g.order = r.categoryOrder
@@ -213,6 +248,7 @@ export function groupRemarkRows(validRows, categories) {
     merged.sort((a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER))
     out.push({
       docId: g.docId,
+      band: g.band,
       isNew: !existing,
       label: g.label,
       order: g.order ?? existing?.order ?? (nextOrder += 1),

@@ -6,6 +6,11 @@
         <Button label="Import CSV" icon="pi pi-upload" size="small" outlined @click="importVisible = true" />
         <Button label="Sample CSV" icon="pi pi-download" size="small" text @click="downloadSample" />
         <Button label="Copy from another school" icon="pi pi-copy" size="small" outlined @click="openCopyDialog" />
+        <Button
+          label="Reassign Classes" icon="pi pi-sync" size="small" outlined
+          :loading="reassigning" :disabled="!categories.length" @click="reassignClasses"
+          v-tooltip="'Resync every category\'s classIds against the school\'s current classes'"
+        />
         <Button label="Add Category" icon="pi pi-plus" size="small" @click="openAddCategory" />
       </div>
     </div>
@@ -112,8 +117,9 @@
           />
         </div>
         <p class="text-xs text-slate-400">
-          Copies all categories and remarks from the source school into this one.
-          New remark keys are assigned fresh — existing keys here are never changed.
+          Copies all categories and remarks from the source school into this one, preserving
+          document IDs and remark keys exactly where nothing here already uses them —
+          only a real conflict gets a fresh ID/key instead.
         </p>
         <div v-if="copyError" class="text-sm text-red-500 bg-red-50 rounded-lg px-3 py-2">{{ copyError }}</div>
       </div>
@@ -151,6 +157,7 @@ import CsvImportDialog from './CsvImportDialog.vue'
 import { toCsv, downloadCsv } from '../../utils/csv.js'
 import {
   REMARK_CSV_COLUMNS, makeRemarkRowClassifier, groupRemarkRows, bandOfId, sampleRemarkRows,
+  classIdsForCategory, keyNumber,
 } from '../../utils/remarksImport.js'
 import { guardedSetDoc, guardedUpdateDoc, guardedBatchSet, SchemaViolation } from '../../schemas/guardedWrite.js'
 import { db } from '../../firebase/config'
@@ -162,6 +169,9 @@ const toast = useToast()
 
 const categories = ref([])
 const loading = ref(false)
+// Live classes for this school — the source of truth `classIds` is computed
+// against, both on write (§2c) and on the bulk "Reassign Classes" pass (§2d).
+const classes = ref([])
 
 async function loadCategories() {
   if (!props.schoolId) { categories.value = []; return }
@@ -174,6 +184,17 @@ async function loadCategories() {
     categories.value = []
   } finally {
     loading.value = false
+  }
+}
+
+async function loadClasses() {
+  if (!props.schoolId) { classes.value = []; return }
+  try {
+    const snap = await getDocs(schoolCollection(props.schoolId, 'classes'))
+    classes.value = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+  } catch (e) {
+    console.error('Could not load classes', e)
+    classes.value = []
   }
 }
 
@@ -212,6 +233,9 @@ async function saveCategory() {
       const nextOrder = categories.value.length ? Math.max(...categories.value.map(c => c.order || 0)) + 1 : 1
       await addDoc(schoolCollection(props.schoolId, 'remark_categories'), {
         label: categoryForm.label.trim(), order: nextOrder, remarks: [],
+        // No band on a manually-added category (its doc ID is a plain
+        // auto-ID) — same meaning as an unprefixed CSV row: all classes.
+        classIds: classIdsForCategory('', classes.value),
         created_at: serverTimestamp(), created_by: auth.currentUser?.email || 'unknown',
       })
     }
@@ -347,24 +371,58 @@ async function copyRemarkBank() {
   copying.value = true
   copyError.value = ''
   try {
-    const snap = await getDocs(query(schoolCollection(copySourceId.value, 'remark_categories'), orderBy('order')))
+    const [snap, classesSnap] = await Promise.all([
+      getDocs(query(schoolCollection(copySourceId.value, 'remark_categories'), orderBy('order'))),
+      getDocs(schoolCollection(props.schoolId, 'classes')),
+    ])
+    const targetClasses = classesSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+    const existingCatIds = new Set(categories.value.map(c => c.id))
+
+    // Keys already spoken for in THIS school — a copied remark can keep its
+    // key only if nothing here already claims it (checked as the copy
+    // proceeds, so two source categories can't both claim the same key).
+    const claimedKeys = new Set()
     let nextKeyNum = 0
     categories.value.forEach(c => (c.remarks || []).forEach(r => {
-      const m = /^r(\d+)$/.exec(r.key || '')
-      if (m) nextKeyNum = Math.max(nextKeyNum, parseInt(m[1], 10))
+      if (r.key) claimedKeys.add(r.key)
+      nextKeyNum = Math.max(nextKeyNum, keyNumber(r.key))
     }))
+
     const batch = writeBatch(db)
     let catOrder = categories.value.length ? Math.max(...categories.value.map(c => c.order || 0)) : 0
     snap.docs.forEach(d => {
       const data = d.data()
+      const sourceId = d.id
       catOrder += 1
+      const band = bandOfId(sourceId)
+
+      // Preserve the key as-authored unless it's already claimed here —
+      // that's the common case for a copy into a fresh school, and the old
+      // "renumber everything" behavior stays as the fallback for a real
+      // collision.
       const remarks = (data.remarks || []).map((r, i) => {
-        nextKeyNum += 1
-        return { key: `r${nextKeyNum}`, text: r.text, type: r.type, order: i + 1 }
+        let key = r.key
+        if (!key || claimedKeys.has(key)) {
+          nextKeyNum += 1
+          key = `r${nextKeyNum}`
+        }
+        claimedKeys.add(key)
+        return { key, text: r.text, type: r.type, order: i + 1 }
       })
-      const newCatRef = doc(schoolCollection(props.schoolId, 'remark_categories'))
-      batch.set(newCatRef, {
+
+      // Same for the doc ID itself — preserved unless a category with that
+      // ID already exists here, in which case fall back to a fresh auto-ID
+      // so nothing gets silently overwritten.
+      const targetRef = existingCatIds.has(sourceId)
+        ? doc(schoolCollection(props.schoolId, 'remark_categories'))
+        : schoolDoc(props.schoolId, 'remark_categories', sourceId)
+
+      // classIds is never copied verbatim — source and target schools have
+      // different class docs — it's recomputed for THIS school from the
+      // category's band (§2b/2c).
+      batch.set(targetRef, {
         label: data.label, order: catOrder, remarks,
+        classIds: classIdsForCategory(band, targetClasses),
         created_at: serverTimestamp(), created_by: auth.currentUser?.email || 'unknown',
       })
     })
@@ -406,6 +464,7 @@ async function runImport(validRows) {
     // malformed group cannot land a half-written batch.
     guardedBatchSet(batch, 'remark_categories', schoolDoc(props.schoolId, 'remark_categories', g.docId), {
       label: g.label, order: g.order, remarks: g.remarks,
+      classIds: classIdsForCategory(g.band, classes.value),
       ...(g.isNew ? { created_at: serverTimestamp(), created_by: auth.currentUser?.email || 'unknown' }
                   : { updated_at: serverTimestamp(), updated_by: auth.currentUser?.email || 'unknown' }),
     }, { merge: true })
@@ -424,8 +483,61 @@ function downloadSample() {
   downloadCsv('remarks_sample.csv', toCsv(sampleRemarkRows(), REMARK_CSV_COLUMNS))
 }
 
-watch(() => props.schoolId, loadCategories)
-onMounted(loadCategories)
+// ── Bulk "Reassign Classes" ──────────────────────────────────────────────
+// Classes get added or renamed after categories were created — this is the
+// one path allowed to overwrite classIds unconditionally, since it's a
+// previewed, explicitly user-triggered resync rather than a side effect of
+// some other edit.
+const reassigning = ref(false)
+
+async function reassignClasses() {
+  if (!props.schoolId) return
+  reassigning.value = true
+  try {
+    const snap = await getDocs(schoolCollection(props.schoolId, 'classes'))
+    const liveClasses = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+    const updates = categories.value
+      .map(cat => ({ cat, next: classIdsForCategory(bandOfId(cat.id), liveClasses) }))
+      .filter(({ cat, next }) => {
+        const cur = [...(cat.classIds || [])].sort()
+        const nxt = [...next].sort()
+        return cur.length !== nxt.length || cur.some((v, i) => v !== nxt[i])
+      })
+
+    if (!updates.length) {
+      toast.add({ severity: 'info', summary: 'Already in sync', detail: "Every category's classIds already matches the school's classes.", life: 3000 })
+      return
+    }
+
+    const proceed = await new Promise(resolve => {
+      confirm.require({
+        message: `${updates.length} of ${categories.value.length} categor${updates.length === 1 ? 'y' : 'ies'} would get an updated class list (new or renamed classes). Apply now?`,
+        header: 'Reassign Classes', icon: 'pi pi-sync',
+        rejectLabel: 'Cancel', acceptLabel: `Update ${updates.length}`,
+        accept: () => resolve(true), reject: () => resolve(false),
+      })
+    })
+    if (!proceed) return
+
+    const batch = writeBatch(db)
+    updates.forEach(({ cat, next }) => {
+      batch.set(schoolDoc(props.schoolId, 'remark_categories', cat.id), {
+        classIds: next, updated_at: serverTimestamp(), updated_by: auth.currentUser?.email || 'unknown',
+      }, { merge: true })
+    })
+    await batch.commit()
+    toast.add({ severity: 'success', summary: 'Classes reassigned', detail: `${updates.length} categor${updates.length === 1 ? 'y' : 'ies'} updated`, life: 3000 })
+    await loadCategories()
+  } catch (e) {
+    console.error('Reassign classes failed', e)
+    toast.add({ severity: 'error', summary: 'Error', detail: 'Could not reassign classes. Check console.', life: 4000 })
+  } finally {
+    reassigning.value = false
+  }
+}
+
+watch(() => props.schoolId, () => { loadCategories(); loadClasses() })
+onMounted(() => { loadCategories(); loadClasses() })
 </script>
 
 <style scoped>

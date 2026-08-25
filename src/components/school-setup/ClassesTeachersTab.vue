@@ -2,8 +2,21 @@
   <div class="pt-4">
     <div class="flex items-center justify-between mb-3">
       <div class="text-sm font-bold text-slate-900">Classes &amp; Teachers</div>
-      <Button label="Add Section" icon="pi pi-plus" size="small" @click="openAddSection" />
+      <div class="flex gap-2">
+        <Button label="Import CSV" icon="pi pi-upload" size="small" outlined @click="importVisible = true" />
+        <Button label="Sample CSV" icon="pi pi-download" size="small" text @click="downloadSample" />
+        <Button label="Export CSV" icon="pi pi-file-export" size="small" text @click="exportCsv" />
+        <Button label="Add Section" icon="pi pi-plus" size="small" @click="openAddSection" />
+      </div>
     </div>
+
+    <CsvImportDialog
+      v-model:visible="importVisible"
+      title="Import Classes CSV"
+      :column-keys="CLASS_CSV_COLUMNS"
+      :classify-row="classifyImportRow"
+      :on-confirm="runImport"
+    />
 
     <div v-if="loading" class="flex items-center justify-center py-10">
       <ProgressSpinner style="width:28px;height:28px" />
@@ -20,13 +33,19 @@
           <tr v-for="grade in allGrades" :key="grade" class="border-b border-slate-100">
             <td class="px-3 py-2 font-medium text-slate-700">{{ grade }}</td>
             <td v-for="sec in allSections" :key="sec" class="px-3 py-2">
-              <button
-                v-if="classByGradeSection(grade, sec)"
-                type="button"
-                class="px-2.5 py-1 rounded-full text-xs font-semibold"
-                :class="classByGradeSection(grade, sec).isActive !== false ? 'bg-blue-50 text-blue-700 hover:bg-blue-100' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'"
-                @click="openSectionEditor(classByGradeSection(grade, sec))"
-              >{{ grade }}_{{ sec }}</button>
+              <span v-if="classByGradeSection(grade, sec)" class="inline-flex items-center gap-0.5">
+                <button
+                  type="button"
+                  class="px-2.5 py-1 rounded-full text-xs font-semibold"
+                  :class="classByGradeSection(grade, sec).isActive !== false ? 'bg-blue-50 text-blue-700 hover:bg-blue-100' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'"
+                  @click="openSectionEditor(classByGradeSection(grade, sec))"
+                >{{ grade }}_{{ sec }}</button>
+                <button
+                  type="button" class="pi pi-users text-xs text-slate-300 hover:text-violet-600 px-1"
+                  v-tooltip="'Teacher Assignments'"
+                  @click="openTeacherMatrix(classByGradeSection(grade, sec))"
+                ></button>
+              </span>
               <button v-else type="button" class="text-xs text-slate-300 hover:text-violet-600" @click="openAddSection(grade, sec)">+ add</button>
             </td>
           </tr>
@@ -153,11 +172,15 @@ import ConfirmDialog from 'primevue/confirmdialog'
 
 import { schoolCollection, schoolDoc } from '../../firebase/schoolCollections.js'
 import ConfigEmptyState from './ConfigEmptyState.vue'
-import { auth } from '../../firebase/config'
+import CsvImportDialog from './CsvImportDialog.vue'
+import { auth, db } from '../../firebase/config'
+import { writeBatch } from 'firebase/firestore'
 import { regenerateStudentsSchemaClassOptions } from '../../utils/schoolSetupHelpers.js'
 import KbClassifiedInput from '../shared/KbClassifiedInput.vue'
 import { useEducationKB } from '../../composables/useEducationKB.js'
 import { GRADE, SECTION, OTHER } from '../../utils/educationKB.js'
+import { guardedBatchSet } from '../../schemas/guardedWrite.js'
+import { toCsv, downloadCsv } from '../../utils/csv.js'
 
 const props = defineProps({ schoolId: { type: String, default: null } })
 const confirm = useConfirm()
@@ -392,6 +415,69 @@ async function saveTeacherMatrix() {
   } finally {
     savingMatrix.value = false
   }
+}
+
+// ── CSV import/export ────────────────────────────────────────────────────
+// Base class fields only (clazz/section/stage/name/isActive) — same
+// precedent as SubjectsTab's CSV excluding curricular_goals: `subjects[]`
+// is a nested, per-subject-topic structure that doesn't flatten into a row,
+// so a bulk-added class starts with no subjects and gets them attached
+// through the section editor above, same as it already works today. An
+// UPDATE row never touches an existing class's `subjects[]` for the same
+// reason — it isn't part of the payload at all.
+const CLASS_STAGE_VALUES = stageOptions.map(s => s.value)
+const CLASS_CSV_COLUMNS = ['clazz', 'section', 'stage', 'name', 'isActive']
+const importVisible = ref(false)
+
+async function classifyImportRow(raw) {
+  const clazz = (raw.clazz || '').trim()
+  const section = (raw.section || '').trim()
+  if (!clazz) return { raw, _status: 'ERROR', _reason: 'Missing clazz' }
+  if (!section) return { raw, _status: 'ERROR', _reason: 'Missing section' }
+  const stage = (raw.stage || '').trim() || 'foundation'
+  if (!CLASS_STAGE_VALUES.includes(stage)) {
+    return { raw, _status: 'ERROR', _reason: `stage must be one of ${CLASS_STAGE_VALUES.join(', ')}` }
+  }
+  const isActiveRaw = (raw.isActive ?? '').toString().trim().toLowerCase()
+  const isActive = isActiveRaw === '' ? true : ['true', 'yes', '1'].includes(isActiveRaw)
+  const id = `${clazz}_${section}`
+  const name = (raw.name || '').trim() || `${clazz} ${section}`
+  const existing = classes.value.find(c => c.id === id)
+  return { raw, id, _status: existing ? 'UPDATE' : 'CREATE', payload: { clazz, section, stage, name, isActive } }
+}
+
+async function runImport(validRows) {
+  const batch = writeBatch(db)
+  for (const r of validRows) {
+    const payload = { ...r.payload, updated_at: serverTimestamp(), updated_by: auth.currentUser?.email || 'unknown' }
+    if (r._status === 'CREATE') {
+      payload.id = r.id
+      payload.created_at = serverTimestamp()
+      payload.created_by = auth.currentUser?.email || 'unknown'
+    }
+    guardedBatchSet(batch, 'classes', schoolDoc(props.schoolId, 'classes', r.id), payload, { merge: true })
+  }
+  await batch.commit()
+  toast.add({ severity: 'success', summary: 'Imported', detail: `${validRows.length} class(es)`, life: 3000 })
+  await loadAll()
+  await regenerateStudentsSchemaClassOptions(props.schoolId, classes.value.map(c => c.id))
+  return true
+}
+
+function downloadSample() {
+  const sample = [
+    { clazz: 'III', section: 'A', stage: 'foundation', name: 'III A', isActive: 'true' },
+    { clazz: 'III', section: 'B', stage: 'foundation', name: 'III B', isActive: 'true' },
+    { clazz: 'VI', section: 'A', stage: 'middle', name: 'VI A', isActive: 'true' },
+  ]
+  downloadCsv('classes_sample.csv', toCsv(sample, CLASS_CSV_COLUMNS))
+}
+
+function exportCsv() {
+  const rows = classes.value.map(c => ({
+    clazz: c.clazz, section: c.section, stage: c.stage || '', name: c.name || '', isActive: c.isActive !== false,
+  }))
+  downloadCsv(`classes_${props.schoolId}.csv`, toCsv(rows, CLASS_CSV_COLUMNS))
 }
 
 watch(() => props.schoolId, loadAll)
