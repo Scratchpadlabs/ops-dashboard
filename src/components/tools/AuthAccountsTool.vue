@@ -76,11 +76,23 @@ import { ref } from 'vue'
 import Button from 'primevue/button'
 import Checkbox from 'primevue/checkbox'
 
+import { getDocs, query, orderBy, limit } from 'firebase/firestore'
 import SchoolSearchSelect from '../shared/SchoolSearchSelect.vue'
-import { useAllSchools } from '../../composables/useAllSchools.js'
+import { rootSchoolsCollection } from '../../firebase/schoolCollections.js'
 import { createAuthAccountsRemote } from '../../utils/api.js'
 
-const { allSchools, loadAllSchools } = useAllSchools()
+// The root `schools/{schoolId}` tree — where students/staffs actually live —
+// NOT operations/ops/schools (useAllSchools), which is the ops-CRM list used
+// for quotations/invoices/agreements and has a completely different id space.
+// See src/firebase/schoolCollections.js and functions/DEPLOY.md's note on the
+// two school id spaces never being linked.
+const allSchools = ref([])
+async function loadAllSchools() {
+  const snap = await getDocs(query(rootSchoolsCollection(), orderBy('name'), limit(500)))
+  allSchools.value = snap.docs
+    .map(d => ({ ...d.data(), id: d.id }))
+    .filter(s => s.isActive !== false)
+}
 loadAllSchools()
 
 const schoolQuery = ref('')
