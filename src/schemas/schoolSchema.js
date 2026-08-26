@@ -129,6 +129,7 @@ export const SCHOOL_SCHEMAS = {
       if (typeof doc.area === 'string' && doc.area.toLowerCase().replace(/[^a-z]/g, '') === 'coscholastic') {
         errors.push({ field: 'area', reason: 'Co-Scholastic records belong in co_scholastic_activities, not subjects' })
       }
+      checkSubjectTopics(doc, errors)
     },
   },
 
@@ -294,6 +295,36 @@ function checkMarkedItem(doc, errors) {
   if (!needsFactor && doc.conversionFactor != null && doc.conversionType === 'none') {
     errors.push({ field: 'conversionFactor', reason: 'must be null when conversionType is "none"' })
   }
+}
+
+/**
+ * subjects.topics — legacy docs hold plain strings; topics added or edited
+ * through the topic editor hold `{ topic, description?, quiz? }`, where each
+ * quiz question is `{ question, options[], correctIndex }`. Both shapes are
+ * accepted so existing string topics stay editable without a migration.
+ */
+function checkSubjectTopics(doc, errors) {
+  const topics = Array.isArray(doc.topics) ? doc.topics : []
+  topics.forEach((t, i) => {
+    if (typeof t === 'string') return
+    if (!t || typeof t !== 'object') return errors.push({ field: `topics[${i}]`, reason: 'must be a string or an object' })
+    if (typeof t.topic !== 'string' || !t.topic.trim()) errors.push({ field: `topics[${i}].topic`, reason: 'required string' })
+    if (t.description != null && typeof t.description !== 'string') errors.push({ field: `topics[${i}].description`, reason: 'must be a string' })
+    const quiz = t.quiz
+    if (quiz == null) return
+    if (!Array.isArray(quiz)) return errors.push({ field: `topics[${i}].quiz`, reason: 'must be an array' })
+    quiz.forEach((q, qi) => {
+      const path = `topics[${i}].quiz[${qi}]`
+      if (!q || typeof q !== 'object') return errors.push({ field: path, reason: 'must be an object' })
+      if (typeof q.question !== 'string' || !q.question.trim()) errors.push({ field: `${path}.question`, reason: 'required string' })
+      const options = Array.isArray(q.options) ? q.options : null
+      if (!options || options.length < 2) errors.push({ field: `${path}.options`, reason: 'needs at least 2 option(s)' })
+      else if (options.some(o => typeof o !== 'string' || !o.trim())) errors.push({ field: `${path}.options`, reason: 'every option must be a non-empty string' })
+      if (typeof q.correctIndex !== 'number' || !options || q.correctIndex < 0 || q.correctIndex >= options.length) {
+        errors.push({ field: `${path}.correctIndex`, reason: 'must index an existing option' })
+      }
+    })
+  })
 }
 
 // ── type checking ───────────────────────────────────────────────────────────

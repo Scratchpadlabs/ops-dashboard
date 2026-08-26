@@ -54,6 +54,9 @@
             <Column field="curricular_goals" header="Goals" style="width:100px">
               <template #body="{ data }"><span class="text-xs text-slate-400">{{ (data.curricular_goals || []).length }}</span></template>
             </Column>
+            <Column field="topics" header="Topics" style="width:100px">
+              <template #body="{ data }"><span class="text-xs text-slate-400">{{ (data.topics || []).length }}</span></template>
+            </Column>
             <Column header="" style="width:80px">
               <template #body="{ data }">
                 <Button icon="pi pi-pencil" text rounded size="small" @click="openEditSubject(data)" />
@@ -161,11 +164,42 @@
           <p v-if="!form.goals.length" class="text-xs text-slate-400">No goals yet.</p>
         </div>
 
-        <div v-if="editingSubject && (editingSubject.topics || []).length">
-          <label class="form-label">Topics (read-only)</label>
-          <div class="bg-slate-50 rounded-lg p-3 text-xs text-slate-500 max-h-32 overflow-auto">
-            <div v-for="(t, i) in editingSubject.topics" :key="i">{{ typeof t === 'string' ? t : (t.topic || JSON.stringify(t)) }}</div>
+        <div v-if="!isCoScholasticForm">
+          <div class="flex items-center justify-between mb-2">
+            <label class="form-label mb-0">Topics</label>
+            <button type="button" class="text-xs text-violet-600 font-semibold" @click="addTopic">+ Add Topic</button>
           </div>
+          <div v-for="(topic, ti) in form.topics" :key="ti" class="border border-slate-200 rounded-lg p-3 mb-2">
+            <div class="flex items-center gap-2 mb-2">
+              <InputText v-model="topic.topic" placeholder="Topic name" class="flex-1 text-sm" />
+              <Button icon="pi pi-trash" text rounded size="small" severity="danger" @click="form.topics.splice(ti, 1)" />
+            </div>
+            <InputText v-model="topic.description" placeholder="Description (optional)" class="w-full text-sm mb-2" />
+
+            <div class="ml-4">
+              <div class="flex items-center justify-between mb-1">
+                <span class="text-xs font-semibold text-slate-500">Quiz</span>
+                <button type="button" class="text-xs text-violet-600 font-semibold" @click="addQuizQuestion(topic)">+ Add Question</button>
+              </div>
+              <div v-for="(q, qi) in topic.quiz" :key="qi" class="bg-slate-50 rounded-lg p-2 mb-1.5">
+                <div class="flex items-center gap-2 mb-1.5">
+                  <InputText v-model="q.question" placeholder="Question" class="flex-1 text-sm" />
+                  <Button icon="pi pi-trash" text rounded size="small" severity="danger" @click="topic.quiz.splice(qi, 1)" />
+                </div>
+                <div v-for="(opt, oi) in q.options" :key="oi" class="flex items-center gap-2 mb-1 ml-4">
+                  <RadioButton :modelValue="q.correctIndex" :value="oi" @update:modelValue="q.correctIndex = oi" v-tooltip="'Correct answer'" />
+                  <InputText v-model="q.options[oi]" placeholder="Option text" class="flex-1 text-sm" />
+                  <Button
+                    icon="pi pi-trash" text rounded size="small" severity="danger" :disabled="q.options.length <= 2"
+                    @click="removeQuizOption(q, oi)"
+                  />
+                </div>
+                <button type="button" class="text-xs text-violet-600 font-semibold ml-4" @click="q.options.push('')">+ Add Option</button>
+              </div>
+              <p v-if="!(topic.quiz || []).length" class="text-xs text-slate-400">No quiz questions yet.</p>
+            </div>
+          </div>
+          <p v-if="!form.topics.length" class="text-xs text-slate-400">No topics yet.</p>
         </div>
 
         <div v-if="formError" class="text-sm text-red-500 bg-red-50 rounded-lg px-3 py-2">{{ formError }}</div>
@@ -229,6 +263,7 @@ import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
 import Select from 'primevue/select'
+import RadioButton from 'primevue/radiobutton'
 import ProgressSpinner from 'primevue/progressspinner'
 import ConfirmDialog from 'primevue/confirmdialog'
 import CsvImportDialog from './CsvImportDialog.vue'
@@ -333,7 +368,7 @@ const editingSubject = ref(null)
 const saving = ref(false)
 const formError = ref('')
 const form = reactive({
-  grade: '', name: '', id: '', goals: [], area: '', name_original: '',
+  grade: '', name: '', id: '', goals: [], topics: [], area: '', name_original: '',
   termId: null, entryType: CO_DEFAULTS.entryType, maxMarks: CO_DEFAULTS.maxMarks,
   gradingScaleId: null, conversionType: CO_DEFAULTS.conversionType, conversionFactor: null, order: 1,
 })
@@ -399,7 +434,7 @@ function goalsToDoc(goals) {
 function openAddSubject() {
   editingSubject.value = null
   Object.assign(form, {
-    grade: '', name: '', id: '', goals: [], area: '', name_original: '',
+    grade: '', name: '', id: '', goals: [], topics: [], area: '', name_original: '',
     termId: terms.value.length === 1 ? terms.value[0].id : null, ...CO_DEFAULTS, order: 1,
   })
   formError.value = ''
@@ -410,7 +445,7 @@ function openEditSubject(subject) {
   editingSubject.value = subject
   Object.assign(form, {
     grade: parseGrade(subject.id), name: subject.name || '', id: subject.id, goals: goalsFromDoc(subject),
-    area: subject.area || '', name_original: subject.name_original || '',
+    topics: topicsFromDoc(subject), area: subject.area || '', name_original: subject.name_original || '',
   })
   formError.value = ''
   dialogVisible.value = true
@@ -418,6 +453,52 @@ function openEditSubject(subject) {
 
 function addGoal() {
   form.goals.push({ goal: '', competencies: [''] })
+}
+
+// ── Topics + quiz ────────────────────────────────────────────────────────
+// Legacy docs hold plain strings (or bare {topic} objects); the editor
+// upgrades whatever it finds into the full { topic, description, quiz } shape
+// the moment it's opened, so editing a legacy topic never loses its name.
+function topicsFromDoc(doc) {
+  return (doc.topics || []).map(t => {
+    if (typeof t === 'string') return { topic: t, description: '', quiz: [] }
+    return {
+      topic: t.topic || '',
+      description: t.description || '',
+      quiz: (t.quiz || []).map(q => ({ question: q.question || '', options: [...(q.options || ['', ''])], correctIndex: q.correctIndex || 0 })),
+    }
+  })
+}
+function topicsToDoc(topics) {
+  return topics
+    .filter(t => t.topic.trim())
+    .map(t => ({
+      topic: t.topic.trim(),
+      description: t.description.trim(),
+      quiz: (t.quiz || [])
+        .filter(q => q.question.trim() && q.options.filter(o => o.trim()).length >= 2)
+        .map(q => {
+          const options = q.options.map(o => o.trim()).filter(Boolean)
+          // Re-anchor the correct answer to its new position if trimming
+          // blank options shifted the list.
+          const correctText = q.options[q.correctIndex]
+          const correctIndex = options.indexOf((correctText || '').trim())
+          return { question: q.question.trim(), options, correctIndex: correctIndex >= 0 ? correctIndex : 0 }
+        }),
+    }))
+}
+
+function addTopic() {
+  form.topics.push({ topic: '', description: '', quiz: [] })
+}
+function addQuizQuestion(topic) {
+  topic.quiz = topic.quiz || []
+  topic.quiz.push({ question: '', options: ['', ''], correctIndex: 0 })
+}
+function removeQuizOption(q, oi) {
+  q.options.splice(oi, 1)
+  if (q.correctIndex >= q.options.length) q.correctIndex = q.options.length - 1
+  else if (q.correctIndex > oi) q.correctIndex -= 1
 }
 
 function validateSubject() {
@@ -436,6 +517,15 @@ function validateSubject() {
   if (!form.grade.trim()) return 'Grade is required'
   if (!form.id.trim()) return 'Doc ID is required'
   if (!editingSubject.value && subjects.value.some(s => s.id === form.id.trim())) return 'A subject with this ID already exists'
+  for (const topic of form.topics) {
+    if (!topic.topic.trim()) continue
+    for (const q of topic.quiz || []) {
+      if (!q.question.trim()) continue
+      const filled = q.options.filter(o => o.trim())
+      if (filled.length < 2) return `"${topic.topic.trim()}": each quiz question needs at least 2 options`
+      if (!q.options[q.correctIndex] || !q.options[q.correctIndex].trim()) return `"${topic.topic.trim()}": pick a non-empty correct answer`
+    }
+  }
   return ''
 }
 
@@ -466,6 +556,7 @@ async function saveSubject() {
       area: form.area || areaFor(form.name),
       name_original: form.name_original || '',
       curricular_goals: goalsToDoc(form.goals),
+      topics: topicsToDoc(form.topics),
       updated_at: serverTimestamp(),
       updated_by: auth.currentUser?.email || 'unknown',
     }
