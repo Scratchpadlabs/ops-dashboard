@@ -88,7 +88,7 @@ def _process_role(db, school_ref, role: str, dry_run: bool) -> dict:
             pending = 0
 
     for doc_snap in candidates:
-        doc = doc_snap.data() or {}
+        doc = doc_snap.to_dict() or {}
         email = (doc.get("email") or "").strip().lower()
         label = _display_name(doc) or doc_snap.id
 
