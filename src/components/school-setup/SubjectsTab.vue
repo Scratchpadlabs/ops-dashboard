@@ -170,34 +170,19 @@
             <button type="button" class="text-xs text-violet-600 font-semibold" @click="addTopic">+ Add Topic</button>
           </div>
           <div v-for="(topic, ti) in form.topics" :key="ti" class="border border-slate-200 rounded-lg p-3 mb-2">
-            <div class="flex items-center gap-2 mb-2">
-              <InputText v-model="topic.topic" placeholder="Topic name" class="flex-1 text-sm" />
-              <Button icon="pi pi-trash" text rounded size="small" severity="danger" @click="form.topics.splice(ti, 1)" />
-            </div>
-            <InputText v-model="topic.description" placeholder="Description (optional)" class="w-full text-sm mb-2" />
-
-            <div class="ml-4">
-              <div class="flex items-center justify-between mb-1">
-                <span class="text-xs font-semibold text-slate-500">Quiz</span>
-                <button type="button" class="text-xs text-violet-600 font-semibold" @click="addQuizQuestion(topic)">+ Add Question</button>
+            <template v-if="topic._raw !== undefined">
+              <p class="text-xs text-slate-400">
+                Not editable here — this topic uses a structure this editor doesn't recognize
+                (kept as-is when you save): <span class="font-mono">{{ JSON.stringify(topic._raw) }}</span>
+              </p>
+            </template>
+            <template v-else>
+              <div class="flex items-center gap-2 mb-2">
+                <InputText v-model="topic.topic" placeholder="Topic name" class="flex-1 text-sm" />
+                <Button icon="pi pi-trash" text rounded size="small" severity="danger" @click="form.topics.splice(ti, 1)" />
               </div>
-              <div v-for="(q, qi) in topic.quiz" :key="qi" class="bg-slate-50 rounded-lg p-2 mb-1.5">
-                <div class="flex items-center gap-2 mb-1.5">
-                  <InputText v-model="q.question" placeholder="Question" class="flex-1 text-sm" />
-                  <Button icon="pi pi-trash" text rounded size="small" severity="danger" @click="topic.quiz.splice(qi, 1)" />
-                </div>
-                <div v-for="(opt, oi) in q.options" :key="oi" class="flex items-center gap-2 mb-1 ml-4">
-                  <RadioButton :modelValue="q.correctIndex" :value="oi" @update:modelValue="q.correctIndex = oi" v-tooltip="'Correct answer'" />
-                  <InputText v-model="q.options[oi]" placeholder="Option text" class="flex-1 text-sm" />
-                  <Button
-                    icon="pi pi-trash" text rounded size="small" severity="danger" :disabled="q.options.length <= 2"
-                    @click="removeQuizOption(q, oi)"
-                  />
-                </div>
-                <button type="button" class="text-xs text-violet-600 font-semibold ml-4" @click="q.options.push('')">+ Add Option</button>
-              </div>
-              <p v-if="!(topic.quiz || []).length" class="text-xs text-slate-400">No quiz questions yet.</p>
-            </div>
+              <InputText v-model="topic.description" placeholder="Description (optional)" class="w-full text-sm" />
+            </template>
           </div>
           <p v-if="!form.topics.length" class="text-xs text-slate-400">No topics yet.</p>
         </div>
@@ -263,7 +248,6 @@ import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
 import Select from 'primevue/select'
-import RadioButton from 'primevue/radiobutton'
 import ProgressSpinner from 'primevue/progressspinner'
 import ConfirmDialog from 'primevue/confirmdialog'
 import CsvImportDialog from './CsvImportDialog.vue'
@@ -455,50 +439,27 @@ function addGoal() {
   form.goals.push({ goal: '', competencies: [''] })
 }
 
-// ── Topics + quiz ────────────────────────────────────────────────────────
-// Legacy docs hold plain strings (or bare {topic} objects); the editor
-// upgrades whatever it finds into the full { topic, description, quiz } shape
-// the moment it's opened, so editing a legacy topic never loses its name.
+// ── Topics ───────────────────────────────────────────────────────────────
+// Legacy docs hold plain strings, or objects this editor wrote itself
+// ({ topic, description }). Some subjects in production carry topics in
+// other shapes entirely (e.g. a cost/activity structure) that nothing in
+// this codebase produced — those are kept as opaque `_raw` entries so
+// editing a subject's name or goals never silently destroys them.
 function topicsFromDoc(doc) {
   return (doc.topics || []).map(t => {
-    if (typeof t === 'string') return { topic: t, description: '', quiz: [] }
-    return {
-      topic: t.topic || '',
-      description: t.description || '',
-      quiz: (t.quiz || []).map(q => ({ question: q.question || '', options: [...(q.options || ['', ''])], correctIndex: q.correctIndex || 0 })),
-    }
+    if (typeof t === 'string') return { topic: t, description: '' }
+    if (t && typeof t === 'object' && typeof t.topic === 'string') return { topic: t.topic, description: t.description || '' }
+    return { _raw: t }
   })
 }
 function topicsToDoc(topics) {
   return topics
-    .filter(t => t.topic.trim())
-    .map(t => ({
-      topic: t.topic.trim(),
-      description: t.description.trim(),
-      quiz: (t.quiz || [])
-        .filter(q => q.question.trim() && q.options.filter(o => o.trim()).length >= 2)
-        .map(q => {
-          const options = q.options.map(o => o.trim()).filter(Boolean)
-          // Re-anchor the correct answer to its new position if trimming
-          // blank options shifted the list.
-          const correctText = q.options[q.correctIndex]
-          const correctIndex = options.indexOf((correctText || '').trim())
-          return { question: q.question.trim(), options, correctIndex: correctIndex >= 0 ? correctIndex : 0 }
-        }),
-    }))
+    .map(t => (t._raw !== undefined ? t._raw : (t.topic.trim() ? { topic: t.topic.trim(), description: t.description.trim() } : null)))
+    .filter(t => t != null)
 }
 
 function addTopic() {
-  form.topics.push({ topic: '', description: '', quiz: [] })
-}
-function addQuizQuestion(topic) {
-  topic.quiz = topic.quiz || []
-  topic.quiz.push({ question: '', options: ['', ''], correctIndex: 0 })
-}
-function removeQuizOption(q, oi) {
-  q.options.splice(oi, 1)
-  if (q.correctIndex >= q.options.length) q.correctIndex = q.options.length - 1
-  else if (q.correctIndex > oi) q.correctIndex -= 1
+  form.topics.push({ topic: '', description: '' })
 }
 
 function validateSubject() {
@@ -517,15 +478,6 @@ function validateSubject() {
   if (!form.grade.trim()) return 'Grade is required'
   if (!form.id.trim()) return 'Doc ID is required'
   if (!editingSubject.value && subjects.value.some(s => s.id === form.id.trim())) return 'A subject with this ID already exists'
-  for (const topic of form.topics) {
-    if (!topic.topic.trim()) continue
-    for (const q of topic.quiz || []) {
-      if (!q.question.trim()) continue
-      const filled = q.options.filter(o => o.trim())
-      if (filled.length < 2) return `"${topic.topic.trim()}": each quiz question needs at least 2 options`
-      if (!q.options[q.correctIndex] || !q.options[q.correctIndex].trim()) return `"${topic.topic.trim()}": pick a non-empty correct answer`
-    }
-  }
   return ''
 }
 

@@ -298,32 +298,19 @@ function checkMarkedItem(doc, errors) {
 }
 
 /**
- * subjects.topics — legacy docs hold plain strings; topics added or edited
- * through the topic editor hold `{ topic, description?, quiz? }`, where each
- * quiz question is `{ question, options[], correctIndex }`. Both shapes are
- * accepted so existing string topics stay editable without a migration.
+ * subjects.topics has no single shape in production — plain strings,
+ * `{ topic, description? }` from the topic editor, and other structures
+ * (e.g. a cost/activity shape seen on at least one live subject) that
+ * nothing in this codebase produced. Only check the fields the editor
+ * itself writes; leave anything else alone so this never rejects a write
+ * that's passing an unrecognized shape through unmodified.
  */
 function checkSubjectTopics(doc, errors) {
   const topics = Array.isArray(doc.topics) ? doc.topics : []
   topics.forEach((t, i) => {
-    if (typeof t === 'string') return
-    if (!t || typeof t !== 'object') return errors.push({ field: `topics[${i}]`, reason: 'must be a string or an object' })
-    if (typeof t.topic !== 'string' || !t.topic.trim()) errors.push({ field: `topics[${i}].topic`, reason: 'required string' })
+    if (typeof t === 'string' || !t || typeof t !== 'object') return
+    if (t.topic != null && typeof t.topic !== 'string') errors.push({ field: `topics[${i}].topic`, reason: 'must be a string' })
     if (t.description != null && typeof t.description !== 'string') errors.push({ field: `topics[${i}].description`, reason: 'must be a string' })
-    const quiz = t.quiz
-    if (quiz == null) return
-    if (!Array.isArray(quiz)) return errors.push({ field: `topics[${i}].quiz`, reason: 'must be an array' })
-    quiz.forEach((q, qi) => {
-      const path = `topics[${i}].quiz[${qi}]`
-      if (!q || typeof q !== 'object') return errors.push({ field: path, reason: 'must be an object' })
-      if (typeof q.question !== 'string' || !q.question.trim()) errors.push({ field: `${path}.question`, reason: 'required string' })
-      const options = Array.isArray(q.options) ? q.options : null
-      if (!options || options.length < 2) errors.push({ field: `${path}.options`, reason: 'needs at least 2 option(s)' })
-      else if (options.some(o => typeof o !== 'string' || !o.trim())) errors.push({ field: `${path}.options`, reason: 'every option must be a non-empty string' })
-      if (typeof q.correctIndex !== 'number' || !options || q.correctIndex < 0 || q.correctIndex >= options.length) {
-        errors.push({ field: `${path}.correctIndex`, reason: 'must index an existing option' })
-      }
-    })
   })
 }
 

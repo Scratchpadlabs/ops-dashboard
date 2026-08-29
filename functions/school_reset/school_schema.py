@@ -109,6 +109,26 @@ def _check_subjects(doc, errors):
     if isinstance(area, str) and re.sub(r"[^a-z]", "", area.lower()) == "coscholastic":
         errors.append(("area",
                        "Co-Scholastic records belong in co_scholastic_activities, not subjects"))
+    _check_subject_topics(doc, errors)
+
+
+def _check_subject_topics(doc, errors):
+    """subjects.topics has no single shape in production — plain strings,
+    {topic, description?} from the topic editor, and other structures (e.g.
+    a cost/activity shape seen on at least one live subject) that nothing
+    in this codebase produced. Only check the fields the editor itself
+    writes; leave anything else alone so this never rejects a write that's
+    passing an unrecognized shape through unmodified."""
+    topics = doc.get("topics") if isinstance(doc.get("topics"), list) else []
+    for i, t in enumerate(topics):
+        if isinstance(t, str) or not isinstance(t, dict):
+            continue
+        topic = t.get("topic")
+        if topic is not None and not isinstance(topic, str):
+            errors.append((f"topics[{i}].topic", "must be a string"))
+        description = t.get("description")
+        if description is not None and not isinstance(description, str):
+            errors.append((f"topics[{i}].description", "must be a string"))
 
 
 def _check_classes(doc, errors):
