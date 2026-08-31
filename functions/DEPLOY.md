@@ -1,5 +1,39 @@
 # Cloud Functions — Deploy Guide
 
+## add_practice_topic (NEW)
+
+Backs the "Add Practice Topics" action in School Setup. Adds one "Practice
+Topic" to every subject in a school (and the matching class-subject entries),
+so teachers have a real, already-working subject to practice on — verified
+manually against Hillgreen_Highschool (138 subjects, 415 class-subject
+entries) and confirmed loading correctly in the teacher app. See the
+module docstring in main.py for the exact doc shapes touched.
+
+`dryRun` defaults to true — the caller must explicitly pass `dryRun: false`
+to actually write. Idempotent: re-running only touches subjects/classes that
+don't already have the topic, so it's safe to call again after a new school
+is onboarded or new subjects are added.
+
+### Files needed in the folder:
+- main.py ✅
+- requirements.txt ✅
+
+### Deploy:
+```
+cd functions/add_practice_topic
+
+gcloud functions deploy add_practice_topic \
+  --gen2 --runtime python312 --region asia-south1 \
+  --source . --entry-point add_practice_topic \
+  --trigger-http --allow-unauthenticated --project clarified-1501 \
+  --memory 512MB --timeout 300s --max-instances 3
+```
+No secrets, no new IAM — plain Firestore reader/writer under the runtime
+service account's existing `roles/editor`. No firestore.rules change: the
+Admin SDK bypasses rules, same as every other callable in this file.
+
+---
+
 ## generate_pending_letter (v2: compose dialog, draft/render modes)
 
 PDF per school listing outstanding pending items from the Data Receivable
