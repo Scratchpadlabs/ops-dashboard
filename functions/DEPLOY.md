@@ -1,5 +1,38 @@
 # Cloud Functions — Deploy Guide
 
+## school_health_check (NEW)
+
+READ-ONLY structural audit of a school's Firestore tree — collection
+presence, subject topic shape (the exact bug that broke the demo class:
+topics written by the dashboard's Subjects-tab topic editor use
+`{topic, description, quiz}`, but the teacher app reads activities from
+`{id, name, cost, survey_initiated_by}` — this flags every subject that only
+has the former), class→subject and staff→class/subject referential
+integrity, and student `currentClassId` validity (the known garbage-value
+issue from AUDIT.md). No write path exists in this function at all.
+
+Hillgreen_Highschool was confirmed correct by hand — use it as the reference
+when reading a report on another school.
+
+### Files needed in the folder:
+- main.py ✅
+- requirements.txt ✅
+
+### Deploy:
+```
+cd functions/school_health_check
+
+gcloud functions deploy school_health_check \
+  --gen2 --runtime python312 --region asia-south1 \
+  --source . --entry-point school_health_check \
+  --trigger-http --allow-unauthenticated --project clarified-1501 \
+  --memory 1024MB --timeout 300s --max-instances 3
+```
+No secrets, no new IAM, no firestore.rules change — same as every other
+callable in this file.
+
+---
+
 ## add_practice_topic (NEW)
 
 Backs the "Add Practice Topics" action in School Setup. Adds one "Practice
