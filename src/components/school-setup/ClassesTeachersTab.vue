@@ -184,7 +184,7 @@ import { regenerateStudentsSchemaClassOptions } from '../../utils/schoolSetupHel
 import KbClassifiedInput from '../shared/KbClassifiedInput.vue'
 import { useEducationKB } from '../../composables/useEducationKB.js'
 import { GRADE, SECTION, OTHER } from '../../utils/educationKB.js'
-import { guardedBatchSet, guardedSetDoc, guardedUpdateDoc, SchemaViolation } from '../../schemas/guardedWrite.js'
+import { guardedBatchSet } from '../../schemas/guardedWrite.js'
 import { toCsv, downloadCsv } from '../../utils/csv.js'
 
 const props = defineProps({ schoolId: { type: String, default: null } })
@@ -391,11 +391,19 @@ function trainingTopics(subjectId) {
   }))
 }
 
-// subjects/{id}.topics shape — matches SubjectsTab's topicsToDoc()
-// ({topic, description, quiz}), distinct from the per-class-subject topics
-// above (which carry id/isCompleted/completedAt instead).
-function trainingSubjectDocTopics() {
-  return TRAINING_TOPIC_LABELS.map(label => ({ topic: label, description: '', quiz: [] }))
+// subjects/{id}.topics shape — mirrors the LIVE shape the teacher app
+// actually reads ({id, name, cost: {case_study, materials, quiz}, survey_initiated_by}),
+// confirmed against an existing production subject doc (VIII_Computer).
+// This is NOT what SubjectsTab.vue's editor writes ({topic, description,
+// quiz}) — that shape isn't what the teacher app consumes here, so it's
+// deliberately not reused. Distinct from the per-class-subject topics above
+// (which carry id/isCompleted/completedAt instead).
+function trainingSubjectDocTopics(subjectId) {
+  return TRAINING_TOPIC_LABELS.map((name, i) => ({
+    id: `${subjectId}_Topic${i + 1}`, name,
+    cost: { case_study: 10, materials: 10, quiz: 10 },
+    survey_initiated_by: {},
+  }))
 }
 
 function confirmCreateTrainingClass() {
@@ -414,24 +422,30 @@ async function createTrainingClass() {
     const email = auth.currentUser?.email || 'unknown'
     const subjectIds = TRAINING_SUBJECT_NAMES.map(trainingSubjectSlug)
 
-    // Subjects — create only what's missing, with the 3 demo topics already
-    // in subjects/{id}.topics. If a subject from an earlier run already
-    // exists with no topics yet, backfill just that field; never touch one
-    // that already has topics (someone may have customized them).
+    // Subjects — plain setDoc, same as this file already does for classes
+    // below (no guardedSetDoc). schoolSchema.js's topics validator only
+    // knows two shapes (legacy plain strings, or the topic-editor's
+    // {topic, description, quiz}) — the shape the teacher app actually
+    // reads here ({id, name, cost, survey_initiated_by}, confirmed against
+    // a live production subject) is a third, undocumented one the guard
+    // would reject outright. These Training_* docs are exclusively owned
+    // by this button, so every run resets topics to the correct shape
+    // unconditionally rather than only backfilling when empty — that's
+    // what actually fixes a doc left over from an earlier, wrong-shaped
+    // version of this feature.
     for (let i = 0; i < TRAINING_SUBJECT_NAMES.length; i++) {
       const subjectId = subjectIds[i]
       const existingSubject = subjects.value.find(s => s.id === subjectId)
+      const topics = trainingSubjectDocTopics(subjectId)
       if (existingSubject) {
-        if (!(existingSubject.topics || []).length) {
-          await guardedUpdateDoc('subjects', schoolDoc(props.schoolId, 'subjects', subjectId), {
-            topics: trainingSubjectDocTopics(), updated_at: serverTimestamp(), updated_by: email,
-          })
-        }
+        await updateDoc(schoolDoc(props.schoolId, 'subjects', subjectId), {
+          topics, updated_at: serverTimestamp(), updated_by: email,
+        })
         continue
       }
-      await guardedSetDoc('subjects', schoolDoc(props.schoolId, 'subjects', subjectId), {
+      await setDoc(schoolDoc(props.schoolId, 'subjects', subjectId), {
         id: subjectId, name: TRAINING_SUBJECT_NAMES[i], area: 'Scholastic', name_original: '',
-        curricular_goals: [], topics: trainingSubjectDocTopics(),
+        curricular_goals: [], topics,
         created_at: serverTimestamp(), created_by: email, updated_at: serverTimestamp(), updated_by: email,
       }, { merge: false })
     }
@@ -474,8 +488,7 @@ async function createTrainingClass() {
     await regenerateStudentsSchemaClassOptions(props.schoolId, classes.value.map(c => c.id))
   } catch (e) {
     console.error(e)
-    const detail = e instanceof SchemaViolation ? e.userMessage : 'Something went wrong creating the training class.'
-    toast.add({ severity: 'error', summary: 'Error', detail, life: 4000 })
+    toast.add({ severity: 'error', summary: 'Error', detail: 'Something went wrong creating the training class.', life: 4000 })
   } finally {
     creatingTraining.value = false
   }
