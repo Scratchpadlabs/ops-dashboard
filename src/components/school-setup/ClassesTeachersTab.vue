@@ -7,6 +7,11 @@
         <Button label="Sample CSV" icon="pi pi-download" size="small" text @click="downloadSample" />
         <Button label="Export CSV" icon="pi pi-file-export" size="small" text @click="exportCsv" />
         <Button label="Add Section" icon="pi pi-plus" size="small" @click="openAddSection" />
+        <Button
+          label="Create Training Class" icon="pi pi-book" size="small" outlined severity="help"
+          :loading="creatingTraining" @click="confirmCreateTrainingClass"
+          v-tooltip="'Creates a demo class with 3 sample subjects (3 topics each) and assigns it to every current teacher — for onboarding/training use.'"
+        />
       </div>
     </div>
 
@@ -179,7 +184,7 @@ import { regenerateStudentsSchemaClassOptions } from '../../utils/schoolSetupHel
 import KbClassifiedInput from '../shared/KbClassifiedInput.vue'
 import { useEducationKB } from '../../composables/useEducationKB.js'
 import { GRADE, SECTION, OTHER } from '../../utils/educationKB.js'
-import { guardedBatchSet } from '../../schemas/guardedWrite.js'
+import { guardedBatchSet, guardedSetDoc, SchemaViolation } from '../../schemas/guardedWrite.js'
 import { toCsv, downloadCsv } from '../../utils/csv.js'
 
 const props = defineProps({ schoolId: { type: String, default: null } })
@@ -360,6 +365,103 @@ function deactivateSection() {
       }
     },
   })
+}
+
+// ── Training class ───────────────────────────────────────────────────────
+// One-click provisioning for a demo class used to onboard/train staff on a
+// live school: 3 sample subjects, 3 topics each, assigned to every current
+// teacher. Reusable across schools — same button, same fixed IDs, so
+// re-running it (e.g. after new teachers join) is idempotent: existing
+// subjects/topics/completion state are never clobbered, and staff writes are
+// additive (merge into assignments/classIds, never replace).
+const TRAINING_CLASS_ID = 'Training_DEMO'
+const TRAINING_SUBJECT_NAMES = ['Demo Subject 1', 'Demo Subject 2', 'Demo Subject 3']
+const TRAINING_TOPIC_LABELS = ['Topic 1', 'Topic 2', 'Topic 3']
+const creatingTraining = ref(false)
+
+// Same doc ID convention as SubjectsTab's slugify(grade, name): `{Grade}_{Name}`.
+function trainingSubjectSlug(name) {
+  const cleanName = name.trim().replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_|_$/g, '')
+  return `Training_${cleanName}`
+}
+
+function trainingTopics(subjectId) {
+  return TRAINING_TOPIC_LABELS.map((label, i) => ({
+    id: `${subjectId}_Topic${i + 1}`, topic: label, isCompleted: false, completedAt: null,
+  }))
+}
+
+function confirmCreateTrainingClass() {
+  confirm.require({
+    message: `Create/refresh "${TRAINING_CLASS_ID}" (3 demo subjects, 3 topics each) and assign it to all ${teachers.value.length} current teacher(s)?`,
+    header: 'Create Training Class',
+    icon: 'pi pi-book',
+    rejectLabel: 'Cancel', acceptLabel: 'Create',
+    accept: createTrainingClass,
+  })
+}
+
+async function createTrainingClass() {
+  creatingTraining.value = true
+  try {
+    const email = auth.currentUser?.email || 'unknown'
+    const subjectIds = TRAINING_SUBJECT_NAMES.map(trainingSubjectSlug)
+
+    // Subjects — create only what's missing; never overwrite one that
+    // already exists (a re-run shouldn't wipe out edits someone made).
+    for (let i = 0; i < TRAINING_SUBJECT_NAMES.length; i++) {
+      const subjectId = subjectIds[i]
+      if (subjects.value.some(s => s.id === subjectId)) continue
+      await guardedSetDoc('subjects', schoolDoc(props.schoolId, 'subjects', subjectId), {
+        id: subjectId, name: TRAINING_SUBJECT_NAMES[i], area: 'Scholastic', name_original: '',
+        curricular_goals: [], topics: [],
+        created_at: serverTimestamp(), created_by: email, updated_at: serverTimestamp(), updated_by: email,
+      }, { merge: false })
+    }
+
+    // Class — create if missing; on a re-run, keep each existing
+    // subjects[] entry as-is (preserves teacherId/isCompleted/topics state).
+    const existingClass = classes.value.find(c => c.id === TRAINING_CLASS_ID)
+    const existingByd = new Map((existingClass?.subjects || []).map(s => [s.subjectId, s]))
+    const classSubjects = subjectIds.map(subjectId => existingByd.get(subjectId) || {
+      subjectId, teacherId: '', isCompleted: false, completedAt: null, topics: trainingTopics(subjectId),
+    })
+    const classPayload = {
+      clazz: 'Training', section: 'DEMO', stage: 'foundation', name: 'Training Demo',
+      isActive: true, subjects: classSubjects,
+      updated_at: serverTimestamp(), updated_by: email,
+    }
+    if (!existingClass) {
+      classPayload.id = TRAINING_CLASS_ID
+      classPayload.created_at = serverTimestamp()
+      classPayload.created_by = email
+    }
+    await setDoc(schoolDoc(props.schoolId, 'classes', TRAINING_CLASS_ID), classPayload, { merge: true })
+
+    // Every current teacher gets the class + all 3 subjects — additive,
+    // same convention as the teacher matrix below: union classIds, never
+    // strip a staff member's other assignments.
+    await Promise.all(teachers.value.map(async staff => {
+      const assignments = { ...(staff.assignments || {}), [TRAINING_CLASS_ID]: subjectIds }
+      const classIds = Array.from(new Set([...(staff.classIds || []), TRAINING_CLASS_ID]))
+      await updateDoc(schoolDoc(props.schoolId, 'staffs', staff.id), {
+        assignments, classIds, updated_at: serverTimestamp(), updated_by: email,
+      })
+    }))
+
+    toast.add({
+      severity: 'success', summary: 'Training class ready',
+      detail: `Assigned to ${teachers.value.length} teacher(s)`, life: 3000,
+    })
+    await loadAll()
+    await regenerateStudentsSchemaClassOptions(props.schoolId, classes.value.map(c => c.id))
+  } catch (e) {
+    console.error(e)
+    const detail = e instanceof SchemaViolation ? e.userMessage : 'Something went wrong creating the training class.'
+    toast.add({ severity: 'error', summary: 'Error', detail, life: 4000 })
+  } finally {
+    creatingTraining.value = false
+  }
 }
 
 // ── Teacher assignment matrix ───────────────────────────────────────────
