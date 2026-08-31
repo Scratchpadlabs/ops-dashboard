@@ -184,7 +184,7 @@ import { regenerateStudentsSchemaClassOptions } from '../../utils/schoolSetupHel
 import KbClassifiedInput from '../shared/KbClassifiedInput.vue'
 import { useEducationKB } from '../../composables/useEducationKB.js'
 import { GRADE, SECTION, OTHER } from '../../utils/educationKB.js'
-import { guardedBatchSet, guardedSetDoc, SchemaViolation } from '../../schemas/guardedWrite.js'
+import { guardedBatchSet, guardedSetDoc, guardedUpdateDoc, SchemaViolation } from '../../schemas/guardedWrite.js'
 import { toCsv, downloadCsv } from '../../utils/csv.js'
 
 const props = defineProps({ schoolId: { type: String, default: null } })
@@ -391,6 +391,13 @@ function trainingTopics(subjectId) {
   }))
 }
 
+// subjects/{id}.topics shape — matches SubjectsTab's topicsToDoc()
+// ({topic, description, quiz}), distinct from the per-class-subject topics
+// above (which carry id/isCompleted/completedAt instead).
+function trainingSubjectDocTopics() {
+  return TRAINING_TOPIC_LABELS.map(label => ({ topic: label, description: '', quiz: [] }))
+}
+
 function confirmCreateTrainingClass() {
   confirm.require({
     message: `Create/refresh "${TRAINING_CLASS_ID}" (3 demo subjects, 3 topics each) and assign it to all ${teachers.value.length} current teacher(s)?`,
@@ -407,14 +414,24 @@ async function createTrainingClass() {
     const email = auth.currentUser?.email || 'unknown'
     const subjectIds = TRAINING_SUBJECT_NAMES.map(trainingSubjectSlug)
 
-    // Subjects — create only what's missing; never overwrite one that
-    // already exists (a re-run shouldn't wipe out edits someone made).
+    // Subjects — create only what's missing, with the 3 demo topics already
+    // in subjects/{id}.topics. If a subject from an earlier run already
+    // exists with no topics yet, backfill just that field; never touch one
+    // that already has topics (someone may have customized them).
     for (let i = 0; i < TRAINING_SUBJECT_NAMES.length; i++) {
       const subjectId = subjectIds[i]
-      if (subjects.value.some(s => s.id === subjectId)) continue
+      const existingSubject = subjects.value.find(s => s.id === subjectId)
+      if (existingSubject) {
+        if (!(existingSubject.topics || []).length) {
+          await guardedUpdateDoc('subjects', schoolDoc(props.schoolId, 'subjects', subjectId), {
+            topics: trainingSubjectDocTopics(), updated_at: serverTimestamp(), updated_by: email,
+          })
+        }
+        continue
+      }
       await guardedSetDoc('subjects', schoolDoc(props.schoolId, 'subjects', subjectId), {
         id: subjectId, name: TRAINING_SUBJECT_NAMES[i], area: 'Scholastic', name_original: '',
-        curricular_goals: [], topics: [],
+        curricular_goals: [], topics: trainingSubjectDocTopics(),
         created_at: serverTimestamp(), created_by: email, updated_at: serverTimestamp(), updated_by: email,
       }, { merge: false })
     }
@@ -427,7 +444,7 @@ async function createTrainingClass() {
       subjectId, teacherId: '', isCompleted: false, completedAt: null, topics: trainingTopics(subjectId),
     })
     const classPayload = {
-      clazz: 'Training', section: 'DEMO', stage: 'foundation', name: 'Training Demo',
+      clazz: 'Training', section: 'DEMO', stage: 'middle', name: 'Training Demo',
       isActive: true, subjects: classSubjects,
       updated_at: serverTimestamp(), updated_by: email,
     }
