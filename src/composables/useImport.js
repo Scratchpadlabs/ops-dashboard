@@ -162,6 +162,20 @@ function describeClassMiss(classLookup, rawGrade, rawSection) {
     : `Class-section not configured — ${looked}, and grade "${grade}" has no classes at all in School Setup.`
 }
 
+/**
+ * Some source files carry the school's actual class doc ID directly in one
+ * column (normalize.py's "class_id" field — e.g. "11_D", "Nursery_TOM")
+ * instead of separate Class/Section columns. Same shape as describeClassMiss,
+ * for the same reason: tell an empty Classes collection apart from a typo'd
+ * ID rather than a single generic message either way.
+ */
+function describeClassIdMiss(classIds, rawClassId) {
+  if (!classIds.length) {
+    return 'School Setup has no classes configured at all — set up the class structure before importing.'
+  }
+  return `classId "${rawClassId}" is not one of this school's configured classes — configured: ${classIds.slice().sort().join(', ')}.`
+}
+
 async function loadSubjectLookup(schoolId) {
   const snap = await getDocs(schoolCollection(schoolId, 'subjects'))
   const subjectLookup = new Map() // `${normGrade}|${normName}` -> subjectId
@@ -369,10 +383,26 @@ async function buildStudentsPlan(schoolId, rows) {
       items.push({ row, status: 'SUGGESTION_PENDING', reason: 'Resolve suggested fixes before committing' })
       continue
     }
-    const classId = classLookup.get(`${normalizeGrade(d.grade)}|${normalizeSection(d.section)}`)
-    if (!classId) {
-      items.push({ row, status: 'ERROR', reason: describeClassMiss(classLookup, d.grade, d.section) })
-      continue
+    // A file can give the class two different ways: a Class/Section pair to
+    // resolve against classLookup, or (normalize.py's "class_id" field) the
+    // school's actual class doc ID already, in one column. The latter is
+    // used verbatim — it needs no grade/section normalization — and takes
+    // priority, since a row that has it never has usable grade/section data
+    // to fall back to.
+    const rawClassId = String(d.class_id ?? '').trim()
+    let classId
+    if (rawClassId) {
+      if (!classIds.includes(rawClassId)) {
+        items.push({ row, status: 'ERROR', reason: describeClassIdMiss(classIds, rawClassId) })
+        continue
+      }
+      classId = rawClassId
+    } else {
+      classId = classLookup.get(`${normalizeGrade(d.grade)}|${normalizeSection(d.section)}`)
+      if (!classId) {
+        items.push({ row, status: 'ERROR', reason: describeClassMiss(classLookup, d.grade, d.section) })
+        continue
+      }
     }
 
     // Student ID is THE primary key: a row that names one always matches (or

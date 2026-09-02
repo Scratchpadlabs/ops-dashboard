@@ -418,6 +418,15 @@ STUDENT_HEADER_ALIASES = {
     "student_id": ["student id", "studentid", "student_id", "id", "unique id",
                    "unique student id", "std id", "student code",
                    "existing student id", "system id"],
+    # Some source files carry the school's actual configured class doc ID
+    # directly (e.g. "11_D", "Nursery_TOM") in one column instead of separate
+    # Class/Section columns — observed live, not hypothetical. When present,
+    # useImport.js's buildStudentsPlan uses this verbatim against the
+    # school's configured class IDs rather than deriving one from grade+
+    # section, so a file like that resolves instead of leaving grade/section
+    # blank on every row.
+    "class_id": ["classid", "class id", "current class id", "currentclassid",
+                 "class_id", "class doc id"],
     "grade": ["class", "grade", "std", "standard"],
     "section": ["sec", "section", "div", "division"],
     "roll_no": ["roll no", "roll", "roll number", "rollno"],
@@ -446,7 +455,7 @@ STUDENT_HEADER_ALIASES = {
 # a field reaches Firestore — src/schemas/studentMapping.js decides that, and
 # most of these are deliberately review-only (see REVIEW_ONLY_STUDENT_KEYS).
 STUDENT_SCHEMA_KEYS = ["grade", "section", "roll_no", "student_name", "student_id",
-                        "gender", "dob", "sr_no", "adm_no", "gr_emis_sts", "aadhaar",
+                        "class_id", "gender", "dob", "sr_no", "adm_no", "gr_emis_sts", "aadhaar",
                         "mother_name", "father_name", "contact", "email", "city",
                         "father_mobile", "father_email", "mother_mobile",
                         "mother_email", "branch_name", "board", "enrollment_code",

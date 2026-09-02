@@ -139,7 +139,11 @@ SCHEMAS = {
             "addresses even if present — omit them entirely. student_id is the school's "
             "own existing student ID/code for this row if the source shows one (e.g. a "
             "'Student ID' or 'ID' column) — this is what matches the row to an existing "
-            "student record, so extract it verbatim when present, empty otherwise."
+            "student record, so extract it verbatim when present, empty otherwise. "
+            "class_id is a column that already gives the school's own combined class "
+            "code in one cell (e.g. 'classId' holding '11_D' or 'Nursery_TOM') instead "
+            "of separate class/section columns — extract that verbatim into class_id "
+            "and leave grade/section empty for that row; do not try to split it."
         ),
         "required": ["grade", "student_name"],
     },
@@ -573,11 +577,18 @@ def validate_students(rows, class_lookup, sections_by_grade, existing_flags=None
     seen_names = {}
     dobs_by_grade = {}
     parsed_dobs = [None] * len(rows)
+    # Some source files carry the school's actual class doc ID directly
+    # (normalize.py's "class_id" field) instead of separate Class/Section
+    # columns — see STUDENT_HEADER_ALIASES. Those rows resolve their class
+    # from class_id, not grade+section, so the usual grade/section checks
+    # below are skipped for them and a class_id-specific one runs instead.
+    class_ids = set(class_lookup.values())
 
     for i, r in enumerate(rows):
+        class_id_given = r.get("class_id", "").strip()
         if not r.get("student_name", "").strip():
             flags_by_row[i].append(_flag("student_name", "missing student name", severity="error"))
-        if not r.get("grade", "").strip():
+        if not class_id_given and not r.get("grade", "").strip():
             flags_by_row[i].append(_flag("grade", "missing grade"))
         prior = (existing_flags or [None] * len(rows))[i] if existing_flags else []
         dob_raw = r.get("dob", "").strip()
@@ -592,27 +603,32 @@ def validate_students(rows, class_lookup, sections_by_grade, existing_flags=None
                 flags_by_row[i].append(_flag("dob", f"unparseable date of birth: '{dob_raw}'"))
             else:
                 parsed_dobs[i] = d
-                dobs_by_grade.setdefault(r.get("grade", ""), []).append(d)
+                dobs_by_grade.setdefault(class_id_given or r.get("grade", ""), []).append(d)
         if not r.get("gender", "").strip() and not _already_flagged(prior, "gender"):
             flags_by_row[i].append(_flag("gender", "missing gender"))
         if not r.get("contact", "").strip() and not _already_flagged(prior, "contact"):
             flags_by_row[i].append(_flag("contact", "missing contact number"))
 
-        key = (normalize_grade(r.get("grade")), normalize_section(r.get("section")),
-               r.get("student_name", "").strip().lower())
-        if key[2]:
+        class_key = class_id_given or f"{normalize_grade(r.get('grade'))}|{normalize_section(r.get('section'))}"
+        key = (class_key, r.get("student_name", "").strip().lower())
+        if key[1]:
             if key in seen_names:
                 flags_by_row[i].append(_flag("student_name", "duplicate student name in this class-section"))
             seen_names[key] = True
 
-        grade = normalize_grade(r.get("grade"))
-        section = normalize_section(r.get("section"))
-        gkey = (grade, section)
-        if gkey not in class_lookup:
-            if grade and grade not in sections_by_grade:
-                flags_by_row[i].append(_flag("grade", f"grade '{grade}' not configured for this school"))
-            elif section:
-                flags_by_row[i].append(_flag("section", f"class '{r.get('section','').strip()}' not in school config for grade {grade}"))
+        if class_id_given:
+            if class_ids and class_id_given not in class_ids:
+                flags_by_row[i].append(_flag(
+                    "class_id", f"classId '{class_id_given}' is not one of this school's configured classes"))
+        else:
+            grade = normalize_grade(r.get("grade"))
+            section = normalize_section(r.get("section"))
+            gkey = (grade, section)
+            if gkey not in class_lookup:
+                if grade and grade not in sections_by_grade:
+                    flags_by_row[i].append(_flag("grade", f"grade '{grade}' not configured for this school"))
+                elif section:
+                    flags_by_row[i].append(_flag("section", f"class '{r.get('section','').strip()}' not in school config for grade {grade}"))
 
     # DOB implausible for grade: >3 years off the grade's median.
     medians = {g: statistics.median([d.toordinal() for d in ds]) for g, ds in dobs_by_grade.items() if ds}
@@ -620,7 +636,7 @@ def validate_students(rows, class_lookup, sections_by_grade, existing_flags=None
         d = parsed_dobs[i]
         if d is None:
             continue
-        med = medians.get(r.get("grade", ""))
+        med = medians.get(r.get("class_id", "").strip() or r.get("grade", ""))
         if med is None:
             continue
         years_off = abs(d.toordinal() - med) / 365.25

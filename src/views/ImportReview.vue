@@ -393,7 +393,7 @@ function throttledActivity() {
 }
 
 const COLUMNS = {
-  students: ['student_id', 'grade', 'section', 'roll_no', 'student_name', 'gender', 'dob', 'sr_no', 'adm_no',
+  students: ['student_id', 'class_id', 'grade', 'section', 'roll_no', 'student_name', 'gender', 'dob', 'sr_no', 'adm_no',
              'gr_emis_sts', 'aadhaar', 'mother_name', 'father_name', 'contact', 'email', 'city',
              'father_mobile', 'father_email', 'mother_mobile', 'mother_email', 'branch_name',
              'board', 'enrollment_code', 'date_of_admission', 'status', 'using_transport'],
@@ -409,13 +409,13 @@ const COLUMNS = {
  * from the data, only from the default view.
  */
 const ESSENTIAL_COLUMNS = {
-  students: ['student_id', 'grade', 'section', 'roll_no', 'student_name', 'gender', 'dob', 'contact'],
+  students: ['student_id', 'class_id', 'grade', 'section', 'roll_no', 'student_name', 'gender', 'dob', 'contact'],
   teachers: ['teacher_name', 'email', 'subject', 'grade', 'section'],
   subjects: ['grade_band', 'subject', 'area'],
   assessments: ['grade_band', 'assessment', 'date_start', 'date_end', 'max_written', 'total'],
 }
 
-const LABELS = { student_id: 'Student ID', roll_no: 'Roll No', student_name: 'Name', dob: 'DOB', sr_no: 'Sr No', adm_no: 'Adm No',
+const LABELS = { student_id: 'Student ID', class_id: 'Class ID', roll_no: 'Roll No', student_name: 'Name', dob: 'DOB', sr_no: 'Sr No', adm_no: 'Adm No',
   gr_emis_sts: 'GR/EMIS/STS', aadhaar: 'Aadhaar', father_mobile: 'Father Mobile', father_email: 'Father Email',
   mother_mobile: 'Mother Mobile', mother_email: 'Mother Email', branch_name: 'Branch', board: 'Board',
   enrollment_code: 'Enrollment Code', date_of_admission: 'Date of Admission', using_transport: 'Transport',
