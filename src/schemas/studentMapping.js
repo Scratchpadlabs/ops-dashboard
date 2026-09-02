@@ -17,6 +17,7 @@
  * real schema has no home for is DROPPED AND REPORTED — never silently written
  * into a field nothing reads.
  */
+import { coerceDynamicFields } from './fieldCoercion.js'
 
 /**
  * How a single source name column becomes firstName + lastName.
@@ -102,9 +103,14 @@ export function toAadhaar(raw) {
  *   (row.student_id, resolved by the caller against existing records) —
  *   persisted onto the doc's `id` field so the NEXT import can match this
  *   exact record even if the Firestore doc ID it lives under differs.
+ * @param {Array} [opts.fieldDefs]  active dynamic fields for kind 'student'
+ *   (src/composables/useFieldSchema.js's loadFieldDefs) — a source column
+ *   matching one of these is type-coerced and written onto the doc instead
+ *   of being dropped, even if its key is also in UNMAPPED_SOURCE_FIELDS
+ *   (registering a field is exactly how an ops admin overrides that default).
  * @returns {{payload: Object, dropped: string[], warnings: string[]}}
  */
-export function mapImportRowToStudent(row, { classId, studentId } = {}) {
+export function mapImportRowToStudent(row, { classId, studentId, fieldDefs = [] } = {}) {
   const d = row || {}
   const name = String(d.student_name ?? '').trim()
   const { firstName, lastName } = splitName(name)
@@ -120,7 +126,8 @@ export function mapImportRowToStudent(row, { classId, studentId } = {}) {
   }
   if (!lastName && name) warnings.push(`"${name}" is a single word — lastName saved as empty`)
 
-  const dropped = UNMAPPED_SOURCE_FIELDS.filter(k => String(d[k] ?? '').trim())
+  const dynamicKeys = new Set(fieldDefs.map(fd => fd.key))
+  const dropped = UNMAPPED_SOURCE_FIELDS.filter(k => !dynamicKeys.has(k) && String(d[k] ?? '').trim())
 
   // Aadhaar: 12 digits or nothing. A partial/garbled value is reported and
   // dropped rather than written half-formed.
@@ -146,6 +153,10 @@ export function mapImportRowToStudent(row, { classId, studentId } = {}) {
     grEmisSts: String(d.gr_emis_sts ?? '').trim(),
     aadhaarNumber,
   }
+
+  const { dynamicPayload, warnings: dynamicWarnings } = coerceDynamicFields(d, fieldDefs, toDateOfBirth)
+  Object.assign(payload, dynamicPayload)
+  warnings.push(...dynamicWarnings)
 
   return { payload, dropped, warnings }
 }

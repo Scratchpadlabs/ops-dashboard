@@ -24,9 +24,11 @@ import {
 import { startProcessImport, commitImportRemote } from '../utils/api.js'
 import { classify, GRADE } from '../utils/educationKB.js'
 import { normalizeSectionValue } from '../utils/classResolver.js'
-import { validateDoc, formatErrors } from '../schemas/schoolSchema.js'
+import { validateDoc, formatErrors, opt, STRING, NUMBER, TIMESTAMP, BOOL } from '../schemas/schoolSchema.js'
 import { validateCurrentClassId } from '../schemas/currentClassId.js'
 import { mapImportRowToStudent } from '../schemas/studentMapping.js'
+import { mapImportRowToStaff } from '../schemas/teacherMapping.js'
+import { loadFieldDefs } from './useFieldSchema.js'
 
 // ── Grade normalization — delegates to the shared education knowledge base
 // (src/utils/educationKB.js), which is seeded from the very same
@@ -306,12 +308,39 @@ async function loadStaffLookup(schoolId) {
   const byName = new Map()
   const all = []
   snap.docs.forEach(d => {
-    const s = { id: d.id, ...d.data() }
+    // `id` spread AFTER the doc's own data (not before): every staffs doc
+    // stores its own required `id` field, and spreading data second let that
+    // stored value silently win over the real Firestore doc ID whenever the
+    // two differed — the same class of bug studentMapping.js's own `id`
+    // field could cause if handled the wrong way round (see
+    // indexExistingStudentIds's doc comment).
+    const s = { ...d.data(), id: d.id }
     all.push(s)
     if (s.email) byEmail.set(s.email.trim().toLowerCase(), s)
     if (s.name) byName.set(s.name.trim().toLowerCase(), s)
   })
   return { byEmail, byName, all }
+}
+
+// A staff/teacher's ID lives in one of two places on an existing doc: the
+// Firestore doc ID itself, or the doc's own `id`/`staffId` field (both
+// required on every staffs doc — schoolSchema.js). Both are checked, same
+// reasoning as indexExistingStudentIds.
+function indexExistingStaffIds(existingList) {
+  const byDocId = new Map(existingList.map(s => [s.id, s]))
+  const byOwnIdField = new Map()
+  existingList.forEach(s => {
+    for (const ownId of [s.id, s.staffId]) {
+      const v = String(ownId ?? '').trim()
+      if (v) byOwnIdField.set(canonicalize(v), s)
+    }
+  })
+  return (staffIdRaw) => {
+    const v = String(staffIdRaw ?? '').trim()
+    if (!v) return null
+    if (byDocId.has(v)) return byDocId.get(v)
+    return byOwnIdField.get(canonicalize(v)) || null
+  }
 }
 
 // ── Commit planning — classify each staged row as CREATE / UPDATE_CHANGED /
@@ -367,6 +396,20 @@ function indexExistingStudentIds(existingSnap) {
   return { existingById, resolve }
 }
 
+// Dynamic field registry entries -> the {fieldName: spec} shape validateDoc's
+// extraFields option expects (schoolSchema.js's f()/opt()) — merged in for
+// this call only, SCHOOL_SCHEMAS itself is never touched. 'enum' validates
+// as STRING here: the enum-membership check already happened in
+// coerceFieldValue (fieldCoercion.js) before this payload was built.
+const DYNAMIC_TYPE_TO_SCHEMA_TYPE = { string: STRING, number: NUMBER, date: TIMESTAMP, boolean: BOOL, enum: STRING }
+function fieldDefsToExtraFields(fieldDefs) {
+  const extraFields = {}
+  for (const fd of fieldDefs) {
+    extraFields[fd.key] = opt(DYNAMIC_TYPE_TO_SCHEMA_TYPE[fd.type] || STRING, { nullable: true, allowEmpty: true })
+  }
+  return extraFields
+}
+
 async function buildStudentsPlan(schoolId, rows) {
   const { classLookup } = await loadClassLookup(schoolId)
   const classIds = Array.from(new Set(classLookup.values()))
@@ -374,6 +417,8 @@ async function buildStudentsPlan(schoolId, rows) {
   // matters at the 1000+ row scale imports are sized for.
   const existingSnap = await getDocs(schoolCollection(schoolId, 'students'))
   const { existingById, resolve: resolveExistingDocId } = indexExistingStudentIds(existingSnap)
+  const fieldDefs = await loadFieldDefs('student')
+  const extraFields = fieldDefsToExtraFields(fieldDefs)
   const usedIds = new Map() // dedupe doc ids within this batch
   const items = []
 
@@ -439,8 +484,10 @@ async function buildStudentsPlan(schoolId, rows) {
     }
 
     // Mapped, not copied: source columns the student schema has no home for
-    // are dropped and reported rather than written into fields nothing reads.
-    const { payload, dropped, warnings } = mapImportRowToStudent(d, { classId, studentId })
+    // are dropped and reported rather than written into fields nothing reads
+    // — unless registered as a dynamic field (fieldDefs), in which case it's
+    // type-coerced and merged in instead.
+    const { payload, dropped, warnings } = mapImportRowToStudent(d, { classId, studentId, fieldDefs })
 
     // The class value is the one field where live data is genuinely broken,
     // so it is checked on its own terms as well as by the schema.
@@ -450,7 +497,7 @@ async function buildStudentsPlan(schoolId, rows) {
       continue
     }
 
-    const check = validateDoc('students', payload)
+    const check = validateDoc('students', payload, { extraFields })
     if (!check.ok) {
       items.push({ row, status: 'ERROR', reason: `Does not match the student schema — ${formatErrors(check.errors)}` })
       continue
@@ -477,9 +524,11 @@ async function buildTeachersPlan(schoolId, rows) {
   const { classLookup } = await loadClassLookup(schoolId)
   const subjectLookup = await loadSubjectLookup(schoolId)
   const subjectIdsByGrade = await loadSubjectIdsByGrade(schoolId)
-  const { byEmail, byName } = await loadStaffLookup(schoolId)
+  const { byEmail, byName, all } = await loadStaffLookup(schoolId)
+  const resolveExistingStaff = indexExistingStaffIds(all)
+  const fieldDefs = await loadFieldDefs('staff')
   const items = []
-  const pendingNewStaff = new Map() // name/email key -> synthetic staff record, so repeat rows for a not-yet-created teacher resolve to the same one
+  const pendingNewStaff = new Map() // staffId/name/email key -> synthetic staff record, so repeat rows for a not-yet-created teacher resolve to the same one
 
   for (const row of rows) {
     const d = row.data
@@ -518,19 +567,24 @@ async function buildTeachersPlan(schoolId, rows) {
           ? `no subjects configured for grade ${d.grade} — assign manually in Classes & Teachers`
           : '')
 
+    // Staff ID is THE primary key, same priority order the student import
+    // already established: a row that names one always matches (or creates)
+    // that exact staff record, regardless of email/name changes since the
+    // last import. Only when the row carries no Staff ID do we fall back to
+    // email-then-name — which only re-matches the SAME record if neither
+    // changed next time.
+    const staffIdRaw = String(d.staff_id ?? '').trim()
     const emailKey = (d.email || '').trim().toLowerCase()
     const nameKey = (d.teacher_name || '').trim().toLowerCase()
-    let staff = (emailKey && byEmail.get(emailKey)) || byName.get(nameKey)
+    let staff = resolveExistingStaff(staffIdRaw) || (emailKey && byEmail.get(emailKey)) || byName.get(nameKey)
     let isNewStaff = false
+    const idFallbackNote = staffIdRaw ? '' : 'no Staff ID in the file for this row — matched by email/name, which will not reliably re-match on the next import'
     if (!staff) {
-      const pendingKey = emailKey || nameKey
+      const pendingKey = staffIdRaw || emailKey || nameKey
       staff = pendingNewStaff.get(pendingKey)
       if (!staff) {
-        staff = {
-          id: slugPart(d.teacher_name) || `teacher_${pendingNewStaff.size + 1}`,
-          name: d.teacher_name.trim(), email: d.email || '', type: 'teacher',
-          assignments: {}, classIds: [], needsAuthCreation: true, authUid: null,
-        }
+        const newStaffId = slugPart(staffIdRaw) || slugPart(d.teacher_name) || `teacher_${pendingNewStaff.size + 1}`
+        staff = mapImportRowToStaff(d, { staffId: newStaffId, fieldDefs }).payload
         pendingNewStaff.set(pendingKey, staff)
       }
       isNewStaff = true
@@ -542,7 +596,7 @@ async function buildTeachersPlan(schoolId, rows) {
       // subjectId kept for the single explicit case; subjectIds is what the
       // commit actually writes.
       subjectId, subjectIds, subjectsInferred,
-      notes: inferenceNote ? [inferenceNote] : [],
+      notes: [inferenceNote, idFallbackNote].filter(Boolean),
       classTeacherOf: d.class_teacher_of || '',
       staffBase: staff,
     })
@@ -688,6 +742,17 @@ function summarize(entity, items) {
   return { entity, items, summary }
 }
 
+// Base shape mapImportRowToStaff (teacherMapping.js) always produces for a
+// NEW staff — the only case _commit_teachers (main.py) reads staffBase's
+// extra keys for. Anything beyond this set is a dynamic field.
+const STAFF_BASE_KNOWN_KEYS = new Set([
+  'id', 'staffId', 'name', 'email', 'type', 'assignments', 'classIds', 'needsAuthCreation', 'authUid',
+])
+function teacherDynamicFields(staffBase) {
+  if (!staffBase) return {}
+  return Object.fromEntries(Object.entries(staffBase).filter(([k]) => !STAFF_BASE_KNOWN_KEYS.has(k)))
+}
+
 // ── Commit — hands the plan to the commit_import callable, which performs
 // the actual writes into schools/{schoolId}/... server-side (re-verifying
 // req.auth + the ops-admin allowlist there) honoring the overwrite-existing
@@ -703,7 +768,12 @@ export async function commitImport(job, plan, { overwriteExisting } = {}) {
         status: i.status, staffId: i.staffId, staffIsNew: i.staffIsNew,
         classId: i.classId, subjectId: i.subjectId, subjectIds: i.subjectIds || [],
         subjectsInferred: !!i.subjectsInferred,
-        staffBase: { name: i.staffBase?.name || '', email: i.staffBase?.email || '' },
+        // name/email plus any dynamic field mapImportRowToStaff merged in —
+        // _commit_teachers (main.py) only ever reads this for a NEW staff,
+        // treating any key beyond name/email as a dynamic field, so an
+        // existing-matched row's extra doc data riding along here is inert
+        // on the server, not a correctness risk.
+        staffBase: { name: i.staffBase?.name || '', email: i.staffBase?.email || '', ...teacherDynamicFields(i.staffBase) },
       }))
     : nonError.map(i => ({ status: i.status, docId: i.docId, payload: i.payload }))
 

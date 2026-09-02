@@ -355,6 +355,7 @@ import {
   normalizeGrade, canonicalize, resolveFieldValue, resolveFieldValueForAllMatching,
   loadSectionsByGrade, loadSubjectsByGrade,
 } from '../composables/useImport.js'
+import { loadFieldDefs } from '../composables/useFieldSchema.js'
 import ImportFieldResolver from '../components/shared/ImportFieldResolver.vue'
 import { useEducationKB } from '../composables/useEducationKB.js'
 import { TYPE_LABELS, SUBJECT, SECTION, UNKNOWN } from '../utils/educationKB.js'
@@ -420,7 +421,22 @@ const LABELS = { student_id: 'Student ID', class_id: 'Class ID', roll_no: 'Roll 
   mother_mobile: 'Mother Mobile', mother_email: 'Mother Email', branch_name: 'Branch', board: 'Board',
   enrollment_code: 'Enrollment Code', date_of_admission: 'Date of Admission', using_transport: 'Transport',
   mother_name: 'Mother', father_name: 'Father', teacher_name: 'Teacher', class_teacher_of: 'Class Teacher Of', grade_band: 'Grade Band', date_start: 'Start', date_end: 'End', instructional_days: 'Inst. Days', syllabus_covered: 'Syllabus Covered', exam_syllabus: 'Exam Syllabus', max_written: 'Max Written', activity_weight: 'Activity Wt', total: 'Total', duration: 'Duration' }
-function colLabel(c) { return LABELS[c] || c.charAt(0).toUpperCase() + c.slice(1) }
+// A dynamic field's configured label (src/views/ManageFields.vue), fetched
+// once per job load — see onMounted below. {fieldKey: label}.
+const dynamicLabels = ref({})
+const ENTITY_TO_FIELD_KIND = { students: 'student', teachers: 'staff' }
+async function loadDynamicLabels(entity) {
+  const kind = ENTITY_TO_FIELD_KIND[entity]
+  if (!kind) { dynamicLabels.value = {}; return }
+  try {
+    const fields = await loadFieldDefs(kind)
+    dynamicLabels.value = Object.fromEntries(fields.map(fd => [fd.key, fd.label]))
+  } catch (e) {
+    console.error('Could not load dynamic field labels', e)
+    dynamicLabels.value = {}
+  }
+}
+function colLabel(c) { return dynamicLabels.value[c] || LABELS[c] || c.charAt(0).toUpperCase() + c.slice(1) }
 
 // Only section (students, teachers) and subject (teachers) go through
 // canonicalize/alias/fuzzy matching server-side — see functions/
@@ -791,7 +807,10 @@ onMounted(() => {
       schoolName.value = snap.exists() ? (snap.data().name || j.school_id) : j.school_id
     }
     await loadTerms()
-    if (isFirstLoad) await loadResolverOptions()
+    if (isFirstLoad) {
+      await loadResolverOptions()
+      await loadDynamicLabels(j?.entity)
+    }
   })
   unsubRows = listenRows(jobId.value, (list) => { rows.value = list })
   loadKB()
