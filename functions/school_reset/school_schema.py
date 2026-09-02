@@ -321,12 +321,21 @@ def _type_ok(type_, v):
     return False
 
 
-def validate_doc(collection, doc, partial=False):
+def validate_doc(collection, doc, partial=False, extra_fields=None):
     """Validate one payload.
 
     `partial=True` (a merge/update write) checks only the fields PRESENT, so a
     legacy malformed document can still be edited through the UI — validating
     the whole stored doc would make bad data unfixable.
+
+    `extra_fields` ({name: spec}, built with _f/_opt) is merged into
+    schema["fields"] for THIS CALL ONLY — SCHOOL_SCHEMAS is never mutated.
+    Backs the dynamic field registry (functions/generate_import/main.py's
+    load_field_defs / the `field_defs` Firestore collection): a field an ops
+    admin registered at runtime gets real type checking here without a code
+    change, while tools/check_schema_parity.py (which only ever diffs the
+    static SCHOOL_SCHEMAS shape) stays unaffected — nothing in that tool
+    passes this argument.
 
     Returns {"ok": bool, "errors": [(field, reason)], "warnings": [(field, reason)]}.
     """
@@ -339,7 +348,8 @@ def validate_doc(collection, doc, partial=False):
     if not isinstance(doc, dict):
         return {"ok": False, "errors": [("", "payload must be an object")], "warnings": warnings}
 
-    for name, spec in schema["fields"].items():
+    fields = {**schema["fields"], **(extra_fields or {})}
+    for name, spec in fields.items():
         if name not in doc:
             if spec["required"] and not partial:
                 errors.append((name, "required"))
@@ -373,7 +383,7 @@ def validate_doc(collection, doc, partial=False):
             errors.append((name, f"needs at least {spec['minLength']} item(s)"))
 
     for name in doc:
-        if name not in schema["fields"] and name not in AUDIT_FIELDS:
+        if name not in fields and name not in AUDIT_FIELDS:
             warnings.append((name, "not part of the known schema — it will be written but nothing reads it"))
 
     check = schema.get("check")
@@ -443,12 +453,18 @@ TIMESTAMP_FIELDS = {
 }
 
 
-def coerce_wire_payload(collection, doc):
-    """Convert JSON wire types to the Firestore types the schema requires."""
+def coerce_wire_payload(collection, doc, extra_timestamp_fields=None):
+    """Convert JSON wire types to the Firestore types the schema requires.
+
+    `extra_timestamp_fields` (a list of field names) extends
+    TIMESTAMP_FIELDS.get(collection) for THIS CALL ONLY — same "per-call
+    override, static dict never mutated" reasoning as validate_doc's
+    extra_fields, for a dynamic field registered with type "date" (see
+    functions/generate_import/main.py's load_field_defs)."""
     if not isinstance(doc, dict):
         return doc
     out = dict(doc)
-    for field in TIMESTAMP_FIELDS.get(collection, []):
+    for field in TIMESTAMP_FIELDS.get(collection, []) + list(extra_timestamp_fields or []):
         v = out.get(field)
         if isinstance(v, str):
             m = _ISO_RE.match(v.strip())

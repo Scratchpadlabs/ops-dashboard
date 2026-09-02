@@ -55,7 +55,11 @@ export const PERSON_ID_RE = /^[a-z]{2,6}\d{3,6}$/
 
 // ── field spec helpers ──────────────────────────────────────────────────────
 const f = (type, opts = {}) => ({ type, required: opts.required !== false, ...opts })
-const opt = (type, opts = {}) => f(type, { ...opts, required: false })
+// Exported: callers building an ad-hoc `extraFields` spec for validateDoc()
+// (e.g. useImport.js turning a field_defs registry entry into a field spec)
+// use the same helper SCHOOL_SCHEMAS itself is built with, rather than
+// hand-rolling an equivalent object shape.
+export const opt = (type, opts = {}) => f(type, { ...opts, required: false })
 
 /**
  * Per-collection shape. `fields` is the whole known surface; anything not
@@ -372,12 +376,21 @@ const AUDIT_FIELDS = new Set(['created_at', 'created_by', 'updated_at', 'updated
  *   fields PRESENT are checked, missing required fields are not an error. This
  *   is what lets a legacy malformed doc still be edited through the UI —
  *   validating the whole stored doc would make bad data unfixable.
+ * @param {Object} [options.extraFields]  {fieldName: spec} merged into
+ *   `schema.fields` for THIS CALL ONLY — SCHOOL_SCHEMAS itself is never
+ *   mutated. Backs the dynamic field registry (src/composables/
+ *   useFieldSchema.js / the `field_defs` Firestore collection): a field an
+ *   ops admin registered at runtime gets real type checking here without a
+ *   code change, while tools/check_schema_parity.mjs (which only ever diffs
+ *   the static SCHOOL_SCHEMAS shape) stays completely unaffected, since no
+ *   caller in that tool passes this option.
  * @returns {{ok: boolean, errors: Array, warnings: Array}}
  */
 export function validateDoc(collection, doc, options = {}) {
   const schema = SCHOOL_SCHEMAS[collection]
   if (!schema) return { ok: true, errors: [], warnings: [{ field: '', reason: `no schema defined for "${collection}"` }] }
   const partial = !!options.partial
+  const fields = options.extraFields ? { ...schema.fields, ...options.extraFields } : schema.fields
   const errors = []
   const warnings = []
 
@@ -385,7 +398,7 @@ export function validateDoc(collection, doc, options = {}) {
     return { ok: false, errors: [{ field: '', reason: 'payload must be an object' }], warnings }
   }
 
-  for (const [name, spec] of Object.entries(schema.fields)) {
+  for (const [name, spec] of Object.entries(fields)) {
     const present = Object.prototype.hasOwnProperty.call(doc, name)
     const v = doc[name]
 
@@ -418,7 +431,7 @@ export function validateDoc(collection, doc, options = {}) {
   }
 
   for (const name of Object.keys(doc)) {
-    if (!schema.fields[name] && !AUDIT_FIELDS.has(name)) {
+    if (!fields[name] && !AUDIT_FIELDS.has(name)) {
       warnings.push({ field: name, reason: 'not part of the known schema — it will be written but nothing reads it' })
     }
   }

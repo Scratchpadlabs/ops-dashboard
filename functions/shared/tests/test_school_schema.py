@@ -16,7 +16,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 from school_schema import (  # noqa: E402
     validate_doc, format_errors, validate_current_class_id, coerce_wire_payload,
     REASON_PERSON_ID, REASON_SELF_ID, REASON_GRADE_ONLY, REASON_UNRESOLVABLE,
-    REASON_EMPTY, REASON_UNKNOWN_CLASS,
+    REASON_EMPTY, REASON_UNKNOWN_CLASS, STRING, NUMBER, TIMESTAMP, SCHOOL_SCHEMAS,
+    _opt,
 )
 
 
@@ -366,3 +367,40 @@ def test_parent_contacts_are_not_student_fields():
     result = validate_doc("students", doc)
     assert result["ok"]
     assert {"fatherMobile", "motherEmail"} <= {f for f, _ in result["warnings"]}
+
+
+# ── extra_fields (dynamic field registry — functions/generate_import/
+# main.py's load_field_defs / the `field_defs` Firestore collection) ────────
+def test_extra_fields_accepts_a_registered_dynamic_field():
+    """A field not in the static schema is normally just an 'unknown field'
+    warning — extra_fields makes it a REAL typed field for this call, same as
+    a registered dynamic field should behave."""
+    doc = {**BASE_STUDENT, "bloodGroup": "O+"}
+    result = validate_doc("students", doc, extra_fields={"bloodGroup": _opt(STRING)})
+    assert result["ok"]
+    assert "bloodGroup" not in {f for f, _ in result["warnings"]}
+
+
+def test_extra_fields_rejects_a_type_mismatch():
+    doc = {**BASE_STUDENT, "siblingCount": "two"}
+    result = validate_doc("students", doc, extra_fields={"siblingCount": _opt(NUMBER)})
+    assert not result["ok"]
+    assert "expected number" in format_errors(result["errors"])
+
+
+def test_extra_fields_never_mutates_the_static_schema():
+    """The whole point: SCHOOL_SCHEMAS itself must stay untouched by a
+    per-call override, or check_schema_parity's fixtures would drift."""
+    before = set(SCHOOL_SCHEMAS["students"]["fields"].keys())
+    validate_doc("students", {**BASE_STUDENT, "bloodGroup": "O+"},
+                 extra_fields={"bloodGroup": _opt(STRING)})
+    assert set(SCHOOL_SCHEMAS["students"]["fields"].keys()) == before
+
+
+def test_extra_timestamp_fields_coerces_a_dynamic_date_field():
+    wire = {**BASE_STUDENT, "joinedOn": "2020-06-15"}
+    coerced = coerce_wire_payload("students", wire, extra_timestamp_fields=["joinedOn"])
+    from datetime import datetime as _dt
+    assert coerced["joinedOn"] == _dt(2020, 6, 15)
+    result = validate_doc("students", coerced, extra_fields={"joinedOn": _opt(TIMESTAMP, nullable=True)})
+    assert result["ok"]
