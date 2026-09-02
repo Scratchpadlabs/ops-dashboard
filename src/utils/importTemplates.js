@@ -15,6 +15,7 @@
 
 export const STUDENT_COLUMNS = [
   { key: 'Name', required: true, note: 'The only required column' },
+  { key: 'Student ID', required: false, note: 'Strongly recommended — the primary key an update/re-import matches this row against. Leave blank only for a brand-new student' },
   { key: 'Class', required: false, note: 'I / 1 / Grade 1 — any notation' },
   { key: 'Section', required: false, note: 'A, B, Diamond, Rose…' },
   { key: 'Roll No', required: false, note: '' },
@@ -38,11 +39,11 @@ export const TEACHER_COLUMNS = [
 ]
 
 const STUDENT_SAMPLE = [
-  ['Aditya Kulkarni', 'I', 'A', '1', 'ADM1001', 'M', '12/04/2018',
+  ['Aditya Kulkarni', 'ssds0001', 'I', 'A', '1', 'ADM1001', 'M', '12/04/2018',
    'Ramesh Kulkarni', 'Sunita Kulkarni', '9876543210', ''],
-  ['Sneha Patil', 'I', 'A', '2', 'ADM1002', 'F', '03/09/2018',
+  ['Sneha Patil', 'ssds0002', 'I', 'A', '2', 'ADM1002', 'F', '03/09/2018',
    'Mahesh Patil', 'Kavita Patil', '9876543211', ''],
-  ['Rohan Deshmukh', 'II', 'B', '1', 'ADM0987', 'M', '21/11/2017',
+  ['Rohan Deshmukh', 'ssds0003', 'II', 'B', '1', 'ADM0987', 'M', '21/11/2017',
    'Suresh Deshmukh', 'Anita Deshmukh', '9876543212', ''],
 ]
 

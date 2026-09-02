@@ -136,7 +136,10 @@ SCHEMAS = {
             "use them to infer gender. contact: first valid 10-digit number only. adm_no "
             "is the admission/GR register number, distinct from sr_no (serial number). "
             "DO NOT extract Aadhaar numbers, SSSM ids, caste/category, religion, or "
-            "addresses even if present — omit them entirely."
+            "addresses even if present — omit them entirely. student_id is the school's "
+            "own existing student ID/code for this row if the source shows one (e.g. a "
+            "'Student ID' or 'ID' column) — this is what matches the row to an existing "
+            "student record, so extract it verbatim when present, empty otherwise."
         ),
         "required": ["grade", "student_name"],
     },

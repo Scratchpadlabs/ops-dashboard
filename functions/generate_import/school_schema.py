@@ -250,6 +250,13 @@ SCHOOL_SCHEMAS = {
     "students": {
         "label": "Students",
         "fields": {
+            # The school's own existing student ID/code, kept distinct from
+            # the Firestore doc ID. This is the PRIMARY KEY an import matches
+            # rows against (see functions/generate_import/main.py's
+            # commit_import and src/schemas/studentMapping.js) — checked
+            # against both this field and the doc ID itself, since older
+            # records only carry the ID as their doc ID.
+            "id": _opt(STRING, allowEmpty=True),
             "name": _f(STRING),
             "firstName": _f(STRING),
             "lastName": _f(STRING, allowEmpty=True),

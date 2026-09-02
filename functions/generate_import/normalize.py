@@ -409,6 +409,15 @@ STUDENT_HEADER_ALIASES = {
     "using_transport": ["using transport", "transport", "bus", "uses transport"],
     "student_name": ["name", "student name", "students name", "name of student",
                       "name of the student", "full name", "child name", "childs name"],
+    # THE primary key for matching an import row to an existing student — see
+    # src/schemas/studentMapping.js and useImport.js's buildStudentsPlan. When
+    # present, this is checked against both the existing doc's Firestore ID
+    # and its `id` field before falling back to any other heuristic, so a
+    # re-import of the same roster updates the same records instead of
+    # creating duplicates.
+    "student_id": ["student id", "studentid", "student_id", "id", "unique id",
+                   "unique student id", "std id", "student code",
+                   "existing student id", "system id"],
     "grade": ["class", "grade", "std", "standard"],
     "section": ["sec", "section", "div", "division"],
     "roll_no": ["roll no", "roll", "roll number", "rollno"],
@@ -436,8 +445,8 @@ STUDENT_HEADER_ALIASES = {
 # Everything the parser will carry through to Review. Being here does NOT mean
 # a field reaches Firestore — src/schemas/studentMapping.js decides that, and
 # most of these are deliberately review-only (see REVIEW_ONLY_STUDENT_KEYS).
-STUDENT_SCHEMA_KEYS = ["grade", "section", "roll_no", "student_name", "gender",
-                        "dob", "sr_no", "adm_no", "gr_emis_sts", "aadhaar",
+STUDENT_SCHEMA_KEYS = ["grade", "section", "roll_no", "student_name", "student_id",
+                        "gender", "dob", "sr_no", "adm_no", "gr_emis_sts", "aadhaar",
                         "mother_name", "father_name", "contact", "email", "city",
                         "father_mobile", "father_email", "mother_mobile",
                         "mother_email", "branch_name", "board", "enrollment_code",

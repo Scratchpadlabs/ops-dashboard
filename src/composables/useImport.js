@@ -332,13 +332,34 @@ function fieldsEqual(a, b, keys) {
   return keys.every(k => comparable(a?.[k]) === comparable(b?.[k]))
 }
 
+// A student's ID lives in one of two places on an existing doc: the
+// Firestore doc ID itself, or an `id` field saved inside the doc (imports
+// prior to this matching fix, or hand-entered records). Both are checked so
+// a Student ID column in the CSV always finds the record it should update,
+// whichever way that record happens to be stored.
+function indexExistingStudentIds(existingSnap) {
+  const existingById = new Map(existingSnap.docs.map(d => [d.id, d.data()]))
+  const docIdByOwnIdField = new Map()
+  existingSnap.docs.forEach(d => {
+    const ownId = String(d.data().id ?? '').trim()
+    if (ownId) docIdByOwnIdField.set(canonicalize(ownId), d.id)
+  })
+  const resolve = (studentId) => {
+    const s = String(studentId ?? '').trim()
+    if (!s) return null
+    if (existingById.has(s)) return s
+    return docIdByOwnIdField.get(canonicalize(s)) || null
+  }
+  return { existingById, resolve }
+}
+
 async function buildStudentsPlan(schoolId, rows) {
   const { classLookup } = await loadClassLookup(schoolId)
   const classIds = Array.from(new Set(classLookup.values()))
   // One fetch for the whole existing roster instead of a getDoc per row —
   // matters at the 1000+ row scale imports are sized for.
   const existingSnap = await getDocs(schoolCollection(schoolId, 'students'))
-  const existingById = new Map(existingSnap.docs.map(d => [d.id, d.data()]))
+  const { existingById, resolve: resolveExistingDocId } = indexExistingStudentIds(existingSnap)
   const usedIds = new Map() // dedupe doc ids within this batch
   const items = []
 
@@ -353,15 +374,43 @@ async function buildStudentsPlan(schoolId, rows) {
       items.push({ row, status: 'ERROR', reason: describeClassMiss(classLookup, d.grade, d.section) })
       continue
     }
-    const base = slugPart(d.roll_no) || slugPart(d.student_name) || 'student'
-    let docId = `${classId}_${base}`
+
+    // Student ID is THE primary key: a row that names one always matches (or
+    // creates) that exact record, regardless of class/roll/name changes since
+    // the last import. Only when the file carries no ID at all do we fall
+    // back to the old class+roll/name slug — which only re-matches the SAME
+    // record if roll number and name are both unchanged next time.
+    const studentId = String(d.student_id ?? '').trim()
+    const matchedDocId = resolveExistingDocId(studentId)
+    let docId
+    let idFallbackNote = ''
+    if (matchedDocId) {
+      docId = matchedDocId
+    } else if (studentId) {
+      docId = slugPart(studentId)
+    } else {
+      docId = `${classId}_${slugPart(d.roll_no) || slugPart(d.student_name) || 'student'}`
+      idFallbackNote = 'no Student ID in the file for this row — matched by class/roll/name, which will not reliably re-match on the next import'
+    }
+
+    // Two rows landing on the same doc ID would silently overwrite one
+    // another in the commit batch — whether that's the same Student ID typed
+    // twice, or (in the no-ID fallback) the same class+roll/name pair.
     const dupeCount = (usedIds.get(docId) || 0) + 1
     usedIds.set(docId, dupeCount)
-    if (dupeCount > 1) docId = `${docId}_${dupeCount}`
+    if (dupeCount > 1) {
+      items.push({
+        row, status: 'ERROR',
+        reason: studentId
+          ? `Student ID "${studentId}" appears more than once in this file`
+          : `Duplicate row for class/roll/name (no Student ID given) — resolves to the same record as another row in this file`,
+      })
+      continue
+    }
 
     // Mapped, not copied: source columns the student schema has no home for
     // are dropped and reported rather than written into fields nothing reads.
-    const { payload, dropped, warnings } = mapImportRowToStudent(d, { classId })
+    const { payload, dropped, warnings } = mapImportRowToStudent(d, { classId, studentId })
 
     // The class value is the one field where live data is genuinely broken,
     // so it is checked on its own terms as well as by the schema.
@@ -378,6 +427,7 @@ async function buildStudentsPlan(schoolId, rows) {
     }
 
     const notes = [...warnings]
+    if (idFallbackNote) notes.push(idFallbackNote)
     if (classCheck.severity === 'warning') notes.push(classCheck.message)
     if (dropped.length) notes.push(`no field in the student schema for: ${dropped.join(', ')} — not saved`)
 

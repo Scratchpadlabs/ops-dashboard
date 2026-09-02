@@ -98,9 +98,13 @@ export function toAadhaar(raw) {
  * @param {Object} row      extractor row (student_name, gender, dob, contact, …)
  * @param {Object} opts
  * @param {string} opts.classId  resolved class ID for currentClassId
+ * @param {string} [opts.studentId]  the school's own student ID for this row
+ *   (row.student_id, resolved by the caller against existing records) —
+ *   persisted onto the doc's `id` field so the NEXT import can match this
+ *   exact record even if the Firestore doc ID it lives under differs.
  * @returns {{payload: Object, dropped: string[], warnings: string[]}}
  */
-export function mapImportRowToStudent(row, { classId } = {}) {
+export function mapImportRowToStudent(row, { classId, studentId } = {}) {
   const d = row || {}
   const name = String(d.student_name ?? '').trim()
   const { firstName, lastName } = splitName(name)
@@ -127,6 +131,7 @@ export function mapImportRowToStudent(row, { classId } = {}) {
   }
 
   const payload = {
+    ...(studentId ? { id: studentId } : {}),
     name,
     firstName,
     lastName,

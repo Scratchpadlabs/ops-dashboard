@@ -239,6 +239,13 @@ export const SCHOOL_SCHEMAS = {
   students: {
     label: 'Students',
     fields: {
+      // The school's own existing student ID/code, kept as a field distinct
+      // from the Firestore doc ID (which is import-generated and can change
+      // shape over time). This is the PRIMARY KEY an import matches rows
+      // against — see studentMapping.js and useImport.js's buildStudentsPlan
+      // — checked against both this field and the doc ID itself, since older
+      // records only carry the ID as their doc ID.
+      id: opt(STRING, { allowEmpty: true }),
       name: f(STRING),
       firstName: f(STRING),
       lastName: f(STRING, { allowEmpty: true }),
