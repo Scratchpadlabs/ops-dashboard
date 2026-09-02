@@ -79,6 +79,7 @@ from tabular_parser import parse_tabular_file
 # why these are copies rather than imports.
 from school_schema import (
     validate_doc, format_errors, validate_current_class_id, coerce_wire_payload,
+    _opt, STRING, NUMBER, TIMESTAMP, BOOL,
 )
 
 # Must run at module load, not lazily inside a handler: the on_call framework
@@ -148,13 +149,18 @@ SCHEMAS = {
         "required": ["grade", "student_name"],
     },
     "teachers": {
-        "row": ["teacher_name", "email", "class_teacher_of", "subject", "grade", "section"],
+        "row": ["teacher_name", "email", "class_teacher_of", "subject", "grade", "section", "staff_id"],
         "hints": (
             "Output ONE ROW PER (teacher, subject, class-section). Expand ranges: "
             "'VI - A,B,C' becomes three rows grade=6 sections A,B,C; '3 to 8' expands "
             "each grade with empty section. In matrix layouts the column header is the "
             "subject — read column alignment carefully. If a cell's column is visually "
-            "ambiguous, still output the row but append '?' to the subject."
+            "ambiguous, still output the row but append '?' to the subject. staff_id is "
+            "the school's own existing staff/employee ID/code for this teacher if the "
+            "source shows one (e.g. a 'Staff ID', 'Employee ID', or 'Emp Code' column) — "
+            "this is what matches the row to an existing staff record, so extract it "
+            "verbatim when present (repeat it on every row for that teacher), empty "
+            "otherwise."
         ),
         "required": ["teacher_name", "subject", "grade"],
     },
@@ -226,14 +232,21 @@ def content_blocks(filename: str, raw: bytes):
     return [{"type": "text", "text": raw.decode(errors="replace")}]
 
 # -------------------------------------------------------------- llm calls ---
-def build_prompt(entity: str) -> str:
+def build_prompt(entity: str, extra_row_keys=None, extra_hints: str = "") -> str:
+    """`extra_row_keys`/`extra_hints` extend this call's field list/hints
+    WITHOUT touching SCHEMAS[entity] itself — see load_field_defs. Mutating
+    the module-level SCHEMAS dict would leak one school's dynamic fields into
+    another school's next request on the same warm Cloud Functions instance,
+    since instances are reused across invocations."""
     s = SCHEMAS[entity]
+    row_keys = s["row"] + list(extra_row_keys or [])
+    hints = s["hints"] + ((" " + extra_hints) if extra_hints else "")
     return (
         "You are a data-extraction engine for an Indian school report-card platform. "
         f"Extract ALL {entity} records from the attached material.\n"
-        f"Rules: {s['hints']}\n"
+        f"Rules: {hints}\n"
         "Return ONLY a JSON array of objects (no markdown, no commentary) with exactly "
-        f"these keys: {json.dumps(s['row'])}. Use empty string for unknown values. "
+        f"these keys: {json.dumps(row_keys)}. Use empty string for unknown values. "
         "Never invent data not present in the source."
     )
 
@@ -276,14 +289,14 @@ def call_openai_compatible(blocks, prompt):
     r.raise_for_status()
     return r.json()["choices"][0]["message"]["content"]
 
-def extract_file(entity, filename, raw):
+def extract_file(entity, filename, raw, extra_row_keys=None, extra_hints=""):
     blocks = content_blocks(filename, raw)
-    prompt = build_prompt(entity)
+    prompt = build_prompt(entity, extra_row_keys, extra_hints)
     raw_text = (call_openai_compatible if os.environ.get("OPENAI_API_KEY")
                 else call_anthropic)(blocks, prompt)
     raw_text = re.sub(r"^```(json)?|```$", "", raw_text.strip(), flags=re.M).strip()
     rows = json.loads(raw_text)
-    schema_keys = SCHEMAS[entity]["row"]
+    schema_keys = SCHEMAS[entity]["row"] + list(extra_row_keys or [])
     # Only ever keep declared schema keys — drops any hallucinated PII field
     # regardless of prompt compliance (golden rule 3, belt-and-braces).
     return [{k: str(r.get(k, "") or "") for k in schema_keys} for r in rows]
@@ -369,6 +382,81 @@ def load_import_aliases(db):
         if t and frm and to:
             aliases[(t, frm)] = to
     return aliases
+
+
+# entity ("students"/"teachers", the import job's own vocabulary) -> kind
+# ("student"/"staff", field_defs' vocabulary) — kept distinct because
+# SCHEMAS/entity names elsewhere in this file don't line up 1:1 with the
+# staffs collection name either (see _ENTITY_COLLECTION near commit_import).
+_ENTITY_TO_FIELD_KIND = {"students": "student", "teachers": "staff"}
+
+
+def load_field_defs(db, entity):
+    """Dynamic field registry overlay (top-level `field_defs` collection, not
+    scoped to any school) — ops-admin-defined extra fields for students/staff
+    beyond the fixed SCHEMAS/SCHOOL_SCHEMAS set. Same self-learning-collection
+    pattern as load_import_aliases/load_kb_entries, but for FIELD NAMES
+    rather than field values. Written by src/composables/useFieldSchema.js,
+    edited through src/views/ManageFields.vue.
+
+    Returns a list of {key, label, type, enumValues, aliases} dicts for
+    ACTIVE fields of this entity's kind only. A missing/unreadable registry
+    must never take down an import — same fail-soft reasoning as
+    load_kb_entries: the fixed field set alone still extracts everything it
+    always did.
+    """
+    kind = _ENTITY_TO_FIELD_KIND.get(entity)
+    if not kind:
+        return []
+    try:
+        out = []
+        for d in db.collection("field_defs").stream():
+            f = d.to_dict() or {}
+            if f.get("kind") != kind or not f.get("active", True):
+                continue
+            key = (f.get("key") or "").strip()
+            if not key:
+                continue
+            label = f.get("label") or key
+            # A column header matching the field's own label always counts,
+            # even with no aliases configured — the admin typed a label, the
+            # school's CSV is likely to use exactly that wording.
+            aliases = f.get("aliases") or []
+            if label.lower() not in [a.lower() for a in aliases]:
+                aliases = aliases + [label]
+            out.append({
+                "key": key, "label": label,
+                "type": f.get("type") or "string",
+                "enumValues": f.get("enumValues") or [],
+                "aliases": aliases,
+            })
+        return out
+    except Exception as e:
+        print(f"load_field_defs: falling back to no dynamic fields: {e}")
+        return []
+
+
+def _field_def_hint(fd):
+    """One auto-generated sentence per dynamic field for the LLM prompt —
+    never hand-written per field, or registering a field would need a code
+    change again, defeating the entire point of the registry."""
+    if fd["type"] == "enum" and fd["enumValues"]:
+        return f"{fd['key']}: one of {', '.join(fd['enumValues'])} (blank if unknown)."
+    if fd["type"] == "date":
+        return f"{fd['key']}: a date, YYYY-MM-DD."
+    if fd["type"] == "number":
+        return f"{fd['key']}: a number."
+    if fd["type"] == "boolean":
+        return f"{fd['key']}: yes/no."
+    return f"{fd['key']}: free text."
+
+
+def field_defs_extra_row_keys(field_defs):
+    return [fd["key"] for fd in field_defs]
+
+
+def field_defs_extra_hints(field_defs):
+    return " ".join(_field_def_hint(fd) for fd in field_defs)
 
 
 def clean_students_rows(rows, cfg, provenance=None):
@@ -760,6 +848,8 @@ def load_school_config(db, school_id, entity):
       core_subjects_by_grade  unchanged
       aliases                 global import_aliases map, see load_import_aliases
       kb_overlay              learned education-KB overlay, see load_kb_entries
+      field_defs              dynamic field registry for this entity's kind,
+                               see load_field_defs
     """
     classes_ref = db.collection("schools").document(school_id).collection("classes")
     classes = [{"id": d.id, **d.to_dict()} for d in classes_ref.stream()]
@@ -801,10 +891,11 @@ def load_school_config(db, school_id, entity):
         "core_subjects_by_grade": core_subjects_by_grade,
         "aliases": load_import_aliases(db),
         "kb_overlay": load_kb_entries(db),
+        "field_defs": load_field_defs(db, entity),
     }
 
 # ----------------------------------------------------- per-file extraction -
-def _process_one_file(entity, name, raw, job_diag):
+def _process_one_file(entity, name, raw, job_diag, field_defs=None):
     """Returns (rows, provenance) for one file, aligned 1:1. Deterministic
     tabular parsing (tabular_parser.parse_tabular_file, content-sniffed —
     never trusts the extension) is tried first for the `students` entity;
@@ -814,9 +905,18 @@ def _process_one_file(entity, name, raw, job_diag):
     password-protected/corrupt file) — that's pointless and slow to retry,
     and would just bury the specific reason under a vaguer LLM error.
     job_diag accumulates cross-file diagnostics for the job doc:
-    {warnings, errors, file_summaries, unmapped_headers}."""
+    {warnings, errors, file_summaries, unmapped_headers}.
+
+    `field_defs` (load_field_defs' output, or [] by default so every existing
+    caller/test that doesn't pass it is an exact no-op) extends the row
+    schema/aliases/prompt hints for BOTH extraction paths — see
+    field_defs_extra_row_keys/field_defs_extra_hints."""
+    field_defs = field_defs or []
+    extra_row_keys = field_defs_extra_row_keys(field_defs)
+    extra_hints = field_defs_extra_hints(field_defs)
+
     if entity != "students":
-        llm_rows = extract_file(entity, name, raw)
+        llm_rows = extract_file(entity, name, raw, extra_row_keys, extra_hints)
         provenance = [{"source_file": name, "sheet": None, "row": None,
                         "excluded_default": False, "extra_flags": []} for _ in llm_rows]
         job_diag["file_summaries"].append({
@@ -825,7 +925,9 @@ def _process_one_file(entity, name, raw, job_diag):
         })
         return llm_rows, provenance
 
-    tab = parse_tabular_file(name, raw, STUDENT_SCHEMA_KEYS, STUDENT_HEADER_ALIASES, STUDENT_REQUIRED_FIELD)
+    schema_keys = STUDENT_SCHEMA_KEYS + extra_row_keys
+    header_aliases = {**STUDENT_HEADER_ALIASES, **{fd["key"]: fd["aliases"] for fd in field_defs if fd["aliases"]}}
+    tab = parse_tabular_file(name, raw, schema_keys, header_aliases, STUDENT_REQUIRED_FIELD)
     job_diag["unmapped_headers"].update(tab.get("unmapped_headers", []))
     terminal = any(e["message"].startswith(("empty file", "file unreadable")) for e in tab["errors"])
 
@@ -853,7 +955,7 @@ def _process_one_file(entity, name, raw, job_diag):
     elif not terminal:
         used_fallback = True
         try:
-            llm_rows = extract_file(entity, name, raw)
+            llm_rows = extract_file(entity, name, raw, extra_row_keys, extra_hints)
         except Exception as e:
             llm_rows = []
             job_diag["errors"].append({"file": name, "sheet": None, "row": None, "field": None,
@@ -978,13 +1080,20 @@ def process_import(req: https_fn.CallableRequest):
         # even for a very messy multi-hundred-row file.
         job_diag = {"warnings": [], "errors": [], "file_summaries": [], "unmapped_headers": set()}
 
+        # Loaded BEFORE the file loop (moved up from after it) so
+        # cfg["field_defs"] — the dynamic field registry — is available to
+        # _process_one_file for both extraction paths. Nothing this bundle
+        # produces was ever consumed before the loop anyway, so this is a
+        # pure reorder with no other behavior change.
+        cfg = load_school_config(db, school_id, entity)
+
         raw_rows = []
         provenance = []
         for f in files:
             name = f.get("name", f["path"])
             try:
                 raw = bucket.blob(f["path"]).download_as_bytes()
-                file_rows, file_prov = _process_one_file(entity, name, raw, job_diag)
+                file_rows, file_prov = _process_one_file(entity, name, raw, job_diag, cfg["field_defs"])
             except Exception as e:
                 # One bad file must never take down the whole job — degrade
                 # to a file-level error and keep processing the rest.
@@ -1000,8 +1109,6 @@ def process_import(req: https_fn.CallableRequest):
 
         if entity == "students" and job_diag["unmapped_headers"]:
             _log_unknown_headers(db, job_diag["unmapped_headers"], school_id)
-
-        cfg = load_school_config(db, school_id, entity)
 
         # Cleaning (Stage 1 deterministic + Stage 2 alias/fuzzy) runs before
         # validation, on every parsed row — see the "cleaning" section above.
@@ -1268,14 +1375,14 @@ def commit_import(req: https_fn.CallableRequest):
         #
         # Per-row, not all-or-nothing: valid rows commit and rejected ones come
         # back with a reason, matching how the import preview already behaves.
-        writable, rejected = _validate_writable(entity, writable)
+        writable, rejected = _validate_writable(db, entity, writable)
 
         if entity in ("students", "subjects"):
             _commit_simple(db, school_ref.collection(entity), writable, email)
         elif entity == "assessments":
             _commit_assessments(db, school_ref.collection("assessments"), writable, email)
         elif entity == "teachers":
-            _commit_teachers(school_ref.collection("staffs"), writable, email)
+            _commit_teachers(db, school_ref.collection("staffs"), writable, email)
 
         job_ref.set({
             "status": "committed", "committed_at": firestore.SERVER_TIMESTAMP,
@@ -1300,22 +1407,39 @@ _ENTITY_COLLECTION = {
 }
 
 
-def _validate_writable(entity, writable):
+_FIELD_TYPE_TO_SCHEMA_TYPE = {
+    "string": STRING, "number": NUMBER, "date": TIMESTAMP, "boolean": BOOL, "enum": STRING,
+}
+
+
+def _validate_writable(db, entity, writable):
     """Split rows into (accepted, rejected) against the shared schema.
 
     `teachers` is skipped: _commit_teachers builds its own staff document from
     assignment fields rather than carrying a payload, so there is nothing here
     to validate against a doc shape. It is gated by the same ops-admin check
     as everything else.
+
+    `db` fetches this entity's dynamic field registry (load_field_defs) once
+    per commit, turned into validate_doc's extra_fields / coerce_wire_payload's
+    extra_timestamp_fields — same per-call-only merge as everywhere else this
+    registry is used, SCHOOL_SCHEMAS itself untouched.
     """
     collection = _ENTITY_COLLECTION.get(entity)
     if not collection or entity == "teachers":
         return writable, []
 
+    field_defs = load_field_defs(db, entity)
+    extra_fields = {fd["key"]: _opt(_FIELD_TYPE_TO_SCHEMA_TYPE.get(fd["type"], STRING),
+                                     nullable=True, allowEmpty=True)
+                    for fd in field_defs}
+    extra_timestamp_fields = [fd["key"] for fd in field_defs if fd["type"] == "date"]
+
     accepted, rejected = [], []
     for item in writable:
         doc_id = item.get("docId") or ""
-        payload = coerce_wire_payload(collection, item.get("payload") or {})
+        payload = coerce_wire_payload(collection, item.get("payload") or {},
+                                       extra_timestamp_fields=extra_timestamp_fields)
 
         if collection == "students":
             cls = validate_current_class_id(payload.get("currentClassId"), student_id=doc_id)
@@ -1323,7 +1447,7 @@ def _validate_writable(entity, writable):
                 rejected.append({"docId": doc_id, "reason": cls["message"]})
                 continue
 
-        result = validate_doc(collection, payload)
+        result = validate_doc(collection, payload, extra_fields=extra_fields)
         if not result["ok"]:
             rejected.append({"docId": doc_id,
                              "reason": f"does not match the {collection} schema — "
@@ -1368,12 +1492,23 @@ def _commit_assessments(db, collection_ref, writable, email):
         batch.commit()
 
 
-def _commit_teachers(staffs_ref, writable, email):
+def _commit_teachers(db, staffs_ref, writable, email):
     """Group by staff so each teacher gets exactly one write with a merged
     assignments map — never overwrite another subject's assignment for the
     same class, and never drop a second teacher on the same
     (subject, grade, section): that's staffs/{idA} and staffs/{idB} each
-    separately gaining the same classId+subjectId in their own doc."""
+    separately gaining the same classId+subjectId in their own doc.
+
+    `db` fetches the staff dynamic field registry (load_field_defs) once, so
+    a 'date'-typed dynamic field arriving as an ISO string over the wire
+    (see useImport.js's mapImportRowToStaff — the client holds a JS Date,
+    JSON serialization turns it into a string) gets coerced back to a real
+    Firestore Timestamp on write, same as _validate_writable does for
+    students. Only applies to a NEW staff's base fields — see
+    teacherMapping.js's module docstring for why an existing staff's base
+    fields, dynamic ones included, are never overwritten by a later import.
+    """
+    dynamic_date_keys = {fd["key"] for fd in load_field_defs(db, "teachers") if fd["type"] == "date"}
     by_staff = {}
     for item in writable:
         staff_id = item.get("staffId")
@@ -1421,10 +1556,23 @@ def _commit_teachers(staffs_ref, writable, email):
             "updated_at": firestore.SERVER_TIMESTAMP, "updated_by": email,
         }
         if group["staffIsNew"]:
-            base = group["staffBase"]
+            base = coerce_wire_payload("staffs", group["staffBase"],
+                                        extra_timestamp_fields=list(dynamic_date_keys))
+            # Any key beyond name/email on staffBase is a dynamic field —
+            # mapImportRowToStaff (teacherMapping.js) only ever adds base
+            # shape keys or fieldDefs-derived ones, and useImport.js's
+            # commitImport wire-trims out everything else before this ever
+            # arrives, so nothing else can be smuggled in here.
+            dynamic = {k: v for k, v in base.items() if k not in ("name", "email")}
             payload.update({
-                "id": staff_id, "name": base.get("name") or "", "email": base.get("email") or "",
+                # Both "id" and "staffId" required on every staffs doc
+                # (school_schema.py) — staffId is also what the NEXT import
+                # matches against (useImport.js's indexExistingStaffIds), so
+                # a newly-created record must carry it, not just doc id.
+                "id": staff_id, "staffId": staff_id,
+                "name": base.get("name") or "", "email": base.get("email") or "",
                 "type": "teacher", "needsAuthCreation": True, "authUid": None,
                 "created_at": firestore.SERVER_TIMESTAMP, "created_by": email,
+                **dynamic,
             })
         staffs_ref.document(staff_id).set(payload, merge=True)
