@@ -278,6 +278,7 @@ const baseNavItems = [
   { to: '/schools',     label: 'Schools',     icon: 'pi pi-building' },
   { to: '/school-setup', label: 'School Setup', icon: 'pi pi-shield' },
   { to: '/import',      label: 'Import',      icon: 'pi pi-cloud-upload' },
+  { to: '/manage-fields', label: 'Manage Fields', icon: 'pi pi-list' },
   { to: '/surveys',     label: 'Surveys',     icon: 'pi pi-inbox' },
   { to: '/quotations',  label: 'Quotations',  icon: 'pi pi-file' },
   { to: '/agreements',  label: 'Agreements',  icon: 'pi pi-file-edit' },
@@ -286,7 +287,7 @@ const baseNavItems = [
   { to: '/settings',    label: 'Settings',    icon: 'pi pi-cog' },
 ]
 
-const ADMIN_ONLY_NAV_PATHS = ['/school-setup', '/import', '/surveys']
+const ADMIN_ONLY_NAV_PATHS = ['/school-setup', '/import', '/manage-fields', '/surveys']
 const navItems = computed(() =>
   baseNavItems.filter(item => !ADMIN_ONLY_NAV_PATHS.includes(item.to) || isOpsAdmin(currentUserEmail.value))
 )
@@ -299,6 +300,7 @@ const pageTitles = {
   'school-setup': 'School Setup',
   'import':       'Import',
   'import-review':'Review Import',
+  'manage-fields':'Manage Fields',
   'surveys':      'Surveys',
   'quotations':   'Quotations',
   'agreements':   'Agreements',

@@ -95,6 +95,17 @@ service cloud.firestore {
       allow read, write: if isOpsAdmin();
     }
 
+    // Dynamic field registry: global (NOT scoped to any school) ops-admin-
+    // defined extra fields for students/staffs, beyond the fixed set in
+    // schoolSchema.js/school_schema.py. Lets a new field (e.g. "Blood Group")
+    // be recognized by import and written to documents without a code
+    // deploy. Same ops-admin gate as import_aliases/kb_entries above; the
+    // import Cloud Function reads this with the Admin SDK, which bypasses
+    // these rules.
+    match /field_defs/{fieldId} {
+      allow read, write: if isOpsAdmin();
+    }
+
     // Per-school class map (schools/{id}/class_map): the confirmed mapping from
     // whatever a school's roster actually says ("1-B", "STD I - B", "LKG-Winner")
     // to a grade ordinal + section. Every feature that needs a student's class

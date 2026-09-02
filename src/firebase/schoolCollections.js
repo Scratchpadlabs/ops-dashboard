@@ -29,6 +29,14 @@ export const stagingImportRowsCollection = (jobId) => collection(db, 'staging_im
 export const importAliasesCollection = () => collection(db, 'import_aliases')
 export const importAliasDoc = (id) => doc(db, 'import_aliases', id)
 
+// Dynamic field registry (NOT scoped to any school) — ops-admin-defined
+// extra fields for students/staffs, beyond the fixed SCHOOL_SCHEMAS set.
+// Doc id is `${kind}_${key}` (kind: 'student'|'staff'). See
+// src/composables/useFieldSchema.js and functions/generate_import/main.py's
+// load_field_defs.
+export const fieldDefsCollection = () => collection(db, 'field_defs')
+export const fieldDefDoc = (id) => doc(db, 'field_defs', id)
+
 // Learned overlay for the education knowledge base — global, same
 // self-learning pattern as import_aliases but for MEANING (is this value a
 // subject, a co-scholastic area, a grade, a section?) rather than spelling.
