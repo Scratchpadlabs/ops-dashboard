@@ -425,7 +425,9 @@ def _build_pdf(data):
         f'Company the agreed consideration, with the following payment schedule: {payment_terms}. '
         f'All payments shall be due and payable within forty-five (45) days of invoice and shall '
         f'be non-refundable unless otherwise agreed. Total contract value based on '
-        f'{student_count} students: Rs. {_inr(total_amount)}/-.',
+        f'{student_count} students: Rs. {_inr(total_amount)}/-. Notwithstanding the foregoing, '
+        f'any other payment schedule or commercial arrangement mutually agreed in writing between '
+        f'the Parties shall take precedence and be binding to the extent of such agreement.',
         SUBCLAUSE,
     ))
     story.append(Spacer(1, 4))
