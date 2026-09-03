@@ -21,7 +21,7 @@ import {
   stagingImportsCollection, stagingImportDoc, stagingImportRowsCollection,
   schoolCollection, importAliasDoc, rootSchoolsCollection,
 } from '../firebase/schoolCollections.js'
-import { startProcessImport, commitImportRemote } from '../utils/api.js'
+import { startProcessImport, commitImportRemote, getImportTemplateRemote } from '../utils/api.js'
 import { classify, GRADE } from '../utils/educationKB.js'
 import { normalizeSectionValue } from '../utils/classResolver.js'
 import { validateDoc, formatErrors } from '../schemas/schoolSchema.js'
@@ -312,7 +312,7 @@ export async function buildCommitPlan(job, rows, options = {}) {
   if (job.entity === 'teachers') return buildTeachersPlan(schoolId, included)
   if (job.entity === 'subjects') return buildSubjectsPlan(schoolId, included)
   if (job.entity === 'assessments') return buildAssessmentsPlan(schoolId, included, options.termId)
-  throw new Error(`Unknown entity: ${job.entity}`)
+  return buildGenericTemplatePlan(schoolId, included, job.entity)
 }
 
 /**
@@ -585,6 +585,61 @@ async function buildAssessmentsPlan(schoolId, rows, termId) {
     items.push({ row, status: 'CREATE', docId, payload })
   }
   return summarize('assessments', items)
+}
+
+// ── Generic commit plan — for any custom import template (Manage Templates
+// page), not one of the 4 built-in entities above. No class/staff/subject
+// resolution (a generic template has no notion of grade/section — that's a
+// legacy-teacher/student-specific concept), just: filter each row's payload
+// to the template's declared columns, and classify CREATE/UPDATE_CHANGED/
+// UPDATE_UNCHANGED against whatever already exists in the target collection.
+async function buildGenericTemplatePlan(schoolId, rows, entitySlug) {
+  const template = await getImportTemplateRemote({ slug: entitySlug })
+  if (!template) throw new Error(`No import template found for '${entitySlug}' — it may have been deleted.`)
+
+  const columnKeys = (template.columns || []).map(c => c.key)
+  const keyField = template.keyField || ''
+
+  const existingSnap = await getDocs(schoolCollection(schoolId, template.targetCollectionName))
+  const existingById = new Map(existingSnap.docs.map(d => [d.id, d.data()]))
+  const usedIds = new Map()
+  const items = []
+
+  for (const row of rows) {
+    const d = row.data
+    if ((row.suggestions || []).length) {
+      items.push({ row, status: 'SUGGESTION_PENDING', reason: 'Resolve suggested fixes before committing' })
+      continue
+    }
+
+    const payload = {}
+    for (const key of columnKeys) payload[key] = d[key] ?? ''
+
+    let docId
+    if (keyField) {
+      const base = slugPart(d[keyField])
+      if (!base) {
+        items.push({ row, status: 'ERROR', reason: `Missing key field '${keyField}' — cannot determine which record this row belongs to` })
+        continue
+      }
+      docId = base
+      const dupeCount = (usedIds.get(docId) || 0) + 1
+      usedIds.set(docId, dupeCount)
+      if (dupeCount > 1) docId = `${docId}_${dupeCount}`
+    } else {
+      // No key field declared — this template always creates new records,
+      // same as buildAssessmentsPlan does for exam-blueprint rows.
+      docId = doc(schoolCollection(schoolId, template.targetCollectionName)).id
+    }
+
+    const existing = existingById.get(docId)
+    if (!existing) {
+      items.push({ row, status: 'CREATE', docId, payload })
+    } else {
+      items.push({ row, status: fieldsEqual(existing, payload, columnKeys) ? 'UPDATE_UNCHANGED' : 'UPDATE_CHANGED', docId, payload })
+    }
+  }
+  return summarize(entitySlug, items)
 }
 
 function summarize(entity, items) {

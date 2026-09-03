@@ -75,6 +75,7 @@ from normalize import (
 )
 import education_kb as kb
 from tabular_parser import parse_tabular_file
+import import_templates as tpl_store
 # Mirrored from functions/shared/ by tools/sync_shared.py — see that script for
 # why these are copies rather than imports.
 from school_schema import (
@@ -165,6 +166,21 @@ SCHEMAS = {
     },
 }
 
+def _resolve_schema(entity, db):
+    """SCHEMAS[entity] for the 4 built-in entities (unchanged, untouched
+    logic); for anything else, an active custom template loaded from
+    Firestore (import_templates), adapted into the same {row, hints,
+    required} shape. Returns None when neither has it — the caller decides
+    what that means (process_import: reject the job; commit_import: reject
+    the commit)."""
+    if entity in SCHEMAS:
+        return SCHEMAS[entity]
+    tpl = tpl_store.load_active_template(db, entity)
+    if not tpl:
+        return None
+    return tpl_store.template_to_schema(tpl)
+
+
 # Fields the extractor must never pull out of a source file (golden rule 3).
 #
 # "aadhaar" was removed from this set on 2026-08-04 by an explicit decision to
@@ -219,14 +235,26 @@ def content_blocks(filename: str, raw: bytes):
     return [{"type": "text", "text": raw.decode(errors="replace")}]
 
 # -------------------------------------------------------------- llm calls ---
-def build_prompt(entity: str) -> str:
-    s = SCHEMAS[entity]
+# Custom templates (not one of the 4 built-in SCHEMAS entries) don't carry
+# their own copy of golden rule 3 — their extractionHints is whatever the
+# admin who created the template wrote. This boilerplate is appended to every
+# custom-template prompt regardless of content, so the PII protection isn't
+# something a template author has to remember to type.
+_CUSTOM_TEMPLATE_PII_BOILERPLATE = (
+    "DO NOT extract Aadhaar numbers, SSSM ids, caste/category, religion, or "
+    "home addresses even if present in the source material — omit them entirely."
+)
+
+def build_prompt(entity: str, schema: dict) -> str:
+    hints = schema["hints"]
+    if entity not in SCHEMAS:
+        hints = f"{hints} {_CUSTOM_TEMPLATE_PII_BOILERPLATE}".strip()
     return (
         "You are a data-extraction engine for an Indian school report-card platform. "
         f"Extract ALL {entity} records from the attached material.\n"
-        f"Rules: {s['hints']}\n"
+        f"Rules: {hints}\n"
         "Return ONLY a JSON array of objects (no markdown, no commentary) with exactly "
-        f"these keys: {json.dumps(s['row'])}. Use empty string for unknown values. "
+        f"these keys: {json.dumps(schema['row'])}. Use empty string for unknown values. "
         "Never invent data not present in the source."
     )
 
@@ -269,14 +297,14 @@ def call_openai_compatible(blocks, prompt):
     r.raise_for_status()
     return r.json()["choices"][0]["message"]["content"]
 
-def extract_file(entity, filename, raw):
+def extract_file(entity, filename, raw, schema):
     blocks = content_blocks(filename, raw)
-    prompt = build_prompt(entity)
+    prompt = build_prompt(entity, schema)
     raw_text = (call_openai_compatible if os.environ.get("OPENAI_API_KEY")
                 else call_anthropic)(blocks, prompt)
     raw_text = re.sub(r"^```(json)?|```$", "", raw_text.strip(), flags=re.M).strip()
     rows = json.loads(raw_text)
-    schema_keys = SCHEMAS[entity]["row"]
+    schema_keys = schema["row"]
     # Only ever keep declared schema keys — drops any hallucinated PII field
     # regardless of prompt compliance (golden rule 3, belt-and-braces).
     return [{k: str(r.get(k, "") or "") for k in schema_keys} for r in rows]
@@ -687,8 +715,8 @@ def validate_teachers(rows, class_lookup, sections_by_grade, subject_names_by_gr
 
     return flags_by_row
 
-def validate_required_fields(entity, rows):
-    required = SCHEMAS[entity]["required"]
+def validate_required_fields(schema, rows):
+    required = schema["required"]
     flags_by_row = []
     for r in rows:
         flags = []
@@ -785,7 +813,7 @@ def load_school_config(db, school_id, entity):
     }
 
 # ----------------------------------------------------- per-file extraction -
-def _process_one_file(entity, name, raw, job_diag):
+def _process_one_file(entity, name, raw, job_diag, schema):
     """Returns (rows, provenance) for one file, aligned 1:1. Deterministic
     tabular parsing (tabular_parser.parse_tabular_file, content-sniffed —
     never trusts the extension) is tried first for the `students` entity;
@@ -795,9 +823,11 @@ def _process_one_file(entity, name, raw, job_diag):
     password-protected/corrupt file) — that's pointless and slow to retry,
     and would just bury the specific reason under a vaguer LLM error.
     job_diag accumulates cross-file diagnostics for the job doc:
-    {warnings, errors, file_summaries, unmapped_headers}."""
+    {warnings, errors, file_summaries, unmapped_headers}. `schema` is the
+    already-resolved {row, hints, required} dict (built-in or custom
+    template) — only used by the LLM extraction path."""
     if entity != "students":
-        llm_rows = extract_file(entity, name, raw)
+        llm_rows = extract_file(entity, name, raw, schema)
         provenance = [{"source_file": name, "sheet": None, "row": None,
                         "excluded_default": False, "extra_flags": []} for _ in llm_rows]
         job_diag["file_summaries"].append({
@@ -834,7 +864,7 @@ def _process_one_file(entity, name, raw, job_diag):
     elif not terminal:
         used_fallback = True
         try:
-            llm_rows = extract_file(entity, name, raw)
+            llm_rows = extract_file(entity, name, raw, schema)
         except Exception as e:
             llm_rows = []
             job_diag["errors"].append({"file": name, "sheet": None, "row": None, "field": None,
@@ -921,8 +951,8 @@ def process_import(req: https_fn.CallableRequest):
         missing.append("schoolId")
     if not job_id:
         missing.append("jobId")
-    if entity not in SCHEMAS:
-        missing.append(f"entity (got {entity!r}, expected one of {sorted(SCHEMAS)})")
+    if not entity:
+        missing.append(f"entity (got {entity!r}, expected one of {sorted(SCHEMAS)} or an active custom template)")
     if not files:
         missing.append("files (missing or empty)")
     else:
@@ -943,6 +973,13 @@ def process_import(req: https_fn.CallableRequest):
     try:
         db = firestore.client()
         bucket = storage.bucket()
+
+        schema = _resolve_schema(entity, db)
+        if not schema:
+            raise https_fn.HttpsError(
+                https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
+                f"Unknown entity {entity!r} — expected one of {sorted(SCHEMAS)} or an active custom template")
+
         job_ref = db.collection("staging_imports").document(job_id)
 
         job_ref.set({
@@ -965,7 +1002,7 @@ def process_import(req: https_fn.CallableRequest):
             name = f.get("name", f["path"])
             try:
                 raw = bucket.blob(f["path"]).download_as_bytes()
-                file_rows, file_prov = _process_one_file(entity, name, raw, job_diag)
+                file_rows, file_prov = _process_one_file(entity, name, raw, job_diag, schema)
             except Exception as e:
                 # One bad file must never take down the whole job — degrade
                 # to a file-level error and keep processing the rest.
@@ -1028,7 +1065,10 @@ def process_import(req: https_fn.CallableRequest):
             class_level_flags = core_subject_coverage_flags(
                 cleaned_data, cfg["class_lookup"], cfg["subjects_by_class"], cfg["core_subjects_by_grade"])
         else:
-            validation_flags = validate_required_fields(entity, cleaned_data)
+            # assessments (SCHEMAS) and every custom template alike — this is
+            # the generic pipeline: no expansion, no fuzzy matching, just "is
+            # every required column present".
+            validation_flags = validate_required_fields(schema, cleaned_data)
             class_level_flags = []
 
         for c, v_flags in zip(cleaned, validation_flags):
@@ -1224,10 +1264,10 @@ def commit_import(req: https_fn.CallableRequest):
     items = data.get("items") or []
     overwrite_existing = bool(data.get("overwriteExisting"))
 
-    if not school_id or not job_id or entity not in ("students", "teachers", "subjects", "assessments"):
+    if not school_id or not job_id or not entity:
         raise https_fn.HttpsError(
             https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
-            "Missing schoolId, jobId, or valid entity")
+            "Missing schoolId, jobId, or entity")
 
     # Everything below is inside the try — including client/ref construction,
     # which used to sit outside it and could throw an exception the on_call
@@ -1237,6 +1277,14 @@ def commit_import(req: https_fn.CallableRequest):
         db = firestore.client()
         school_ref = db.collection("schools").document(school_id)
         job_ref = db.collection("staging_imports").document(job_id)
+
+        tpl = None
+        if entity not in ("students", "teachers", "subjects", "assessments"):
+            tpl = tpl_store.load_active_template(db, entity)
+            if not tpl:
+                raise https_fn.HttpsError(
+                    https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
+                    f"Unknown or archived entity/template {entity!r}")
 
         writable = [it for it in items if it.get("status") == "CREATE"
                     or (it.get("status") == "UPDATE_CHANGED" and overwrite_existing)]
@@ -1249,7 +1297,7 @@ def commit_import(req: https_fn.CallableRequest):
         #
         # Per-row, not all-or-nothing: valid rows commit and rejected ones come
         # back with a reason, matching how the import preview already behaves.
-        writable, rejected = _validate_writable(entity, writable)
+        writable, rejected = _validate_writable(entity, writable, tpl)
 
         if entity in ("students", "subjects"):
             _commit_simple(db, school_ref.collection(entity), writable, email)
@@ -1257,6 +1305,11 @@ def commit_import(req: https_fn.CallableRequest):
             _commit_assessments(db, school_ref.collection("assessments"), writable, email)
         elif entity == "teachers":
             _commit_teachers(school_ref.collection("staffs"), writable, email)
+        else:
+            # Every custom template: a plain field-bag write, same generic
+            # writer students/subjects already use — no per-entity business
+            # logic, matching that a brand-new template needs zero new code.
+            _commit_simple(db, school_ref.collection(tpl["targetCollectionName"]), writable, email)
 
         job_ref.set({
             "status": "committed", "committed_at": firestore.SERVER_TIMESTAMP,
@@ -1281,15 +1334,22 @@ _ENTITY_COLLECTION = {
 }
 
 
-def _validate_writable(entity, writable):
+def _validate_writable(entity, writable, tpl=None):
     """Split rows into (accepted, rejected) against the shared schema.
 
     `teachers` is skipped: _commit_teachers builds its own staff document from
     assignment fields rather than carrying a payload, so there is nothing here
     to validate against a doc shape. It is gated by the same ops-admin check
     as everything else.
+
+    `tpl` is the loaded custom-template doc when `entity` isn't one of the 4
+    built-ins — its targetCollectionName is where validate_doc looks up a
+    shape to check against. A collection with no entry in school_schema.py's
+    SCHOOL_SCHEMAS (true for any brand-new custom template's target, until
+    someone adds one) makes validate_doc pass through with only a warning —
+    the row is still written as a raw field bag, just without shape checking.
     """
-    collection = _ENTITY_COLLECTION.get(entity)
+    collection = _ENTITY_COLLECTION.get(entity) or (tpl and tpl.get("targetCollectionName"))
     if not collection or entity == "teachers":
         return writable, []
 
@@ -1409,3 +1469,97 @@ def _commit_teachers(staffs_ref, writable, email):
                 "created_at": firestore.SERVER_TIMESTAMP, "created_by": email,
             })
         staffs_ref.document(staff_id).set(payload, merge=True)
+
+
+# --------------------------------------------------------- import templates -
+# CRUD for custom import templates (see import_templates.py's module
+# docstring for the data model and why this is callable-only). Deployed the
+# same targeted way as every other function here — one at a time by name,
+# see this file's module docstring — never a blanket `firebase deploy`, so
+# adding these can't affect any other already-deployed function.
+#
+#   gcloud functions deploy list_import_templates \
+#     --gen2 --runtime python312 --region asia-south1 \
+#     --source . --entry-point list_import_templates \
+#     --trigger-http --allow-unauthenticated \
+#     --memory 256MB --timeout 30s --max-instances 3 --project clarified-1501
+#   (repeat with --entry-point get_import_template / save_import_template /
+#   delete_import_template for the other three)
+
+@https_fn.on_call(region="asia-south1", memory=options.MemoryOption.MB_256, timeout_sec=30, max_instances=3)
+def list_import_templates(req: https_fn.CallableRequest):
+    """Returns active templates only, for Import.vue's entity dropdown. Pass
+    includeArchived to also list archived ones, for the management UI."""
+    _require_ops_admin(req)
+    data = req.data or {}
+    try:
+        db = firestore.client()
+        templates = tpl_store.list_templates(db, include_archived=bool(data.get("includeArchived")))
+        return {"templates": templates}
+    except https_fn.HttpsError:
+        raise
+    except Exception as e:
+        raise https_fn.HttpsError(https_fn.FunctionsErrorCode.INTERNAL, str(e))
+
+
+@https_fn.on_call(region="asia-south1", memory=options.MemoryOption.MB_256, timeout_sec=30, max_instances=3)
+def get_import_template(req: https_fn.CallableRequest):
+    """One full template doc, for ImportReview.vue's column defs and the
+    edit dialog. Request: {slug}."""
+    _require_ops_admin(req)
+    data = req.data or {}
+    slug = (data.get("slug") or "").strip()
+    if not slug:
+        raise https_fn.HttpsError(https_fn.FunctionsErrorCode.INVALID_ARGUMENT, "Missing slug")
+    try:
+        db = firestore.client()
+        tpl = tpl_store.load_template(db, slug)
+        if not tpl:
+            raise https_fn.HttpsError(https_fn.FunctionsErrorCode.NOT_FOUND, f"No template {slug!r}")
+        return {"template": tpl}
+    except https_fn.HttpsError:
+        raise
+    except Exception as e:
+        raise https_fn.HttpsError(https_fn.FunctionsErrorCode.INTERNAL, str(e))
+
+
+@https_fn.on_call(region="asia-south1", memory=options.MemoryOption.MB_256, timeout_sec=30, max_instances=3)
+def save_import_template(req: https_fn.CallableRequest):
+    """Create or update a custom template. Request: {slug, name, description,
+    targetCollectionName, columns, keyField, extractionHints, status}. Never
+    accepts a slug matching a built-in entity name — see
+    import_templates.RESERVED_SLUGS."""
+    email = _require_ops_admin(req)
+    data = req.data or {}
+    try:
+        db = firestore.client()
+        tpl = tpl_store.save_template(db, data, email)
+        return {"template": tpl}
+    except ValueError as e:
+        raise https_fn.HttpsError(https_fn.FunctionsErrorCode.INVALID_ARGUMENT, str(e))
+    except https_fn.HttpsError:
+        raise
+    except Exception as e:
+        raise https_fn.HttpsError(https_fn.FunctionsErrorCode.INTERNAL, str(e))
+
+
+@https_fn.on_call(region="asia-south1", memory=options.MemoryOption.MB_256, timeout_sec=30, max_instances=3)
+def delete_import_template(req: https_fn.CallableRequest):
+    """Request: {slug}. Deleting a template does not touch any staging_imports
+    job already created from it — those keep their staged rows, they simply
+    can no longer be re-processed or re-committed once gone."""
+    _require_ops_admin(req)
+    data = req.data or {}
+    slug = (data.get("slug") or "").strip()
+    if not slug:
+        raise https_fn.HttpsError(https_fn.FunctionsErrorCode.INVALID_ARGUMENT, "Missing slug")
+    try:
+        db = firestore.client()
+        tpl_store.delete_template(db, slug)
+        return {"ok": True}
+    except ValueError as e:
+        raise https_fn.HttpsError(https_fn.FunctionsErrorCode.INVALID_ARGUMENT, str(e))
+    except https_fn.HttpsError:
+        raise
+    except Exception as e:
+        raise https_fn.HttpsError(https_fn.FunctionsErrorCode.INTERNAL, str(e))
