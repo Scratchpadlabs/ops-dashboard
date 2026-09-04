@@ -1482,11 +1482,19 @@ def _commit_teachers(staffs_ref, writable, email):
 #     --gen2 --runtime python312 --region asia-south1 \
 #     --source . --entry-point list_import_templates \
 #     --trigger-http --allow-unauthenticated \
-#     --memory 256MB --timeout 30s --max-instances 3 --project clarified-1501
+#     --memory 512MB --timeout 30s --max-instances 3 --project clarified-1501
 #   (repeat with --entry-point get_import_template / save_import_template /
 #   delete_import_template for the other three)
+#
+# 512MB, not 256MB: every function in this file shares this module's
+# top-level imports (firebase_admin, openpyxl, python-docx, xlrd, requests)
+# regardless of which entry point is deployed — Cloud Run scales CPU with
+# memory, and at 256MB those imports were too slow to finish before the
+# startup health check timeout ("Container Healthcheck failed" / "failed to
+# start and listen on PORT=8080"), even though these functions themselves do
+# almost nothing per request. commit_import already proves 512MB is enough.
 
-@https_fn.on_call(region="asia-south1", memory=options.MemoryOption.MB_256, timeout_sec=30, max_instances=3)
+@https_fn.on_call(region="asia-south1", memory=options.MemoryOption.MB_512, timeout_sec=30, max_instances=3)
 def list_import_templates(req: https_fn.CallableRequest):
     """Returns active templates only, for Import.vue's entity dropdown. Pass
     includeArchived to also list archived ones, for the management UI."""
@@ -1502,7 +1510,7 @@ def list_import_templates(req: https_fn.CallableRequest):
         raise https_fn.HttpsError(https_fn.FunctionsErrorCode.INTERNAL, str(e))
 
 
-@https_fn.on_call(region="asia-south1", memory=options.MemoryOption.MB_256, timeout_sec=30, max_instances=3)
+@https_fn.on_call(region="asia-south1", memory=options.MemoryOption.MB_512, timeout_sec=30, max_instances=3)
 def get_import_template(req: https_fn.CallableRequest):
     """One full template doc, for ImportReview.vue's column defs and the
     edit dialog. Request: {slug}."""
@@ -1523,7 +1531,7 @@ def get_import_template(req: https_fn.CallableRequest):
         raise https_fn.HttpsError(https_fn.FunctionsErrorCode.INTERNAL, str(e))
 
 
-@https_fn.on_call(region="asia-south1", memory=options.MemoryOption.MB_256, timeout_sec=30, max_instances=3)
+@https_fn.on_call(region="asia-south1", memory=options.MemoryOption.MB_512, timeout_sec=30, max_instances=3)
 def save_import_template(req: https_fn.CallableRequest):
     """Create or update a custom template. Request: {slug, name, description,
     targetCollectionName, columns, keyField, extractionHints, status}. Never
@@ -1543,7 +1551,7 @@ def save_import_template(req: https_fn.CallableRequest):
         raise https_fn.HttpsError(https_fn.FunctionsErrorCode.INTERNAL, str(e))
 
 
-@https_fn.on_call(region="asia-south1", memory=options.MemoryOption.MB_256, timeout_sec=30, max_instances=3)
+@https_fn.on_call(region="asia-south1", memory=options.MemoryOption.MB_512, timeout_sec=30, max_instances=3)
 def delete_import_template(req: https_fn.CallableRequest):
     """Request: {slug}. Deleting a template does not touch any staging_imports
     job already created from it — those keep their staged rows, they simply
