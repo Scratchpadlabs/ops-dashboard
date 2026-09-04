@@ -255,6 +255,17 @@ export async function classHealthRemote() {
   return res.data
 }
 
+// ── Create auth accounts (Tools > Authentication) ──────────────────────────
+// Creates Firebase Auth accounts for students/staff flagged
+// needsAuthCreation, then marks them done. dryRun previews without writing.
+// Same callable pattern as school_reset — see functions/create_auth_accounts.
+const createAuthAccountsCallable = httpsCallable(functions, 'create_auth_accounts', { timeout: 300_000 })
+
+export async function createAuthAccountsRemote({ schoolId, roles, dryRun }) {
+  const res = await createAuthAccountsCallable({ schoolId, roles, dryRun })
+  return res.data
+}
+
 export function downloadReport({ filename, mime, content_base64 }) {
   const bytes = Uint8Array.from(atob(content_base64), c => c.charCodeAt(0))
   downloadBlob(new Blob([bytes], { type: mime }), filename)
