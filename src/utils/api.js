@@ -283,6 +283,37 @@ export async function commitImportRemote({ schoolId, jobId, entity, items, overw
   return res.data
 }
 
+// ── Custom import templates ───────────────────────────────────────────────
+// Deliberately callable-only, never a direct Firestore read/write from the
+// browser — import_templates has no firestore.rules entry at all, on
+// purpose (see functions/generate_import/import_templates.py's module
+// docstring: this Firestore project is shared with other apps and a past
+// rules deploy broke them).
+const listImportTemplatesCallable = httpsCallable(functions, 'list_import_templates', { timeout: 30_000 })
+const getImportTemplateCallable = httpsCallable(functions, 'get_import_template', { timeout: 30_000 })
+const saveImportTemplateCallable = httpsCallable(functions, 'save_import_template', { timeout: 30_000 })
+const deleteImportTemplateCallable = httpsCallable(functions, 'delete_import_template', { timeout: 30_000 })
+
+export async function listImportTemplatesRemote({ includeArchived } = {}) {
+  const res = await listImportTemplatesCallable({ includeArchived: !!includeArchived })
+  return res.data.templates
+}
+
+export async function getImportTemplateRemote({ slug }) {
+  const res = await getImportTemplateCallable({ slug })
+  return res.data.template
+}
+
+export async function saveImportTemplateRemote(templateData) {
+  const res = await saveImportTemplateCallable(templateData)
+  return res.data.template
+}
+
+export async function deleteImportTemplateRemote({ slug }) {
+  const res = await deleteImportTemplateCallable({ slug })
+  return res.data
+}
+
 // ── Pending Items letter (v2: draft -> edit -> render compose flow) ────────
 // Same raw-fetch + blob pattern as invoice/agreement, not a callable — the
 // function is stateless (no Firestore/Storage access). Two modes now:
