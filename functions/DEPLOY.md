@@ -522,6 +522,56 @@ extraction — `printf '%s' 'sk-ant-...' | gcloud secrets create ANTHROPIC_API_K
 
 ---
 
+## list_import_templates + get_import_template + save_import_template + delete_import_template (NEW)
+
+Four more callables in the SAME `functions/generate_import` source folder,
+backing the "Manage Templates" screen (`src/views/ImportTemplates.vue`) that
+`Import.vue` links to. Deliberately callable-only, never a direct Firestore
+read/write from the browser — see `import_templates.py`'s module docstring
+for why `import_templates` has no `firestore.rules` entry at all.
+
+256MB is not enough here: the first deploy of `list_import_templates` failed
+Cloud Run's startup health check because every function in `main.py` pays
+for the module's top-level imports (firebase_admin, openpyxl, python-docx,
+xlrd, requests) regardless of which entry point is deployed, and those
+didn't finish before the probe timeout at 256MB. Deploy at 512MB, same as
+`commit_import`.
+
+### Deploy:
+```
+cd functions/generate_import
+
+gcloud functions deploy list_import_templates \
+  --gen2 --runtime python312 --region asia-south1 \
+  --source . --entry-point list_import_templates \
+  --trigger-http --allow-unauthenticated --project clarified-1501 \
+  --memory 512MB --timeout 30s --max-instances 3
+
+gcloud functions deploy get_import_template \
+  --gen2 --runtime python312 --region asia-south1 \
+  --source . --entry-point get_import_template \
+  --trigger-http --allow-unauthenticated --project clarified-1501 \
+  --memory 512MB --timeout 30s --max-instances 3
+
+gcloud functions deploy save_import_template \
+  --gen2 --runtime python312 --region asia-south1 \
+  --source . --entry-point save_import_template \
+  --trigger-http --allow-unauthenticated --project clarified-1501 \
+  --memory 512MB --timeout 30s --max-instances 3
+
+gcloud functions deploy delete_import_template \
+  --gen2 --runtime python312 --region asia-south1 \
+  --source . --entry-point delete_import_template \
+  --trigger-http --allow-unauthenticated --project clarified-1501 \
+  --memory 512MB --timeout 30s --max-instances 3
+```
+
+No secrets, no firestore.rules change (see above), no new IAM — plain
+Firestore reads/writes under the runtime service account's existing
+`roles/editor`.
+
+---
+
 ## generate_invoice (NEW)
 
 ### Files needed in the folder:
