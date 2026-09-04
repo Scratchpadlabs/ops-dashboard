@@ -98,6 +98,8 @@ export async function generateAgreementFiles(a) {
     studentCount:     a.student_count,
     installmentPlan:  a.installment_plan,
     agreementNumber:  a.agreement_number,
+    schoolSignatoryName:        a.signatory_name || '',
+    schoolSignatoryDesignation: a.signatory_designation || '',
   })
   const blob = await res.blob()
   downloadBlob(blob, `Agreement_${a.school_name}_${a.agreement_number}.pdf`)

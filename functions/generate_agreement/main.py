@@ -20,7 +20,7 @@ from datetime import datetime
 
 import functions_framework
 from flask import Request, Response
-from PIL import Image as PILImage
+from PIL import Image as PILImage, ImageChops
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle
@@ -32,8 +32,11 @@ from reportlab.platypus import (
 API_KEY = "9421060748"
 
 COMPANY_NAME = "Scratchpad Labs Pvt Ltd"
+COMPANY_SIGNATORY_NAME        = "Siddhesh Sarode"
+COMPANY_SIGNATORY_DESIGNATION = "Director"
 
-LOGO_PATH = os.path.join(os.path.dirname(__file__), "logo.png")
+LOGO_PATH      = os.path.join(os.path.dirname(__file__), "logo.png")
+SIGNATURE_PATH = os.path.join(os.path.dirname(__file__), "sign.jpg")
 
 # ── Brand palette ──────────────────────────────────────────────────────────────
 NAVY  = colors.HexColor("#1e3a5f")
@@ -107,6 +110,30 @@ def _load_logo(height=None, width=None):
     else:
         target_w = width
         target_h = target_w * h / w
+    return RLImage(buf, width=target_w, height=target_h)
+
+
+def _load_signature(path, height=26):
+    """Trim the white background off a scanned/photographed signature (no
+    alpha channel to crop by, unlike the logo) and return a right-sized,
+    transparent Image flowable."""
+    im = PILImage.open(path).convert("RGB")
+    bg = PILImage.new("RGB", im.size, (255, 255, 255))
+    bbox = ImageChops.difference(im, bg).getbbox()
+    if bbox:
+        im = im.crop(bbox)
+    im = im.convert("RGBA")
+    pixels = im.getdata()
+    im.putdata([
+        (r, g, b, 0) if (r > 240 and g > 240 and b > 240) else (r, g, b, a)
+        for r, g, b, a in pixels
+    ])
+    w, h = im.size
+    buf = io.BytesIO()
+    im.save(buf, format="PNG")
+    buf.seek(0)
+    target_h = height
+    target_w = target_h * w / h
     return RLImage(buf, width=target_w, height=target_h)
 
 
@@ -189,13 +216,15 @@ def _instalment_table(total, plan):
 # ── PDF builder ────────────────────────────────────────────────────────────────
 
 def _build_pdf(data):
-    school_name   = data["schoolName"]
-    school_addr   = (data.get("schoolAddress") or "").strip() or "-"
-    hpc_type      = (data.get("hpcType") or "printed and digital").strip()
-    fee           = int(data["feePerStudent"])
-    student_count = int(data["studentCount"])
-    plan          = (data.get("installmentPlan") or "A").strip()
-    agr_num       = (data.get("agreementNumber") or "").strip()
+    school_name    = data["schoolName"]
+    school_addr    = (data.get("schoolAddress") or "").strip() or "-"
+    hpc_type       = (data.get("hpcType") or "printed and digital").strip()
+    fee            = int(data["feePerStudent"])
+    student_count  = int(data["studentCount"])
+    plan           = (data.get("installmentPlan") or "A").strip()
+    agr_num        = (data.get("agreementNumber") or "").strip()
+    signatory_name = (data.get("schoolSignatoryName") or "").strip()
+    signatory_desg = (data.get("schoolSignatoryDesignation") or "").strip()
 
     academic_year = _academic_year()
     ay_start      = academic_year[:4]
@@ -279,7 +308,9 @@ def _build_pdf(data):
         ], [
             Paragraph(
                 f'{school_name}, an educational institution located at {school_addr} and represented '
-                f'herein by its authorised signatory (hereinafter referred to as the &quot;School,&quot; '
+                f'herein by its authorised signatory'
+                + (f', {signatory_name}' + (f', {signatory_desg}' if signatory_desg else '') if signatory_name else '')
+                + f' (hereinafter referred to as the &quot;School,&quot; '
                 f'which expression shall, unless repugnant to the context or meaning thereof, include '
                 f'its successors and permitted assigns).',
                 BODY,
@@ -394,7 +425,9 @@ def _build_pdf(data):
         f'Company the agreed consideration, with the following payment schedule: {payment_terms}. '
         f'All payments shall be due and payable within forty-five (45) days of invoice and shall '
         f'be non-refundable unless otherwise agreed. Total contract value based on '
-        f'{student_count} students: Rs. {_inr(total_amount)}/-.',
+        f'{student_count} students: Rs. {_inr(total_amount)}/-. Notwithstanding the foregoing, '
+        f'any other payment schedule or commercial arrangement mutually agreed in writing between '
+        f'the Parties shall take precedence and be binding to the extent of such agreement.',
         SUBCLAUSE,
     ))
     story.append(Spacer(1, 4))
@@ -636,21 +669,37 @@ def _build_pdf(data):
     ))
     story.append(Spacer(1, 18))
 
-    def _sig_box(label):
-        return [
+    def _sig_box(label, name=None, designation=None, date_str=None, signature_img=None):
+        box = [
             Paragraph(f'{label} :', SIG_NAME),
             Spacer(1, 14),
-            Paragraph('Name: ________________________________', BODY_SMALL),
+            Paragraph(f'Name: {name or "________________________________"}', BODY_SMALL),
             Spacer(1, 8),
-            Paragraph('Designation: ___________________________', BODY_SMALL),
+            Paragraph(f'Designation: {designation or "___________________________"}', BODY_SMALL),
             Spacer(1, 8),
-            Paragraph('Date: _________________________________', BODY_SMALL),
+            Paragraph(f'Date: {date_str or "_________________________________"}', BODY_SMALL),
             Spacer(1, 8),
-            Paragraph('Signature: ____________________________', BODY_SMALL),
+            Paragraph('Signature:', BODY_SMALL),
         ]
+        if signature_img is not None:
+            box.append(Spacer(1, 2))
+            box.append(signature_img)
+        else:
+            box.append(Paragraph('____________________________', BODY_SMALL))
+        return box
 
-    company_box = _sig_box(f"For {COMPANY_NAME}")
-    school_box  = _sig_box(f"For {school_name}")
+    company_box = _sig_box(
+        f"For {COMPANY_NAME}",
+        name=COMPANY_SIGNATORY_NAME,
+        designation=COMPANY_SIGNATORY_DESIGNATION,
+        date_str=today,
+        signature_img=_load_signature(SIGNATURE_PATH),
+    )
+    school_box = _sig_box(
+        f"For {school_name}",
+        name=signatory_name or None,
+        designation=signatory_desg or None,
+    )
 
     sig_table = Table(
         [[company_box, school_box]],
