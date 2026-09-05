@@ -411,6 +411,18 @@ STUDENT_HEADER_ALIASES = {
                       "name of the student", "full name", "child name", "childs name"],
     "grade": ["class", "grade", "std", "standard"],
     "section": ["sec", "section", "div", "division"],
+    # A single column carrying grade+section glued together ("5A", "10-B"),
+    # distinct from "grade"/"class" above (a bare grade, no section) — the two
+    # header names would otherwise collide since "classid" fuzzy-matches
+    # "class" at 0.833, just under the 0.84 threshold, so without its own
+    # entry this column was silently dropped as unmapped, leaving grade AND
+    # section blank for every row (Hillgreen Highschool, 2026-09-05: all 1625
+    # rows skipped downstream for "no class-section configured", section
+    # blank, because nothing here recognized "classId"). Kept as its own
+    # field rather than folded into "grade" because a glued value needs
+    # class_resolver.parse_class_value to split it, not extract_grade_tokens
+    # — see clean_students_rows.
+    "combined_class": ["classid", "class id", "class_id", "class-id"],
     "roll_no": ["roll no", "roll", "roll number", "rollno"],
     "gender": ["gender", "sex"],
     "dob": ["dob", "date of birth", "birth date", "d.o.b"],
@@ -436,8 +448,8 @@ STUDENT_HEADER_ALIASES = {
 # Everything the parser will carry through to Review. Being here does NOT mean
 # a field reaches Firestore — src/schemas/studentMapping.js decides that, and
 # most of these are deliberately review-only (see REVIEW_ONLY_STUDENT_KEYS).
-STUDENT_SCHEMA_KEYS = ["grade", "section", "roll_no", "student_name", "gender",
-                        "dob", "sr_no", "adm_no", "gr_emis_sts", "aadhaar",
+STUDENT_SCHEMA_KEYS = ["grade", "section", "combined_class", "roll_no", "student_name",
+                        "gender", "dob", "sr_no", "adm_no", "gr_emis_sts", "aadhaar",
                         "mother_name", "father_name", "contact", "email", "city",
                         "father_mobile", "father_email", "mother_mobile",
                         "mother_email", "branch_name", "board", "enrollment_code",
@@ -446,12 +458,15 @@ STUDENT_SCHEMA_KEYS = ["grade", "section", "roll_no", "student_name", "gender",
 # Parsed and shown in Review so an operator can see the file was read
 # correctly, but never written to a student document — the real schema has no
 # home for them. Surfaced in the UI as an explicit mapping decision rather
-# than dropped in silence.
+# than dropped in silence. "combined_class" is consumed by
+# clean_students_rows to fill grade/section instead — it never has a home of
+# its own either.
 REVIEW_ONLY_STUDENT_KEYS = ["father_mobile", "father_email", "mother_mobile",
                              "mother_email", "branch_name", "board",
                              "enrollment_code", "date_of_admission", "status",
                              "using_transport", "sr_no", "roll_no",
-                             "mother_name", "father_name", "city", "address"]
+                             "mother_name", "father_name", "city", "address",
+                             "combined_class"]
 STUDENT_REQUIRED_FIELD = "student_name"
 
 

@@ -76,6 +76,7 @@ from normalize import (
 import education_kb as kb
 from tabular_parser import parse_tabular_file
 import import_templates as tpl_store
+from class_resolver import parse_class_value
 # Mirrored from functions/shared/ by tools/sync_shared.py — see that script for
 # why these are copies rather than imports.
 from school_schema import (
@@ -416,6 +417,8 @@ def clean_students_rows(rows, cfg, provenance=None):
 
         grade_raw = d.get("grade", "")
         tokens = extract_grade_tokens(grade_raw)
+        combined_raw = d.get("combined_class", "")
+        section_raw = d.get("section", "")
         if tokens:
             grade = tokens[0]
             if grade != grade_raw.strip():
@@ -423,10 +426,24 @@ def clean_students_rows(rows, cfg, provenance=None):
             d["grade"] = grade
             if len(tokens) > 1:
                 flags.append({"field": "grade", "message": f"multiple grades found in '{grade_raw}' — using '{grade}', please verify", "severity": "warning"})
+        elif combined_raw.strip():
+            # No separate grade column, or it didn't parse — this school's
+            # file glues grade+section into one cell ("5A", "10-B"). Same
+            # parser currentClassId already relies on, so "5A" resolves the
+            # same way here as it would on a live student record.
+            parsed = parse_class_value(combined_raw)
+            if parsed["grade_ordinal"] is not None:
+                grade = parsed["grade_canonical"]
+                d["grade"] = grade
+                fixes.append({"field": "grade", "original": combined_raw, "fixed": grade, "rule": "combined_class_split"})
+                if parsed["section"] and not section_raw.strip():
+                    section_raw = parsed["section"]
+            else:
+                grade = ""
+                flags.append({"field": "grade", "message": f"'{combined_raw}' does not resolve to a known grade", "severity": "error"})
         else:
             grade = ""
 
-        section_raw = d.get("section", "")
         if section_raw.strip():
             candidates = cfg["sections_by_grade"].get(grade, {})
             status, display, extra = kb_match(section_raw, "class", candidates, cfg["aliases"], cfg["kb_overlay"])
