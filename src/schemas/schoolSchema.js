@@ -259,6 +259,11 @@ export const SCHOOL_SCHEMAS = {
       // PII. Readable by every signed-in app user under the current
       // firestore.rules read grant — narrowing that needs a rules change.
       aadhaarNumber: opt(STRING, { allowEmpty: true, pattern: AADHAAR_RE, hint: '12 digits' }),
+      // A school's own stable student code ("shh0001"), if it has one —
+      // see useImport.js's buildStudentsPlan. Lets a later import match this
+      // exact document without resolving a class at all, which is what makes
+      // "update contact info, leave Grade/Section alone" possible.
+      externalId: opt(STRING, { allowEmpty: true }),
     },
   },
 

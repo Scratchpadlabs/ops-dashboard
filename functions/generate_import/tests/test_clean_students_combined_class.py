@@ -81,3 +81,23 @@ def test_no_class_column_at_all_leaves_grade_blank():
     out = clean_students_rows(rows, _cfg())
     assert out[0]["data"].get("grade", "") == ""
     assert not out[0]["flags"]
+
+
+def test_external_id_header_recognized_and_stored():
+    """A single "ID" column ("shh0001", …) is recognized as its own field —
+    it must survive parsing separately from combined_class/grade/section so
+    useImport.js's buildStudentsPlan can match an existing student by it
+    without needing the class to resolve at all."""
+    from tabular_parser import parse_tabular_file
+    from normalize import STUDENT_HEADER_ALIASES, STUDENT_SCHEMA_KEYS, STUDENT_REQUIRED_FIELD
+
+    csv_bytes = (
+        "ID,Name,Grade,Section\n"
+        "shh0001,Zayn Aman Arab,5,A\n"
+    ).encode("utf-8")
+    result = parse_tabular_file("students.csv", csv_bytes, STUDENT_SCHEMA_KEYS,
+                                STUDENT_HEADER_ALIASES, STUDENT_REQUIRED_FIELD)
+    included = [r for r in result["rows"] if not r.get("excluded")]
+    assert len(included) == 1
+    assert included[0]["data"]["external_id"] == "shh0001"
+    assert not result["unmapped_headers"]

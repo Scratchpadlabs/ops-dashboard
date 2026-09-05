@@ -374,6 +374,17 @@ def match_value(raw, alias_type, valid_canon_to_display, aliases):
 # `import_unknown_headers` (see main.py) specifically to grow this list from
 # real data instead of guesswork.
 STUDENT_HEADER_ALIASES = {
+    # This school's own unique identifier for the child ("shh0001"), stable
+    # across every future import. If a live student document was already
+    # written with this as its docId, later imports match it directly instead
+    # of by (class, roll/name) — which is otherwise the only way an update
+    # finds its target. That decouples "update this student's contact number"
+    # from "resolve this student's class", which is the whole point: a
+    # field-selection import can leave Grade/Section alone entirely. Kept in
+    # its own field rather than folded into sr_no/adm_no/gr_emis_sts — those
+    # are registers a school may not digitize consistently; this one is meant
+    # to be authoritative and always present once assigned.
+    "external_id": ["id", "student id", "unique id", "unique code"],
     "sr_no": ["sno", "sr no", "s.no", "serial", "serial no", "serial number", "sl no"],
     "adm_no": ["adm no", "admission no", "admission number",
                "admission no/reference code", "admission no / reference code",
@@ -448,8 +459,8 @@ STUDENT_HEADER_ALIASES = {
 # Everything the parser will carry through to Review. Being here does NOT mean
 # a field reaches Firestore — src/schemas/studentMapping.js decides that, and
 # most of these are deliberately review-only (see REVIEW_ONLY_STUDENT_KEYS).
-STUDENT_SCHEMA_KEYS = ["grade", "section", "combined_class", "roll_no", "student_name",
-                        "gender", "dob", "sr_no", "adm_no", "gr_emis_sts", "aadhaar",
+STUDENT_SCHEMA_KEYS = ["grade", "section", "combined_class", "external_id", "roll_no",
+                        "student_name", "gender", "dob", "sr_no", "adm_no", "gr_emis_sts", "aadhaar",
                         "mother_name", "father_name", "contact", "email", "city",
                         "father_mobile", "father_email", "mother_mobile",
                         "mother_email", "branch_name", "board", "enrollment_code",

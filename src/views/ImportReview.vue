@@ -230,6 +230,27 @@
     <Dialog v-model:visible="commitConfirmVisible" header="Commit to School Setup" modal :style="{ width: '520px' }">
       <div v-if="plan" class="space-y-3">
         <p class="text-sm text-slate-600">Writing to <span class="font-semibold">{{ schoolName }}</span>'s live <span class="capitalize">{{ job.entity }}</span> data:</p>
+
+        <!-- Students only. A file can carry Grade/Section that shouldn't be
+             applied to an EXISTING child on this run — unchecking a group
+             here means an update leaves that field alone entirely, not that
+             it writes it blank. New students always get every field
+             regardless, since there is nothing yet for a merge to preserve. -->
+        <div v-if="job.entity === 'students'" class="rounded-lg border border-slate-200 px-3 py-2">
+          <div class="text-xs font-semibold text-slate-600 mb-1.5">Which fields should this update touch on existing students?</div>
+          <div class="grid grid-cols-2 gap-x-3 gap-y-1">
+            <div v-for="g in fieldGroups" :key="g.key" class="flex items-center gap-2">
+              <Checkbox
+                :modelValue="selectedFieldGroups.has(g.key)"
+                binary :inputId="`field-${g.key}`"
+                @update:modelValue="checked => toggleFieldGroup(g.key, checked)"
+              />
+              <label :for="`field-${g.key}`" class="text-xs text-slate-600">{{ g.label }}</label>
+            </div>
+          </div>
+          <p class="text-[11px] text-slate-400 mt-1.5">New students are always created with every field — this only limits what gets touched on students that already exist.</p>
+        </div>
+
         <div class="grid grid-cols-2 gap-2 text-sm">
           <div class="bg-green-50 text-green-700 rounded-lg px-3 py-2">{{ plan.summary.create }} new</div>
           <div class="bg-amber-50 text-amber-700 rounded-lg px-3 py-2">{{ plan.summary.changed }} changed</div>
@@ -323,7 +344,7 @@
       </div>
       <template #footer>
         <Button label="Cancel" text @click="commitConfirmVisible = false" />
-        <Button label="Confirm Commit" :loading="committing" @click="confirmCommit" />
+        <Button label="Confirm Commit" :loading="committing" :disabled="rebuildingPlan" @click="confirmCommit" />
       </template>
     </Dialog>
   </div>
@@ -353,7 +374,7 @@ import { rootSchoolDoc, schoolCollection } from '../firebase/schoolCollections.j
 import {
   listenJob, listenRows, updateRowData, setRowExcluded, buildCommitPlan, commitImport,
   normalizeGrade, canonicalize, resolveFieldValue, resolveFieldValueForAllMatching,
-  loadSectionsByGrade, loadSubjectsByGrade,
+  loadSectionsByGrade, loadSubjectsByGrade, STUDENT_UPDATE_FIELD_GROUPS,
 } from '../composables/useImport.js'
 import ImportFieldResolver from '../components/shared/ImportFieldResolver.vue'
 import { useEducationKB } from '../composables/useEducationKB.js'
@@ -748,10 +769,32 @@ const commitConfirmVisible = ref(false)
 const committing = ref(false)
 const overwriteExisting = ref(false)
 
+// Students only — which fields an update is allowed to touch. Defaults to
+// every group selected (identical to the old, unconditional behavior); an
+// operator who only wants to refresh contact details unchecks the rest,
+// most commonly "Class placement" so a re-import can't move an existing
+// child to a different class.
+const fieldGroups = STUDENT_UPDATE_FIELD_GROUPS
+const selectedFieldGroups = ref(new Set(fieldGroups.map(g => g.key)))
+const rebuildingPlan = ref(false)
+
 async function loadTerms() {
   if (job.value?.entity !== 'assessments' || !job.value?.school_id) return
   const snap = await getDocs(query(schoolCollection(job.value.school_id, 'terms'), orderBy('name')))
   terms.value = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+}
+
+async function rebuildPlan() {
+  rebuildingPlan.value = true
+  try {
+    plan.value = await buildCommitPlan(job.value, rows.value, {
+      termId: selectedTermId.value, fieldsToWrite: selectedFieldGroups.value,
+    })
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Could not build commit plan', detail: e.message, life: 4000 })
+  } finally {
+    rebuildingPlan.value = false
+  }
 }
 
 async function openCommitConfirm() {
@@ -760,12 +803,23 @@ async function openCommitConfirm() {
     return
   }
   try {
-    plan.value = await buildCommitPlan(job.value, rows.value, { termId: selectedTermId.value })
+    selectedFieldGroups.value = new Set(fieldGroups.map(g => g.key))
+    plan.value = await buildCommitPlan(job.value, rows.value, {
+      termId: selectedTermId.value, fieldsToWrite: selectedFieldGroups.value,
+    })
     overwriteExisting.value = false
     commitConfirmVisible.value = true
   } catch (e) {
     toast.add({ severity: 'error', summary: 'Could not build commit plan', detail: e.message, life: 4000 })
   }
+}
+
+function toggleFieldGroup(key, checked) {
+  const next = new Set(selectedFieldGroups.value)
+  if (checked) next.add(key)
+  else next.delete(key)
+  selectedFieldGroups.value = next
+  rebuildPlan()
 }
 
 async function confirmCommit() {

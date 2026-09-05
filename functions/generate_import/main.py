@@ -137,6 +137,9 @@ SCHEMAS = {
             "days since 1899-12-30. Strip honorifics (MAS./MISS/MRS./MR.) from names and "
             "use them to infer gender. contact: first valid 10-digit number only. adm_no "
             "is the admission/GR register number, distinct from sr_no (serial number). "
+            "external_id is this school's own unique student code if a column for one "
+            "exists (often literally headed 'ID', distinct from adm_no/sr_no/gr_emis_sts) "
+            "— leave empty if there is no such column, never invent one. "
             "DO NOT extract Aadhaar numbers, SSSM ids, caste/category, religion, or "
             "addresses even if present — omit them entirely."
         ),
@@ -1374,14 +1377,22 @@ def _validate_writable(entity, writable, tpl=None):
     for item in writable:
         doc_id = item.get("docId") or ""
         payload = coerce_wire_payload(collection, item.get("payload") or {})
+        # A field-selection import (useImport.js buildStudentsPlan) sends an
+        # UPDATE_CHANGED row with only the fields the operator actually chose
+        # to touch — currentClassId genuinely absent (not just empty) means
+        # "leave this student's class alone", same meaning a merge=True write
+        # already gives every other omitted field. Required-field checks must
+        # follow that same partial reading, or a deliberately class-less
+        # update gets rejected as if the class were blank.
+        partial = item.get("status") == "UPDATE_CHANGED"
 
-        if collection == "students":
+        if collection == "students" and "currentClassId" in payload:
             cls = validate_current_class_id(payload.get("currentClassId"), student_id=doc_id)
             if not cls["ok"]:
                 rejected.append({"docId": doc_id, "reason": cls["message"]})
                 continue
 
-        result = validate_doc(collection, payload)
+        result = validate_doc(collection, payload, partial=partial)
         if not result["ok"]:
             rejected.append({"docId": doc_id,
                              "reason": f"does not match the {collection} schema — "

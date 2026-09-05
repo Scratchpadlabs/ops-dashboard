@@ -86,6 +86,11 @@ export const UNMAPPED_SOURCE_FIELDS = [
   'father_mobile', 'father_email', 'mother_mobile', 'mother_email',
   'branch_name', 'board', 'enrollment_code', 'date_of_admission', 'status',
   'using_transport',
+  // combined_class is consumed upstream (functions/generate_import/main.py's
+  // clean_students_rows splits it into grade+section) and never itself
+  // written — nothing here reads it. external_id, by contrast, IS written,
+  // as externalId — see mapImportRowToStudent below.
+  'combined_class',
 ]
 
 /** Digits only — an Aadhaar cell arrives as "1234 5678 9012" or "1234-5678-9012". */
@@ -97,10 +102,15 @@ export function toAadhaar(raw) {
 /**
  * @param {Object} row      extractor row (student_name, gender, dob, contact, …)
  * @param {Object} opts
- * @param {string} opts.classId  resolved class ID for currentClassId
+ * @param {string}  opts.classId         resolved class ID for currentClassId
+ * @param {boolean} [opts.includeClassId=true]  false omits currentClassId from
+ *   the payload entirely (as opposed to writing it empty) — for an import
+ *   that matched an EXISTING student by externalId and was told not to touch
+ *   Grade/Section this run. A merge write then leaves the live value alone,
+ *   which is the whole point; writing `currentClassId: ''` would clear it.
  * @returns {{payload: Object, dropped: string[], warnings: string[]}}
  */
-export function mapImportRowToStudent(row, { classId } = {}) {
+export function mapImportRowToStudent(row, { classId, includeClassId = true } = {}) {
   const d = row || {}
   const name = String(d.student_name ?? '').trim()
   const { firstName, lastName } = splitName(name)
@@ -134,13 +144,17 @@ export function mapImportRowToStudent(row, { classId } = {}) {
     email: String(d.email ?? '').trim(),
     phoneNo,
     dateOfBirth,
-    currentClassId: classId || '',
     type: 'student',
     // Kept as two separate registers by explicit decision — see schoolSchema.js.
     admNo: String(d.adm_no ?? '').trim(),
     grEmisSts: String(d.gr_emis_sts ?? '').trim(),
     aadhaarNumber,
   }
+
+  if (includeClassId) payload.currentClassId = classId || ''
+
+  const externalId = String(d.external_id ?? '').trim()
+  if (externalId) payload.externalId = externalId
 
   return { payload, dropped, warnings }
 }

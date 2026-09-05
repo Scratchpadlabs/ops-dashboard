@@ -314,6 +314,12 @@ SCHOOL_SCHEMAS = {
             # firestore.rules read grant — narrowing that needs a rules change.
             "aadhaarNumber": _opt(STRING, allowEmpty=True, pattern=AADHAAR_RE,
                                   hint="12 digits"),
+            # A school's own stable student code ("shh0001"), if it has one —
+            # see useImport.js's buildStudentsPlan (mirrors src/schemas/
+            # schoolSchema.js). Lets a later import match this exact document
+            # without resolving a class at all, which is what makes "update
+            # contact info, leave Grade/Section alone" possible.
+            "externalId": _opt(STRING, allowEmpty=True),
         },
     },
     "staffs": {
