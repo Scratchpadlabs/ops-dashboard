@@ -340,16 +340,36 @@ function fieldsEqual(a, b, keys) {
 // A brand-new student ignores this entirely — there is no live document for
 // a merge write to preserve anything on, so creating one always needs every
 // field, classPlacement included.
+// `sourceKeys` are the extractor's OWN field names (row.data.*, before
+// mapImportRowToStudent derives anything) — what ImportReview.vue checks to
+// decide whether a group is worth showing at all, since a group the file
+// never carried has nothing to protect and nothing to write either way.
 export const STUDENT_UPDATE_FIELD_GROUPS = [
-  { key: 'classPlacement', label: 'Class placement (Grade / Section)', payloadKeys: ['currentClassId'] },
-  { key: 'name', label: 'Name', payloadKeys: ['name', 'firstName', 'lastName'] },
-  { key: 'gender', label: 'Gender', payloadKeys: ['gender'] },
-  { key: 'dob', label: 'Date of birth', payloadKeys: ['dateOfBirth'] },
-  { key: 'contact', label: 'Contact number', payloadKeys: ['phoneNo'] },
-  { key: 'email', label: 'Email', payloadKeys: ['email'] },
-  { key: 'registers', label: 'Admission No / GR-EMIS-STS', payloadKeys: ['admNo', 'grEmisSts'] },
-  { key: 'aadhaar', label: 'Aadhaar', payloadKeys: ['aadhaarNumber'] },
+  { key: 'classPlacement', label: 'Class placement (Grade / Section)',
+    payloadKeys: ['currentClassId'], sourceKeys: ['grade', 'section', 'combined_class'] },
+  { key: 'name', label: 'Name', payloadKeys: ['name', 'firstName', 'lastName'], sourceKeys: ['student_name'] },
+  { key: 'gender', label: 'Gender', payloadKeys: ['gender'], sourceKeys: ['gender'] },
+  { key: 'dob', label: 'Date of birth', payloadKeys: ['dateOfBirth'], sourceKeys: ['dob'] },
+  { key: 'contact', label: 'Contact number', payloadKeys: ['phoneNo'], sourceKeys: ['contact'] },
+  { key: 'email', label: 'Email', payloadKeys: ['email'], sourceKeys: ['email'] },
+  { key: 'registers', label: 'Admission No / GR-EMIS-STS',
+    payloadKeys: ['admNo', 'grEmisSts'], sourceKeys: ['adm_no', 'gr_emis_sts'] },
+  { key: 'aadhaar', label: 'Aadhaar', payloadKeys: ['aadhaarNumber'], sourceKeys: ['aadhaar'] },
 ]
+
+function isBlankValue(v) {
+  if (v === null || v === undefined) return true
+  if (v instanceof Date || typeof v === 'number') return false
+  return String(v).trim() === ''
+}
+
+// For ImportReview.vue: only the groups this file actually carries data for —
+// a group with nothing in ANY row has nothing to update and nothing to
+// protect, so there is no reason to offer a checkbox for it at all.
+export function studentFieldGroupsWithData(rows) {
+  return STUDENT_UPDATE_FIELD_GROUPS.filter(g =>
+    (rows || []).some(r => g.sourceKeys.some(k => !isBlankValue(r.data?.[k]))))
+}
 
 // `selectedGroupKeys` null/undefined means "no restriction" (every group, the
 // pre-existing default) — a Set of STUDENT_UPDATE_FIELD_GROUPS keys otherwise.
@@ -362,9 +382,16 @@ function expandFieldGroups(selectedGroupKeys) {
   return keys
 }
 
+// Keeps only keys that are both selected AND actually carry a value on THIS
+// row. The second part matters as much as the first: a field the file never
+// gave this particular row a value for must never be written as blank onto
+// an existing student — that would silently erase whatever was already
+// there, not "leave it alone" as a deselected/absent field is supposed to.
 function pick(obj, keys) {
   const out = {}
-  for (const k of keys) if (Object.prototype.hasOwnProperty.call(obj, k)) out[k] = obj[k]
+  for (const k of keys) {
+    if (Object.prototype.hasOwnProperty.call(obj, k) && !isBlankValue(obj[k])) out[k] = obj[k]
+  }
   return out
 }
 
@@ -440,10 +467,14 @@ async function buildStudentsPlan(schoolId, rows, { fieldsToWrite } = {}) {
     }
     if (dropped.length) notes.push(`no field in the student schema for: ${dropped.join(', ')} — not saved`)
 
-    // CREATE always writes every derivable field — there is nothing on a
-    // brand-new document for a field-selection restriction to protect.
+    // CREATE always writes every derivable field, blanks included — there is
+    // nothing on a brand-new document yet for blank-protection to protect.
+    // An UPDATE always goes through pick(), selection restriction or not:
+    // blank-value skipping must apply unconditionally, or a field the file
+    // simply has no data for this row would silently erase whatever an
+    // existing student already had recorded.
     const isCreate = !existing
-    const payload = isCreate || !selectedKeys ? fullPayload : pick(fullPayload, selectedKeys)
+    const payload = isCreate ? fullPayload : pick(fullPayload, selectedKeys || Object.keys(fullPayload))
 
     const check = validateDoc('students', payload, { partial: !isCreate })
     if (!check.ok) {

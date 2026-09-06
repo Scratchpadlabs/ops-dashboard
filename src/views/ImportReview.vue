@@ -236,7 +236,7 @@
              here means an update leaves that field alone entirely, not that
              it writes it blank. New students always get every field
              regardless, since there is nothing yet for a merge to preserve. -->
-        <div v-if="job.entity === 'students'" class="rounded-lg border border-slate-200 px-3 py-2">
+        <div v-if="job.entity === 'students' && fieldGroups.length" class="rounded-lg border border-slate-200 px-3 py-2">
           <div class="text-xs font-semibold text-slate-600 mb-1.5">Which fields should this update touch on existing students?</div>
           <div class="grid grid-cols-2 gap-x-3 gap-y-1">
             <div v-for="g in fieldGroups" :key="g.key" class="flex items-center gap-2">
@@ -374,7 +374,7 @@ import { rootSchoolDoc, schoolCollection } from '../firebase/schoolCollections.j
 import {
   listenJob, listenRows, updateRowData, setRowExcluded, buildCommitPlan, commitImport,
   normalizeGrade, canonicalize, resolveFieldValue, resolveFieldValueForAllMatching,
-  loadSectionsByGrade, loadSubjectsByGrade, STUDENT_UPDATE_FIELD_GROUPS,
+  loadSectionsByGrade, loadSubjectsByGrade, studentFieldGroupsWithData,
 } from '../composables/useImport.js'
 import ImportFieldResolver from '../components/shared/ImportFieldResolver.vue'
 import { useEducationKB } from '../composables/useEducationKB.js'
@@ -769,13 +769,18 @@ const commitConfirmVisible = ref(false)
 const committing = ref(false)
 const overwriteExisting = ref(false)
 
-// Students only — which fields an update is allowed to touch. Defaults to
-// every group selected (identical to the old, unconditional behavior); an
+// Students only — which fields an update is allowed to touch. Only groups
+// this file actually carries data for are offered at all — a checkbox for a
+// column the CSV never had would do nothing useful checked or not, and
+// defaulting it "on" is exactly what used to risk blanking a field the file
+// simply never mentioned (buildStudentsPlan now also refuses to write a
+// blank value onto an existing student regardless, but there is no reason to
+// show a control for something the file can't affect either way). An
 // operator who only wants to refresh contact details unchecks the rest,
 // most commonly "Class placement" so a re-import can't move an existing
 // child to a different class.
-const fieldGroups = STUDENT_UPDATE_FIELD_GROUPS
-const selectedFieldGroups = ref(new Set(fieldGroups.map(g => g.key)))
+const fieldGroups = computed(() => studentFieldGroupsWithData(rows.value))
+const selectedFieldGroups = ref(new Set())
 const rebuildingPlan = ref(false)
 
 async function loadTerms() {
@@ -803,7 +808,7 @@ async function openCommitConfirm() {
     return
   }
   try {
-    selectedFieldGroups.value = new Set(fieldGroups.map(g => g.key))
+    selectedFieldGroups.value = new Set(fieldGroups.value.map(g => g.key))
     plan.value = await buildCommitPlan(job.value, rows.value, {
       termId: selectedTermId.value, fieldsToWrite: selectedFieldGroups.value,
     })
