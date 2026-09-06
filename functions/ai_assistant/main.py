@@ -251,6 +251,28 @@ def call_anthropic_chat(system_prompt: str, messages: list) -> str:
     return "".join(b.get("text", "") for b in r.json()["content"])
 
 
+def call_openai_chat(system_prompt: str, messages: list) -> str:
+    base_url = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
+    r = requests.post(
+        base_url.rstrip("/") + "/chat/completions",
+        headers={"Authorization": "Bearer " + os.environ["OPENAI_API_KEY"]},
+        json={"model": MODEL or "gpt-4o",
+              "messages": [{"role": "system", "content": system_prompt}] + messages,
+              "max_tokens": 4000},
+        timeout=60)
+    r.raise_for_status()
+    return r.json()["choices"][0]["message"]["content"]
+
+
+def call_llm_chat(system_prompt: str, messages: list) -> str:
+    # Same provider switch as generate_import/main.py's extract_file: OpenAI
+    # when OPENAI_API_KEY is bound, else Anthropic. Only bind the secret this
+    # project actually provisions in the `secrets=[...]` list below.
+    if os.environ.get("OPENAI_API_KEY"):
+        return call_openai_chat(system_prompt, messages)
+    return call_anthropic_chat(system_prompt, messages)
+
+
 def _sanitize_messages(raw_messages) -> list:
     """Keeps only well-formed {role, content} turns, last 20, content capped
     — this is untrusted client input forwarded into an LLM prompt, not
@@ -265,7 +287,7 @@ def _sanitize_messages(raw_messages) -> list:
 
 
 @https_fn.on_call(region="asia-south1", memory=512, timeout_sec=60, max_instances=3,
-                   secrets=["ANTHROPIC_API_KEY"])
+                   secrets=["OPENAI_API_KEY"])
 def ai_assistant(req: https_fn.CallableRequest):
     _require_ops_admin(req)
 
@@ -294,7 +316,7 @@ def ai_assistant(req: https_fn.CallableRequest):
         system_prompt += "\n\n## This request\n" + PROPOSAL_INSTRUCTIONS[proposal_kind]
 
     try:
-        raw_text = call_anthropic_chat(system_prompt, messages)
+        raw_text = call_llm_chat(system_prompt, messages)
     except Exception as e:
         raise https_fn.HttpsError(https_fn.FunctionsErrorCode.INTERNAL, str(e))
 

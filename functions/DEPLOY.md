@@ -15,8 +15,21 @@ This must return nothing (a match against the docstring's own mention of the
 pattern is expected and fine — only a real `.set(`/`.update(`/`.add(`/
 `.delete(` call site is a problem).
 
-Uses the same `ANTHROPIC_API_KEY` Secret Manager secret already bound to
-`generate_import`/`generate_pending_letter` — no new secret to create.
+Uses `OPENAI_API_KEY` (this project provisions OpenAI, not Anthropic —
+`call_llm_chat` in `main.py` picks OpenAI whenever that secret is bound, same
+provider switch `generate_import/main.py`'s `extract_file` uses; swap the
+`secrets=[...]` list and the `--set-secrets` flag below to `ANTHROPIC_API_KEY`
+if this project ever provisions that key instead).
+
+The Cloud Run revision's service account needs `roles/secretmanager.secretAccessor`
+on that secret, or the deploy succeeds but the revision fails to start with
+"Permission denied on secret" — grant it once per project:
+```
+gcloud secrets add-iam-policy-binding OPENAI_API_KEY \
+  --project clarified-1501 \
+  --member="serviceAccount:270192308039-compute@developer.gserviceaccount.com" \
+  --role="roles/secretmanager.secretAccessor"
+```
 
 ### Deploy:
 ```
@@ -27,7 +40,7 @@ gcloud functions deploy ai_assistant \
   --source . --entry-point ai_assistant \
   --trigger-http --allow-unauthenticated --project clarified-1501 \
   --memory 512MB --timeout 60s --max-instances 3 \
-  --set-secrets ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest
+  --set-secrets OPENAI_API_KEY=OPENAI_API_KEY:latest
 ```
 
 Fast-follow (not blocking v1): split this function's runtime service account
