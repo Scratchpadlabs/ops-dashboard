@@ -34,6 +34,10 @@ TARGETS = {
     # the seed classResolver.js imports), so that file is NOT mirrored in —
     # doing so would overwrite the original with its own copy.
     "generate_import": ["class_resolver.py", "school_schema.py"],
+    # ai_assistant is read-only by construction (see shared/readonly_firestore.py's
+    # docstring) — it needs the schema/vocabulary knowledge but never
+    # class_resolver.py's/promotion.py's write-adjacent logic.
+    "ai_assistant": ["school_schema.py", "education_kb.json", "readonly_firestore.py"],
 }
 
 

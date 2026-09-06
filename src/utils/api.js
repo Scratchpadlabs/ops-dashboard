@@ -314,6 +314,18 @@ export async function deleteImportTemplateRemote({ slug }) {
   return res.data
 }
 
+// ── AI Assistant (read-only chat + draft proposals) ───────────────────────
+// Structurally never writes to Firestore — see functions/ai_assistant/main.py's
+// module docstring. A `proposal` in the response is inert JSON; only a human
+// clicking the existing Save/Confirm button on the page it targets turns it
+// into a real write (see usePendingAiDraft.js).
+const aiAssistantCallable = httpsCallable(functions, 'ai_assistant', { timeout: 30_000 })
+
+export async function aiAssistantRemote({ schoolId, messages, proposalKind }) {
+  const res = await aiAssistantCallable({ schoolId: schoolId || null, messages, proposalKind: proposalKind || null })
+  return res.data
+}
+
 // ── Pending Items letter (v2: draft -> edit -> render compose flow) ────────
 // Same raw-fetch + blob pattern as invoice/agreement, not a callable — the
 // function is stateless (no Firestore/Storage access). Two modes now:

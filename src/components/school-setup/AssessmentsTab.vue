@@ -291,6 +291,7 @@ import { db } from '../../firebase/config'
 import { auth } from '../../firebase/config'
 import { checkEnteredMarks, slugify } from '../../utils/assessmentHelpers.js'
 import { toCsv, downloadCsv } from '../../utils/csv.js'
+import { takePendingAiDraft } from '../../composables/usePendingAiDraft.js'
 
 const props = defineProps({ schoolId: { type: String, default: null } })
 const confirm = useConfirm()
@@ -789,7 +790,23 @@ function exportCsv() {
 
 watch(() => props.schoolId, () => { loadStatic(); assessments.value = []; selectedTermId.value = null })
 watch(selectedTermId, () => { loadAssessments(); exitGridMode() })
-onMounted(loadStatic)
+// AI Assistant hand-off: pre-fills the SAME bulk builder dialog a human
+// would open — runBuilder() below (and its writeBatch) is completely
+// unchanged, so nothing is written until the human reviews and clicks it.
+function pickUpAiDraft() {
+  const proposal = takePendingAiDraft('assessment_bulk')
+  if (!proposal) return
+  openBuilder()
+  Object.assign(builder, {
+    name: proposal.name || '', termId: proposal.termId || builder.termId,
+    entryType: proposal.entryType || 'marks', maxMarks: proposal.maxMarks ?? null,
+    gradingScaleId: proposal.gradingScaleId || null, conversionType: proposal.conversionType || 'none',
+    conversionFactor: proposal.conversionFactor ?? null,
+    subjectIds: Array.isArray(proposal.subjectIds) ? [...proposal.subjectIds] : [],
+  })
+}
+
+onMounted(() => { loadStatic(); pickUpAiDraft() })
 </script>
 
 <style scoped>

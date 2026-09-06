@@ -1,5 +1,42 @@
 # Cloud Functions — Deploy Guide
 
+## ai_assistant (NEW — read-only chat/draft-proposal panel)
+
+Backs the AI Assistant panel (`src/components/AiAssistantPanel.vue`, header
+button in `src/App.vue`). Structurally read-only — see `main.py`'s module
+docstring and `functions/shared/readonly_firestore.py`. It never writes to
+Firestore and `firestore.rules` is never touched by this feature.
+
+Before deploying, always re-run the guardrail check:
+```
+grep -nE '\.(set|update|add|delete)\(' functions/ai_assistant/main.py functions/ai_assistant/readonly_firestore.py
+```
+This must return nothing (a match against the docstring's own mention of the
+pattern is expected and fine — only a real `.set(`/`.update(`/`.add(`/
+`.delete(` call site is a problem).
+
+Uses the same `ANTHROPIC_API_KEY` Secret Manager secret already bound to
+`generate_import`/`generate_pending_letter` — no new secret to create.
+
+### Deploy:
+```
+cd functions/ai_assistant
+
+gcloud functions deploy ai_assistant \
+  --gen2 --runtime python312 --region asia-south1 \
+  --source . --entry-point ai_assistant \
+  --trigger-http --allow-unauthenticated --project clarified-1501 \
+  --memory 512MB --timeout 60s --max-instances 3 \
+  --set-secrets ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest
+```
+
+Fast-follow (not blocking v1): split this function's runtime service account
+out with `roles/datastore.viewer` only, as defense-in-depth beyond the
+code-level read-only guarantee above, if the project's IAM setup allows
+separating it from the broader grant other functions run under.
+
+---
+
 ## create_auth_accounts (NEW)
 
 Replaces the two local one-off scripts (createAuthAccountsForStudents.js /

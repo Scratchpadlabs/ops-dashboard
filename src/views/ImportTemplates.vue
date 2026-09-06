@@ -160,6 +160,7 @@ import ConfirmDialog from 'primevue/confirmdialog'
 import { useStepUpAuth } from '../composables/useStepUpAuth.js'
 import { listImportTemplatesRemote, saveImportTemplateRemote, deleteImportTemplateRemote } from '../utils/api.js'
 import { downloadCsv } from '../utils/importTemplates.js'
+import { takePendingAiDraft } from '../composables/usePendingAiDraft.js'
 
 const router = useRouter()
 const confirm = useConfirm()
@@ -280,7 +281,24 @@ function downloadSample(tpl) {
   downloadCsv(`${tpl.slug || 'template'}_sample.csv`, csv)
 }
 
-onMounted(loadTemplates)
+// AI Assistant hand-off: pre-fills the SAME "New Template" dialog a human
+// would open by hand — Save still runs the unmodified saveTemplate() below,
+// so nothing is written until the human reviews and clicks it themselves.
+function pickUpAiDraft() {
+  const proposal = takePendingAiDraft('import_template')
+  if (!proposal) return
+  openCreateDialog()
+  Object.assign(editing.value, {
+    slug: proposal.slug || '', name: proposal.name || '', description: proposal.description || '',
+    targetCollectionName: proposal.targetCollectionName || '', keyField: proposal.keyField || null,
+    columns: Array.isArray(proposal.columns) && proposal.columns.length
+      ? proposal.columns.map(c => ({ key: c.key || '', label: c.label || '', notes: c.notes || '', required: !!c.required, essential: !!c.essential }))
+      : editing.value.columns,
+    extractionHints: proposal.extractionHints || '',
+  })
+}
+
+onMounted(() => { loadTemplates(); pickUpAiDraft() })
 </script>
 
 <style scoped>

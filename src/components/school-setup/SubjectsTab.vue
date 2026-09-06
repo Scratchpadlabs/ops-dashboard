@@ -278,6 +278,7 @@ import { useEducationKB } from '../../composables/useEducationKB.js'
 import { loadGoalsLibrary, normalizeGrade } from '../../composables/useImport.js'
 import { SUBJECT, COSCHOLASTIC, classify as classifyValue } from '../../utils/educationKB.js'
 import { checkEnteredMarksCoScholastic, isCoScholasticArea, slugify as slugifyText } from '../../utils/assessmentHelpers.js'
+import { takePendingAiDraft } from '../../composables/usePendingAiDraft.js'
 
 const props = defineProps({ schoolId: { type: String, default: null } })
 const confirm = useConfirm()
@@ -864,7 +865,22 @@ function exportCsv() {
 }
 
 watch(() => props.schoolId, () => { loadSubjects(); loadCoScholasticContext() })
-onMounted(() => { loadSubjects(); loadCoScholasticContext(); loadOtherSchools(); loadKB() })
+// AI Assistant hand-off: pre-fills the SAME Add Subject dialog a human would
+// open — Save still runs the unmodified save flow below, so nothing is
+// written until the human reviews and clicks it themselves.
+function pickUpAiDraft() {
+  const proposal = takePendingAiDraft('subject_draft')
+  if (!proposal) return
+  openAddSubject()
+  Object.assign(form, {
+    grade: proposal.grade || '', name: proposal.name || '', area: proposal.area || '',
+    goals: Array.isArray(proposal.curricular_goals)
+      ? proposal.curricular_goals.map(g => ({ goal: g.goal || '', competencies: Array.isArray(g.competencies) ? [...g.competencies] : [] }))
+      : [],
+  })
+}
+
+onMounted(() => { loadSubjects(); loadCoScholasticContext(); loadOtherSchools(); loadKB(); pickUpAiDraft() })
 </script>
 
 <style scoped>

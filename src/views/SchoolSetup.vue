@@ -135,7 +135,7 @@
 
 <script setup>
 import { ref, computed, onMounted, provide, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { getDocs, query, orderBy, limit, setDoc, serverTimestamp } from 'firebase/firestore'
 import Select from 'primevue/select'
 import Password from 'primevue/password'
@@ -147,6 +147,7 @@ import TabPanels from 'primevue/tabpanels'
 import TabPanel from 'primevue/tabpanel'
 
 import { useStepUpAuth } from '../composables/useStepUpAuth.js'
+import { useActiveSchool } from '../composables/useActiveSchool.js'
 import { rootSchoolsCollection, rootSchoolDoc, schoolCollection } from '../firebase/schoolCollections.js'
 import { activeYear } from '../composables/useAcademicYear.js'
 import { auth } from '../firebase/config'
@@ -175,9 +176,19 @@ import ResetSchoolWizard from '../components/school-setup/ResetSchoolWizard.vue'
 const TEST_SCHOOL_ID = 'TEST_SCHOOL'
 
 const { isElevated, markActivity, reauthenticate } = useStepUpAuth()
+const { setActiveSchool } = useActiveSchool()
 const router = useRouter()
+const route = useRoute()
 
 const activeTab = ref('overview')
+
+// AI Assistant hand-off: it drafts a subject/assessment proposal, stages it
+// via usePendingAiDraft, then routes here with ?aiDraftTab=...&aiDraftSchoolId=...
+// so the right tab opens on the right school with the draft's form pre-filled
+// (each tab picks its own draft up on mount — see SubjectsTab.vue/AssessmentsTab.vue).
+// This view never applies the draft itself; it only opens the same tab/school
+// a human would have picked by hand.
+if (route.query.aiDraftTab) activeTab.value = String(route.query.aiDraftTab)
 
 /**
  * The school an in-progress reset targets. While set, the page selector is
@@ -303,6 +314,10 @@ const selectedSchoolObject = computed(() => schools.value.find(s => s.id === sel
 // zone and throws during setup — which renders the whole page blank.
 watch(selectedSchoolObject, refreshOutstanding, { immediate: true })
 
+// Feeds the AI Assistant's "which school" context (useActiveSchool) — this
+// is the config tree it actually reads (root schools/{id}), not the CRM's.
+watch(selectedSchoolObject, (s) => setActiveSchool(s?.id || null, s?.name || null), { immediate: true })
+
 async function loadSchools() {
   loadingSchools.value = true
   try {
@@ -323,7 +338,10 @@ async function loadSchools() {
   // load, or the selected school vanished) — a reload triggered by e.g. saving
   // a name change in Overview must not silently switch the selected school.
   if (!schools.value.some(s => s.id === selectedSchoolId.value)) {
-    selectedSchoolId.value = hasTestSchool.value ? TEST_SCHOOL_ID : (schools.value[0]?.id || null)
+    const aiDraftSchoolId = String(route.query.aiDraftSchoolId || '')
+    selectedSchoolId.value = schools.value.some(s => s.id === aiDraftSchoolId)
+      ? aiDraftSchoolId
+      : hasTestSchool.value ? TEST_SCHOOL_ID : (schools.value[0]?.id || null)
   }
 }
 

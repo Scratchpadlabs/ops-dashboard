@@ -123,6 +123,15 @@
           </button>
 
           <button
+            v-if="isOpsAdmin(currentUserEmail)"
+            v-tooltip.bottom="'AI Assistant'"
+            @click="isAiAssistantOpen = true"
+            class="w-8 h-8 rounded-lg flex items-center justify-center border transition-colors text-slate-400 border-slate-200 hover:border-slate-300 hover:text-slate-500"
+          >
+            <i class="pi pi-sparkles text-sm"></i>
+          </button>
+
+          <button
             v-if="notificationsSupported"
             v-tooltip.bottom="notificationButtonTooltip"
             @click="onNotificationBellClick"
@@ -144,6 +153,7 @@
     <Toast />
     <CelebrationOverlay />
     <GlobalSearchModal />
+    <AiAssistantPanel />
   </div>
 </template>
 
@@ -157,6 +167,7 @@ import { isOpsAdmin } from './config/opsAdmins.js'
 import { getDocs } from 'firebase/firestore'
 import { activeYear, availableYears, computeCurrentAcademicYear } from './composables/useAcademicYear.js'
 import { isSearchOpen } from './composables/useGlobalSearch.js'
+import { isAiAssistantOpen } from './composables/useAiAssistant.js'
 import {
   notificationsSupported, notificationPermission, notificationsEnabled,
   requestTaskNotificationPermission, disableTaskNotifications,
@@ -166,6 +177,7 @@ import { useToast } from 'primevue/usetoast'
 import Toast from 'primevue/toast'
 import CelebrationOverlay from './components/shared/CelebrationOverlay.vue'
 import GlobalSearchModal from './components/shared/GlobalSearchModal.vue'
+import AiAssistantPanel from './components/AiAssistantPanel.vue'
 
 const route = useRoute()
 const router = useRouter()
