@@ -19,12 +19,15 @@ grep check and this docstring together):
     Verify with:  grep -nE '\\.(set|update|add|delete)\\(' functions/ai_assistant/main.py functions/shared/readonly_firestore.py
     (must return nothing).
 """
+import base64
 import json
 import os
 import re
+from pathlib import PurePosixPath
 
 import firebase_admin
 from firebase_admin import firestore
+from firebase_admin import storage as fb_storage
 from firebase_functions import https_fn
 import requests
 
@@ -239,38 +242,145 @@ def _strip_json_fences(text: str) -> str:
     return re.sub(r"^```(json)?|```$", "", text.strip(), flags=re.M).strip()
 
 
-def call_anthropic_chat(system_prompt: str, messages: list) -> str:
+# ------------------------------------------------------- file attachments ---
+# Lets a chat turn include a file (messy spreadsheet, etc.) the user just
+# uploaded to Storage — client SDK upload only (src/components/
+# AiAssistantPanel.vue), gated by storage.rules (unrelated to Firestore).
+# READ-ONLY here: this only downloads the exact blob path(s) the client tells
+# us about and parses their bytes — it never uploads, deletes, or lists
+# anything in Storage, and creates no Firestore doc for the attachment (the
+# `staging_imports` job doc Import.vue's own uploader creates is deliberately
+# NOT replicated — a chat attachment is throwaway, not an import job).
+MAX_ATTACHMENTS = 3
+MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024
+
+
+def xlsx_to_tsv(raw: bytes) -> str:
+    # Adapted verbatim from generate_import/main.py — kept as a separate
+    # copy rather than a shared import so generate_import's own pipeline is
+    # never touched by this feature.
+    import io
+    from openpyxl import load_workbook
+    wb = load_workbook(io.BytesIO(raw), read_only=True, data_only=True)
+    out = []
+    for name in wb.sheetnames:
+        out.append(f"## Sheet: {name}")
+        for row in wb[name].iter_rows(values_only=True):
+            if any(v is not None and str(v).strip() for v in row):
+                out.append("\t".join("" if v is None else str(v) for v in row))
+    return "\n".join(out)
+
+
+def docx_to_text(raw: bytes) -> str:
+    import io
+    import docx
+    d = docx.Document(io.BytesIO(raw))
+    parts = [p.text for p in d.paragraphs if p.text.strip()]
+    for t in d.tables:
+        for r in t.rows:
+            parts.append("\t".join(c.text.strip() for c in r.cells))
+        parts.append("")
+    return "\n".join(parts)
+
+
+def _file_content_blocks(filename: str, raw: bytes):
+    """Anthropic-style content blocks for one attachment."""
+    ext = PurePosixPath(filename).suffix.lower()
+    if ext in (".xlsx", ".xlsm"):
+        return [{"type": "text", "text": xlsx_to_tsv(raw)}]
+    if ext == ".docx":
+        return [{"type": "text", "text": docx_to_text(raw)}]
+    if ext == ".pdf":
+        data = base64.b64encode(raw).decode()
+        return [{"type": "document",
+                 "source": {"type": "base64", "media_type": "application/pdf", "data": data}}]
+    if ext in (".png", ".jpg", ".jpeg", ".webp"):
+        media = "image/png" if ext == ".png" else "image/jpeg"
+        data = base64.b64encode(raw).decode()
+        return [{"type": "image",
+                 "source": {"type": "base64", "media_type": media, "data": data}}]
+    return [{"type": "text", "text": raw.decode(errors="replace")}]
+
+
+def _read_attachments(attachments):
+    """attachments: [{path, name}]. Returns (content_blocks, warning)."""
+    if not attachments:
+        return [], None
+    warnings = []
+    if len(attachments) > MAX_ATTACHMENTS:
+        warnings.append(f"Only the first {MAX_ATTACHMENTS} attachments are read per turn.")
+    bucket = fb_storage.bucket()
+    blocks = []
+    for a in attachments[:MAX_ATTACHMENTS]:
+        path = (a or {}).get("path")
+        name = (a or {}).get("name") or path
+        if not path:
+            continue
+        blob = bucket.blob(path)
+        blob.reload()
+        if blob.size and blob.size > MAX_ATTACHMENT_BYTES:
+            warnings.append(f"{name} is too large (max 15MB) — skipped.")
+            continue
+        raw = blob.download_as_bytes()
+        blocks.extend(_file_content_blocks(name, raw))
+    return blocks, ("; ".join(warnings) if warnings else None)
+
+
+def _openai_content_from_blocks(text, blocks):
+    content = [{"type": "text", "text": text}]
+    for b in blocks:
+        if b["type"] == "text":
+            content.append({"type": "text", "text": b["text"]})
+        elif b["type"] == "image":
+            url = f'data:{b["source"]["media_type"]};base64,{b["source"]["data"]}'
+            content.append({"type": "image_url", "image_url": {"url": url}})
+        else:
+            raise RuntimeError(
+                "PDF attachments aren't supported with the current provider "
+                "(OpenAI) — try an xlsx/csv/docx/image instead.")
+    return content
+
+
+def call_anthropic_chat(system_prompt: str, messages: list, attachment_blocks=None) -> str:
+    msgs = list(messages)
+    if attachment_blocks and msgs and msgs[-1]["role"] == "user":
+        msgs = msgs[:-1] + [{"role": "user",
+                             "content": attachment_blocks + [{"type": "text", "text": msgs[-1]["content"]}]}]
     r = requests.post(
         "https://api.anthropic.com/v1/messages",
         headers={"x-api-key": os.environ["ANTHROPIC_API_KEY"],
                  "anthropic-version": "2023-06-01"},
         json={"model": MODEL or "claude-sonnet-4-6", "max_tokens": 4000,
-              "system": system_prompt, "messages": messages},
+              "system": system_prompt, "messages": msgs},
         timeout=60)
     r.raise_for_status()
     return "".join(b.get("text", "") for b in r.json()["content"])
 
 
-def call_openai_chat(system_prompt: str, messages: list) -> str:
+def call_openai_chat(system_prompt: str, messages: list, attachment_blocks=None) -> str:
+    msgs = list(messages)
+    if attachment_blocks and msgs and msgs[-1]["role"] == "user":
+        content = _openai_content_from_blocks(msgs[-1]["content"], attachment_blocks)
+        msgs = msgs[:-1] + [{"role": "user", "content": content}]
     base_url = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
     r = requests.post(
         base_url.rstrip("/") + "/chat/completions",
         headers={"Authorization": "Bearer " + os.environ["OPENAI_API_KEY"]},
         json={"model": MODEL or "gpt-4o",
-              "messages": [{"role": "system", "content": system_prompt}] + messages,
+              "messages": [{"role": "system", "content": system_prompt}] + msgs,
               "max_tokens": 4000},
         timeout=60)
     r.raise_for_status()
     return r.json()["choices"][0]["message"]["content"]
 
 
-def call_llm_chat(system_prompt: str, messages: list) -> str:
+def call_llm_chat(system_prompt: str, messages: list, attachment_blocks=None) -> str:
     # Same provider switch as generate_import/main.py's extract_file: OpenAI
     # when OPENAI_API_KEY is bound, else Anthropic. Only bind the secret this
     # project actually provisions in the `secrets=[...]` list below.
     if os.environ.get("OPENAI_API_KEY"):
-        return call_openai_chat(system_prompt, messages)
-    return call_anthropic_chat(system_prompt, messages)
+        return call_openai_chat(system_prompt, messages, attachment_blocks)
+    return call_anthropic_chat(system_prompt, messages, attachment_blocks)
 
 
 def _sanitize_messages(raw_messages) -> list:
@@ -316,9 +426,22 @@ def ai_assistant(req: https_fn.CallableRequest):
         system_prompt += "\n\n## This request\n" + PROPOSAL_INSTRUCTIONS[proposal_kind]
 
     try:
-        raw_text = call_llm_chat(system_prompt, messages)
+        attachment_blocks, attachment_warning = _read_attachments(req.data.get("attachments"))
+    except Exception as e:
+        raise https_fn.HttpsError(https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
+                                   f"Could not read attachment: {e}")
+
+    try:
+        raw_text = call_llm_chat(system_prompt, messages, attachment_blocks)
+    except RuntimeError as e:
+        # A file type this provider can't read (e.g. PDF on OpenAI) — a clear
+        # message, not a crash.
+        return {"type": "text", "content": str(e)}
     except Exception as e:
         raise https_fn.HttpsError(https_fn.FunctionsErrorCode.INTERNAL, str(e))
+
+    if attachment_warning:
+        raw_text = f"{raw_text}\n\n({attachment_warning})"
 
     if not proposal_kind:
         return {"type": "text", "content": raw_text}

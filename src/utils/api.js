@@ -321,8 +321,11 @@ export async function deleteImportTemplateRemote({ slug }) {
 // into a real write (see usePendingAiDraft.js).
 const aiAssistantCallable = httpsCallable(functions, 'ai_assistant', { timeout: 30_000 })
 
-export async function aiAssistantRemote({ schoolId, messages, proposalKind }) {
-  const res = await aiAssistantCallable({ schoolId: schoolId || null, messages, proposalKind: proposalKind || null })
+export async function aiAssistantRemote({ schoolId, messages, proposalKind, attachments }) {
+  const res = await aiAssistantCallable({
+    schoolId: schoolId || null, messages, proposalKind: proposalKind || null,
+    attachments: attachments || [],
+  })
   return res.data
 }
 

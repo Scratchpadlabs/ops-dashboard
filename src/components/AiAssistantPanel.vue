@@ -30,7 +30,12 @@
             class="ai-msg"
             :class="m.role === 'user' ? 'ai-msg--user' : 'ai-msg--assistant'"
           >
-            <div class="ai-msg-bubble">{{ m.content }}</div>
+            <div class="ai-msg-bubble">
+              {{ m.content }}
+              <div v-if="m.attachmentNames?.length" class="ai-msg-attachments">
+                <span v-for="(n, ai) in m.attachmentNames" :key="ai" class="ai-attachment-tag"><i class="pi pi-paperclip"></i>{{ n }}</span>
+              </div>
+            </div>
             <button
               v-if="m.proposalKind"
               class="ai-apply-btn"
@@ -46,7 +51,21 @@
 
         <div v-if="errorText" class="ai-error">{{ errorText }}</div>
 
+        <div v-if="pendingAttachments.length" class="ai-pending-attachments">
+          <div v-for="(a, i) in pendingAttachments" :key="i" class="ai-attachment-tag">
+            <ProgressSpinner v-if="a.uploading" style="width:10px;height:10px" strokeWidth="8" />
+            <i v-else-if="a.error" class="pi pi-exclamation-triangle" style="color:#dc2626"></i>
+            <i v-else class="pi pi-paperclip"></i>
+            {{ a.name }}
+            <button type="button" @click="pendingAttachments.splice(i, 1)"><i class="pi pi-times"></i></button>
+          </div>
+        </div>
+
         <div class="ai-input-row">
+          <input ref="fileInputEl" type="file" multiple class="hidden" :accept="ATTACHMENT_ACCEPT" @change="onFileSelected" />
+          <button type="button" class="ai-attach-btn" :disabled="loading" @click="fileInputEl?.click()" v-tooltip.top="'Attach a file'">
+            <i class="pi pi-paperclip"></i>
+          </button>
           <input
             ref="inputEl"
             v-model="draft"
@@ -56,7 +75,7 @@
             :disabled="loading"
             @keydown.enter="send"
           />
-          <Button icon="pi pi-send" :loading="loading" :disabled="!draft.trim()" @click="send" />
+          <Button icon="pi pi-send" :loading="loading" :disabled="!draft.trim() || hasUploadingAttachment" @click="send" />
         </div>
       </div>
     </div>
@@ -64,8 +83,9 @@
 </template>
 
 <script setup>
-import { ref, nextTick, watch } from 'vue'
+import { ref, computed, nextTick, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { ref as storageRef, uploadBytes } from 'firebase/storage'
 import Button from 'primevue/button'
 import ProgressSpinner from 'primevue/progressspinner'
 
@@ -73,6 +93,14 @@ import { isAiAssistantOpen } from '../composables/useAiAssistant.js'
 import { activeSchoolId, activeSchoolName } from '../composables/useActiveSchool.js'
 import { setPendingAiDraft } from '../composables/usePendingAiDraft.js'
 import { aiAssistantRemote } from '../utils/api.js'
+import { storage } from '../firebase/config'
+
+// Same file types Import.vue accepts — this is a throwaway chat attachment,
+// not an import job: it uploads straight to Storage (client SDK, gated only
+// by the existing storage.rules "any authenticated user" rule) and creates
+// NO Firestore doc, unlike Import.vue's uploadAndProcess which also writes a
+// staging_imports job doc.
+const ATTACHMENT_ACCEPT = '.xlsx,.xlsm,.xls,.csv,.tsv,.txt,.htm,.html,.docx,.pdf,.png,.jpg,.jpeg'
 
 const router = useRouter()
 
@@ -95,8 +123,35 @@ const loading = ref(false)
 const errorText = ref('')
 const inputEl = ref(null)
 const transcriptEl = ref(null)
+const fileInputEl = ref(null)
+
+// Each entry: { name, uploading, error, path }. `path` is set once the
+// direct-to-Storage upload finishes — that's what gets sent to the callable.
+const pendingAttachments = ref([])
+const hasUploadingAttachment = computed(() => pendingAttachments.value.some(a => a.uploading))
 
 function close() { isAiAssistantOpen.value = false }
+
+async function uploadAttachment(file) {
+  const entry = { name: file.name, uploading: true, error: '', path: '' }
+  pendingAttachments.value.push(entry)
+  try {
+    const randomId = (crypto.randomUUID?.() || String(Date.now() + Math.random())).replace(/-/g, '')
+    const path = `ai_assistant_uploads/${activeSchoolId.value || 'none'}/${randomId}/${file.name}`
+    await uploadBytes(storageRef(storage, path), file)
+    entry.path = path
+  } catch (e) {
+    console.error('Could not upload attachment', e)
+    entry.error = e.message || 'Upload failed'
+  } finally {
+    entry.uploading = false
+  }
+}
+
+function onFileSelected(e) {
+  Array.from(e.target.files || []).forEach(uploadAttachment)
+  e.target.value = ''
+}
 
 async function scrollToBottom() {
   await nextTick()
@@ -119,9 +174,13 @@ function detectProposalKind(text) {
 
 async function send() {
   const text = draft.value.trim()
-  if (!text || loading.value) return
+  if (!text || loading.value || hasUploadingAttachment.value) return
   draft.value = ''
-  messages.value.push({ role: 'user', content: text })
+  const attachments = pendingAttachments.value
+    .filter(a => a.path && !a.error)
+    .map(a => ({ path: a.path, name: a.name }))
+  messages.value.push({ role: 'user', content: text, attachmentNames: attachments.map(a => a.name) })
+  pendingAttachments.value = []
   await scrollToBottom()
 
   loading.value = true
@@ -132,6 +191,7 @@ async function send() {
       schoolId: activeSchoolId.value,
       messages: historyPayload(),
       proposalKind,
+      attachments,
     })
     if (res.type === 'proposal') {
       messages.value.push({
@@ -310,4 +370,56 @@ watch(isAiAssistantOpen, async (val) => {
   outline: none;
 }
 .ai-input:focus { border-color: #93c5fd; }
+
+.ai-attach-btn {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: white;
+  color: #64748b;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ai-attach-btn:hover { border-color: #93c5fd; color: #2563eb; }
+.ai-attach-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.ai-pending-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 16px 10px;
+}
+
+.ai-attachment-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #334155;
+  background: #f1f5f9;
+  border-radius: 999px;
+  padding: 4px 8px;
+}
+.ai-attachment-tag button {
+  border: none;
+  background: none;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+}
+.ai-attachment-tag button:hover { color: #dc2626; }
+
+.ai-msg-attachments {
+  margin-top: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.ai-msg--user .ai-msg-attachments .ai-attachment-tag { background: rgba(255,255,255,0.2); color: white; }
 </style>
