@@ -79,7 +79,7 @@ export function toPhoneNo(raw) {
  * app has nowhere to put.
  */
 export const UNMAPPED_SOURCE_FIELDS = [
-  'sr_no', 'roll_no', 'mother_name', 'father_name', 'city', 'address',
+  'sr_no', 'mother_name', 'father_name', 'city', 'address',
   // Decision (Sid, 2026-08-04): parsed and shown in Review, deliberately NOT
   // persisted — the student document has one phoneNo/email and no parent
   // contact fields. Surfaced per row rather than dropped in silence.
@@ -149,6 +149,7 @@ export function mapImportRowToStudent(row, { classId, includeClassId = true } = 
     admNo: String(d.adm_no ?? '').trim(),
     grEmisSts: String(d.gr_emis_sts ?? '').trim(),
     aadhaarNumber,
+    rollNo: String(d.roll_no ?? '').trim(),
   }
 
   if (includeClassId) payload.currentClassId = classId || ''

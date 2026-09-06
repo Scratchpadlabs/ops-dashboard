@@ -256,6 +256,9 @@ export const SCHOOL_SCHEMAS = {
       // so merging them loses which one a number came from.
       admNo: opt(STRING, { allowEmpty: true }),
       grEmisSts: opt(STRING, { allowEmpty: true }),
+      // Added 2026-09-06 by explicit decision — previously parsed and shown
+      // in review but dropped, with no home on the document at all.
+      rollNo: opt(STRING, { allowEmpty: true }),
       // PII. Readable by every signed-in app user under the current
       // firestore.rules read grant — narrowing that needs a rules change.
       aadhaarNumber: opt(STRING, { allowEmpty: true, pattern: AADHAAR_RE, hint: '12 digits' }),

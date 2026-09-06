@@ -355,6 +355,7 @@ export const STUDENT_UPDATE_FIELD_GROUPS = [
   { key: 'registers', label: 'Admission No / GR-EMIS-STS',
     payloadKeys: ['admNo', 'grEmisSts'], sourceKeys: ['adm_no', 'gr_emis_sts'] },
   { key: 'aadhaar', label: 'Aadhaar', payloadKeys: ['aadhaarNumber'], sourceKeys: ['aadhaar'] },
+  { key: 'rollNo', label: 'Roll No', payloadKeys: ['rollNo'], sourceKeys: ['roll_no'] },
 ]
 
 function isBlankValue(v) {

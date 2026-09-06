@@ -475,7 +475,7 @@ STUDENT_SCHEMA_KEYS = ["grade", "section", "combined_class", "external_id", "rol
 REVIEW_ONLY_STUDENT_KEYS = ["father_mobile", "father_email", "mother_mobile",
                              "mother_email", "branch_name", "board",
                              "enrollment_code", "date_of_admission", "status",
-                             "using_transport", "sr_no", "roll_no",
+                             "using_transport", "sr_no",
                              "mother_name", "father_name", "city", "address",
                              "combined_class"]
 STUDENT_REQUIRED_FIELD = "student_name"

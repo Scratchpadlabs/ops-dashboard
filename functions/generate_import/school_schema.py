@@ -310,6 +310,10 @@ SCHOOL_SCHEMAS = {
             # number came from.
             "admNo": _opt(STRING, allowEmpty=True),
             "grEmisSts": _opt(STRING, allowEmpty=True),
+            # Added 2026-09-06 by explicit decision — previously parsed and
+            # shown in review but dropped, with no home on the document at
+            # all. A school asked for it to be persisted and kept updatable.
+            "rollNo": _opt(STRING, allowEmpty=True),
             # PII. Readable by every signed-in app user under the current
             # firestore.rules read grant — narrowing that needs a rules change.
             "aadhaarNumber": _opt(STRING, allowEmpty=True, pattern=AADHAAR_RE,
