@@ -64,7 +64,8 @@ Teacher app queries: `where termId == X && subjectId == Y`, sorts by `order` cli
 missing-index error, so verify the index exists in clarified-1501.)
 
 ### co_scholastic_activities/{id}
-Same shape as assessments minus `subjectId` (term-wide): `{ name, termId, order, entryType, maxMarks, gradingScaleId, conversionType, conversionFactor }`.
+Same shape as assessments minus `subjectId` (term-wide): `{ name, termId, order, entryType, maxMarks, gradingScaleId, conversionType, conversionFactor, classIds? }`.
+`classIds` (optional array of class doc IDs) scopes the activity to specific classes; absent or empty means every class in the school — the meaning every doc written before this field existed already carries.
 
 ### remark_categories/{id}
 `{ label, order, remarks: [{ key, text, type: "positive"|"negative", order }] }`
@@ -128,7 +129,7 @@ Admins/principals: no assignments map → see everything (verify how the app dis
 - conversionFactor UX: show computed result label exactly as the teacher app renders it (marks_to_grade → scale labels; sum_up → out of maxMarks×factor; sum_down → out of maxMarks÷factor) so ops sees what teachers will see.
 
 ### 3.6 Co-Scholastic
-Same bulk builder minus subject dimension (term-wide list, ordered).
+Same bulk builder minus subject dimension (term-wide list, ordered). Add/Edit form and Grid Edit both carry a `classIds` multi-select (class doc IDs, same options as Classes & Teachers); left empty the activity applies to every class. CSV import/export carries `classIds` as a `;`-separated column, same convention as the Teachers CSV.
 
 ### 3.7 Remarks
 - Category CRUD with drag-order; remarks editor per category (text, type toggle, drag-order). Auto-assign `key` = next `r{n}`; keys immutable once any `remarks_sheets/*/entries` exist.

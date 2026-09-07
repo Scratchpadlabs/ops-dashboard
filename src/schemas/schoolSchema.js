@@ -184,6 +184,10 @@ export const SCHOOL_SCHEMAS = {
       gradingScaleId: f(STRING, { nullable: true }),
       conversionType: f(STRING, { enum: CONVERSION_TYPES }),
       conversionFactor: f(NUMBER, { nullable: true }),
+      // Which classes the activity applies to. Absent/empty means every
+      // class in the school — the meaning every pre-existing doc (none of
+      // which carry this field) already has, so this stays additive.
+      classIds: opt(ARRAY),
     },
     check: checkMarkedItem,
   },

@@ -133,6 +133,20 @@ def test_co_scholastic_still_requires_term():
     assert "termId: required" in reasons("co_scholastic_activities", doc)
 
 
+def test_co_scholastic_accepts_class_scoping():
+    """classIds is optional and, when present, scopes the activity to those
+    classes. Absent (as on every pre-existing doc) means every class."""
+    doc = {k: v for k, v in BASE_ASSESSMENT.items() if k != "subjectId"}
+    assert ok("co_scholastic_activities", {**doc, "classIds": ["III_A", "III_B"]})
+    assert ok("co_scholastic_activities", {**doc, "classIds": []})
+    assert ok("co_scholastic_activities", doc)  # field omitted entirely
+
+
+def test_co_scholastic_rejects_non_array_class_ids():
+    doc = {k: v for k, v in BASE_ASSESSMENT.items() if k != "subjectId"}
+    assert "expected array" in reasons("co_scholastic_activities", {**doc, "classIds": "III_A"})
+
+
 # ── subjects ────────────────────────────────────────────────────────────────
 def test_subject_valid():
     assert ok("subjects", {"id": "III_English", "name": "English"})

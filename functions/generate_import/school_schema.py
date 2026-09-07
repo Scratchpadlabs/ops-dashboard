@@ -267,6 +267,10 @@ SCHOOL_SCHEMAS = {
             "gradingScaleId": _f(STRING, nullable=True),
             "conversionType": _f(STRING, enum=CONVERSION_TYPES),
             "conversionFactor": _f(NUMBER, nullable=True),
+            # Which classes the activity applies to. Absent/empty means every
+            # class in the school — the meaning every pre-existing doc (none
+            # of which carry this field) already has, so this stays additive.
+            "classIds": _opt(ARRAY),
         },
         "check": _check_marked_item,
     },
