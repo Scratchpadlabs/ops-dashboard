@@ -38,6 +38,16 @@
         <Column header="Assignments" style="width:110px">
           <template #body="{ data }"><span class="text-xs text-slate-500">{{ Object.keys(data.assignments || {}).length }}</span></template>
         </Column>
+        <Column header="Co-Scholastic" style="width:100px">
+          <template #body="{ data }"><span class="text-xs text-slate-500">{{ (data.coScholasticClassIds || []).length }}</span></template>
+        </Column>
+        <Column header="" style="width:150px">
+          <template #body="{ data }">
+            <span v-if="hasNoAccess(data)" class="inline-flex items-center gap-1 text-xs text-amber-600 bg-amber-50 rounded-full px-2 py-0.5" v-tooltip="'No Academics or Co-Scholastic access configured — this teacher currently falls back to seeing everything.'">
+              <i class="pi pi-exclamation-triangle text-xs"></i> No access set
+            </span>
+          </template>
+        </Column>
         <Column header="" style="width:70px">
           <template #body="{ data }">
             <Button icon="pi pi-pencil" text rounded size="small" @click="openEditTeacher(data)" />
@@ -79,7 +89,7 @@
         </div>
 
         <div>
-          <label class="form-label mb-2 block">Classes &amp; Subjects</label>
+          <label class="form-label mb-2 block">Classes &amp; Subjects (Academics)</label>
           <MultiSelect v-model="selectedClassIds" :options="classes" optionLabel="id" optionValue="id" placeholder="Select classes" filter display="chip" class="w-full" />
           <div v-if="selectedClassIds.length" class="mt-3 space-y-3">
             <div v-for="classId in selectedClassIds" :key="classId" class="border border-slate-200 rounded-lg p-3">
@@ -93,6 +103,19 @@
               <p v-else class="text-xs text-slate-400">This class has no subjects assigned yet — kept as class-level access only.</p>
             </div>
           </div>
+        </div>
+
+        <div>
+          <label class="form-label mb-2 block">Co-Scholastic Classes</label>
+          <MultiSelect v-model="selectedCoScholasticClassIds" :options="classes" optionLabel="id" optionValue="id" placeholder="Select classes" filter display="chip" class="w-full" />
+          <p class="text-xs text-slate-400 mt-1">
+            Grants access to Co-Scholastic / Attendance / Remarks for these classes — independent of the Academics classes above, and not tied to any subject.
+          </p>
+        </div>
+
+        <div v-if="noAccessInForm" class="text-sm text-amber-700 bg-amber-50 rounded-lg px-3 py-2">
+          <i class="pi pi-exclamation-triangle text-xs mr-1"></i>
+          No Academics or Co-Scholastic classes selected — this teacher will fall back to seeing everything until at least one is set.
         </div>
 
         <div v-if="formError" class="text-sm text-red-500 bg-red-50 rounded-lg px-3 py-2">{{ formError }}</div>
@@ -174,6 +197,19 @@ const form = reactive({ name: '', id: '', email: '', phoneNo: null, sex: '', typ
 // "a class with no subjects still grants access" elsewhere in this codebase.
 const selectedClassIds = ref([])
 const assignmentsState = reactive({})
+// coScholasticClassIds — flat, independent of assignments/classIds, not tied
+// to any subject (co_scholastic_activities has no subject/teacher link).
+const selectedCoScholasticClassIds = ref([])
+
+// A staff doc with none of assignments/classIds/coScholasticClassIds set
+// falls back to showing everything in the teacher app (SmartSheets.vue) —
+// every teacher should have at least one populated once this rolls out.
+function hasNoAccess(staff) {
+  return !(staff.classIds || []).length
+    && !Object.keys(staff.assignments || {}).length
+    && !(staff.coScholasticClassIds || []).length
+}
+const noAccessInForm = computed(() => !selectedClassIds.value.length && !selectedCoScholasticClassIds.value.length)
 
 function slugifyName(name) {
   return (name || '').trim().replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_|_$/g, '')
@@ -196,6 +232,7 @@ function openAddTeacher() {
   editingStaff.value = null
   Object.assign(form, { name: '', id: '', email: '', phoneNo: null, sex: '', type: 'teacher' })
   selectedClassIds.value = []
+  selectedCoScholasticClassIds.value = []
   Object.keys(assignmentsState).forEach(k => delete assignmentsState[k])
   formError.value = ''
   dialogVisible.value = true
@@ -212,6 +249,7 @@ function openEditTeacher(staff) {
   selectedClassIds.value.forEach(classId => {
     assignmentsState[classId] = [...(staff.assignments?.[classId] || [])]
   })
+  selectedCoScholasticClassIds.value = [...(staff.coScholasticClassIds || [])]
   formError.value = ''
   dialogVisible.value = true
 }
@@ -244,6 +282,7 @@ async function saveTeacher() {
       sex: form.sex || '', type: (form.type || 'teacher').trim(),
       classIds: [...selectedClassIds.value],
       assignments: buildAssignments(),
+      coScholasticClassIds: [...selectedCoScholasticClassIds.value],
       updated_at: serverTimestamp(), updated_by: auth.currentUser?.email || 'unknown',
     }
     if (editingStaff.value) {
@@ -272,10 +311,11 @@ async function saveTeacher() {
 // nested per-class-subject map) doesn't flatten into a row, same precedent
 // as SubjectsTab excluding curricular_goals from its CSV. Per-class-subject
 // assignment stays a UI-only concern, edited via the dialog above.
-// classIds from a CSV row are ADDED to whatever a teacher already has, never
-// used to strip existing access — the same additive convention every other
-// classIds/assignments writer in this codebase already follows.
-const TEACHER_CSV_COLUMNS = ['name', 'id', 'email', 'phoneNo', 'sex', 'type', 'classIds']
+// classIds/coScholasticClassIds from a CSV row are ADDED to whatever a
+// teacher already has, never used to strip existing access — the same
+// additive convention every other classIds/assignments writer in this
+// codebase already follows.
+const TEACHER_CSV_COLUMNS = ['name', 'id', 'email', 'phoneNo', 'sex', 'type', 'classIds', 'coScholasticClassIds']
 const importVisible = ref(false)
 
 async function classifyImportRow(raw) {
@@ -289,6 +329,11 @@ async function classifyImportRow(raw) {
   const unknown = classIds.filter(cid => !classes.value.some(c => c.id === cid))
   if (unknown.length) return { raw, _status: 'ERROR', _reason: `Unknown class id(s): ${unknown.join(', ')}` }
 
+  const coScholasticClassIdsRaw = (raw.coScholasticClassIds || '').trim()
+  const coScholasticClassIds = coScholasticClassIdsRaw ? coScholasticClassIdsRaw.split(';').map(s => s.trim()).filter(Boolean) : []
+  const unknownCoScholastic = coScholasticClassIds.filter(cid => !classes.value.some(c => c.id === cid))
+  if (unknownCoScholastic.length) return { raw, _status: 'ERROR', _reason: `Unknown co-scholastic class id(s): ${unknownCoScholastic.join(', ')}` }
+
   const { firstName, lastName } = splitName(name)
   const phoneRaw = (raw.phoneNo ?? '').toString().trim()
   const existing = staffs.value.find(s => s.id === id)
@@ -299,6 +344,7 @@ async function classifyImportRow(raw) {
     sex: (raw.sex || '').trim(),
     type: (raw.type || '').trim() || 'teacher',
     classIds,
+    coScholasticClassIds,
   }
   return { raw, id, _status: existing ? 'UPDATE' : 'CREATE', payload }
 }
@@ -308,8 +354,9 @@ async function runImport(validRows) {
   for (const r of validRows) {
     const existing = staffs.value.find(s => s.id === r.id)
     const mergedClassIds = Array.from(new Set([...(existing?.classIds || []), ...r.payload.classIds]))
+    const mergedCoScholasticClassIds = Array.from(new Set([...(existing?.coScholasticClassIds || []), ...r.payload.coScholasticClassIds]))
     const payload = {
-      ...r.payload, classIds: mergedClassIds,
+      ...r.payload, classIds: mergedClassIds, coScholasticClassIds: mergedCoScholasticClassIds,
       updated_at: serverTimestamp(), updated_by: auth.currentUser?.email || 'unknown',
     }
     if (r._status === 'CREATE') {
@@ -331,8 +378,8 @@ async function runImport(validRows) {
 
 function downloadSample() {
   const sample = [
-    { name: 'Asha Kulkarni', id: '', email: 'asha.kulkarni@example.com', phoneNo: '9876543210', sex: 'Female', type: 'teacher', classIds: '' },
-    { name: 'Rohit Sharma', id: '', email: 'rohit.sharma@example.com', phoneNo: '9876500000', sex: 'Male', type: 'teacher', classIds: '' },
+    { name: 'Asha Kulkarni', id: '', email: 'asha.kulkarni@example.com', phoneNo: '9876543210', sex: 'Female', type: 'teacher', classIds: '', coScholasticClassIds: '' },
+    { name: 'Rohit Sharma', id: '', email: 'rohit.sharma@example.com', phoneNo: '9876500000', sex: 'Male', type: 'teacher', classIds: '', coScholasticClassIds: '' },
   ]
   downloadCsv('teachers_sample.csv', toCsv(sample, TEACHER_CSV_COLUMNS))
 }
@@ -341,6 +388,7 @@ function exportCsv() {
   const rows = staffs.value.map(s => ({
     name: s.name || '', id: s.id, email: s.email || '', phoneNo: s.phoneNo ?? '',
     sex: s.sex || '', type: s.type || '', classIds: (s.classIds || []).join(';'),
+    coScholasticClassIds: (s.coScholasticClassIds || []).join(';'),
   }))
   downloadCsv(`teachers_${props.schoolId}.csv`, toCsv(rows, TEACHER_CSV_COLUMNS))
 }

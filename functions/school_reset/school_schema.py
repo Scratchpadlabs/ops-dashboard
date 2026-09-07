@@ -344,6 +344,7 @@ SCHOOL_SCHEMAS = {
             "sex": _opt(STRING, allowEmpty=True),
             "classIds": _opt(ARRAY),
             "assignments": _opt(MAP),
+            "coScholasticClassIds": _opt(ARRAY),
             "needsAuthCreation": _opt(BOOL),
             "authUid": _opt(STRING, nullable=True),
         },

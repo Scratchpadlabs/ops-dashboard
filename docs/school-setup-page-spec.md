@@ -78,12 +78,16 @@ Same shape as assessments minus `subjectId` (term-wide): `{ name, termId, order,
 ```
 { id, staffId, authUid, name, firstName, lastName, email, phoneNo, sex,
   type: "teacher"|..., needsAuthCreation,
-  classIds: [classId, ...],                    // gates class visibility
-  assignments: { [classId]: [subjectId, ...] } // gates class+subject (academics)
+  classIds: [classId, ...],                    // gates class visibility (academics)
+  assignments: { [classId]: [subjectId, ...] }, // gates class+subject (academics)
+  coScholasticClassIds: [classId, ...]          // gates class visibility (co-scholastic/attendance/remarks only)
 }
 ```
-Teacher-app access rules: academics requires `assignments[classId]` to include the subjectId;
-co-scholastic/attendance/remarks require classId in `assignments` keys OR `classIds`.
+Teacher-app access rules (SmartSheets.vue, per-tab):
+- **Academics** tab: only looks at `assignments` (per-class, per-subject) and `classIds`. Never looks at `coScholasticClassIds`.
+- **Co-Scholastic / Attendance / Remarks** tabs: union of `assignments` keys + `classIds` + `coScholasticClassIds`. A class in `coScholasticClassIds` grants that access without touching Academics at all.
+- `coScholasticClassIds` is a flat array of classIds (plain strings, not a map) — unlike `assignments`, it isn't tied to any subject, because co-scholastic activities (Art, Karate, etc.) live in `co_scholastic_activities`, which has no subject/teacher link at all.
+- If a teacher has none of `assignments`/`classIds`/`coScholasticClassIds` set, the app falls back to showing everything (legacy default for unconfigured staff) — every teacher should have at least one of these three fields populated. The Teachers tab flags a staff doc with all three empty as "No access set".
 Admins/principals: no assignments map → see everything (verify how the app distinguishes; likely `type`).
 
 ### config/{students_schema | teachers_schema}
@@ -128,8 +132,13 @@ Admins/principals: no assignments map → see everything (verify how the app dis
 - Safety: if any `smart_sheet_entries` doc exists for (termId, subjectId) whose `entries` subcollection is non-empty, editing `maxMarks`/`entryType` or deleting the assessment shows a hard warning (entered marks are stored raw under the assessment doc ID; deleting orphans them, lowering maxMarks may invalidate values). Never change an assessment's doc ID after creation.
 - conversionFactor UX: show computed result label exactly as the teacher app renders it (marks_to_grade → scale labels; sum_up → out of maxMarks×factor; sum_down → out of maxMarks÷factor) so ops sees what teachers will see.
 
+### 3.5b Teachers
+- Table of `staffs` (all types); Add/Edit dialog covers identity fields plus two independent access editors: "Classes & Subjects (Academics)" (`classIds`/`assignments`, per-class-per-subject) and "Co-Scholastic Classes" (`coScholasticClassIds`, flat, no subject dimension). A staff doc with all three empty is flagged "No access set" in the table and in the dialog.
+- CSV import/export carries `classIds` and `coScholasticClassIds` as `;`-separated columns; both are additive on import (union with whatever the teacher already has, never a strip).
+
 ### 3.6 Co-Scholastic
 Same bulk builder minus subject dimension (term-wide list, ordered). Add/Edit form and Grid Edit both carry a `classIds` multi-select (class doc IDs, same options as Classes & Teachers); left empty the activity applies to every class. CSV import/export carries `classIds` as a `;`-separated column, same convention as the Teachers CSV.
+- **Teacher Access** matrix (button in the tab header): rows = staff (type teacher), columns = every class in the school, checkboxes. Since `co_scholastic_activities` carries no teacher/subject reference at all, this is a class-level grant only — saving writes `staffs/{id}.coScholasticClassIds` directly (full replace per teacher), independent of the Teachers tab's own editor for the same field.
 
 ### 3.7 Remarks
 - Category CRUD with drag-order; remarks editor per category (text, type toggle, drag-order). Auto-assign `key` = next `r{n}`; keys immutable once any `remarks_sheets/*/entries` exist.

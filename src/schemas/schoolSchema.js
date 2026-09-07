@@ -288,6 +288,12 @@ export const SCHOOL_SCHEMAS = {
       sex: opt(STRING, { allowEmpty: true }),
       classIds: opt(ARRAY),
       assignments: opt(MAP),
+      // Flat array of classIds granting Co-Scholastic/Attendance/Remarks
+      // access, independent of `assignments`/`classIds` (which gate the
+      // Academics tab). Not tied to any subject — co-scholastic activities
+      // (Art, Karate, etc.) live in co_scholastic_activities, which has no
+      // subject/teacher link at all. See teacher-app SmartSheets.vue.
+      coScholasticClassIds: opt(ARRAY),
       needsAuthCreation: opt(BOOL),
       authUid: opt(STRING, { nullable: true }),
     },

@@ -6,6 +6,7 @@
         <Select v-model="selectedTermId" :options="terms" optionLabel="name" optionValue="id" placeholder="Select a term" class="w-56" />
       </div>
       <div class="flex gap-2">
+        <Button label="Teacher Access" icon="pi pi-users" size="small" outlined @click="openTeacherAccessMatrix" />
         <Button :label="gridMode ? 'Exit Grid Edit' : 'Grid Edit'" icon="pi pi-table" size="small" outlined :disabled="!selectedTermId" @click="gridMode ? exitGridMode() : enterGridMode()" />
         <Button label="Import CSV" icon="pi pi-upload" size="small" outlined @click="importVisible = true" />
         <Button label="Sample CSV" icon="pi pi-download" size="small" text @click="downloadSample" />
@@ -166,13 +167,52 @@
       </template>
     </Dialog>
 
+    <!-- ── Teacher Access Matrix ────────────────────────────────────────── -->
+    <!-- Grants staffs.coScholasticClassIds — flat, per-class, no subject link
+         (co_scholastic_activities carries no teacher/subject reference at
+         all). This is the only editor for that field from the class side;
+         TeachersTab's Add/Edit dialog is the other, teacher-side editor for
+         the same field. -->
+    <Dialog v-model:visible="teacherAccessVisible" header="Co-Scholastic Teacher Access" modal :style="{ width: '640px' }">
+      <div class="pt-2">
+        <p class="text-xs text-slate-400 mb-3">
+          A checked cell grants that teacher Co-Scholastic / Attendance / Remarks access to the class — independent of their Academics assignments.
+        </p>
+        <div v-if="!classes.length" class="text-sm text-slate-400 py-6 text-center">No classes configured yet.</div>
+        <div v-else class="max-h-96 overflow-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-slate-200">
+                <th class="text-left px-2 py-2 text-xs font-semibold text-slate-400 uppercase sticky top-0 bg-white">Teacher</th>
+                <th v-for="cls in classes" :key="cls.id" class="text-center px-2 py-2 text-xs font-semibold text-slate-400 uppercase sticky top-0 bg-white">{{ cls.id }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="staff in teacherStaffs" :key="staff.id" class="border-b border-slate-100">
+                <td class="px-2 py-2 text-slate-700">{{ staff.name || staff.id }}</td>
+                <td v-for="cls in classes" :key="cls.id" class="text-center px-2 py-2">
+                  <Checkbox v-model="teacherAccessState[staff.id]" :value="cls.id" />
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div v-if="!teacherStaffs.length" class="text-sm text-slate-400 py-4 text-center">No teacher staff records for this school.</div>
+        <div v-if="teacherAccessError" class="text-sm text-red-500 bg-red-50 rounded-lg px-3 py-2 mt-3">{{ teacherAccessError }}</div>
+      </div>
+      <template #footer>
+        <Button label="Cancel" text @click="teacherAccessVisible = false" />
+        <Button label="Save Access" :loading="savingTeacherAccess" @click="saveTeacherAccessMatrix" />
+      </template>
+    </Dialog>
+
     <ConfirmDialog />
   </div>
 </template>
 
 <script setup>
 import { ref, reactive, computed, watch, onMounted } from 'vue'
-import { getDocs, getDoc, query, where, setDoc, deleteDoc, serverTimestamp, writeBatch } from 'firebase/firestore'
+import { getDocs, getDoc, query, where, setDoc, updateDoc, deleteDoc, serverTimestamp, writeBatch } from 'firebase/firestore'
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
 
@@ -184,6 +224,7 @@ import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
 import Select from 'primevue/select'
 import MultiSelect from 'primevue/multiselect'
+import Checkbox from 'primevue/checkbox'
 import ProgressSpinner from 'primevue/progressspinner'
 import ConfirmDialog from 'primevue/confirmdialog'
 import CsvImportDialog from './CsvImportDialog.vue'
@@ -227,8 +268,11 @@ const terms = ref([])
 const scales = ref([])
 const classes = ref([])
 const activities = ref([])
+const staffs = ref([])
 const selectedTermId = ref(null)
 const loading = ref(false)
+
+const teacherStaffs = computed(() => staffs.value.filter(s => s.type === 'teacher'))
 
 function scaleLabel(id) { return scales.value.find(s => s.id === id)?.name || id }
 // Absent/empty classIds means the activity applies to every class — the
@@ -245,18 +289,20 @@ function conversionLabel(a) {
 }
 
 async function loadStatic() {
-  if (!props.schoolId) { terms.value = []; scales.value = []; classes.value = []; return }
+  if (!props.schoolId) { terms.value = []; scales.value = []; classes.value = []; staffs.value = []; return }
   try {
-    const [tSnap, gSnap, cSnap] = await Promise.all([
+    const [tSnap, gSnap, cSnap, stSnap] = await Promise.all([
       getDocs(schoolCollection(props.schoolId, 'terms')),
       getDocs(schoolCollection(props.schoolId, 'grading_scales')),
       getDocs(schoolCollection(props.schoolId, 'classes')),
+      getDocs(schoolCollection(props.schoolId, 'staffs')),
     ])
     terms.value = tSnap.docs.map(d => ({ id: d.id, ...d.data() }))
     scales.value = gSnap.docs.map(d => ({ id: d.id, ...d.data() }))
     classes.value = cSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+    staffs.value = stSnap.docs.map(d => ({ id: d.id, ...d.data() }))
   } catch (e) {
-    console.error('Could not load terms/scales/classes', e)
+    console.error('Could not load terms/scales/classes/staffs', e)
   }
 }
 
@@ -271,6 +317,43 @@ async function loadActivities() {
     activities.value = []
   } finally {
     loading.value = false
+  }
+}
+
+// ── Teacher Access Matrix ────────────────────────────────────────────────
+// CRITICAL: writes to staffs.coScholasticClassIds ONLY — a flat, per-class
+// grant unrelated to `assignments`/`classIds` (Academics) and unrelated to
+// any particular activity (co_scholastic_activities has no teacher field).
+const teacherAccessVisible = ref(false)
+const teacherAccessState = reactive({})
+const teacherAccessError = ref('')
+const savingTeacherAccess = ref(false)
+
+function openTeacherAccessMatrix() {
+  teacherAccessError.value = ''
+  Object.keys(teacherAccessState).forEach(k => delete teacherAccessState[k])
+  teacherStaffs.value.forEach(staff => {
+    teacherAccessState[staff.id] = [...(staff.coScholasticClassIds || [])]
+  })
+  teacherAccessVisible.value = true
+}
+
+async function saveTeacherAccessMatrix() {
+  savingTeacherAccess.value = true
+  teacherAccessError.value = ''
+  try {
+    await Promise.all(teacherStaffs.value.map(staff => updateDoc(schoolDoc(props.schoolId, 'staffs', staff.id), {
+      coScholasticClassIds: teacherAccessState[staff.id] || [],
+      updated_at: serverTimestamp(), updated_by: auth.currentUser?.email || 'unknown',
+    })))
+    teacherAccessVisible.value = false
+    toast.add({ severity: 'success', summary: 'Access saved', life: 2000 })
+    await loadStatic()
+  } catch (e) {
+    console.error(e)
+    teacherAccessError.value = 'Something went wrong. Try again.'
+  } finally {
+    savingTeacherAccess.value = false
   }
 }
 
