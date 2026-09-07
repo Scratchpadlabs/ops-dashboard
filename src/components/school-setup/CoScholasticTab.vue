@@ -70,6 +70,12 @@
         <Column field="conversionFactor" header="Factor" style="width:80px">
           <template #editor="{ data, field }"><InputNumber v-model="data[field]" class="w-full" :min="0.01" :maxFractionDigits="2" /></template>
         </Column>
+        <Column field="classIds" header="Classes" style="width:160px">
+          <template #body="{ data }">{{ classesLabel(data) }}</template>
+          <template #editor="{ data, field }">
+            <MultiSelect v-model="data[field]" :options="classes" optionLabel="id" optionValue="id" filter display="chip" class="w-full" />
+          </template>
+        </Column>
         <Column header="" style="width:200px">
           <template #body="{ data }"><span v-if="data._error" class="text-xs text-red-500">{{ data._error }}</span></template>
         </Column>
@@ -86,6 +92,9 @@
         <Column field="maxMarks" header="Max" style="width:70px" />
         <Column header="Conversion" style="width:180px">
           <template #body="{ data }"><span class="text-slate-500">{{ conversionLabel(data) }}</span></template>
+        </Column>
+        <Column header="Classes" style="width:110px">
+          <template #body="{ data }"><span class="text-slate-500">{{ classesLabel(data) }}</span></template>
         </Column>
         <Column header="" style="width:80px">
           <template #body="{ data }">
@@ -141,6 +150,14 @@
             <InputNumber v-model="form.order" class="w-full" :min="1" />
           </div>
         </div>
+        <div>
+          <label class="form-label">Classes</label>
+          <MultiSelect
+            v-model="form.classIds" :options="classes" optionLabel="id" optionValue="id"
+            placeholder="All classes" filter display="chip" class="w-full"
+          />
+          <p class="text-xs text-slate-400 mt-1">Leave empty to apply to every class in the school.</p>
+        </div>
         <div v-if="formError" class="text-sm text-red-500 bg-red-50 rounded-lg px-3 py-2">{{ formError }}</div>
       </div>
       <template #footer>
@@ -166,6 +183,7 @@ import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
 import Select from 'primevue/select'
+import MultiSelect from 'primevue/multiselect'
 import ProgressSpinner from 'primevue/progressspinner'
 import ConfirmDialog from 'primevue/confirmdialog'
 import CsvImportDialog from './CsvImportDialog.vue'
@@ -207,11 +225,18 @@ const conversionTypeOptions = [
 
 const terms = ref([])
 const scales = ref([])
+const classes = ref([])
 const activities = ref([])
 const selectedTermId = ref(null)
 const loading = ref(false)
 
 function scaleLabel(id) { return scales.value.find(s => s.id === id)?.name || id }
+// Absent/empty classIds means the activity applies to every class — the
+// meaning every doc written before this field existed already has.
+function classesLabel(a) {
+  const ids = a.classIds || []
+  return ids.length ? `${ids.length} class${ids.length === 1 ? '' : 'es'}` : 'All classes'
+}
 function conversionLabel(a) {
   if (a.conversionType === 'marks_to_grade') return `Grade via ${scaleLabel(a.gradingScaleId)}`
   if (a.conversionType === 'sum_up') return `Out of ${(a.maxMarks * (a.conversionFactor || 1)).toFixed(2)}`
@@ -220,16 +245,18 @@ function conversionLabel(a) {
 }
 
 async function loadStatic() {
-  if (!props.schoolId) { terms.value = []; scales.value = []; return }
+  if (!props.schoolId) { terms.value = []; scales.value = []; classes.value = []; return }
   try {
-    const [tSnap, gSnap] = await Promise.all([
+    const [tSnap, gSnap, cSnap] = await Promise.all([
       getDocs(schoolCollection(props.schoolId, 'terms')),
       getDocs(schoolCollection(props.schoolId, 'grading_scales')),
+      getDocs(schoolCollection(props.schoolId, 'classes')),
     ])
     terms.value = tSnap.docs.map(d => ({ id: d.id, ...d.data() }))
     scales.value = gSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+    classes.value = cSnap.docs.map(d => ({ id: d.id, ...d.data() }))
   } catch (e) {
-    console.error('Could not load terms/scales', e)
+    console.error('Could not load terms/scales/classes', e)
   }
 }
 
@@ -251,12 +278,12 @@ const dialogVisible = ref(false)
 const editingActivity = ref(null)
 const saving = ref(false)
 const formError = ref('')
-const form = reactive({ name: '', entryType: 'marks', maxMarks: null, gradingScaleId: null, conversionType: 'none', conversionFactor: null, order: 1 })
+const form = reactive({ name: '', entryType: 'marks', maxMarks: null, gradingScaleId: null, conversionType: 'none', conversionFactor: null, order: 1, classIds: [] })
 
 function openAdd() {
   editingActivity.value = null
   const nextOrder = activities.value.length ? Math.max(...activities.value.map(a => a.order || 0)) + 1 : 1
-  Object.assign(form, { name: '', entryType: 'marks', maxMarks: null, gradingScaleId: null, conversionType: 'none', conversionFactor: null, order: nextOrder })
+  Object.assign(form, { name: '', entryType: 'marks', maxMarks: null, gradingScaleId: null, conversionType: 'none', conversionFactor: null, order: nextOrder, classIds: [] })
   areaWarning.value = ''
   formError.value = ''
   dialogVisible.value = true
@@ -268,6 +295,7 @@ function openEdit(activity) {
     name: activity.name, entryType: activity.entryType, maxMarks: activity.maxMarks,
     gradingScaleId: activity.gradingScaleId || null, conversionType: activity.conversionType || 'none',
     conversionFactor: activity.conversionFactor || null, order: activity.order || 1,
+    classIds: [...(activity.classIds || [])],
   })
   areaWarning.value = ''
   formError.value = ''
@@ -311,7 +339,7 @@ async function saveActivity() {
     const payload = {
       name: form.name.trim(), termId: selectedTermId.value, entryType: form.entryType, maxMarks: form.maxMarks,
       gradingScaleId: form.gradingScaleId || null, conversionType: form.conversionType,
-      conversionFactor: form.conversionFactor || null, order: form.order,
+      conversionFactor: form.conversionFactor || null, order: form.order, classIds: [...form.classIds],
       updated_at: serverTimestamp(), updated_by: auth.currentUser?.email || 'unknown',
     }
     if (!editingActivity.value) {
@@ -386,7 +414,8 @@ function addBlankGridRow() {
     : (activities.value.length ? Math.max(...activities.value.map(a => a.order || 0)) + 1 : 1)
   const row = {
     name: '', entryType: 'marks', maxMarks: null, gradingScaleId: null,
-    conversionType: 'none', conversionFactor: null, order: nextOrder, _isNew: true, _dirty: true, _error: '',
+    conversionType: 'none', conversionFactor: null, order: nextOrder, classIds: [],
+    _isNew: true, _dirty: true, _error: '',
   }
   row._error = validateGridRow(row)
   gridRows.value.push(row)
@@ -439,7 +468,7 @@ async function saveAllGrid() {
         const payload = {
           name: r.name.trim(), termId: selectedTermId.value, entryType: r.entryType, maxMarks: r.maxMarks,
           gradingScaleId: r.gradingScaleId || null, conversionType: r.conversionType,
-          conversionFactor: r.conversionFactor || null, order: r.order,
+          conversionFactor: r.conversionFactor || null, order: r.order, classIds: [...(r.classIds || [])],
           updated_at: serverTimestamp(), updated_by: auth.currentUser?.email || 'unknown',
         }
         const docId = r._isNew ? `${selectedTermId.value}_${slugify(r.name)}` : r.id
@@ -459,7 +488,9 @@ async function saveAllGrid() {
 }
 
 // ── CSV import/export ────────────────────────────────────────────────────
-const ACTIVITY_CSV_COLUMNS = ['name', 'termId', 'order', 'entryType', 'maxMarks', 'gradingScaleId', 'conversionType', 'conversionFactor']
+// classIds is `;`-separated class doc IDs, same convention as TeachersTab's
+// CSV — blank means "all classes", same as the field being absent entirely.
+const ACTIVITY_CSV_COLUMNS = ['name', 'termId', 'order', 'entryType', 'maxMarks', 'gradingScaleId', 'conversionType', 'conversionFactor', 'classIds']
 const importVisible = ref(false)
 
 async function classifyImportRow(raw) {
@@ -472,6 +503,8 @@ async function classifyImportRow(raw) {
   const conversionType = (raw.conversionType || 'none').trim()
   const conversionFactorRaw = (raw.conversionFactor ?? '').toString().trim()
   const conversionFactor = conversionFactorRaw ? Number(conversionFactorRaw) : null
+  const classIdsRaw = (raw.classIds || '').trim()
+  const classIds = classIdsRaw ? classIdsRaw.split(';').map(s => s.trim()).filter(Boolean) : []
 
   if (!name) return { raw, _status: 'ERROR', _reason: 'Missing name' }
   if (!termId) return { raw, _status: 'ERROR', _reason: 'Missing termId' }
@@ -483,9 +516,11 @@ async function classifyImportRow(raw) {
   if (conversionType !== 'none' && conversionType !== 'marks_to_grade' && !conversionFactor) return { raw, _status: 'ERROR', _reason: 'conversionFactor is required for this conversionType' }
   if ((conversionType === 'marks_to_grade' || entryType === 'grade') && !gradingScaleId) return { raw, _status: 'ERROR', _reason: 'gradingScaleId is required' }
   if (gradingScaleId && !scales.value.some(s => s.id === gradingScaleId)) return { raw, _status: 'ERROR', _reason: `Unknown gradingScaleId "${gradingScaleId}"` }
+  const unknownClassIds = classIds.filter(cid => !classes.value.some(c => c.id === cid))
+  if (unknownClassIds.length) return { raw, _status: 'ERROR', _reason: `Unknown class id(s): ${unknownClassIds.join(', ')}` }
 
   const id = `${termId}_${slugify(name)}`
-  const payload = { name, termId, order, entryType, maxMarks, gradingScaleId, conversionType, conversionFactor }
+  const payload = { name, termId, order, entryType, maxMarks, gradingScaleId, conversionType, conversionFactor, classIds }
   const existingSnap = await getDoc(schoolDoc(props.schoolId, 'co_scholastic_activities', id))
   if (!existingSnap.exists()) return { raw, id, _status: 'CREATE', payload }
 
@@ -539,14 +574,15 @@ function downloadSample() {
     return
   }
   const sample = [
-    { name: 'Art & Craft', termId: term.id, order: 1, entryType: 'marks', maxMarks: 10, gradingScaleId: '', conversionType: 'none', conversionFactor: '' },
-    { name: 'Discipline', termId: term.id, order: 2, entryType: 'grade', maxMarks: 10, gradingScaleId: scale?.id || '', conversionType: 'marks_to_grade', conversionFactor: '' },
+    { name: 'Art & Craft', termId: term.id, order: 1, entryType: 'marks', maxMarks: 10, gradingScaleId: '', conversionType: 'none', conversionFactor: '', classIds: '' },
+    { name: 'Discipline', termId: term.id, order: 2, entryType: 'grade', maxMarks: 10, gradingScaleId: scale?.id || '', conversionType: 'marks_to_grade', conversionFactor: '', classIds: '' },
   ]
   downloadCsv('co_scholastic_sample.csv', toCsv(sample, ACTIVITY_CSV_COLUMNS))
 }
 
 function exportCsv() {
-  downloadCsv(`co_scholastic_${selectedTermId.value}.csv`, toCsv(activities.value, ACTIVITY_CSV_COLUMNS))
+  const rows = activities.value.map(a => ({ ...a, classIds: (a.classIds || []).join(';') }))
+  downloadCsv(`co_scholastic_${selectedTermId.value}.csv`, toCsv(rows, ACTIVITY_CSV_COLUMNS))
 }
 
 watch(() => props.schoolId, () => { loadStatic(); activities.value = []; selectedTermId.value = null })

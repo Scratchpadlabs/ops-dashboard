@@ -10,6 +10,7 @@ import SchoolSetup from '../views/SchoolSetup.vue'
 import Import from '../views/Import.vue'
 import Surveys from '../views/Surveys.vue'
 import ImportReview from '../views/ImportReview.vue'
+import ImportTemplates from '../views/ImportTemplates.vue'
 import Quotations from '../views/Quotations.vue'
 import Agreements from '../views/Agreements.vue'
 import Invoices from '../views/Invoices.vue'
@@ -29,6 +30,7 @@ const routes = [
   { path: '/import',        component: Import,        name: 'import', meta: { opsAdminOnly: true } },
   { path: '/surveys',       component: Surveys,       name: 'surveys', meta: { opsAdminOnly: true } },
   { path: '/import/:jobId', component: ImportReview,  name: 'import-review', meta: { opsAdminOnly: true } },
+  { path: '/import-templates', component: ImportTemplates, name: 'import-templates', meta: { opsAdminOnly: true } },
   { path: '/quotations',    component: Quotations,    name: 'quotations' },
   { path: '/agreements',    component: Agreements,    name: 'agreements' },
   { path: '/invoices',      component: Invoices,      name: 'invoices' },

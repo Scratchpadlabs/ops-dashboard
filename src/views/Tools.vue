@@ -26,6 +26,7 @@
           <p class="text-xs text-slate-400 mt-2">Send this message to whoever is fixing it.</p>
         </div>
         <ParcelCoverTool v-else-if="currentTab.key === 'parcel-cover'" />
+        <AuthAccountsTool v-else-if="currentTab.key === 'authentication'" />
       </div>
     </div>
   </div>
@@ -34,9 +35,11 @@
 <script setup>
 import { ref, computed, onErrorCaptured } from 'vue'
 import ParcelCoverTool from '../components/tools/ParcelCoverTool.vue'
+import AuthAccountsTool from '../components/tools/AuthAccountsTool.vue'
 
 const TABS = [
   { key: 'register', label: 'Register', icon: 'pi pi-user-plus', url: 'https://clarified-register.web.app/' },
+  { key: 'authentication', label: 'Authentication', icon: 'pi pi-key' },
   { key: 'parcel-cover', label: 'Parcel Cover', icon: 'pi pi-send' },
 ]
 

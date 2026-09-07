@@ -1,5 +1,51 @@
 # Cloud Functions — Deploy Guide
 
+## create_auth_accounts (NEW)
+
+Replaces the two local one-off scripts (createAuthAccountsForStudents.js /
+createAuthAccountsForTeachers.js) that were run by hand against a
+`serviceAccountKey.json`, hardcoded to one school. Because those never lived
+in a repo, the accounts they created for that one school were the only trace
+of them — this is the same logic as a proper callable, parameterized by
+`schoolId`, wired to the Authentication tab on the Tools page
+(`src/components/tools/AuthAccountsTool.vue`).
+
+One callable: `create_auth_accounts`. Takes `{schoolId, roles, dryRun}` —
+`roles` defaults to `["students", "staffs"]`, `dryRun` previews exactly who
+would be touched without creating anything or writing to Firestore. Creates a
+Firebase Auth account (email + a password derived from the Firestore document
+id — see main.py's module docstring for why, not the same-named `id` field
+the original scripts used) for every student/staff doc with
+`needsAuthCreation == true`, then marks the doc `needsAuthCreation: false` and
+stamps `authUid`. An account that already exists is treated as success (uid
+looked up, doc still marked done) so re-running after a partial failure is
+safe.
+
+### Files needed in the folder:
+- main.py ✅
+- requirements.txt ✅
+
+### Deploy:
+```
+cd functions/create_auth_accounts
+
+gcloud functions deploy create_auth_accounts \
+  --gen2 --runtime python312 --region asia-south1 \
+  --source . --entry-point create_auth_accounts \
+  --trigger-http --allow-unauthenticated --project clarified-1501 \
+  --memory 512MB --timeout 300s --max-instances 3
+```
+
+No secrets and no new IAM beyond what the runtime service account already
+has (`roles/editor` covers Firestore; Firebase Auth admin operations are
+available to the Admin SDK by default on this project). `--allow-unauthenticated`
+is required at the IAM layer even though this is a callable — the function
+itself verifies `req.auth` against `OPS_ADMIN_EMAILS` before doing anything,
+same pattern as `school_reset`'s wizards. Keep that allowlist in sync with
+`src/config/opsAdmins.js`.
+
+---
+
 ## generate_pending_letter (v2: compose dialog, draft/render modes)
 
 PDF per school listing outstanding pending items from the Data Receivable
@@ -473,6 +519,56 @@ printf '%s' 'sk-...' | gcloud secrets create OPENAI_API_KEY --data-file=- --proj
 ```
 (Same for `ANTHROPIC_API_KEY` if you bind that instead, e.g. for .pdf
 extraction — `printf '%s' 'sk-ant-...' | gcloud secrets create ANTHROPIC_API_KEY --data-file=- --project clarified-1501`.)
+
+---
+
+## list_import_templates + get_import_template + save_import_template + delete_import_template (NEW)
+
+Four more callables in the SAME `functions/generate_import` source folder,
+backing the "Manage Templates" screen (`src/views/ImportTemplates.vue`) that
+`Import.vue` links to. Deliberately callable-only, never a direct Firestore
+read/write from the browser — see `import_templates.py`'s module docstring
+for why `import_templates` has no `firestore.rules` entry at all.
+
+256MB is not enough here: the first deploy of `list_import_templates` failed
+Cloud Run's startup health check because every function in `main.py` pays
+for the module's top-level imports (firebase_admin, openpyxl, python-docx,
+xlrd, requests) regardless of which entry point is deployed, and those
+didn't finish before the probe timeout at 256MB. Deploy at 512MB, same as
+`commit_import`.
+
+### Deploy:
+```
+cd functions/generate_import
+
+gcloud functions deploy list_import_templates \
+  --gen2 --runtime python312 --region asia-south1 \
+  --source . --entry-point list_import_templates \
+  --trigger-http --allow-unauthenticated --project clarified-1501 \
+  --memory 512MB --timeout 30s --max-instances 3
+
+gcloud functions deploy get_import_template \
+  --gen2 --runtime python312 --region asia-south1 \
+  --source . --entry-point get_import_template \
+  --trigger-http --allow-unauthenticated --project clarified-1501 \
+  --memory 512MB --timeout 30s --max-instances 3
+
+gcloud functions deploy save_import_template \
+  --gen2 --runtime python312 --region asia-south1 \
+  --source . --entry-point save_import_template \
+  --trigger-http --allow-unauthenticated --project clarified-1501 \
+  --memory 512MB --timeout 30s --max-instances 3
+
+gcloud functions deploy delete_import_template \
+  --gen2 --runtime python312 --region asia-south1 \
+  --source . --entry-point delete_import_template \
+  --trigger-http --allow-unauthenticated --project clarified-1501 \
+  --memory 512MB --timeout 30s --max-instances 3
+```
+
+No secrets, no firestore.rules change (see above), no new IAM — plain
+Firestore reads/writes under the runtime service account's existing
+`roles/editor`.
 
 ---
 

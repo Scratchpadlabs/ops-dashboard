@@ -98,6 +98,8 @@ export async function generateAgreementFiles(a) {
     studentCount:     a.student_count,
     installmentPlan:  a.installment_plan,
     agreementNumber:  a.agreement_number,
+    schoolSignatoryName:        a.signatory_name || '',
+    schoolSignatoryDesignation: a.signatory_designation || '',
   })
   const blob = await res.blob()
   downloadBlob(blob, `Agreement_${a.school_name}_${a.agreement_number}.pdf`)
@@ -255,6 +257,17 @@ export async function classHealthRemote() {
   return res.data
 }
 
+// ── Create auth accounts (Tools > Authentication) ──────────────────────────
+// Creates Firebase Auth accounts for students/staff flagged
+// needsAuthCreation, then marks them done. dryRun previews without writing.
+// Same callable pattern as school_reset — see functions/create_auth_accounts.
+const createAuthAccountsCallable = httpsCallable(functions, 'create_auth_accounts', { timeout: 300_000 })
+
+export async function createAuthAccountsRemote({ schoolId, roles, dryRun }) {
+  const res = await createAuthAccountsCallable({ schoolId, roles, dryRun })
+  return res.data
+}
+
 export function downloadReport({ filename, mime, content_base64 }) {
   const bytes = Uint8Array.from(atob(content_base64), c => c.charCodeAt(0))
   downloadBlob(new Blob([bytes], { type: mime }), filename)
@@ -267,6 +280,37 @@ export async function startProcessImport({ schoolId, jobId, entity, files }) {
 
 export async function commitImportRemote({ schoolId, jobId, entity, items, overwriteExisting }) {
   const res = await commitImportCallable({ schoolId, jobId, entity, items, overwriteExisting })
+  return res.data
+}
+
+// ── Custom import templates ───────────────────────────────────────────────
+// Deliberately callable-only, never a direct Firestore read/write from the
+// browser — import_templates has no firestore.rules entry at all, on
+// purpose (see functions/generate_import/import_templates.py's module
+// docstring: this Firestore project is shared with other apps and a past
+// rules deploy broke them).
+const listImportTemplatesCallable = httpsCallable(functions, 'list_import_templates', { timeout: 30_000 })
+const getImportTemplateCallable = httpsCallable(functions, 'get_import_template', { timeout: 30_000 })
+const saveImportTemplateCallable = httpsCallable(functions, 'save_import_template', { timeout: 30_000 })
+const deleteImportTemplateCallable = httpsCallable(functions, 'delete_import_template', { timeout: 30_000 })
+
+export async function listImportTemplatesRemote({ includeArchived } = {}) {
+  const res = await listImportTemplatesCallable({ includeArchived: !!includeArchived })
+  return res.data.templates
+}
+
+export async function getImportTemplateRemote({ slug }) {
+  const res = await getImportTemplateCallable({ slug })
+  return res.data.template
+}
+
+export async function saveImportTemplateRemote(templateData) {
+  const res = await saveImportTemplateCallable(templateData)
+  return res.data.template
+}
+
+export async function deleteImportTemplateRemote({ slug }) {
+  const res = await deleteImportTemplateCallable({ slug })
   return res.data
 }
 

@@ -267,6 +267,10 @@ SCHOOL_SCHEMAS = {
             "gradingScaleId": _f(STRING, nullable=True),
             "conversionType": _f(STRING, enum=CONVERSION_TYPES),
             "conversionFactor": _f(NUMBER, nullable=True),
+            # Which classes the activity applies to. Absent/empty means every
+            # class in the school — the meaning every pre-existing doc (none
+            # of which carry this field) already has, so this stays additive.
+            "classIds": _opt(ARRAY),
         },
         "check": _check_marked_item,
     },
@@ -310,10 +314,20 @@ SCHOOL_SCHEMAS = {
             # number came from.
             "admNo": _opt(STRING, allowEmpty=True),
             "grEmisSts": _opt(STRING, allowEmpty=True),
+            # Added 2026-09-06 by explicit decision — previously parsed and
+            # shown in review but dropped, with no home on the document at
+            # all. A school asked for it to be persisted and kept updatable.
+            "rollNo": _opt(STRING, allowEmpty=True),
             # PII. Readable by every signed-in app user under the current
             # firestore.rules read grant — narrowing that needs a rules change.
             "aadhaarNumber": _opt(STRING, allowEmpty=True, pattern=AADHAAR_RE,
                                   hint="12 digits"),
+            # A school's own stable student code ("shh0001"), if it has one —
+            # see useImport.js's buildStudentsPlan (mirrors src/schemas/
+            # schoolSchema.js). Lets a later import match this exact document
+            # without resolving a class at all, which is what makes "update
+            # contact info, leave Grade/Section alone" possible.
+            "externalId": _opt(STRING, allowEmpty=True),
         },
     },
     "staffs": {

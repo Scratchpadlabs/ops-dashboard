@@ -26,7 +26,10 @@
   <!-- ── Page shell ───────────────────────────────────────────────────────── -->
   <div v-else @click.capture="markActivity" @keydown.capture="markActivity" @mousemove="throttledActivity">
     <div class="bg-white rounded-xl border border-slate-200 p-5 mb-5">
-      <div class="text-sm font-bold text-slate-900 mb-3">New Import</div>
+      <div class="flex items-center justify-between mb-3">
+        <div class="text-sm font-bold text-slate-900">New Import</div>
+        <Button label="Manage Templates" icon="pi pi-cog" text size="small" @click="router.push({ name: 'import-templates' })" />
+      </div>
       <div class="grid grid-cols-2 gap-4 mb-4">
         <div>
           <label class="form-label">School *</label>
@@ -43,7 +46,7 @@
         </div>
         <div>
           <label class="form-label">Entity *</label>
-          <Select v-model="entity" :options="entityOptions" optionLabel="label" optionValue="value" class="w-full" />
+          <Select v-model="entity" :options="entityOptions" optionLabel="label" optionValue="value" class="w-full" :loading="loadingTemplates" />
         </div>
       </div>
 
@@ -130,6 +133,7 @@ import Column from 'primevue/column'
 import { useStepUpAuth } from '../composables/useStepUpAuth.js'
 import { rootSchoolsCollection } from '../firebase/schoolCollections.js'
 import { uploadAndProcess, listenJobs } from '../composables/useImport.js'
+import { listImportTemplatesRemote } from '../utils/api.js'
 
 const router = useRouter()
 const { isElevated, markActivity, reauthenticate } = useStepUpAuth()
@@ -183,13 +187,32 @@ function schoolName(id) {
 }
 
 // ── Upload form ──────────────────────────────────────────────────────────
-const entityOptions = [
+// The 4 built-in entities keep their own hardcoded extraction/cleaning/
+// commit logic in main.py/useImport.js — unchanged, untouched. Custom
+// templates (defined in the "Manage Templates" page) are merged in here so
+// the dropdown is one unified list, but they ride the generic pipeline.
+const legacyEntityOptions = [
   { label: 'Students', value: 'students' },
   { label: 'Teachers', value: 'teachers' },
   { label: 'Subjects', value: 'subjects' },
   { label: 'Assessments', value: 'assessments' },
 ]
+const templateEntityOptions = ref([])
+const loadingTemplates = ref(false)
+const entityOptions = computed(() => [...legacyEntityOptions, ...templateEntityOptions.value])
 const entity = ref('students')
+
+async function loadTemplateOptions() {
+  loadingTemplates.value = true
+  try {
+    const templates = await listImportTemplatesRemote()
+    templateEntityOptions.value = templates.map(t => ({ label: t.name, value: t.slug }))
+  } catch (e) {
+    console.error('Could not load import templates', e)
+  } finally {
+    loadingTemplates.value = false
+  }
+}
 const pendingFiles = ref([])
 const isDragging = ref(false)
 const fileInputEl = ref(null)
@@ -248,6 +271,7 @@ function formatTs(ts) {
 
 onMounted(() => {
   loadSchools()
+  loadTemplateOptions()
   unsubscribeJobs = listenJobs(null, (list) => { jobs.value = list })
 })
 onUnmounted(() => { unsubscribeJobs?.() })

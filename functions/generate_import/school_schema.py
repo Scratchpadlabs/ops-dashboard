@@ -109,6 +109,49 @@ def _check_subjects(doc, errors):
     if isinstance(area, str) and re.sub(r"[^a-z]", "", area.lower()) == "coscholastic":
         errors.append(("area",
                        "Co-Scholastic records belong in co_scholastic_activities, not subjects"))
+    _check_subject_topics(doc, errors)
+
+
+def _check_subject_topics(doc, errors):
+    """subjects.topics — legacy docs hold plain strings; topics added or
+    edited through the topic editor hold {topic, description?, quiz?}, where
+    each quiz question is {question, options[], correctIndex}. Both shapes
+    are accepted so existing string topics stay editable without a
+    migration."""
+    topics = doc.get("topics") if isinstance(doc.get("topics"), list) else []
+    for i, t in enumerate(topics):
+        if isinstance(t, str):
+            continue
+        if not isinstance(t, dict):
+            errors.append((f"topics[{i}]", "must be a string or an object"))
+            continue
+        if not isinstance(t.get("topic"), str) or not t["topic"].strip():
+            errors.append((f"topics[{i}].topic", "required string"))
+        description = t.get("description")
+        if description is not None and not isinstance(description, str):
+            errors.append((f"topics[{i}].description", "must be a string"))
+        quiz = t.get("quiz")
+        if quiz is None:
+            continue
+        if not isinstance(quiz, list):
+            errors.append((f"topics[{i}].quiz", "must be an array"))
+            continue
+        for qi, q in enumerate(quiz):
+            path = f"topics[{i}].quiz[{qi}]"
+            if not isinstance(q, dict):
+                errors.append((path, "must be an object"))
+                continue
+            if not isinstance(q.get("question"), str) or not q["question"].strip():
+                errors.append((f"{path}.question", "required string"))
+            options = q.get("options") if isinstance(q.get("options"), list) else None
+            if not options or len(options) < 2:
+                errors.append((f"{path}.options", "needs at least 2 option(s)"))
+            elif any(not isinstance(o, str) or not o.strip() for o in options):
+                errors.append((f"{path}.options", "every option must be a non-empty string"))
+            correct_index = q.get("correctIndex")
+            if (not isinstance(correct_index, (int, float)) or isinstance(correct_index, bool)
+                    or not options or correct_index < 0 or correct_index >= len(options)):
+                errors.append((f"{path}.correctIndex", "must index an existing option"))
 
 
 def _check_classes(doc, errors):
@@ -224,6 +267,10 @@ SCHOOL_SCHEMAS = {
             "gradingScaleId": _f(STRING, nullable=True),
             "conversionType": _f(STRING, enum=CONVERSION_TYPES),
             "conversionFactor": _f(NUMBER, nullable=True),
+            # Which classes the activity applies to. Absent/empty means every
+            # class in the school — the meaning every pre-existing doc (none
+            # of which carry this field) already has, so this stays additive.
+            "classIds": _opt(ARRAY),
         },
         "check": _check_marked_item,
     },
@@ -267,10 +314,20 @@ SCHOOL_SCHEMAS = {
             # number came from.
             "admNo": _opt(STRING, allowEmpty=True),
             "grEmisSts": _opt(STRING, allowEmpty=True),
+            # Added 2026-09-06 by explicit decision — previously parsed and
+            # shown in review but dropped, with no home on the document at
+            # all. A school asked for it to be persisted and kept updatable.
+            "rollNo": _opt(STRING, allowEmpty=True),
             # PII. Readable by every signed-in app user under the current
             # firestore.rules read grant — narrowing that needs a rules change.
             "aadhaarNumber": _opt(STRING, allowEmpty=True, pattern=AADHAAR_RE,
                                   hint="12 digits"),
+            # A school's own stable student code ("shh0001"), if it has one —
+            # see useImport.js's buildStudentsPlan (mirrors src/schemas/
+            # schoolSchema.js). Lets a later import match this exact document
+            # without resolving a class at all, which is what makes "update
+            # contact info, leave Grade/Section alone" possible.
+            "externalId": _opt(STRING, allowEmpty=True),
         },
     },
     "staffs": {

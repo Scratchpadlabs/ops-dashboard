@@ -184,6 +184,10 @@ export const SCHOOL_SCHEMAS = {
       gradingScaleId: f(STRING, { nullable: true }),
       conversionType: f(STRING, { enum: CONVERSION_TYPES }),
       conversionFactor: f(NUMBER, { nullable: true }),
+      // Which classes the activity applies to. Absent/empty means every
+      // class in the school — the meaning every pre-existing doc (none of
+      // which carry this field) already has, so this stays additive.
+      classIds: opt(ARRAY),
     },
     check: checkMarkedItem,
   },
@@ -256,9 +260,17 @@ export const SCHOOL_SCHEMAS = {
       // so merging them loses which one a number came from.
       admNo: opt(STRING, { allowEmpty: true }),
       grEmisSts: opt(STRING, { allowEmpty: true }),
+      // Added 2026-09-06 by explicit decision — previously parsed and shown
+      // in review but dropped, with no home on the document at all.
+      rollNo: opt(STRING, { allowEmpty: true }),
       // PII. Readable by every signed-in app user under the current
       // firestore.rules read grant — narrowing that needs a rules change.
       aadhaarNumber: opt(STRING, { allowEmpty: true, pattern: AADHAAR_RE, hint: '12 digits' }),
+      // A school's own stable student code ("shh0001"), if it has one —
+      // see useImport.js's buildStudentsPlan. Lets a later import match this
+      // exact document without resolving a class at all, which is what makes
+      // "update contact info, leave Grade/Section alone" possible.
+      externalId: opt(STRING, { allowEmpty: true }),
     },
   },
 

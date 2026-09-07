@@ -21,7 +21,7 @@ import {
   stagingImportsCollection, stagingImportDoc, stagingImportRowsCollection,
   schoolCollection, importAliasDoc, rootSchoolsCollection,
 } from '../firebase/schoolCollections.js'
-import { startProcessImport, commitImportRemote } from '../utils/api.js'
+import { startProcessImport, commitImportRemote, getImportTemplateRemote } from '../utils/api.js'
 import { classify, GRADE } from '../utils/educationKB.js'
 import { normalizeSectionValue } from '../utils/classResolver.js'
 import { validateDoc, formatErrors } from '../schemas/schoolSchema.js'
@@ -308,11 +308,11 @@ export async function buildCommitPlan(job, rows, options = {}) {
   const schoolId = job.school_id
   const included = rows.filter(r => !r.excluded)
 
-  if (job.entity === 'students') return buildStudentsPlan(schoolId, included)
+  if (job.entity === 'students') return buildStudentsPlan(schoolId, included, { fieldsToWrite: options.fieldsToWrite })
   if (job.entity === 'teachers') return buildTeachersPlan(schoolId, included)
   if (job.entity === 'subjects') return buildSubjectsPlan(schoolId, included)
   if (job.entity === 'assessments') return buildAssessmentsPlan(schoolId, included, options.termId)
-  throw new Error(`Unknown entity: ${job.entity}`)
+  return buildGenericTemplatePlan(schoolId, included, job.entity)
 }
 
 /**
@@ -332,7 +332,74 @@ function fieldsEqual(a, b, keys) {
   return keys.every(k => comparable(a?.[k]) === comparable(b?.[k]))
 }
 
-async function buildStudentsPlan(schoolId, rows) {
+// Which student fields a commit is allowed to touch, for the "which fields do
+// you actually want to update" step in ImportReview.vue. classPlacement is
+// its own group, checked on by default same as every other — unchecking it is
+// what lets an import update an EXISTING student (matched by externalId,
+// below) without moving them to whatever class the file happens to say.
+// A brand-new student ignores this entirely — there is no live document for
+// a merge write to preserve anything on, so creating one always needs every
+// field, classPlacement included.
+// `sourceKeys` are the extractor's OWN field names (row.data.*, before
+// mapImportRowToStudent derives anything) — what ImportReview.vue checks to
+// decide whether a group is worth showing at all, since a group the file
+// never carried has nothing to protect and nothing to write either way.
+export const STUDENT_UPDATE_FIELD_GROUPS = [
+  { key: 'classPlacement', label: 'Class placement (Grade / Section)',
+    payloadKeys: ['currentClassId'], sourceKeys: ['grade', 'section', 'combined_class'] },
+  { key: 'name', label: 'Name', payloadKeys: ['name', 'firstName', 'lastName'], sourceKeys: ['student_name'] },
+  { key: 'gender', label: 'Gender', payloadKeys: ['gender'], sourceKeys: ['gender'] },
+  { key: 'dob', label: 'Date of birth', payloadKeys: ['dateOfBirth'], sourceKeys: ['dob'] },
+  { key: 'contact', label: 'Contact number', payloadKeys: ['phoneNo'], sourceKeys: ['contact'] },
+  { key: 'email', label: 'Email', payloadKeys: ['email'], sourceKeys: ['email'] },
+  { key: 'registers', label: 'Admission No / GR-EMIS-STS',
+    payloadKeys: ['admNo', 'grEmisSts'], sourceKeys: ['adm_no', 'gr_emis_sts'] },
+  { key: 'aadhaar', label: 'Aadhaar', payloadKeys: ['aadhaarNumber'], sourceKeys: ['aadhaar'] },
+  { key: 'rollNo', label: 'Roll No', payloadKeys: ['rollNo'], sourceKeys: ['roll_no'] },
+]
+
+function isBlankValue(v) {
+  if (v === null || v === undefined) return true
+  if (v instanceof Date || typeof v === 'number') return false
+  return String(v).trim() === ''
+}
+
+// For ImportReview.vue: only the groups this file actually carries data for —
+// a group with nothing in ANY row has nothing to update and nothing to
+// protect, so there is no reason to offer a checkbox for it at all.
+export function studentFieldGroupsWithData(rows) {
+  return STUDENT_UPDATE_FIELD_GROUPS.filter(g =>
+    (rows || []).some(r => g.sourceKeys.some(k => !isBlankValue(r.data?.[k]))))
+}
+
+// `selectedGroupKeys` null/undefined means "no restriction" (every group, the
+// pre-existing default) — a Set of STUDENT_UPDATE_FIELD_GROUPS keys otherwise.
+function expandFieldGroups(selectedGroupKeys) {
+  if (!selectedGroupKeys) return null
+  const keys = new Set()
+  for (const group of STUDENT_UPDATE_FIELD_GROUPS) {
+    if (selectedGroupKeys.has(group.key)) group.payloadKeys.forEach(k => keys.add(k))
+  }
+  return keys
+}
+
+// Keeps only keys that are both selected AND actually carry a value on THIS
+// row. The second part matters as much as the first: a field the file never
+// gave this particular row a value for must never be written as blank onto
+// an existing student — that would silently erase whatever was already
+// there, not "leave it alone" as a deselected/absent field is supposed to.
+function pick(obj, keys) {
+  const out = {}
+  for (const k of keys) {
+    if (Object.prototype.hasOwnProperty.call(obj, k) && !isBlankValue(obj[k])) out[k] = obj[k]
+  }
+  return out
+}
+
+async function buildStudentsPlan(schoolId, rows, { fieldsToWrite } = {}) {
+  const selectedKeys = expandFieldGroups(fieldsToWrite) // Set|null
+  const writeClassPlacement = !selectedKeys || selectedKeys.has('currentClassId')
+
   const { classLookup } = await loadClassLookup(schoolId)
   const classIds = Array.from(new Set(classLookup.values()))
   // One fetch for the whole existing roster instead of a getDoc per row —
@@ -348,42 +415,76 @@ async function buildStudentsPlan(schoolId, rows) {
       items.push({ row, status: 'SUGGESTION_PENDING', reason: 'Resolve suggested fixes before committing' })
       continue
     }
-    const classId = classLookup.get(`${normalizeGrade(d.grade)}|${normalizeSection(d.section)}`)
-    if (!classId) {
-      items.push({ row, status: 'ERROR', reason: describeClassMiss(classLookup, d.grade, d.section) })
-      continue
+
+    // A school's own stable student code, if the file carries one, IS the
+    // doc id and is looked up directly — no class needed to find the row's
+    // existing document at all. Without one, identity is still class + roll/
+    // name, same as before externalId existed.
+    const externalId = String(d.external_id ?? '').trim()
+    let docId = externalId || null
+    let existing = docId ? existingById.get(docId) : undefined
+
+    // A brand-new student has no live document for a merge write to leave
+    // anything on, so creating one always needs a real, resolved class —
+    // regardless of what this run's field selection says. An existing match
+    // only needs one resolved when class placement is itself selected.
+    const needsClass = !existing || writeClassPlacement
+    let classId = null
+    if (needsClass) {
+      classId = classLookup.get(`${normalizeGrade(d.grade)}|${normalizeSection(d.section)}`)
+      if (!classId) {
+        items.push({ row, status: 'ERROR', reason: describeClassMiss(classLookup, d.grade, d.section) })
+        continue
+      }
     }
-    const base = slugPart(d.roll_no) || slugPart(d.student_name) || 'student'
-    let docId = `${classId}_${base}`
-    const dupeCount = (usedIds.get(docId) || 0) + 1
-    usedIds.set(docId, dupeCount)
-    if (dupeCount > 1) docId = `${docId}_${dupeCount}`
+
+    if (!docId) {
+      const base = slugPart(d.roll_no) || slugPart(d.student_name) || 'student'
+      docId = `${classId}_${base}`
+      const dupeCount = (usedIds.get(docId) || 0) + 1
+      usedIds.set(docId, dupeCount)
+      if (dupeCount > 1) docId = `${docId}_${dupeCount}`
+      existing = existingById.get(docId)
+    }
 
     // Mapped, not copied: source columns the student schema has no home for
     // are dropped and reported rather than written into fields nothing reads.
-    const { payload, dropped, warnings } = mapImportRowToStudent(d, { classId })
+    const { payload: fullPayload, dropped, warnings } = mapImportRowToStudent(d, {
+      classId, includeClassId: needsClass,
+    })
 
-    // The class value is the one field where live data is genuinely broken,
-    // so it is checked on its own terms as well as by the schema.
-    const classCheck = validateCurrentClassId(payload.currentClassId, { studentId: docId, classIds })
-    if (!classCheck.ok) {
-      items.push({ row, status: 'ERROR', reason: classCheck.message })
-      continue
+    const notes = [...warnings]
+    if (needsClass) {
+      // The class value is the one field where live data is genuinely
+      // broken, so it is checked on its own terms as well as by the schema.
+      const classCheck = validateCurrentClassId(fullPayload.currentClassId, { studentId: docId, classIds })
+      if (!classCheck.ok) {
+        items.push({ row, status: 'ERROR', reason: classCheck.message })
+        continue
+      }
+      if (classCheck.severity === 'warning') notes.push(classCheck.message)
+    } else if (d.grade || d.section || d.combined_class) {
+      notes.push('Grade/Section in the file were not applied — class placement is excluded from this import')
     }
+    if (dropped.length) notes.push(`no field in the student schema for: ${dropped.join(', ')} — not saved`)
 
-    const check = validateDoc('students', payload)
+    // CREATE always writes every derivable field, blanks included — there is
+    // nothing on a brand-new document yet for blank-protection to protect.
+    // An UPDATE always goes through pick(), selection restriction or not:
+    // blank-value skipping must apply unconditionally, or a field the file
+    // simply has no data for this row would silently erase whatever an
+    // existing student already had recorded.
+    const isCreate = !existing
+    const payload = isCreate ? fullPayload : pick(fullPayload, selectedKeys || Object.keys(fullPayload))
+
+    const check = validateDoc('students', payload, { partial: !isCreate })
     if (!check.ok) {
       items.push({ row, status: 'ERROR', reason: `Does not match the student schema — ${formatErrors(check.errors)}` })
       continue
     }
 
-    const notes = [...warnings]
-    if (classCheck.severity === 'warning') notes.push(classCheck.message)
-    if (dropped.length) notes.push(`no field in the student schema for: ${dropped.join(', ')} — not saved`)
-
-    const item = { row, docId, payload, notes, derived: { firstName: payload.firstName, lastName: payload.lastName } }
-    const existing = existingById.get(docId)
-    if (!existing) {
+    const item = { row, docId, payload, notes, derived: { firstName: fullPayload.firstName, lastName: fullPayload.lastName } }
+    if (isCreate) {
       items.push({ ...item, status: 'CREATE' })
     } else {
       const same = fieldsEqual(existing, payload, Object.keys(payload))
@@ -585,6 +686,61 @@ async function buildAssessmentsPlan(schoolId, rows, termId) {
     items.push({ row, status: 'CREATE', docId, payload })
   }
   return summarize('assessments', items)
+}
+
+// ── Generic commit plan — for any custom import template (Manage Templates
+// page), not one of the 4 built-in entities above. No class/staff/subject
+// resolution (a generic template has no notion of grade/section — that's a
+// legacy-teacher/student-specific concept), just: filter each row's payload
+// to the template's declared columns, and classify CREATE/UPDATE_CHANGED/
+// UPDATE_UNCHANGED against whatever already exists in the target collection.
+async function buildGenericTemplatePlan(schoolId, rows, entitySlug) {
+  const template = await getImportTemplateRemote({ slug: entitySlug })
+  if (!template) throw new Error(`No import template found for '${entitySlug}' — it may have been deleted.`)
+
+  const columnKeys = (template.columns || []).map(c => c.key)
+  const keyField = template.keyField || ''
+
+  const existingSnap = await getDocs(schoolCollection(schoolId, template.targetCollectionName))
+  const existingById = new Map(existingSnap.docs.map(d => [d.id, d.data()]))
+  const usedIds = new Map()
+  const items = []
+
+  for (const row of rows) {
+    const d = row.data
+    if ((row.suggestions || []).length) {
+      items.push({ row, status: 'SUGGESTION_PENDING', reason: 'Resolve suggested fixes before committing' })
+      continue
+    }
+
+    const payload = {}
+    for (const key of columnKeys) payload[key] = d[key] ?? ''
+
+    let docId
+    if (keyField) {
+      const base = slugPart(d[keyField])
+      if (!base) {
+        items.push({ row, status: 'ERROR', reason: `Missing key field '${keyField}' — cannot determine which record this row belongs to` })
+        continue
+      }
+      docId = base
+      const dupeCount = (usedIds.get(docId) || 0) + 1
+      usedIds.set(docId, dupeCount)
+      if (dupeCount > 1) docId = `${docId}_${dupeCount}`
+    } else {
+      // No key field declared — this template always creates new records,
+      // same as buildAssessmentsPlan does for exam-blueprint rows.
+      docId = doc(schoolCollection(schoolId, template.targetCollectionName)).id
+    }
+
+    const existing = existingById.get(docId)
+    if (!existing) {
+      items.push({ row, status: 'CREATE', docId, payload })
+    } else {
+      items.push({ row, status: fieldsEqual(existing, payload, columnKeys) ? 'UPDATE_UNCHANGED' : 'UPDATE_CHANGED', docId, payload })
+    }
+  }
+  return summarize(entitySlug, items)
 }
 
 function summarize(entity, items) {

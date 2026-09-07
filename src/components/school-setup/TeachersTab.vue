@@ -124,7 +124,7 @@ import CsvImportDialog from './CsvImportDialog.vue'
 import ConfigEmptyState from './ConfigEmptyState.vue'
 
 import { schoolCollection, schoolDoc } from '../../firebase/schoolCollections.js'
-import { guardedSetDoc, guardedUpdateDoc, guardedBatchSet, SchemaViolation } from '../../schemas/guardedWrite.js'
+import { guardedSetDoc, guardedUpdateDoc, guardedBatchSet, SchemaViolation, MODE_CREATE, MODE_UPDATE } from '../../schemas/guardedWrite.js'
 import { db, auth } from '../../firebase/config'
 import { toCsv, downloadCsv } from '../../utils/csv.js'
 import { splitName } from '../../schemas/studentMapping.js'
@@ -320,7 +320,8 @@ async function runImport(validRows) {
       payload.created_at = serverTimestamp()
       payload.created_by = auth.currentUser?.email || 'unknown'
     }
-    guardedBatchSet(batch, 'staffs', schoolDoc(props.schoolId, 'staffs', r.id), payload, { merge: true })
+    const mode = r._status === 'CREATE' ? MODE_CREATE : MODE_UPDATE
+    guardedBatchSet(batch, 'staffs', schoolDoc(props.schoolId, 'staffs', r.id), payload, { mode, merge: true })
   }
   await batch.commit()
   toast.add({ severity: 'success', summary: 'Imported', detail: `${validRows.length} staff record(s)`, life: 3000 })
