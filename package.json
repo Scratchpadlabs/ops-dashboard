@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "migrate:co-scholastic": "node scripts/migrate-co-scholastic-subjects.mjs"
+    "migrate:co-scholastic": "node scripts/migrate-co-scholastic-subjects.mjs",
+    "backfill:co-scholastic-classids": "node scripts/backfill-teacher-co-scholastic-classids.mjs"
   },
   "dependencies": {
     "@pdf-lib/fontkit": "^1.1.1",
