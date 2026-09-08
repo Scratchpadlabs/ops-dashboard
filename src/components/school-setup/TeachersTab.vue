@@ -358,7 +358,11 @@ async function classifyImportRow(raw) {
   if (unknownAssignmentClasses.length) return { raw, _status: 'ERROR', _reason: `Unknown assignment class id(s): ${unknownAssignmentClasses.join(', ')}` }
   for (const [classId, subjectIds] of Object.entries(assignments)) {
     const unknownSubjects = subjectIds.filter(sid => !subjectsForClass(classId).includes(sid))
-    if (unknownSubjects.length) return { raw, _status: 'ERROR', _reason: `Unknown subject id(s) for class ${classId}: ${unknownSubjects.join(', ')}` }
+    if (unknownSubjects.length) {
+      const available = subjectsForClass(classId)
+      const hint = available.length ? `Available: ${available.join(', ')}` : 'This class has no subjects configured.'
+      return { raw, _status: 'ERROR', _reason: `Unknown subject id(s) for class ${classId}: ${unknownSubjects.join(', ')}. ${hint}` }
+    }
   }
   // Assignment classes grant Academics access even if omitted from classIds —
   // same invariant the Teacher assignment matrix keeps (classIds = union of
