@@ -1,4 +1,4 @@
-import { makeRemarkRowClassifier, groupRemarkRows } from '../src/utils/remarksImport.js'
+import { makeRemarkRowClassifier, groupRemarkRows, bandOfId, classIdsForCategory } from '../src/utils/remarksImport.js'
 let pass=0, fail=0
 const ok=(name,cond,extra='')=>{ cond?pass++:fail++; console.log(`  ${cond?'ok  ':'FAIL'} ${name}${cond?'':'  <-- '+extra}`) }
 const run=(rows,cats=[])=>{ const c=makeRemarkRowClassifier(cats); return rows.map((r,i)=>c(r,i)) }
@@ -12,6 +12,17 @@ ok('no band -> bare category id', r[0].docId==='Discipline', r[0].docId)
 ok('no band is flagged', /applies to all grades/.test(r[0]._warning||''), r[0]._warning)
 r=run([R({grade_band:'Middle',category:'Academic Effort',text:'a',remark_key:'r1'})])
 ok('spaces slugified', r[0].docId==='Middle_Academic_Effort', r[0].docId)
+
+console.log('=== bandOfId round trip (RemarksTab\'s "Reassign Classes" + Grade band column) ===')
+ok('unbanded multi-word category id is NOT read back as banded', bandOfId('General_Remarks')==='', bandOfId('General_Remarks'))
+ok('unbanded single-word category id stays unbanded', bandOfId('Discipline')==='', bandOfId('Discipline'))
+ok('a real banded id round-trips', bandOfId('Foundational_Discipline')==='Foundational', bandOfId('Foundational_Discipline'))
+ok('a real banded multi-word id round-trips', bandOfId('Middle_Academic_Effort')==='Middle', bandOfId('Middle_Academic_Effort'))
+{
+  const classes = [{ id: 'c1', stage: 'foundation', isActive: true }, { id: 'c2', stage: 'middle', isActive: true }]
+  const next = classIdsForCategory(bandOfId('General_Remarks'), classes)
+  ok('...so it still resolves to every active class, not zero', next.length === 2, JSON.stringify(next))
+}
 
 console.log('=== the key invariant ===')
 r=run([R({grade_band:'Foundational',category:'Discipline',text:'a',remark_key:'r1'}),

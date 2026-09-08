@@ -34,9 +34,21 @@ export function slugPart(s) {
   return (s || '').trim().replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_|_$/g, '')
 }
 
-/** `Foundational_Discipline` -> `Foundational`; `Discipline` -> ''. */
+/**
+ * `Foundational_Discipline` -> `Foundational`; `Discipline` -> ''.
+ *
+ * Only a segment that resolves to a real stage counts as a band prefix —
+ * an unbanded category with a multi-word name (`General_Remarks`,
+ * `Physical_Development`) also has an underscore in its doc ID, and treating
+ * that first segment as a band unconditionally would misread it as banded
+ * for a band ("General", "Physical") that stageForBand doesn't recognize,
+ * silently zeroing out classIdsForCategory for every class (see its "an
+ * unrecognized band string returns no classes" rule below) instead of
+ * leaving it as "all grades".
+ */
 export function bandOfId(id) {
-  return String(id || '').includes('_') ? String(id).split('_')[0] : ''
+  const first = String(id || '').split('_')[0]
+  return first && stageForBand(first) ? first : ''
 }
 
 export function categoryDocId(band, category) {
