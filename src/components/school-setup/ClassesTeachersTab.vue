@@ -8,6 +8,11 @@
         <Button label="Export CSV" icon="pi pi-file-export" size="small" text @click="exportCsv" />
         <Button label="Add Section" icon="pi pi-plus" size="small" @click="openAddSection" />
         <Button
+          label="Backfill Topics" icon="pi pi-sparkles" size="small" outlined
+          :loading="backfillingTopics" :disabled="!classes.length" @click="backfillTopics"
+          v-tooltip="'Add the standard Term 1 / Term 2 / Optional topics to any class-subject entry that has none'"
+        />
+        <Button
           label="Create Training Class" icon="pi pi-book" size="small" outlined severity="help"
           :loading="creatingTraining" @click="confirmCreateTrainingClass"
           v-tooltip="'Creates a demo class with 3 sample subjects (3 topics each) and assigns it to every current teacher — for onboarding/training use.'"
@@ -308,6 +313,65 @@ function regenerateSubjectsArray(existingSubjects, checkedSubjectIds) {
     if (existing) return existing
     return { subjectId, teacherId: '', isCompleted: false, completedAt: null, topics: defaultTopicsForSubject(subjectId) }
   })
+}
+
+// ── Bulk "Backfill Topics" ───────────────────────────────────────────────
+// Covers class-subject entries that were never given the standard topics —
+// e.g. attached via a path that doesn't set them (CSV class import never
+// touches `subjects[]` at all; older data predates defaultTopicsForSubject).
+// Only ever ADDS topics to an entry that has none; an entry that already
+// carries topics (including custom ones) is left untouched, same invariant
+// regenerateSubjectsArray's merge follows.
+const backfillingTopics = ref(false)
+
+async function backfillTopics() {
+  if (!props.schoolId) return
+  backfillingTopics.value = true
+  try {
+    const updates = []
+    for (const cls of classes.value) {
+      const subjs = cls.subjects || []
+      if (!subjs.some(s => !(s.topics || []).length)) continue
+      updates.push({
+        cls,
+        subjects: subjs.map(s => (s.topics || []).length ? s : { ...s, topics: defaultTopicsForSubject(s.subjectId) }),
+      })
+    }
+
+    if (!updates.length) {
+      toast.add({ severity: 'info', summary: 'Nothing to backfill', detail: 'Every class-subject entry already has topics.', life: 3000 })
+      return
+    }
+
+    const proceed = await new Promise(resolve => {
+      confirm.require({
+        message: `${updates.length} class(es) have subject entries with no topics. Add the standard Term 1 / Term 2 / Optional topics now?`,
+        header: 'Backfill Topics', icon: 'pi pi-sparkles',
+        rejectLabel: 'Cancel', acceptLabel: `Update ${updates.length}`,
+        accept: () => resolve(true), reject: () => resolve(false),
+      })
+    })
+    if (!proceed) return
+
+    for (let i = 0; i < updates.length; i += 450) {
+      const chunk = updates.slice(i, i + 450)
+      const batch = writeBatch(db)
+      chunk.forEach(({ cls, subjects: nextSubjects }) => {
+        batch.set(schoolDoc(props.schoolId, 'classes', cls.id), {
+          subjects: nextSubjects, updated_at: serverTimestamp(), updated_by: auth.currentUser?.email || 'unknown',
+        }, { merge: true })
+      })
+      await batch.commit()
+    }
+
+    toast.add({ severity: 'success', summary: 'Topics backfilled', detail: `${updates.length} class(es) updated`, life: 3000 })
+    await loadAll()
+  } catch (e) {
+    console.error('Backfill topics failed', e)
+    toast.add({ severity: 'error', summary: 'Error', detail: 'Could not backfill topics. Check console.', life: 4000 })
+  } finally {
+    backfillingTopics.value = false
+  }
 }
 
 async function saveSection() {
