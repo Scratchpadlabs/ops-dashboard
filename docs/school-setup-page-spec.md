@@ -134,7 +134,7 @@ Admins/principals: no assignments map → see everything (verify how the app dis
 
 ### 3.5b Teachers
 - Table of `staffs` (all types); Add/Edit dialog covers identity fields plus two independent access editors: "Classes & Subjects (Academics)" (`classIds`/`assignments`, per-class-per-subject) and "Co-Scholastic Classes" (`coScholasticClassIds`, flat, no subject dimension). A staff doc with all three empty is flagged "No access set" in the table and in the dialog.
-- CSV import/export carries `classIds` and `coScholasticClassIds` as `;`-separated columns; both are additive on import (union with whatever the teacher already has, never a strip).
+- CSV import/export carries `classIds` and `coScholasticClassIds` as `;`-separated columns, plus `assignments` as `classId:subj1,subj2;classId2:subj3` (per-class subject list — what actually gates the Academics tab / assessment mark entry). All three are additive on import (union with whatever the teacher already has, never a strip); assignment classes are folded into `classIds` even if omitted from that column.
 
 ### 3.6 Co-Scholastic
 Same bulk builder minus subject dimension (term-wide list, ordered). Add/Edit form and Grid Edit both carry a `classIds` multi-select (class doc IDs, same options as Classes & Teachers); left empty the activity applies to every class. CSV import/export carries `classIds` as a `;`-separated column, same convention as the Teachers CSV.

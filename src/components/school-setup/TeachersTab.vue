@@ -307,16 +307,35 @@ async function saveTeacher() {
 }
 
 // ── CSV import/export ────────────────────────────────────────────────────
-// Identity fields + classIds (class-level access) only — `assignments` (the
-// nested per-class-subject map) doesn't flatten into a row, same precedent
-// as SubjectsTab excluding curricular_goals from its CSV. Per-class-subject
-// assignment stays a UI-only concern, edited via the dialog above.
-// classIds/coScholasticClassIds from a CSV row are ADDED to whatever a
-// teacher already has, never used to strip existing access — the same
-// additive convention every other classIds/assignments writer in this
-// codebase already follows.
-const TEACHER_CSV_COLUMNS = ['name', 'id', 'email', 'phoneNo', 'sex', 'type', 'classIds', 'coScholasticClassIds']
+// `assignments` (per-class-subject access, what actually gates the Academics
+// tab / assessment mark entry — see school-setup-page-spec.md §"Subject
+// dropdown for a class") flattens as `classId:subj1,subj2;classId2:subj3`,
+// mirroring the `;`-separated classIds/coScholasticClassIds convention with
+// `,` as the inner subject delimiter. classIds/coScholasticClassIds/
+// assignments from a CSV row are ADDED to whatever a teacher already has,
+// never used to strip existing access — the same additive convention every
+// other classIds/assignments writer in this codebase already follows.
+const TEACHER_CSV_COLUMNS = ['name', 'id', 'email', 'phoneNo', 'sex', 'type', 'classIds', 'coScholasticClassIds', 'assignments']
 const importVisible = ref(false)
+
+function parseAssignments(raw) {
+  const text = (raw || '').trim()
+  if (!text) return {}
+  const assignments = {}
+  text.split(';').map(s => s.trim()).filter(Boolean).forEach(group => {
+    const [classId, subjectsPart] = group.split(':').map(s => (s || '').trim())
+    const subjectIds = (subjectsPart || '').split(',').map(s => s.trim()).filter(Boolean)
+    if (classId) assignments[classId] = subjectIds
+  })
+  return assignments
+}
+
+function formatAssignments(assignments) {
+  return Object.entries(assignments || {})
+    .filter(([, subjectIds]) => (subjectIds || []).length)
+    .map(([classId, subjectIds]) => `${classId}:${subjectIds.join(',')}`)
+    .join(';')
+}
 
 async function classifyImportRow(raw) {
   const name = (raw.name || '').trim()
@@ -334,6 +353,18 @@ async function classifyImportRow(raw) {
   const unknownCoScholastic = coScholasticClassIds.filter(cid => !classes.value.some(c => c.id === cid))
   if (unknownCoScholastic.length) return { raw, _status: 'ERROR', _reason: `Unknown co-scholastic class id(s): ${unknownCoScholastic.join(', ')}` }
 
+  const assignments = parseAssignments(raw.assignments)
+  const unknownAssignmentClasses = Object.keys(assignments).filter(cid => !classes.value.some(c => c.id === cid))
+  if (unknownAssignmentClasses.length) return { raw, _status: 'ERROR', _reason: `Unknown assignment class id(s): ${unknownAssignmentClasses.join(', ')}` }
+  for (const [classId, subjectIds] of Object.entries(assignments)) {
+    const unknownSubjects = subjectIds.filter(sid => !subjectsForClass(classId).includes(sid))
+    if (unknownSubjects.length) return { raw, _status: 'ERROR', _reason: `Unknown subject id(s) for class ${classId}: ${unknownSubjects.join(', ')}` }
+  }
+  // Assignment classes grant Academics access even if omitted from classIds —
+  // same invariant the Teacher assignment matrix keeps (classIds = union of
+  // assignment keys + any manually added class-level access).
+  const classIdsWithAssignments = Array.from(new Set([...classIds, ...Object.keys(assignments)]))
+
   const { firstName, lastName } = splitName(name)
   const phoneRaw = (raw.phoneNo ?? '').toString().trim()
   const existing = staffs.value.find(s => s.id === id)
@@ -343,8 +374,9 @@ async function classifyImportRow(raw) {
     phoneNo: phoneRaw ? Number(phoneRaw) : null,
     sex: (raw.sex || '').trim(),
     type: (raw.type || '').trim() || 'teacher',
-    classIds,
+    classIds: classIdsWithAssignments,
     coScholasticClassIds,
+    assignments,
   }
   return { raw, id, _status: existing ? 'UPDATE' : 'CREATE', payload }
 }
@@ -355,8 +387,12 @@ async function runImport(validRows) {
     const existing = staffs.value.find(s => s.id === r.id)
     const mergedClassIds = Array.from(new Set([...(existing?.classIds || []), ...r.payload.classIds]))
     const mergedCoScholasticClassIds = Array.from(new Set([...(existing?.coScholasticClassIds || []), ...r.payload.coScholasticClassIds]))
+    const mergedAssignments = { ...(existing?.assignments || {}) }
+    for (const [classId, subjectIds] of Object.entries(r.payload.assignments)) {
+      mergedAssignments[classId] = Array.from(new Set([...(mergedAssignments[classId] || []), ...subjectIds]))
+    }
     const payload = {
-      ...r.payload, classIds: mergedClassIds, coScholasticClassIds: mergedCoScholasticClassIds,
+      ...r.payload, classIds: mergedClassIds, coScholasticClassIds: mergedCoScholasticClassIds, assignments: mergedAssignments,
       updated_at: serverTimestamp(), updated_by: auth.currentUser?.email || 'unknown',
     }
     if (r._status === 'CREATE') {
@@ -378,8 +414,8 @@ async function runImport(validRows) {
 
 function downloadSample() {
   const sample = [
-    { name: 'Asha Kulkarni', id: '', email: 'asha.kulkarni@example.com', phoneNo: '9876543210', sex: 'Female', type: 'teacher', classIds: '6_NEWTON;7_KALAM', coScholasticClassIds: '' },
-    { name: 'Rohit Sharma', id: '', email: 'rohit.sharma@example.com', phoneNo: '9876500000', sex: 'Male', type: 'teacher', classIds: '', coScholasticClassIds: '6_NEWTON;7_KALAM' },
+    { name: 'Asha Kulkarni', id: '', email: 'asha.kulkarni@example.com', phoneNo: '9876543210', sex: 'Female', type: 'teacher', classIds: '6_NEWTON;7_KALAM', coScholasticClassIds: '', assignments: '6_NEWTON:Math,Science;7_KALAM:Math' },
+    { name: 'Rohit Sharma', id: '', email: 'rohit.sharma@example.com', phoneNo: '9876500000', sex: 'Male', type: 'teacher', classIds: '', coScholasticClassIds: '6_NEWTON;7_KALAM', assignments: '' },
   ]
   downloadCsv('teachers_sample.csv', toCsv(sample, TEACHER_CSV_COLUMNS))
 }
@@ -389,6 +425,7 @@ function exportCsv() {
     name: s.name || '', id: s.id, email: s.email || '', phoneNo: s.phoneNo ?? '',
     sex: s.sex || '', type: s.type || '', classIds: (s.classIds || []).join(';'),
     coScholasticClassIds: (s.coScholasticClassIds || []).join(';'),
+    assignments: formatAssignments(s.assignments),
   }))
   downloadCsv(`teachers_${props.schoolId}.csv`, toCsv(rows, TEACHER_CSV_COLUMNS))
 }
