@@ -86,10 +86,9 @@ def copy_school_content(req: https_fn.CallableRequest):
     Request: {sourceSchoolId, targetSchoolId, collection}
     Response: {copied, flagged: [{id, fields}]}
 
-    Same per-doc conflict rule as the client-side copy for activities/
-    playbooks/avatars: the source doc ID is preserved unless the target
-    already has a doc there, in which case it gets a fresh auto-ID rather
-    than risk overwriting a doc the target already owns.
+    Every doc keeps its source ID (same as the client-side copy for
+    activities/playbooks/avatars). If the target already has a doc there,
+    this MERGES onto it rather than creating a duplicate under a fresh ID.
     """
     _require_ops_admin(req)
     data = req.data or {}
@@ -124,7 +123,6 @@ def copy_school_content(req: https_fn.CallableRequest):
         return {"copied": 0, "flagged": []}
 
     target_coll = target_school_ref.collection(collection)
-    existing_ids = {d.id for d in target_coll.stream()}
 
     flagged = []
     batch = db.batch()
@@ -133,13 +131,15 @@ def copy_school_content(req: https_fn.CallableRequest):
 
     for src_doc in source_docs:
         doc_data = src_doc.to_dict() or {}
-        use_fresh_id = src_doc.id in existing_ids
-        doc_ref = target_coll.document() if use_fresh_id else target_coll.document(src_doc.id)
+        # Doc ID always matches the source — if the target already has a doc
+        # at that ID, this MERGES onto it (existing fields the copied doc
+        # doesn't mention are kept) rather than creating a duplicate under a
+        # fresh ID.
+        doc_ref = target_coll.document(src_doc.id)
 
         fields = _find_ref_fields(doc_data)
         if fields:
-            shown_id = f"{src_doc.id} -> {doc_ref.id}" if use_fresh_id else src_doc.id
-            flagged.append({"id": shown_id, "fields": fields})
+            flagged.append({"id": src_doc.id, "fields": fields})
 
         batch.set(doc_ref, doc_data, merge=True)
         ops_in_batch += 1

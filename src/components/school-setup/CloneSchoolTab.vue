@@ -84,7 +84,7 @@
 
 <script setup>
 import { ref, reactive, computed } from 'vue'
-import { getDocs, getDoc, doc, query, orderBy, writeBatch, serverTimestamp } from 'firebase/firestore'
+import { getDocs, getDoc, query, orderBy, writeBatch, serverTimestamp } from 'firebase/firestore'
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
 
@@ -209,7 +209,7 @@ async function confirmClone() {
   const targetName_ = otherSchools.value.find(s => s.id === existingTargetId.value)?.name || existingTargetId.value
   const optInSelectedCount = selected.value.filter(k => optInOptions.some(o => o.key === k)).length
   confirm.require({
-    message: `Copy ${optInSelectedCount} collection(s) from "${sourceSchoolName.value}" into the EXISTING school "${targetName_}"? Docs whose ID doesn't already exist there keep it; anything that collides gets a fresh ID rather than overwriting the target's doc.`,
+    message: `Copy ${optInSelectedCount} collection(s) from "${sourceSchoolName.value}" into the EXISTING school "${targetName_}"? Every doc keeps its source ID — if the target already has a doc at that ID, this merges onto it rather than creating a duplicate.`,
     header: 'Copy Into Existing School', icon: 'pi pi-exclamation-triangle',
     rejectLabel: 'Cancel', acceptLabel: 'Copy',
     accept: runClone,
@@ -255,15 +255,6 @@ async function runClone() {
       }
       const snap = await getDocs(schoolCollection(props.schoolId, key))
 
-      // Existing-school mode: preserve the source doc ID unless the target
-      // already has a doc there, in which case fall back to a fresh auto-ID
-      // rather than risk overwriting a doc the target already owns.
-      let existingIds = new Set()
-      if (mode.value === 'existing' && snap.docs.length) {
-        const targetSnap = await getDocs(schoolCollection(targetSchoolId, key)).catch(() => null)
-        existingIds = new Set((targetSnap?.docs || []).map(d => d.id))
-      }
-
       snap.docs.forEach(d => {
         let data = { ...d.data() }
         if (key === 'classes') {
@@ -273,12 +264,15 @@ async function runClone() {
           }
         }
 
-        const useFreshId = mode.value === 'existing' && existingIds.has(d.id)
-        const ref = useFreshId ? doc(schoolCollection(targetSchoolId, key)) : schoolDoc(targetSchoolId, key, d.id)
+        // Doc ID always matches the source, even in 'existing' mode — if the
+        // target already has a doc at that ID, this MERGES onto it (existing
+        // fields the copied doc doesn't mention are kept) rather than
+        // creating a second copy under a different ID.
+        const ref = schoolDoc(targetSchoolId, key, d.id)
 
         if (mode.value === 'existing') {
           const fields = findRefFields(data)
-          if (fields.length) flaggedRefs.value.push({ collection: key, id: useFreshId ? `${d.id} → ${ref.id}` : d.id, fields })
+          if (fields.length) flaggedRefs.value.push({ collection: key, id: d.id, fields })
         }
 
         ops.push({ ref, data })

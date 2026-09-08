@@ -15,8 +15,8 @@ One callable: `copy_school_content`. Takes `{sourceSchoolId, targetSchoolId,
 collection}` (`collection` must be `"surveys"` today — see
 `ALLOWED_COLLECTIONS` in main.py to extend it). Requires the target school to
 already exist (this is for backfilling an already-live school, not creating
-one). Preserves each source doc's ID unless the target already has a doc
-there, in which case it gets a fresh auto-ID rather than overwriting. Any
+one). Every doc keeps its source ID; if the target already has a doc there,
+the copy MERGES onto it rather than creating a duplicate. Any
 field whose name looks like `classId`/`subjectId` is flagged back to the
 caller (`flagged: [{id, fields}]`) for manual review — `surveys` has no fixed
 schema in this app, so a value like that is copied as-is (a source-school ID)
