@@ -98,6 +98,7 @@ import { schoolCollection, schoolDoc, rootSchoolDoc, rootSchoolsCollection } fro
 import { db } from '../../firebase/config'
 import { auth } from '../../firebase/config'
 import { slugify } from '../../utils/assessmentHelpers.js'
+import { copySchoolContentRemote } from '../../utils/api.js'
 
 const props = defineProps({ schoolId: { type: String, default: null }, school: { type: Object, default: null } })
 const confirm = useConfirm()
@@ -237,7 +238,16 @@ async function runClone() {
       ? selected.value.filter(k => optInOptions.some(o => o.key === k))
       : selected.value
 
-    for (const key of keysToCopy) {
+    // `surveys` never goes through a direct client write, in EITHER mode —
+    // firestore.rules gives the browser no write path to schools/{id}/surveys
+    // at all (see the comment there). Routed through copy_school_content
+    // (Admin SDK) instead, run separately below once the target school
+    // actually exists in Firestore (in 'new' mode, that's only true after
+    // the root school doc — pushed into `ops` above — has been committed).
+    const copySurveys = keysToCopy.includes('surveys')
+    const docCopyKeys = keysToCopy.filter(k => k !== 'surveys')
+
+    for (const key of docCopyKeys) {
       if (key === 'config') {
         const snap = await getDocs(schoolCollection(props.schoolId, 'config')).catch(() => null)
         ;(snap?.docs || []).forEach(d => ops.push({ ref: schoolDoc(targetSchoolId, 'config', d.id), data: d.data() }))
@@ -285,6 +295,16 @@ async function runClone() {
       await batch.commit()
       progress.done += chunk.length
       progress.message = `Wrote ${progress.done}/${progress.total} doc(s)...`
+    }
+
+    if (copySurveys) {
+      progress.message = 'Copying surveys...'
+      const result = await copySchoolContentRemote({
+        sourceSchoolId: props.schoolId, targetSchoolId, collection: 'surveys',
+      })
+      progress.done += result.copied
+      progress.total += result.copied
+      ;(result.flagged || []).forEach(f => flaggedRefs.value.push({ collection: 'surveys', id: f.id, fields: f.fields }))
     }
 
     progress.message = `Done — ${progress.done} doc(s) written to "${targetSchoolId}".`

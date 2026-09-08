@@ -338,6 +338,19 @@ export async function generatePendingLetterPDF({ schoolName, contactName, contac
   downloadBlob(blob, `pending-items-${safe}-${yyyymmdd}.pdf`)
 }
 
+// ── Copy school content (Clone School's "Copy Into Existing School") ───────
+// Only `surveys` needs this: firestore.rules deliberately gives the client
+// no write path to schools/{id}/surveys (activities/playbooks/avatars ARE
+// client-writable — CloneSchoolTab.vue writes those directly). This callable
+// does the same merge-copy server-side with the Admin SDK, which bypasses
+// that rule. See functions/copy_school_content/main.py.
+const copySchoolContentCallable = httpsCallable(functions, 'copy_school_content', { timeout: 300_000 })
+
+export async function copySchoolContentRemote({ sourceSchoolId, targetSchoolId, collection }) {
+  const res = await copySchoolContentCallable({ sourceSchoolId, targetSchoolId, collection })
+  return res.data
+}
+
 function slugify(text) {
   return (text || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'school'
 }

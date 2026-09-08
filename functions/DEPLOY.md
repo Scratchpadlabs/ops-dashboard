@@ -1,5 +1,51 @@
 # Cloud Functions — Deploy Guide
 
+## copy_school_content (NEW)
+
+Server-side copy of `schools/{id}/surveys` docs from one school into another.
+Exists because firestore.rules deliberately gives the ops-dashboard client no
+write path to `surveys` at all (see the comment on the
+`schools/{schoolId}/{collection}/{docId}` rule) — activities/playbooks/
+avatars copy fine as direct client writes from School Setup's Clone School
+tab (`CloneSchoolTab.vue`, "Copy Into Existing School" mode); only surveys
+needed a server-side path, so this is one callable, one collection, on
+purpose rather than a general "copy anything" endpoint.
+
+One callable: `copy_school_content`. Takes `{sourceSchoolId, targetSchoolId,
+collection}` (`collection` must be `"surveys"` today — see
+`ALLOWED_COLLECTIONS` in main.py to extend it). Requires the target school to
+already exist (this is for backfilling an already-live school, not creating
+one). Preserves each source doc's ID unless the target already has a doc
+there, in which case it gets a fresh auto-ID rather than overwriting. Any
+field whose name looks like `classId`/`subjectId` is flagged back to the
+caller (`flagged: [{id, fields}]`) for manual review — `surveys` has no fixed
+schema in this app, so a value like that is copied as-is (a source-school ID)
+rather than guessed at.
+
+### Files needed in the folder:
+- main.py ✅
+- requirements.txt ✅
+
+### Deploy:
+```
+cd functions/copy_school_content
+
+gcloud functions deploy copy_school_content \
+  --gen2 --runtime python312 --region asia-south1 \
+  --source . --entry-point copy_school_content \
+  --trigger-http --allow-unauthenticated --project clarified-1501 \
+  --memory 512MB --timeout 300s --max-instances 3
+```
+
+No firestore.rules change needed or wanted — the whole point is that this
+runs with the Admin SDK, which bypasses rules, same as `assign_survey`'s
+surveyInbox/survey_assignments writes. `--allow-unauthenticated` is required
+at the IAM layer even though this is a callable — the function itself
+verifies `req.auth` against `OPS_ADMIN_EMAILS` before doing anything. Keep
+that allowlist in sync with `src/config/opsAdmins.js`.
+
+---
+
 ## create_auth_accounts (NEW)
 
 Replaces the two local one-off scripts (createAuthAccountsForStudents.js /
