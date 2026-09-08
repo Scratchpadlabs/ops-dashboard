@@ -378,8 +378,8 @@ async function runImport(validRows) {
 
 function downloadSample() {
   const sample = [
-    { name: 'Asha Kulkarni', id: '', email: 'asha.kulkarni@example.com', phoneNo: '9876543210', sex: 'Female', type: 'teacher', classIds: '', coScholasticClassIds: '' },
-    { name: 'Rohit Sharma', id: '', email: 'rohit.sharma@example.com', phoneNo: '9876500000', sex: 'Male', type: 'teacher', classIds: '', coScholasticClassIds: '' },
+    { name: 'Asha Kulkarni', id: '', email: 'asha.kulkarni@example.com', phoneNo: '9876543210', sex: 'Female', type: 'teacher', classIds: '6_NEWTON;7_KALAM', coScholasticClassIds: '' },
+    { name: 'Rohit Sharma', id: '', email: 'rohit.sharma@example.com', phoneNo: '9876500000', sex: 'Male', type: 'teacher', classIds: '', coScholasticClassIds: '6_NEWTON;7_KALAM' },
   ]
   downloadCsv('teachers_sample.csv', toCsv(sample, TEACHER_CSV_COLUMNS))
 }
