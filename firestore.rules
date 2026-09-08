@@ -40,15 +40,32 @@ service cloud.firestore {
                         // this collection is otherwise owned by the teacher app, so
                         // verify against the real deployed rules before applying,
                         // per the stale-rules warning above.
-                        'students'];
+                        'students',
+                        // Clone School's "Copy Into Existing School" mode
+                        // (CloneSchoolTab.vue) writes these four opt-in content
+                        // collections into an already-live target school —
+                        // same ops-admin trust level as everything else here.
+                        // 'activities'/'playbooks'/'avatars' were apparently
+                        // already writable live (Clone School's original
+                        // brand-new-school path used them successfully before
+                        // this file listed them) — added explicitly so this
+                        // file matches reality and a deploy doesn't regress
+                        // them. 'surveys' previously had NO client write path
+                        // anywhere (see the removed comment below) — this is
+                        // the one actual policy change: ops-admins can now
+                        // write survey definitions from the browser, not just
+                        // via the Admin SDK.
+                        'activities', 'playbooks', 'avatars', 'surveys'];
     }
-    // Survey assignment (functions/assign_survey) writes each recipient's
+    // Survey ASSIGNMENT (functions/assign_survey) writes each recipient's
     // surveyInbox array and logs each run to
     // schools/{id}/survey_assignments/{runId}. Both happen through the Admin
-    // SDK, which bypasses these rules entirely — nothing extra is granted
-    // here on purpose. The dashboard only READS surveys and run history,
-    // which the authenticated-read rule above already covers, and it never
-    // writes a survey document at all.
+    // SDK, which bypasses these rules entirely — 'survey_assignments' is
+    // deliberately NOT in the writable-collection list above, so the client
+    // can't forge or amend an assignment run. Survey DEFINITIONS
+    // ('surveys') are different: School Setup's Clone School tab now writes
+    // those directly (see above) — assignment history/responses stay
+    // Admin-SDK-only.
 
     // Sheets Status (Phase 5) only toggles isFrozen / deletes empty stray docs
     // on existing smart_sheet_entries — never creates sheets (teacher app
