@@ -1321,6 +1321,8 @@ def commit_import(req: https_fn.CallableRequest):
 
         if entity in ("students", "subjects"):
             _commit_simple(db, school_ref.collection(entity), writable, email)
+            if entity == "subjects":
+                _link_subjects_to_classes(db, school_ref, writable, email)
         elif entity == "assessments":
             _commit_assessments(db, school_ref.collection("assessments"), writable, email)
         elif entity == "teachers":
@@ -1418,6 +1420,67 @@ def _commit_simple(db, collection_ref, writable, email):
                 payload["created_at"] = firestore.SERVER_TIMESTAMP
                 payload["created_by"] = email
             batch.set(collection_ref.document(item["docId"]), payload, merge=True)
+        batch.commit()
+
+
+def _link_subjects_to_classes(db, school_ref, writable, email):
+    """A subjects import only writes `subjects/{id}` docs — it never touches
+    `classes/{id}.subjects[]`, which is the array the rest of the app (marks
+    entry, teacher assignment, the student's subject list) actually reads.
+    Manual subject entry and the Structure-inference tool both keep that
+    array in sync; a CSV subjects import was the one path that didn't,
+    so an imported subject was invisible everywhere except the Subjects tab.
+
+    Subject docIds are `{grade}_{name}` (see buildSubjectsPlan in
+    useImport.js) — grade-scoped, not section-scoped — so a subject is
+    linked into every class of that grade, across all its sections. A
+    docId with no grade prefix ('UNSPECIFIED_...') can't be matched to any
+    class and is skipped.
+    """
+    by_grade = {}
+    for item in writable:
+        doc_id = item.get("docId") or ""
+        if "_" not in doc_id:
+            continue
+        grade_raw, _, _ = doc_id.partition("_")
+        if grade_raw == "UNSPECIFIED":
+            continue
+        grade = normalize_grade(grade_raw)
+        by_grade.setdefault(grade, []).append(doc_id)
+    if not by_grade:
+        return
+
+    classes_ref = school_ref.collection("classes")
+    classes = [{"id": d.id, **(d.to_dict() or {})} for d in classes_ref.stream()]
+
+    batch = db.batch()
+    ops = 0
+    for c in classes:
+        subject_ids = by_grade.get(normalize_grade(c.get("clazz")))
+        if not subject_ids:
+            continue
+        existing_subjects = c.get("subjects") or []
+        have = {s.get("subjectId") for s in existing_subjects}
+        additions = [{
+            "subjectId": sid, "teacherId": "", "isCompleted": False, "completedAt": None,
+            "topics": [
+                {"id": f"{sid}_Term1", "topic": "Term 1", "isCompleted": False, "completedAt": None},
+                {"id": f"{sid}_Term2", "topic": "Term 2", "isCompleted": False, "completedAt": None},
+                {"id": f"{sid}_Optional", "topic": "Optional", "isCompleted": False, "completedAt": None},
+            ],
+        } for sid in subject_ids if sid not in have]
+        if not additions:
+            continue
+        batch.set(classes_ref.document(c["id"]), {
+            "subjects": existing_subjects + additions,
+            "updated_at": firestore.SERVER_TIMESTAMP, "updated_by": email,
+        }, merge=True)
+        ops += 1
+        if ops >= 450:
+            batch.commit()
+            batch = db.batch()
+            ops = 0
+    if ops:
         batch.commit()
 
 
