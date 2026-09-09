@@ -271,6 +271,9 @@ export const SCHOOL_SCHEMAS = {
       // exact document without resolving a class at all, which is what makes
       // "update contact info, leave Grade/Section alone" possible.
       externalId: opt(STRING, { allowEmpty: true }),
+      // Added for the Students tab's "Additional Details" section, alongside
+      // aadhaarNumber/admNo/grEmisSts/rollNo above.
+      address: opt(STRING, { allowEmpty: true }),
     },
   },
 
@@ -296,6 +299,13 @@ export const SCHOOL_SCHEMAS = {
       coScholasticClassIds: opt(ARRAY),
       needsAuthCreation: opt(BOOL),
       authUid: opt(STRING, { nullable: true }),
+      // School-level admin in the teacher app — not the same thing as this
+      // dashboard's own ops-admin allowlist (config/opsAdmins.js). Set from
+      // the Teachers tab; the tab also forces classIds/assignments/
+      // coScholasticClassIds to every class/subject when this is true, since
+      // an admin teacher is meant to see everything, not just what they were
+      // individually assigned.
+      admin: opt(BOOL),
     },
   },
 }

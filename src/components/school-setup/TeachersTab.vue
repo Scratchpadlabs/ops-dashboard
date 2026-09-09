@@ -25,7 +25,10 @@
       <DataTable :value="staffs" size="small" stripedRows>
         <Column field="name" header="Name">
           <template #body="{ data }">
-            <div class="font-medium text-sm text-slate-900">{{ data.name || data.id }}</div>
+            <div class="font-medium text-sm text-slate-900 flex items-center gap-1.5">
+              {{ data.name || data.id }}
+              <span v-if="data.admin" class="text-[10px] font-semibold text-violet-700 bg-violet-100 rounded-full px-1.5 py-0.5">ADMIN</span>
+            </div>
             <div class="text-xs text-slate-400 font-mono">{{ data.id }}</div>
           </template>
         </Column>
@@ -88,15 +91,23 @@
           </div>
         </div>
 
+        <label class="flex items-center gap-2 text-sm bg-violet-50 border border-violet-200 rounded-lg px-3 py-2.5 cursor-pointer">
+          <Checkbox v-model="form.admin" :binary="true" />
+          <span>
+            <span class="font-semibold text-violet-900">Admin</span>
+            <span class="text-violet-700"> — full access to every class and subject in this school. Locks the pickers below to everything, automatically.</span>
+          </span>
+        </label>
+
         <div>
           <label class="form-label mb-2 block">Classes &amp; Subjects (Academics)</label>
-          <MultiSelect v-model="selectedClassIds" :options="classes" optionLabel="id" optionValue="id" placeholder="Select classes" filter display="chip" class="w-full" />
+          <MultiSelect v-model="selectedClassIds" :options="classes" optionLabel="id" optionValue="id" placeholder="Select classes" filter display="chip" class="w-full" :disabled="form.admin" />
           <div v-if="selectedClassIds.length" class="mt-3 space-y-3">
             <div v-for="classId in selectedClassIds" :key="classId" class="border border-slate-200 rounded-lg p-3">
               <div class="text-xs font-semibold text-slate-600 mb-1.5">{{ classId }}</div>
               <div v-if="subjectsForClass(classId).length" class="grid grid-cols-2 gap-1">
                 <label v-for="subjId in subjectsForClass(classId)" :key="subjId" class="flex items-center gap-2 text-sm">
-                  <Checkbox v-model="assignmentsState[classId]" :value="subjId" />
+                  <Checkbox v-model="assignmentsState[classId]" :value="subjId" :disabled="form.admin" />
                   <span>{{ subjId }}</span>
                 </label>
               </div>
@@ -107,7 +118,7 @@
 
         <div>
           <label class="form-label mb-2 block">Co-Scholastic Classes</label>
-          <MultiSelect v-model="selectedCoScholasticClassIds" :options="classes" optionLabel="id" optionValue="id" placeholder="Select classes" filter display="chip" class="w-full" />
+          <MultiSelect v-model="selectedCoScholasticClassIds" :options="classes" optionLabel="id" optionValue="id" placeholder="Select classes" filter display="chip" class="w-full" :disabled="form.admin" />
           <p class="text-xs text-slate-400 mt-1">
             Grants access to Co-Scholastic / Attendance / Remarks for these classes — independent of the Academics classes above, and not tied to any subject.
           </p>
@@ -191,7 +202,7 @@ const dialogVisible = ref(false)
 const editingStaff = ref(null)
 const saving = ref(false)
 const formError = ref('')
-const form = reactive({ name: '', id: '', email: '', phoneNo: null, sex: '', type: 'teacher' })
+const form = reactive({ name: '', id: '', email: '', phoneNo: null, sex: '', type: 'teacher', admin: false })
 // Per-teacher class -> [subjectId, ...]. A class present here with an empty
 // array is still class-level access (kept in classIds) — same invariant as
 // "a class with no subjects still grants access" elsewhere in this codebase.
@@ -209,7 +220,19 @@ function hasNoAccess(staff) {
     && !Object.keys(staff.assignments || {}).length
     && !(staff.coScholasticClassIds || []).length
 }
-const noAccessInForm = computed(() => !selectedClassIds.value.length && !selectedCoScholasticClassIds.value.length)
+const noAccessInForm = computed(() => !form.admin && !selectedClassIds.value.length && !selectedCoScholasticClassIds.value.length)
+
+// Admin — give every class and every subject, and every co-scholastic class,
+// so an admin teacher never falls into the "no access set" everything-fallback
+// and never has to be re-granted access as new classes/subjects are added.
+function applyAdminAccess() {
+  selectedClassIds.value = classes.value.map(c => c.id)
+  selectedCoScholasticClassIds.value = classes.value.map(c => c.id)
+  Object.keys(assignmentsState).forEach(k => delete assignmentsState[k])
+  classes.value.forEach(c => { assignmentsState[c.id] = subjectsForClass(c.id) })
+}
+
+watch(() => form.admin, admin => { if (admin) applyAdminAccess() })
 
 function slugifyName(name) {
   return (name || '').trim().replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_|_$/g, '')
@@ -230,7 +253,7 @@ watch(selectedClassIds, next => {
 
 function openAddTeacher() {
   editingStaff.value = null
-  Object.assign(form, { name: '', id: '', email: '', phoneNo: null, sex: '', type: 'teacher' })
+  Object.assign(form, { name: '', id: '', email: '', phoneNo: null, sex: '', type: 'teacher', admin: false })
   selectedClassIds.value = []
   selectedCoScholasticClassIds.value = []
   Object.keys(assignmentsState).forEach(k => delete assignmentsState[k])
@@ -243,6 +266,7 @@ function openEditTeacher(staff) {
   Object.assign(form, {
     name: staff.name || '', id: staff.id, email: staff.email || '',
     phoneNo: staff.phoneNo ?? null, sex: staff.sex || '', type: staff.type || 'teacher',
+    admin: !!staff.admin,
   })
   Object.keys(assignmentsState).forEach(k => delete assignmentsState[k])
   selectedClassIds.value = [...(staff.classIds || [])]
@@ -252,6 +276,10 @@ function openEditTeacher(staff) {
   selectedCoScholasticClassIds.value = [...(staff.coScholasticClassIds || [])]
   formError.value = ''
   dialogVisible.value = true
+  // Runs after the assignment above so an existing admin's picks are shown
+  // as "everything, including classes/subjects added since their last save"
+  // rather than whatever subset happened to be stored.
+  if (staff.admin) applyAdminAccess()
 }
 
 function validateTeacher() {
@@ -280,6 +308,7 @@ async function saveTeacher() {
       name: form.name.trim(), firstName, lastName,
       email: form.email.trim(), phoneNo: form.phoneNo,
       sex: form.sex || '', type: (form.type || 'teacher').trim(),
+      admin: !!form.admin,
       classIds: [...selectedClassIds.value],
       assignments: buildAssignments(),
       coScholasticClassIds: [...selectedCoScholasticClassIds.value],
@@ -315,7 +344,8 @@ async function saveTeacher() {
 // assignments from a CSV row are ADDED to whatever a teacher already has,
 // never used to strip existing access — the same additive convention every
 // other classIds/assignments writer in this codebase already follows.
-const TEACHER_CSV_COLUMNS = ['name', 'id', 'email', 'phoneNo', 'sex', 'type', 'classIds', 'coScholasticClassIds', 'assignments']
+const TEACHER_CSV_COLUMNS = ['name', 'id', 'email', 'phoneNo', 'sex', 'type', 'admin', 'classIds', 'coScholasticClassIds', 'assignments']
+const TRUTHY = new Set(['true', 'yes', '1'])
 const importVisible = ref(false)
 
 function parseAssignments(raw) {
@@ -367,20 +397,35 @@ async function classifyImportRow(raw) {
   // Assignment classes grant Academics access even if omitted from classIds —
   // same invariant the Teacher assignment matrix keeps (classIds = union of
   // assignment keys + any manually added class-level access).
-  const classIdsWithAssignments = Array.from(new Set([...classIds, ...Object.keys(assignments)]))
+  let classIdsWithAssignments = Array.from(new Set([...classIds, ...Object.keys(assignments)]))
 
   const { firstName, lastName } = splitName(name)
   const phoneRaw = (raw.phoneNo ?? '').toString().trim()
   const existing = staffs.value.find(s => s.id === id)
+
+  // Same invariant as the Admin checkbox in the dialog: admin ignores
+  // whatever classIds/assignments/coScholasticClassIds the row carries and
+  // gets every class and subject instead, so a CSV import can't produce a
+  // half-access "admin".
+  const admin = TRUTHY.has((raw.admin || '').trim().toLowerCase())
+  let finalCoScholasticClassIds = coScholasticClassIds
+  let finalAssignments = assignments
+  if (admin) {
+    classIdsWithAssignments = classes.value.map(c => c.id)
+    finalCoScholasticClassIds = classes.value.map(c => c.id)
+    finalAssignments = Object.fromEntries(classes.value.map(c => [c.id, subjectsForClass(c.id)]))
+  }
+
   const payload = {
     name, firstName, lastName,
     email: (raw.email || '').trim(),
     phoneNo: phoneRaw ? Number(phoneRaw) : null,
     sex: (raw.sex || '').trim(),
     type: (raw.type || '').trim() || 'teacher',
+    admin,
     classIds: classIdsWithAssignments,
-    coScholasticClassIds,
-    assignments,
+    coScholasticClassIds: finalCoScholasticClassIds,
+    assignments: finalAssignments,
   }
   return { raw, id, _status: existing ? 'UPDATE' : 'CREATE', payload }
 }
@@ -418,8 +463,9 @@ async function runImport(validRows) {
 
 function downloadSample() {
   const sample = [
-    { name: 'Asha Kulkarni', id: '', email: 'asha.kulkarni@example.com', phoneNo: '9876543210', sex: 'Female', type: 'teacher', classIds: '6_NEWTON;7_KALAM', coScholasticClassIds: '', assignments: '6_NEWTON:Math,Science;7_KALAM:Math' },
-    { name: 'Rohit Sharma', id: '', email: 'rohit.sharma@example.com', phoneNo: '9876500000', sex: 'Male', type: 'teacher', classIds: '', coScholasticClassIds: '6_NEWTON;7_KALAM', assignments: '' },
+    { name: 'Asha Kulkarni', id: '', email: 'asha.kulkarni@example.com', phoneNo: '9876543210', sex: 'Female', type: 'teacher', admin: '', classIds: '6_NEWTON;7_KALAM', coScholasticClassIds: '', assignments: '6_NEWTON:Math,Science;7_KALAM:Math' },
+    { name: 'Rohit Sharma', id: '', email: 'rohit.sharma@example.com', phoneNo: '9876500000', sex: 'Male', type: 'teacher', admin: '', classIds: '', coScholasticClassIds: '6_NEWTON;7_KALAM', assignments: '' },
+    { name: 'Priya Nair', id: '', email: 'priya.nair@example.com', phoneNo: '9876511111', sex: 'Female', type: 'admin', admin: 'true', classIds: '', coScholasticClassIds: '', assignments: '' },
   ]
   downloadCsv('teachers_sample.csv', toCsv(sample, TEACHER_CSV_COLUMNS))
 }
@@ -427,7 +473,7 @@ function downloadSample() {
 function exportCsv() {
   const rows = staffs.value.map(s => ({
     name: s.name || '', id: s.id, email: s.email || '', phoneNo: s.phoneNo ?? '',
-    sex: s.sex || '', type: s.type || '', classIds: (s.classIds || []).join(';'),
+    sex: s.sex || '', type: s.type || '', admin: s.admin ? 'true' : '', classIds: (s.classIds || []).join(';'),
     coScholasticClassIds: (s.coScholasticClassIds || []).join(';'),
     assignments: formatAssignments(s.assignments),
   }))

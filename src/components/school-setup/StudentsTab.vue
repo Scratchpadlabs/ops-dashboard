@@ -27,7 +27,7 @@
       <div v-if="students.length" class="flex items-center gap-2 mb-3 flex-wrap">
         <IconField class="w-64">
           <InputIcon class="pi pi-search" />
-          <InputText v-model="search" placeholder="Search name, roll no, adm no..." class="w-full" />
+          <InputText v-model="search" placeholder="Search name, roll no, adm no, ID..." class="w-full" />
         </IconField>
         <MultiSelect
           v-model="classFilter" :options="classes" optionLabel="id" optionValue="id"
@@ -70,41 +70,66 @@
     </template>
 
     <!-- ── Add/Edit Student Dialog ──────────────────────────────────────── -->
-    <Dialog v-model:visible="dialogVisible" :header="editingStudent ? `Edit ${editingStudent.id}` : 'Add Student'" modal :style="{ width: '560px' }">
-      <div class="space-y-4 pt-2">
-        <div class="grid grid-cols-2 gap-4">
-          <div>
-            <label class="form-label">Name *</label>
-            <InputText v-model="form.name" class="w-full" placeholder="e.g. Ananya Sharma" />
+    <Dialog v-model:visible="dialogVisible" :header="editingStudent ? `Edit ${editingStudent.id}` : 'Add Student'" modal :style="{ width: '640px' }">
+      <div class="space-y-5 pt-2">
+        <div>
+          <label class="form-label mb-2 block">Basic Info</label>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="form-label">Name *</label>
+              <InputText v-model="form.name" class="w-full" placeholder="e.g. Ananya Sharma" />
+            </div>
+            <div>
+              <label class="form-label">Student ID *</label>
+              <InputText v-model="form.id" class="w-full font-mono text-sm" :disabled="!!editingStudent" placeholder="e.g. ssds0001" />
+              <p class="text-xs text-slate-400 mt-1">
+                <template v-if="editingStudent">Permanent — a student ID can never be changed once created.</template>
+                <template v-else-if="idConventionDetected">Auto-continues this school's existing ID sequence. Cannot be changed after saving.</template>
+                <template v-else>No existing student IDs to continue from — set this school's convention now (e.g. <span class="font-mono">ssds0001</span>). Cannot be changed after saving.</template>
+              </p>
+            </div>
+            <div>
+              <label class="form-label">Class *</label>
+              <Select v-model="form.currentClassId" :options="classes" optionLabel="id" optionValue="id" filter placeholder="Select class" class="w-full" />
+            </div>
+            <div>
+              <label class="form-label">Gender</label>
+              <Select v-model="form.gender" :options="GENDER_OPTIONS" placeholder="Not set" showClear editable class="w-full" />
+            </div>
+            <div>
+              <label class="form-label">Date of Birth</label>
+              <DatePicker v-model="form.dateOfBirth" class="w-full" dateFormat="d M yy" showIcon :maxDate="new Date()" />
+            </div>
+            <div>
+              <label class="form-label">Phone</label>
+              <InputNumber v-model="form.phoneNo" class="w-full" :useGrouping="false" />
+            </div>
           </div>
-          <div>
-            <label class="form-label">Doc ID *</label>
-            <InputText v-model="form.id" class="w-full font-mono text-sm" :disabled="!!editingStudent" />
-            <p class="text-xs text-slate-400 mt-1">Auto-generated from class + name — editable until first save, locked after.</p>
-          </div>
-          <div>
-            <label class="form-label">Class *</label>
-            <Select v-model="form.currentClassId" :options="classes" optionLabel="id" optionValue="id" filter placeholder="Select class" class="w-full" />
-          </div>
-          <div>
-            <label class="form-label">Gender</label>
-            <Select v-model="form.gender" :options="GENDER_OPTIONS" placeholder="Not set" showClear editable class="w-full" />
-          </div>
-          <div>
-            <label class="form-label">Date of Birth</label>
-            <DatePicker v-model="form.dateOfBirth" class="w-full" dateFormat="d M yy" showIcon :maxDate="new Date()" />
-          </div>
-          <div>
-            <label class="form-label">Roll No</label>
-            <InputText v-model="form.rollNo" class="w-full" />
-          </div>
-          <div>
-            <label class="form-label">Adm No</label>
-            <InputText v-model="form.admNo" class="w-full" />
-          </div>
-          <div>
-            <label class="form-label">Phone</label>
-            <InputNumber v-model="form.phoneNo" class="w-full" :useGrouping="false" />
+        </div>
+
+        <div>
+          <label class="form-label mb-2 block">Additional Details</label>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="form-label">Roll No</label>
+              <InputText v-model="form.rollNo" class="w-full" />
+            </div>
+            <div>
+              <label class="form-label">Adm No</label>
+              <InputText v-model="form.admNo" class="w-full" />
+            </div>
+            <div>
+              <label class="form-label">GR / EMIS No</label>
+              <InputText v-model="form.grEmisSts" class="w-full" />
+            </div>
+            <div>
+              <label class="form-label">Aadhaar Number</label>
+              <InputText v-model="form.aadhaarNumber" class="w-full font-mono" placeholder="12 digits" maxlength="12" />
+            </div>
+            <div class="col-span-2">
+              <label class="form-label">Address</label>
+              <Textarea v-model="form.address" class="w-full" rows="2" autoResize />
+            </div>
           </div>
         </div>
 
@@ -129,6 +154,7 @@ import Column from 'primevue/column'
 import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
+import Textarea from 'primevue/textarea'
 import Select from 'primevue/select'
 import MultiSelect from 'primevue/multiselect'
 import DatePicker from 'primevue/datepicker'
@@ -142,7 +168,7 @@ import { schoolCollection, schoolDoc } from '../../firebase/schoolCollections.js
 import { guardedSetDoc, guardedUpdateDoc, guardedBatchSet, SchemaViolation, MODE_CREATE, MODE_UPDATE } from '../../schemas/guardedWrite.js'
 import { db, auth } from '../../firebase/config'
 import { toCsv, downloadCsv } from '../../utils/csv.js'
-import { splitName, toDateOfBirth, toPhoneNo } from '../../schemas/studentMapping.js'
+import { splitName, toDateOfBirth, toPhoneNo, toAadhaar } from '../../schemas/studentMapping.js'
 
 const props = defineProps({ schoolId: { type: String, default: null } })
 const toast = useToast()
@@ -208,34 +234,61 @@ function formatDob(dob) {
   return dob.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
+// ── Student ID convention ────────────────────────────────────────────────
+// Real student IDs in this estate are a per-school prefix + zero-padded
+// sequence (e.g. ssds0001, sttka0033) — NOT derived from class or name. A
+// student ID is permanent once saved (Firestore doc IDs can't be renamed),
+// so the only sane thing to auto-fill is "the next number in whatever
+// convention this school already uses," detected live from its own roster
+// rather than hard-coded, since every school's prefix differs.
+const ID_RE = /^([a-z]{2,6})(\d{3,6})$/
+
+function detectIdConvention() {
+  const parsed = students.value
+    .map(s => ID_RE.exec(s.id || ''))
+    .filter(Boolean)
+    .map(m => ({ prefix: m[1], digits: m[2] }))
+  if (!parsed.length) return null
+  const counts = {}
+  parsed.forEach(p => { counts[p.prefix] = (counts[p.prefix] || 0) + 1 })
+  const [prefix] = Object.entries(counts).sort((a, b) => b[1] - a[1])[0]
+  const forPrefix = parsed.filter(p => p.prefix === prefix)
+  const width = Math.max(...forPrefix.map(p => p.digits.length))
+  const next = Math.max(...forPrefix.map(p => parseInt(p.digits, 10))) + 1
+  return { prefix, width, next }
+}
+
+const idConventionDetected = computed(() => !!detectIdConvention())
+
+/** @param {Set<string>} reserved  ids already claimed within the same run (e.g. a CSV batch) that aren't in `students` yet. */
+function nextStudentId(reserved = new Set()) {
+  const conv = detectIdConvention()
+  if (!conv) return ''
+  let n = conv.next
+  let id = `${conv.prefix}${String(n).padStart(conv.width, '0')}`
+  while (students.value.some(s => s.id === id) || reserved.has(id)) {
+    n += 1
+    id = `${conv.prefix}${String(n).padStart(conv.width, '0')}`
+  }
+  return id
+}
+
 // ── Add/Edit form ────────────────────────────────────────────────────────
 const dialogVisible = ref(false)
 const editingStudent = ref(null)
 const saving = ref(false)
 const formError = ref('')
-const form = reactive({ name: '', id: '', currentClassId: null, gender: '', dateOfBirth: null, rollNo: '', admNo: '', phoneNo: null })
-
-function slugifyName(name) {
-  return (name || '').trim().replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_|_$/g, '')
-}
-
-function suggestId() {
-  const base = slugifyName(form.rollNo) || slugifyName(form.name)
-  if (!form.currentClassId || !base) return
-  let id = `${form.currentClassId}_${base}`
-  let n = 1
-  while (students.value.some(s => s.id === id)) { n += 1; id = `${form.currentClassId}_${base}_${n}` }
-  form.id = id
-}
-
-watch([() => form.name, () => form.currentClassId, () => form.rollNo], () => {
-  if (editingStudent.value) return
-  suggestId()
+const form = reactive({
+  name: '', id: '', currentClassId: null, gender: '', dateOfBirth: null, phoneNo: null,
+  rollNo: '', admNo: '', grEmisSts: '', aadhaarNumber: '', address: '',
 })
 
 function openAddStudent() {
   editingStudent.value = null
-  Object.assign(form, { name: '', id: '', currentClassId: null, gender: '', dateOfBirth: null, rollNo: '', admNo: '', phoneNo: null })
+  Object.assign(form, {
+    name: '', id: nextStudentId(), currentClassId: null, gender: '', dateOfBirth: null, phoneNo: null,
+    rollNo: '', admNo: '', grEmisSts: '', aadhaarNumber: '', address: '',
+  })
   formError.value = ''
   dialogVisible.value = true
 }
@@ -244,8 +297,9 @@ function openEditStudent(student) {
   editingStudent.value = student
   Object.assign(form, {
     name: student.name || '', id: student.id, currentClassId: student.currentClassId || null,
-    gender: student.gender || '', dateOfBirth: student.dateOfBirth || null,
-    rollNo: student.rollNo || '', admNo: student.admNo || '', phoneNo: student.phoneNo ?? null,
+    gender: student.gender || '', dateOfBirth: student.dateOfBirth || null, phoneNo: student.phoneNo ?? null,
+    rollNo: student.rollNo || '', admNo: student.admNo || '', grEmisSts: student.grEmisSts || '',
+    aadhaarNumber: student.aadhaarNumber || '', address: student.address || '',
   })
   formError.value = ''
   dialogVisible.value = true
@@ -254,8 +308,9 @@ function openEditStudent(student) {
 function validateStudent() {
   if (!form.name.trim()) return 'Name is required'
   if (!form.currentClassId) return 'Class is required'
-  if (!form.id.trim()) return 'Doc ID is required'
+  if (!form.id.trim()) return 'Student ID is required'
   if (!editingStudent.value && students.value.some(s => s.id === form.id.trim())) return 'A student record with this ID already exists'
+  if (form.aadhaarNumber && !/^\d{12}$/.test(form.aadhaarNumber.trim())) return 'Aadhaar number must be 12 digits'
   return ''
 }
 
@@ -270,11 +325,14 @@ async function saveStudent() {
       currentClassId: form.currentClassId,
       gender: form.gender || '',
       dateOfBirth: form.dateOfBirth || null,
-      rollNo: form.rollNo.trim(), admNo: form.admNo.trim(),
       phoneNo: form.phoneNo,
+      rollNo: form.rollNo.trim(), admNo: form.admNo.trim(), grEmisSts: form.grEmisSts.trim(),
+      aadhaarNumber: form.aadhaarNumber.trim(), address: form.address.trim(),
       updated_at: serverTimestamp(), updated_by: auth.currentUser?.email || 'unknown',
     }
     if (editingStudent.value) {
+      // The doc ID (student ID) is never part of an update payload — it's the
+      // Firestore path segment, which is exactly what makes it unchangeable.
       await guardedUpdateDoc('students', schoolDoc(props.schoolId, 'students', editingStudent.value.id), payload)
     } else {
       payload.type = 'student'
@@ -293,10 +351,20 @@ async function saveStudent() {
 }
 
 // ── CSV import/export ────────────────────────────────────────────────────
-const STUDENT_CSV_COLUMNS = ['name', 'id', 'currentClassId', 'gender', 'dateOfBirth', 'rollNo', 'admNo', 'phoneNo']
+const STUDENT_CSV_COLUMNS = [
+  'name', 'id', 'currentClassId', 'gender', 'dateOfBirth', 'phoneNo',
+  'rollNo', 'admNo', 'grEmisSts', 'aadhaarNumber', 'address',
+]
 const importVisible = ref(false)
 
-async function classifyImportRow(raw) {
+// IDs auto-generated for rows with a blank `id` column, within one file —
+// reserved so two blank-id rows in the same file never collide before either
+// is actually saved. Reset per file (rowIndex 0 = first row of a fresh pick).
+let reservedIds = new Set()
+
+async function classifyImportRow(raw, rowIndex) {
+  if (rowIndex === 0) reservedIds = new Set()
+
   const name = (raw.name || '').trim()
   if (!name) return { raw, _status: 'ERROR', _reason: 'Missing name' }
 
@@ -304,12 +372,14 @@ async function classifyImportRow(raw) {
   if (!currentClassId) return { raw, _status: 'ERROR', _reason: 'Missing currentClassId' }
   if (!classes.value.some(c => c.id === currentClassId)) return { raw, _status: 'ERROR', _reason: `Unknown class id: ${currentClassId}` }
 
-  const rollNo = (raw.rollNo || '').trim()
   let id = (raw.id || '').trim()
+  const existing = id ? students.value.find(s => s.id === id) : undefined
+  // A blank id ALWAYS means "new student" — an existing student is matched by
+  // its id (the one thing that can't change), never guessed at from name/roll.
   if (!id) {
-    const base = slugifyName(rollNo) || slugifyName(name)
-    if (!base) return { raw, _status: 'ERROR', _reason: 'Could not derive a doc ID from name/rollNo' }
-    id = `${currentClassId}_${base}`
+    id = nextStudentId(reservedIds)
+    if (!id) return { raw, _status: 'ERROR', _reason: 'No existing student ID to continue from — add the first student manually to set this school\'s ID convention' }
+    reservedIds.add(id)
   }
 
   const dobRaw = (raw.dateOfBirth || '').trim()
@@ -320,16 +390,22 @@ async function classifyImportRow(raw) {
   const phoneNo = toPhoneNo(phoneRaw)
   if (phoneRaw && phoneNo === null) return { raw, _status: 'ERROR', _reason: `Unusable phone number "${phoneRaw}"` }
 
+  const aadhaarRaw = (raw.aadhaarNumber || '').trim()
+  const aadhaarNumber = toAadhaar(aadhaarRaw)
+  if (aadhaarRaw && !aadhaarNumber) return { raw, _status: 'ERROR', _reason: `Aadhaar "${aadhaarRaw}" is not 12 digits` }
+
   const { firstName, lastName } = splitName(name)
-  const existing = students.value.find(s => s.id === id)
   const payload = {
     name, firstName, lastName,
     currentClassId,
     gender: (raw.gender || '').trim(),
     dateOfBirth,
-    rollNo,
-    admNo: (raw.admNo || '').trim(),
     phoneNo,
+    rollNo: (raw.rollNo || '').trim(),
+    admNo: (raw.admNo || '').trim(),
+    grEmisSts: (raw.grEmisSts || '').trim(),
+    aadhaarNumber,
+    address: (raw.address || '').trim(),
   }
   return { raw, id, _status: existing ? 'UPDATE' : 'CREATE', payload }
 }
@@ -357,8 +433,8 @@ async function runImport(validRows) {
 
 function downloadSample() {
   const sample = [
-    { name: 'Ananya Sharma', id: '', currentClassId: '6_NEWTON', gender: 'Female', dateOfBirth: '2014-05-12', rollNo: '12', admNo: 'ADM1023', phoneNo: '9876543210' },
-    { name: 'Rohan Verma', id: '', currentClassId: '7_KALAM', gender: 'Male', dateOfBirth: '2013-11-03', rollNo: '5', admNo: 'ADM1044', phoneNo: '' },
+    { name: 'Ananya Sharma', id: '', currentClassId: '6_NEWTON', gender: 'Female', dateOfBirth: '2014-05-12', phoneNo: '9876543210', rollNo: '12', admNo: 'ADM1023', grEmisSts: '', aadhaarNumber: '', address: '' },
+    { name: 'Rohan Verma', id: '', currentClassId: '7_KALAM', gender: 'Male', dateOfBirth: '2013-11-03', phoneNo: '', rollNo: '5', admNo: 'ADM1044', grEmisSts: '', aadhaarNumber: '', address: '' },
   ]
   downloadCsv('students_sample.csv', toCsv(sample, STUDENT_CSV_COLUMNS))
 }
@@ -367,7 +443,9 @@ function exportCsv() {
   const rows = students.value.map(s => ({
     name: s.name || '', id: s.id, currentClassId: s.currentClassId || '',
     gender: s.gender || '', dateOfBirth: s.dateOfBirth ? s.dateOfBirth.toISOString().slice(0, 10) : '',
-    rollNo: s.rollNo || '', admNo: s.admNo || '', phoneNo: s.phoneNo ?? '',
+    phoneNo: s.phoneNo ?? '',
+    rollNo: s.rollNo || '', admNo: s.admNo || '', grEmisSts: s.grEmisSts || '',
+    aadhaarNumber: s.aadhaarNumber || '', address: s.address || '',
   }))
   downloadCsv(`students_${props.schoolId}.csv`, toCsv(rows, STUDENT_CSV_COLUMNS))
 }
