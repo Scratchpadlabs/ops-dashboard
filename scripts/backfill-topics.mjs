@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 /**
  * One-time backfill: seed the fixed Term 1 / Term 2 / Optional topics
- * template into any doc that's missing topics entirely, in BOTH places
- * "topics" lives (same three names, two different shapes):
+ * template (or, for the Training_DEMO demo class/subjects, "Topic 1/2/3" —
+ * see createTrainingClass() in ClassesTeachersTab.vue) into any doc that's
+ * missing topics entirely, in BOTH places "topics" lives (same three names
+ * per doc, two different shapes):
  *
  *   classes/{id}.subjects[].topics — progress tracking, written by
  *     defaultTopicsForSubject() in ClassesTeachersTab.vue/StructureTab.vue:
@@ -65,19 +67,23 @@ const projectId = value('project') || process.env.GOOGLE_CLOUD_PROJECT || DEFAUL
 const outPath = value('out') || `topics-backfill-${new Date().toISOString().replace(/[:.]/g, '-')}.csv`
 
 // ── Default topic templates (same three names, two shapes) ─────────────────
+// The "Training_DEMO" class and its "Training_"-prefixed demo subjects are a
+// special case (see createTrainingClass() in ClassesTeachersTab.vue): they
+// intentionally use "Topic 1/2/3" instead of "Term 1/Term 2/Optional", so
+// they need their own template rather than the general default below.
+const TRAINING_CLASS_ID = 'Training_DEMO'
+const TRAINING_TOPIC_LABELS = ['Topic 1', 'Topic 2', 'Topic 3']
+const isTrainingSubject = (subjectId) => subjectId.startsWith('Training_')
+
 function defaultClassTopics(subjectId) {
-  return [
-    { id: `${subjectId}_Term1`, topic: 'Term 1', isCompleted: false, completedAt: null },
-    { id: `${subjectId}_Term2`, topic: 'Term 2', isCompleted: false, completedAt: null },
-    { id: `${subjectId}_Optional`, topic: 'Optional', isCompleted: false, completedAt: null },
-  ]
+  const labels = isTrainingSubject(subjectId)
+    ? TRAINING_TOPIC_LABELS.map((label, i) => [label, `Topic${i + 1}`])
+    : [['Term 1', 'Term1'], ['Term 2', 'Term2'], ['Optional', 'Optional']]
+  return labels.map(([topic, suffix]) => ({ id: `${subjectId}_${suffix}`, topic, isCompleted: false, completedAt: null }))
 }
-function defaultSubjectTopics() {
-  return [
-    { topic: 'Term 1', description: '', quiz: [] },
-    { topic: 'Term 2', description: '', quiz: [] },
-    { topic: 'Optional', description: '', quiz: [] },
-  ]
+function defaultSubjectTopics(subjectId) {
+  const labels = isTrainingSubject(subjectId) ? TRAINING_TOPIC_LABELS : ['Term 1', 'Term 2', 'Optional']
+  return labels.map(topic => ({ topic, description: '', quiz: [] }))
 }
 
 const CSV_COLUMNS = ['school', 'collection', 'docId', 'detail', 'action', 'note']
@@ -117,12 +123,13 @@ function planForSubject(schoolId, docSnap) {
   if ((data.topics || []).length) {
     return { school: schoolId, collection: 'subjects', docId: docSnap.id, detail: '', action: 'SKIP', note: '' }
   }
+  const topics = defaultSubjectTopics(docSnap.id)
   return {
     school: schoolId, collection: 'subjects', docId: docSnap.id,
-    detail: 'Term 1;Term 2;Optional',
+    detail: topics.map(t => t.topic).join(';'),
     action: 'UPDATE',
     note: 'topics missing or empty',
-    _write: { topics: defaultSubjectTopics() },
+    _write: { topics },
   }
 }
 
