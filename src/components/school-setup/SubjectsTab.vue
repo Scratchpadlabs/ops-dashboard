@@ -434,7 +434,7 @@ function goalsToDoc(goals) {
 function openAddSubject() {
   editingSubject.value = null
   Object.assign(form, {
-    grade: '', name: '', id: '', goals: [], topics: [], area: '', name_original: '',
+    grade: '', name: '', id: '', goals: [], topics: defaultTopics(), area: '', name_original: '',
     termId: terms.value.length === 1 ? terms.value[0].id : null, ...CO_DEFAULTS, order: 1,
   })
   formError.value = ''
@@ -456,6 +456,18 @@ function addGoal() {
 }
 
 // ── Topics + quiz ────────────────────────────────────────────────────────
+// Same fixed Term 1 / Term 2 / Optional template classes.subjects[].topics
+// seeds (see defaultTopicsForSubject in ClassesTeachersTab.vue/StructureTab.vue)
+// so a subject created here and one linked to a class via those tabs start
+// from the same three topics, just in each collection's own shape.
+function defaultTopics() {
+  return [
+    { topic: 'Term 1', description: '', quiz: [] },
+    { topic: 'Term 2', description: '', quiz: [] },
+    { topic: 'Optional', description: '', quiz: [] },
+  ]
+}
+
 // Legacy docs hold plain strings (or bare {topic} objects); the editor
 // upgrades whatever it finds into the full { topic, description, quiz } shape
 // the moment it's opened, so editing a legacy topic never loses its name.
