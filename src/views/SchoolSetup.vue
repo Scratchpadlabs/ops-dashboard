@@ -87,6 +87,7 @@
         <Tab value="subjects">Subjects</Tab>
         <Tab value="classes-teachers">Classes &amp; Teachers</Tab>
         <Tab value="teachers">Teachers</Tab>
+        <Tab value="students">Students</Tab>
         <Tab value="assessments">Assessments</Tab>
         <Tab value="co-scholastic">Co-Scholastic</Tab>
         <Tab value="remarks">Remarks</Tab>
@@ -116,6 +117,7 @@
         <TabPanel value="subjects"><SubjectsTab :school-id="selectedSchoolId" /></TabPanel>
         <TabPanel value="classes-teachers"><ClassesTeachersTab :school-id="selectedSchoolId" /></TabPanel>
         <TabPanel value="teachers"><TeachersTab :school-id="selectedSchoolId" /></TabPanel>
+        <TabPanel value="students"><StudentsTab :school-id="selectedSchoolId" /></TabPanel>
         <TabPanel value="assessments"><AssessmentsTab :school-id="selectedSchoolId" /></TabPanel>
         <TabPanel value="co-scholastic"><CoScholasticTab :school-id="selectedSchoolId" /></TabPanel>
         <TabPanel value="remarks"><RemarksTab :school-id="selectedSchoolId" /></TabPanel>
@@ -156,6 +158,7 @@ import RemarksTab from '../components/school-setup/RemarksTab.vue'
 import SubjectsTab from '../components/school-setup/SubjectsTab.vue'
 import ClassesTeachersTab from '../components/school-setup/ClassesTeachersTab.vue'
 import TeachersTab from '../components/school-setup/TeachersTab.vue'
+import StudentsTab from '../components/school-setup/StudentsTab.vue'
 import AssessmentsTab from '../components/school-setup/AssessmentsTab.vue'
 import CoScholasticTab from '../components/school-setup/CoScholasticTab.vue'
 import OverviewTab from '../components/school-setup/OverviewTab.vue'
