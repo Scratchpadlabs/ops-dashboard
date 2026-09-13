@@ -111,6 +111,12 @@ const props = defineProps({
   disabled: { type: Boolean, default: false },
   // Restricts which families the confirm dropdown offers.
   allowedTypes: { type: Array, default: () => [SUBJECT, COSCHOLASTIC, GRADE, SECTION, OTHER] },
+  // When false, a high-confidence match is still classified and shown as a
+  // receipt, but the typed text is kept verbatim instead of being rewritten
+  // to the KB canonical. Needed wherever the literal text feeds a composed
+  // id (e.g. a class id built from the grade token) and must match this
+  // school's own notation (roman vs numeral) rather than the KB's.
+  normalize: { type: Boolean, default: true },
 })
 const emit = defineEmits(['update:modelValue', 'classified'])
 
@@ -163,7 +169,7 @@ function onBlur() {
   const r = result.value
   if (state.value === 'high' && r.canonical && r.canonical !== props.modelValue.trim()) {
     normalizedFrom.value = props.modelValue.trim()
-    emit('update:modelValue', r.canonical)
+    if (props.normalize) emit('update:modelValue', r.canonical)
   }
   if (state.value === 'high') emitClassified(r.type, r.canonical)
 }

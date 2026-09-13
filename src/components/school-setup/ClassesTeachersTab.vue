@@ -72,6 +72,7 @@
               :allowed-types="[GRADE, OTHER]"
               placeholder="e.g. III"
               :disabled="!!editingClass"
+              :normalize="false"
             />
           </div>
           <div>
