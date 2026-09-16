@@ -132,6 +132,12 @@
         <TabPanel value="publish"><PublishTab :school-id="selectedSchoolId" /></TabPanel>
       </TabPanels>
     </Tabs>
+
+    <!-- Single instance for the whole page: useConfirm() is a global
+         PrimeVue service, so every tab's own <ConfirmDialog/> would render
+         the same confirm() call once per still-mounted tab (Tabs/TabPanels
+         keeps inactive panels in the DOM rather than unmounting them). -->
+    <ConfirmDialog />
   </div>
 </template>
 
@@ -142,6 +148,7 @@ import { getDocs, query, orderBy, limit, setDoc, serverTimestamp } from 'firebas
 import Select from 'primevue/select'
 import Password from 'primevue/password'
 import Button from 'primevue/button'
+import ConfirmDialog from 'primevue/confirmdialog'
 import Tabs from 'primevue/tabs'
 import TabList from 'primevue/tablist'
 import Tab from 'primevue/tab'

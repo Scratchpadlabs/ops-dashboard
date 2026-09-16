@@ -187,8 +187,6 @@
         <Button label="Confirm" :loading="scaleImportConfirming" :disabled="!scaleImportValidCount" @click="confirmScaleImport" />
       </template>
     </Dialog>
-
-    <ConfirmDialog />
   </div>
 </template>
 
@@ -208,7 +206,6 @@ import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
 import ToggleButton from 'primevue/togglebutton'
 import ProgressSpinner from 'primevue/progressspinner'
-import ConfirmDialog from 'primevue/confirmdialog'
 import CsvImportDialog from './CsvImportDialog.vue'
 import ConfigEmptyState from './ConfigEmptyState.vue'
 

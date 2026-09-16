@@ -159,8 +159,6 @@
         <Button label="Generate" :loading="generating" @click="generateAcademicYear" />
       </template>
     </Dialog>
-
-    <ConfirmDialog />
   </div>
 </template>
 
@@ -180,7 +178,6 @@ import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
 import Select from 'primevue/select'
 import ProgressSpinner from 'primevue/progressspinner'
-import ConfirmDialog from 'primevue/confirmdialog'
 import CsvImportDialog from './CsvImportDialog.vue'
 import ConfigEmptyState from './ConfigEmptyState.vue'
 

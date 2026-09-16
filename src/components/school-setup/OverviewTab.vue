@@ -34,8 +34,6 @@
         </div>
       </div>
     </div>
-
-    <ConfirmDialog />
   </div>
 </template>
 
@@ -49,7 +47,6 @@ import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
 import ToggleButton from 'primevue/togglebutton'
 import ProgressSpinner from 'primevue/progressspinner'
-import ConfirmDialog from 'primevue/confirmdialog'
 
 import { schoolCollection, schoolDoc, rootSchoolDoc } from '../../firebase/schoolCollections.js'
 import { auth } from '../../firebase/config'
