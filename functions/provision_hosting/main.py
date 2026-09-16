@@ -20,7 +20,8 @@ render PDFs from data the caller already has. This one creates Hosting sites,
 edits the DNS of a live domain, and triggers a deploy. An anonymous endpoint
 holding a GitHub PAT and Namecheap credentials is a different risk class, so it
 verifies a Firebase ID token and checks the caller against the ops-admin list
-server-side. Keep OPS_ADMIN_EMAILS in step with src/config/opsAdmins.js.
+server-side (functions/shared/ops_admins.py — mirror of src/config/opsAdmins.js,
+kept in sync by hand since the two are different runtimes).
 
 Provisioning is not transactional — a Hosting site can exist while DNS is still
 pending. So each run is written to `hosting_runs/{runId}` step by step, and
@@ -66,16 +67,13 @@ from namecheap_dns import (
     apply_records,
     records_from_firebase_dns_updates,
 )
+from ops_admins import OPS_ADMIN_EMAILS
 
 firebase_admin.initialize_app()
 
 PROJECT_ID = "clarified-1501"
 HOSTING_API = "https://firebasehosting.googleapis.com/v1beta1"
 HOSTING_SCOPES = ["https://www.googleapis.com/auth/firebase.hosting"]
-
-# Mirror of src/config/opsAdmins.js. Duplicated deliberately: the client-side
-# list is a UI affordance, this one is the actual gate.
-OPS_ADMIN_EMAILS = {"sid@ops.clarified.in", "angel@ops.clarified.in"}
 
 BASE_DOMAIN = os.environ.get("HOSTING_BASE_DOMAIN", "myhpc.in")
 GITHUB_OWNER = os.environ.get("GITHUB_OWNER", "Scratchpadlabs")

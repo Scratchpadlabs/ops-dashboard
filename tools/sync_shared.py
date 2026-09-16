@@ -28,12 +28,15 @@ SHARED = os.path.join(ROOT, "functions", "shared")
 # Which shared files each deployable folder needs.
 TARGETS = {
     "school_reset": ["class_resolver.py", "promotion.py", "education_kb.json",
-                     "school_schema.py"],
-    "assign_survey": ["class_resolver.py", "education_kb.json"],
+                     "school_schema.py", "ops_admins.py"],
+    "assign_survey": ["class_resolver.py", "education_kb.json", "ops_admins.py"],
     # generate_import already carries the canonical education_kb.json (it is
     # the seed classResolver.js imports), so that file is NOT mirrored in —
     # doing so would overwrite the original with its own copy.
-    "generate_import": ["class_resolver.py", "school_schema.py"],
+    "generate_import": ["class_resolver.py", "school_schema.py", "ops_admins.py"],
+    "create_auth_accounts": ["ops_admins.py"],
+    "provision_hosting": ["ops_admins.py"],
+    "generate_aap_remarks": ["class_resolver.py", "education_kb.json", "ops_admins.py"],
 }
 
 

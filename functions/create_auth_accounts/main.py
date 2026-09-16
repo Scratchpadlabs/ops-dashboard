@@ -42,7 +42,7 @@ firebase_admin.initialize_app()
 # Mirror of src/config/opsAdmins.js. Duplicated deliberately, same as every
 # other admin-gated callable in this repo — the client-side list is a UI
 # affordance, this one is the actual gate.
-OPS_ADMIN_EMAILS = {"sid@ops.clarified.in", "angel@ops.clarified.in"}
+from ops_admins import require_ops_admin as _require_ops_admin_base
 
 WRITE_CHUNK = 450
 
@@ -50,15 +50,7 @@ ROLE_COLLECTIONS = {"students": "students", "staffs": "staffs"}
 
 
 def _require_ops_admin(req: https_fn.CallableRequest) -> str:
-    if req.auth is None:
-        raise https_fn.HttpsError(
-            https_fn.FunctionsErrorCode.UNAUTHENTICATED, "Sign in required.")
-    email = str((req.auth.token or {}).get("email") or "").strip().lower()
-    if email not in OPS_ADMIN_EMAILS:
-        raise https_fn.HttpsError(
-            https_fn.FunctionsErrorCode.PERMISSION_DENIED,
-            "Not authorized to create auth accounts.")
-    return email
+    return _require_ops_admin_base(req, "Not authorized to create auth accounts.")
 
 
 def _display_name(doc: dict) -> str:

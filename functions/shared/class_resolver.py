@@ -149,6 +149,30 @@ def _norm(value):
 
 GRADE_INDEX = _canonical_grade_index()
 
+
+def grade_ordinal(token):
+    """Normalize a single grade token (however a school spells it — "Grade 1",
+    "1st", "STD I", "NURSERY", an alias in education_kb.json, ...) to
+    (canonical_name, ordinal), or None if it matches nothing in the KB.
+
+    Thin wrapper over GRADE_INDEX, built above from every grade's canonical
+    name and aliases — this just exposes that lookup for callers outside this
+    module (e.g. generate_aap_remarks deriving a Stage from a grade) instead
+    of each one growing its own grade-name dict, which is exactly the
+    duplication this module's own docstring says it replaced.
+
+    A "Grade "/"STD "/etc. prefix is stripped first, the same way _tokens()
+    does for the fuller parse_class_value() pipeline below — a raw exact
+    lookup would miss "Grade 3" entirely even though "3" (and its aliases)
+    are in the index. _PREFIX_RE/_SEPARATORS are defined further down this
+    file; referencing them here is fine since Python resolves names at call
+    time, and this is never called before the module finishes loading.
+    """
+    cleaned = _SEPARATORS.sub(" ", str(token or "").strip())
+    stripped = _PREFIX_RE.sub("", cleaned).strip()
+    return GRADE_INDEX.get(_norm(stripped or token))
+
+
 # Longest first so "pre nursery" is tried before "nursery" would ever match a
 # leading fragment.
 _MAX_GRADE_WORDS = max((len(k.split()) for k in GRADE_INDEX), default=1)

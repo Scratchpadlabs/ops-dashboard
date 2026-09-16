@@ -16,7 +16,7 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 _FOLDER = os.path.dirname(_HERE)
 _SHARED = os.path.join(_FOLDER, "..", "shared")
 
-SHARED_FILES = ["class_resolver.py", "promotion.py", "education_kb.json"]
+SHARED_FILES = ["class_resolver.py", "promotion.py", "education_kb.json", "ops_admins.py"]
 
 
 def _digest(path):

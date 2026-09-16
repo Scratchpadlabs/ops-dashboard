@@ -86,23 +86,13 @@ from survey_reports import (
 # already initialized.
 firebase_admin.initialize_app()
 
-# Mirrors src/config/opsAdmins.js — keep in sync. Server-side is the
-# authoritative check; the frontend's isOpsAdmin() is only a UI gate.
-OPS_ADMIN_EMAILS = {"sid@ops.clarified.in", "angel@ops.clarified.in"}
+from ops_admins import require_ops_admin as _require_ops_admin_base
 
 WRITE_CHUNK = 450
 
 
 def _require_ops_admin(req: https_fn.CallableRequest) -> str:
-    if req.auth is None:
-        raise https_fn.HttpsError(
-            https_fn.FunctionsErrorCode.UNAUTHENTICATED, "Sign in required.")
-    email = str((req.auth.token or {}).get("email") or "").strip().lower()
-    if email not in OPS_ADMIN_EMAILS:
-        raise https_fn.HttpsError(
-            https_fn.FunctionsErrorCode.PERMISSION_DENIED,
-            "Not authorized for survey assignment.")
-    return email
+    return _require_ops_admin_base(req, "Not authorized for survey assignment.")
 
 
 def _collection_for(audience: str) -> str:

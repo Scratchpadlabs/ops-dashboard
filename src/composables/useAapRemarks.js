@@ -7,9 +7,16 @@
  * collection, and writes ONE doc per student per subject to
  * schools/{id}/students/{sid}/aap_remarks/{subject}.
  *
- * Everything after generation is a plain Firestore write from here: editing a
- * comment and flipping approved / needs_review touch the remark doc directly.
- * The function is never called to approve or edit — only to (re)generate text.
+ * Everything after generation — listing remarks, editing a comment, flipping
+ * approved / needs_review, bulk status, and confirming a subject mapping —
+ * is ALSO a callable (list_aap_remarks / update_aap_remark /
+ * bulk_update_aap_remarks / save_aap_subject_mapping), not a direct Firestore
+ * read/write. That is deliberate: it keeps this whole feature off the
+ * firestore.rules surface entirely, the same way class_map/resets/archives
+ * keep sensitive writes on the Admin SDK elsewhere in this repo. The one
+ * exception is `aap_jobs` progress polling below, which needs no rule change
+ * because it's a path the generic schools/{schoolId}/{collection}/{docId}
+ * read rule already covers.
  *
  * The roster comes from `class_detail` (functions/assign_survey) rather than a
  * client query on currentClassId, deliberately: that callable already resolves
@@ -18,23 +25,15 @@
  * naive equality query here would quietly show an empty class for those.
  */
 import { ref } from 'vue'
-import {
-  getDocs, query, orderBy, limit, onSnapshot, setDoc, serverTimestamp, writeBatch,
-} from 'firebase/firestore'
+import { getDocs, query, orderBy, limit, onSnapshot } from 'firebase/firestore'
 
-import {
-  rootSchoolsCollection, schoolCollection, aapJobsCollection,
-  studentAapRemarksCollection, studentAapRemarkDoc, aapSubjectMapDoc,
-} from '../firebase/schoolCollections.js'
+import { rootSchoolsCollection, schoolCollection, aapJobsCollection } from '../firebase/schoolCollections.js'
 import { compareClassIds } from './useSurveys.js'
 import {
   classDetailRemote, generateAapRemarksRemote, scanAapSubjectsRemote,
+  listAapRemarksRemote, updateAapRemarkRemote, bulkUpdateAapRemarksRemote,
+  saveAapSubjectMappingRemote,
 } from '../utils/api.js'
-import { auth, db } from '../firebase/config'
-
-// Firestore's own cap is 500 writes per batch; the rest of this repo chunks at
-// 450 for headroom, so bulk approval does the same.
-const WRITE_CHUNK = 450
 
 export const STATUS_APPROVED = 'approved'
 export const STATUS_NEEDS_REVIEW = 'needs_review'
@@ -118,23 +117,15 @@ export function useAapRemarks() {
   }
 
   /**
-   * One subcollection read per student. Bounded by class size (30-60 docs),
-   * the same trade the survey drill-down makes — a collectionGroup query would
-   * be one read but needs its own index and would pull every school's remarks
-   * back through the rules layer to filter client-side.
+   * One callable call for the whole roster — list_aap_remarks reads every
+   * student's aap_remarks subcollection through the Admin SDK and returns
+   * them keyed by student id, since the client has no rule path to any of
+   * those docs itself.
    */
   async function loadRemarks(schoolId, studentIds) {
-    const entries = await Promise.all(studentIds.map(async (sid) => {
-      const snap = await getDocs(studentAapRemarksCollection(schoolId, sid))
-      const rows = snap.docs
-        .map(d => ({ ...d.data(), id: d.id }))
-        .sort((a, b) => a.id.localeCompare(b.id))
-      return [sid, rows]
-    }))
-    remarksByStudent.value = {
-      ...remarksByStudent.value,
-      ...Object.fromEntries(entries),
-    }
+    if (!studentIds.length) return
+    const byStudent = await listAapRemarksRemote({ schoolId, studentIds })
+    remarksByStudent.value = { ...remarksByStudent.value, ...byStudent }
   }
 
   /** Re-read one student after a regenerate or an edit, leaving the rest be. */
@@ -179,49 +170,30 @@ export function useAapRemarks() {
   const generate = generateAapRemarksRemote
 
   /**
-   * Saving an edited comment approves it in the same write: someone who has
+   * Saving an edited comment approves it in the same call: someone who has
    * read the text closely enough to change it has reviewed it, and a separate
-   * "now approve it" click would only be a way to forget.
-   *
-   * `updatedBy` is ours — the function stamps updatedAt but has no caller to
-   * name. merge:true so a partial write can never drop the ratings.
+   * "now approve it" click would only be a way to forget. `update_aap_remark`
+   * stamps updatedAt/updatedBy server-side from the caller's verified auth.
    */
   async function saveComment(schoolId, studentId, subject, comment) {
-    await setDoc(studentAapRemarkDoc(schoolId, studentId, subject), {
-      comment,
-      status: STATUS_APPROVED,
-      updatedAt: serverTimestamp(),
-      updatedBy: auth.currentUser?.email || 'unknown',
-    }, { merge: true })
+    await updateAapRemarkRemote({ schoolId, studentId, subject, comment, status: STATUS_APPROVED })
   }
 
   async function setStatus(schoolId, studentId, subject, status) {
-    await setDoc(studentAapRemarkDoc(schoolId, studentId, subject), {
-      status,
-      updatedAt: serverTimestamp(),
-      updatedBy: auth.currentUser?.email || 'unknown',
-    }, { merge: true })
+    await updateAapRemarkRemote({ schoolId, studentId, subject, status })
   }
 
   /**
    * Flip many remarks in one go. `targets` is [{ studentId, subject }].
    *
-   * Batched rather than a loop of writes: approving a 40-student class across
-   * 7 subjects is 280 documents, and a partially-applied bulk action is worse
-   * than one that didn't run — a reviewer would have no way to tell which
-   * half went through.
+   * One callable call rather than a loop of writes: approving a 40-student
+   * class across 7 subjects is 280 documents, and a partially-applied bulk
+   * action is worse than one that didn't run — a reviewer would have no way
+   * to tell which half went through. bulk_update_aap_remarks chunks its own
+   * batches server-side for the same reason.
    */
   async function setStatusBulk(schoolId, targets, status) {
-    const stamp = {
-      status, updatedAt: serverTimestamp(), updatedBy: auth.currentUser?.email || 'unknown',
-    }
-    for (let i = 0; i < targets.length; i += WRITE_CHUNK) {
-      const batch = writeBatch(db)
-      for (const { studentId, subject } of targets.slice(i, i + WRITE_CHUNK)) {
-        batch.set(studentAapRemarkDoc(schoolId, studentId, subject), stamp, { merge: true })
-      }
-      await batch.commit()
-    }
+    await bulkUpdateAapRemarksRemote({ schoolId, targets, status })
     return targets.length
   }
 
@@ -248,20 +220,14 @@ export function useAapRemarks() {
   /**
    * Confirm that a survey's subject token means a particular rubric row.
    *
-   * Global by decision (see firestore.rules): one confirmation resolves that
-   * spelling for every school. Keyed by stage as well as token because
-   * "Science" is a different rubric row in Middle than in Preparatory, and
-   * `token` is stored raw — the function normalises it the same way the
-   * matcher does, so the two can never drift apart.
+   * Global by decision: one confirmation resolves that spelling for every
+   * school. Keyed by stage as well as token because "Science" is a different
+   * rubric row in Middle than in Preparatory. Goes through
+   * save_aap_subject_mapping (Admin SDK) rather than a direct write, so
+   * `aap_subject_map` needs no firestore.rules entry.
    */
   async function saveSubjectMapping({ stage, token, frameworkSubject }) {
-    await setDoc(aapSubjectMapDoc(stage, token), {
-      stage,
-      token,
-      frameworkSubject,
-      confirmedBy: auth.currentUser?.email || 'unknown',
-      confirmedAt: serverTimestamp(),
-    }, { merge: true })
+    await saveAapSubjectMappingRemote({ stage, token, frameworkSubject })
   }
 
   return {

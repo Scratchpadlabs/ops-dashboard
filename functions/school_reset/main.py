@@ -58,7 +58,8 @@ from promotion import (
 
 firebase_admin.initialize_app()
 
-OPS_ADMIN_EMAILS = {"sid@ops.clarified.in", "angel@ops.clarified.in"}
+from ops_admins import require_ops_admin as _require_ops_admin_base
+
 WRITE_CHUNK = 450
 INBOX_FIELD = "surveyInbox"
 
@@ -81,15 +82,7 @@ def _has_any_doc(collection_ref):
 
 
 def _require_ops_admin(req):
-    if req.auth is None:
-        raise https_fn.HttpsError(
-            https_fn.FunctionsErrorCode.UNAUTHENTICATED, "Sign in required.")
-    email = str((req.auth.token or {}).get("email") or "").strip().lower()
-    if email not in OPS_ADMIN_EMAILS:
-        raise https_fn.HttpsError(
-            https_fn.FunctionsErrorCode.PERMISSION_DENIED,
-            "Not authorized for School Setup wizards.")
-    return email
+    return _require_ops_admin_base(req, "Not authorized for School Setup wizards.")
 
 
 def _school_ref(db, school_id):

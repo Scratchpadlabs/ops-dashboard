@@ -49,27 +49,20 @@ export const surveyAssignmentDoc = (schoolId, runId) => doc(db, 'schools', schoo
 //
 // Generation runs server-side (functions/generate_aap_remarks) and logs its
 // progress to schools/{id}/aap_jobs/{jobId}, which the dashboard only READS —
-// the run doc is the function's own record of what it did.
+// the run doc is the function's own record of what it did. This is the ONE
+// piece of the feature that is a direct client read: it needs no
+// firestore.rules entry because it's a 4-segment path already covered by the
+// generic schools/{schoolId}/{collection}/{docId} authenticated-read rule.
 //
-// The remarks themselves hang off the STUDENT, one doc per subject, because
-// that is where the report generator reads them from. That makes them a level
-// deeper than schoolCollection() reaches, hence their own helpers.
+// Everything else — the remarks themselves (a level deeper, under the
+// student), and the global subject-mapping confirmations — goes through
+// callables (list_aap_remarks, update_aap_remark, bulk_update_aap_remarks,
+// save_aap_subject_mapping in utils/api.js) instead of client Firestore
+// access, on purpose: it keeps this feature off the firestore.rules surface
+// entirely. There is deliberately no studentAapRemarkDoc/aapSubjectMapDoc
+// helper here — those paths are only ever touched via the Admin SDK now.
 export const aapJobsCollection = (schoolId) => collection(db, 'schools', schoolId, 'aap_jobs')
 export const aapJobDoc = (schoolId, jobId) => doc(db, 'schools', schoolId, 'aap_jobs', jobId)
-export const studentAapRemarksCollection = (schoolId, studentId) =>
-  collection(db, 'schools', schoolId, 'students', studentId, 'aap_remarks')
-export const studentAapRemarkDoc = (schoolId, studentId, subject) =>
-  doc(db, 'schools', schoolId, 'students', studentId, 'aap_remarks', subject)
-
-// Confirmed survey-subject -> rubric-row mappings. Top-level and GLOBAL, not
-// scoped to a school: the same self-learning shape as import_aliases and
-// kb_entries — a school writing "Maths" where the rubric says
-// "Math / Arithmetic" is confirmed once and resolves everywhere after that.
-// Keyed by stage as well as token, because the same word is a different
-// rubric row at different stages.
-export const aapSubjectMapCollection = () => collection(db, 'aap_subject_map')
-export const aapSubjectMapDoc = (stage, token) =>
-  doc(db, 'aap_subject_map', `${stage}_${String(token).toLowerCase().replace(/[^a-z0-9]+/g, '')}`)
 
 // Setup wizard runs — top-level, resumable progress for the New School and
 // Reset School wizards. Not read by the teacher/student apps.

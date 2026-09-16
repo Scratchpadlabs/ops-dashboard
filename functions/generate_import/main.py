@@ -102,22 +102,14 @@ MODEL = os.environ.get("MODEL")
 
 # Mirrors src/config/opsAdmins.js — keep in sync. Server-side is the
 # authoritative check; the frontend's isOpsAdmin() is only a UI gate.
-OPS_ADMIN_EMAILS = {"sid@ops.clarified.in", "angel@ops.clarified.in"}
+from ops_admins import require_ops_admin as _require_ops_admin_base
 
 
 def _require_ops_admin(req: https_fn.CallableRequest) -> str:
     """Verifies the callable's Firebase Auth token and the ops-admin
     allowlist server-side. Returns the caller's email for use in
     created_by/updated_by fields."""
-    if req.auth is None:
-        raise https_fn.HttpsError(
-            https_fn.FunctionsErrorCode.UNAUTHENTICATED, "Sign in required.")
-    email = str((req.auth.token or {}).get("email") or "").strip().lower()
-    if email not in OPS_ADMIN_EMAILS:
-        raise https_fn.HttpsError(
-            https_fn.FunctionsErrorCode.PERMISSION_DENIED,
-            "Not authorized for School Material Import.")
-    return email
+    return _require_ops_admin_base(req, "Not authorized for School Material Import.")
 
 # ---------------------------------------------------------------- schemas ---
 # Kept as-is from extract.py — the prompts already forbid Aadhaar/SSSM/caste/

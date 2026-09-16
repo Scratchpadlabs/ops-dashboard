@@ -1,11 +1,13 @@
 """
-Cloud Function: generate_aap_remarks
+Cloud Function: generate_aap_remarks (+ list_aap_remarks, update_aap_remark,
+bulk_update_aap_remarks, save_aap_subject_mapping — same source directory)
 
 Generates AAP (Awareness / Sensitivity / Creativity) student remarks
 directly from Firestore survey responses -- no Google Sheets / Drive hop.
 
-Callable from the ops dashboard (httpsCallable, region asia-south1):
-  { school_id, class_id, student_ids? }
+generate_aap_remarks is callable from the ops dashboard (httpsCallable,
+region asia-south1): { school_id, class_id, student_ids?, subjects?,
+scan_only?, confirm_gender_issue? }
 
   1. Reads AAP survey responses for that class from Firestore (survey ids
      prefixed "zzz")
@@ -24,22 +26,50 @@ Callable from the ops dashboard (httpsCallable, region asia-south1):
 Skips anything already status == "approved", unless student_ids is passed
 explicitly -- that's the dashboard's regenerate-this-one action.
 
-Callers are checked against the ops-admin allowlist server-side, the same as
-every other callable in this repo -- the /aap-remarks page is admin-only, but
-a page is not a security boundary, and this function spends OpenAI credit and
-writes onto student records.
+Callers are checked against the ops-admin allowlist server-side
+(functions/shared/ops_admins.py, shared with every other callable in this
+repo) -- the /aap-remarks page is admin-only, but a page is not a security
+boundary, and this function spends OpenAI credit and writes onto student
+records.
+
+DON'T GUESS, SURFACE AND GATE: three things that used to default silently now
+block a real run (still visible read-only via scan_only) unless resolved:
+  - an unrecognised grade token (no Stage to derive descriptor text from) --
+    fix by adding the alias to functions/shared/education_kb.json, since
+    grade bands are a fixed global taxonomy, not a per-school override
+  - missing or suspiciously uniform gender across the class -- the caller
+    must pass confirm_gender_issue: true, once the dashboard has shown the
+    warning, to proceed anyway (there's no in-run fix; the record itself
+    needs correcting)
+  - a survey subject with no matching rubric row -- resolved via the
+    dashboard's relate-subject dialog into aap_subject_map (subject_match.py)
+
+Firestore access note: EVERYTHING here goes through the Admin SDK, including
+listing/editing/approving remarks and confirming a subject mapping (the other
+four callables below) -- deliberately, so this feature needs no
+firestore.rules entry at all. `aap_jobs` progress polling is the one piece
+the dashboard reads directly, and that needs no rule either since it's a path
+the generic schools/{schoolId}/{collection}/{docId} rule already covers.
 
 Still worth knowing about the schema:
   - gender on student docs is CONFIRMED: the field is "gender", canonicalised
     to "Male"/"Female" by the import pipeline (clean_gender in
     generate_import/normalize.py) and declared in src/schemas/schoolSchema.js.
     Note the silent default in generate_comment -- a student whose gender is
-    blank or unrecognised is written about as "She".
+    blank or unrecognised is written about as "She" unless the gender-issue
+    gate above catches it first.
   - fetch_survey_ratings scans every zzz-prefixed response for the school
     and filters to one class in memory. Fine for a single-class run; if
     this ever needs to run across a whole school in one go, worth adding
     a classSection field to response docs at write time so it's a real
-    query instead of a scan.
+    query instead of a scan -- that write path lives in a separate
+    teacher-facing app, not in this repo, so it isn't something this
+    function alone can fix.
+  - Sequential, not concurrent: one OpenAI call at a time with a small pause
+    between them, so a very large class risks the 540s function timeout.
+    Not chunked/parallelized -- only one class has been run for real so far.
+    If a class run approaches the timeout, that's the trigger to revisit
+    this, not something to build ahead of evidence for.
 
 Deploy the same way as the other functions in functions/DEPLOY.md -- same
 region (asia-south1), same OPENAI_API_KEY Secret Manager pattern already
@@ -57,6 +87,8 @@ from firebase_functions import https_fn, options
 from firebase_functions.params import SecretParam
 from openai import OpenAI
 
+from aap_rules import canonical_grade_section, gender_issue as _compute_gender_issue, resolve_stage
+from ops_admins import require_ops_admin as _require_ops_admin_base
 from subject_match import (
     build_subject_index, normalize_subject, opening_signature, resolve_subject,
 )
@@ -69,23 +101,12 @@ except ValueError:
 db = firestore.client()
 OPENAI_API_KEY = SecretParam("OPENAI_API_KEY")
 
-# Keep in sync with src/config/opsAdmins.js and the allowlists in
-# assign_survey/main.py and generate_import/main.py.
-OPS_ADMIN_EMAILS = {"sid@ops.clarified.in", "angel@ops.clarified.in"}
-
 # Confirmed "this survey subject means this rubric row" mappings, written by
 # the dashboard's relate-subject dialog. Global, not per school -- the same
 # self-learning shape as import_aliases and kb_entries: one confirmation, and
 # every school spelling a subject that way resolves from then on.
 SUBJECT_MAP_COLLECTION = "aap_subject_map"
 
-GRADE_TO_STAGE = {
-    "NURSERY": "Foundation", "LKG": "Foundation", "UKG": "Foundation",
-    "I": "Foundation", "II": "Foundation",
-    "III": "Preparatory", "IV": "Preparatory", "V": "Preparatory",
-    "VI": "Middle", "VII": "Middle", "VIII": "Middle",
-    "IX": "Middle", "X": "Middle", "XI": "Middle", "XII": "Middle",
-}
 LEVEL_ORDER = {"Beginner": 1, "Proficient": 2, "Advanced": 3}
 LEVEL_NAME = {1: "Beginner", 2: "Proficient", 3: "Advanced"}
 
@@ -144,15 +165,7 @@ def _require_ops_admin(req: https_fn.CallableRequest) -> str:
     the function at the IAM layer -- without this check every signed-in user
     of every app on this project, teachers included, could invoke it.
     """
-    if req.auth is None:
-        raise https_fn.HttpsError(
-            https_fn.FunctionsErrorCode.UNAUTHENTICATED, "Sign in required.")
-    email = str((req.auth.token or {}).get("email") or "").strip().lower()
-    if email not in OPS_ADMIN_EMAILS:
-        raise https_fn.HttpsError(
-            https_fn.FunctionsErrorCode.PERMISSION_DENIED,
-            "Not authorized to generate AAP remarks.")
-    return email
+    return _require_ops_admin_base(req, "Not authorized to generate AAP remarks.")
 
 
 def get_first_name(full_name):
@@ -189,10 +202,25 @@ def resolve_level(raw_levels):
 
 
 def fetch_survey_ratings(school_id, class_id):
-    """Returns {student_id: {subject: {awareness, sensitivity, creativity}}}
-    for one class, resolved from raw survey responses."""
+    """Returns (ratings, unparsed_response_count).
+
+    ratings is {student_id: {subject: {awareness, sensitivity, creativity}}}
+    for one class, resolved from raw survey responses.
+
+    unparsed_response_count is how many response docs across the WHOLE
+    SCHOOL scan had an id this function's doc-id convention could not
+    recover grade/section/subject from at all -- a structural parse
+    failure, not simply "this response belongs to a different class". It is
+    surfaced by scan_only rather than silently dropped, because a response
+    doc naming convention this function does not control (see module
+    docstring) failing silently is exactly how a class can be under-counted
+    without anyone noticing.
+    """
     school_ref = db.collection("schools").document(school_id)
     raw = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
+    target_grade_raw, _, target_section_raw = class_id.partition("_")
+    target = canonical_grade_section(target_grade_raw, target_section_raw)
+    unparsed = 0
 
     for survey_doc in school_ref.collection("surveys").stream():
         if not survey_doc.id.lower().startswith("zzz"):
@@ -203,14 +231,19 @@ def fetch_survey_ratings(school_id, class_id):
             # doc id: teacherID_grade_section..._grade_subject_topic
             parts = resp.id.split("_")
             if len(parts) < 5:
+                unparsed += 1
                 continue
             grade = parts[1]
             second_idx = next((i for i in range(2, len(parts)) if parts[i] == grade), None)
             if second_idx is None:
+                unparsed += 1
                 continue
             section = "_".join(parts[2:second_idx])
             subject = parts[second_idx + 1]
-            if f"{grade}_{section}" != class_id:
+            # Canonical comparison, not raw string equality: a response
+            # spelling its grade "1" and the class doc spelling it "I" are
+            # the same class once both go through the shared grade index.
+            if canonical_grade_section(grade, section) != target:
                 continue
 
             answers = resp.to_dict().get("answers", [])
@@ -222,13 +255,14 @@ def fetch_survey_ratings(school_id, class_id):
                         continue
                     raw[student_id][subject][trait].append(level_str)
 
-    return {
+    ratings = {
         student_id: {
             subject: {trait: resolve_level(levels) for trait, levels in traits.items()}
             for subject, traits in subjects.items()
         }
         for student_id, subjects in raw.items()
     }
+    return ratings, unparsed
 
 
 def fetch_students(school_id, student_ids):
@@ -343,6 +377,9 @@ def generate_aap_remarks(req: https_fn.CallableRequest) -> dict:
     # picker and the "relate this subject" dialog, which both need to know
     # what the survey actually says BEFORE a run is worth starting.
     scan_only = bool(data.get("scan_only"))
+    # Must be set once the dashboard has shown the gender-quality warning
+    # (see _gender_issue) and the user chose to proceed anyway.
+    confirm_gender_issue = bool(data.get("confirm_gender_issue"))
 
     if not school_id or not class_id:
         raise https_fn.HttpsError(
@@ -350,12 +387,38 @@ def generate_aap_remarks(req: https_fn.CallableRequest) -> dict:
             "school_id and class_id are required",
         )
 
-    ratings = fetch_survey_ratings(school_id, class_id)
+    grade_token = class_id.split("_")[0]
+    stage = resolve_stage(grade_token)
+    if stage is None:
+        # No Stage means no rubric to look up -- there is nothing a real run
+        # could do here that wouldn't be a guess. Reported the same way in
+        # scan_only and blocked the same way for a real run, unlike subjects
+        # or gender: a grade taxonomy gap has no per-run workaround, it needs
+        # the alias added to education_kb.json.
+        payload = {
+            "stage": None, "classId": class_id, "stageIssue": grade_token,
+            "students": 0, "subjects": [], "frameworkSubjects": [],
+            "aliasConflicts": [], "unmatchedSubjects": [],
+            "genderIssue": None, "unresolvedResponses": 0,
+        }
+        if scan_only:
+            return payload
+        raise https_fn.HttpsError(
+            https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
+            f"Grade '{grade_token}' is not recognised. Add it to "
+            "functions/shared/education_kb.json before running AAP remarks "
+            "for this class.",
+        )
+
+    ratings, unresolved_responses = fetch_survey_ratings(school_id, class_id)
     if only_student_ids:
         ratings = {sid: s for sid, s in ratings.items() if sid in only_student_ids}
 
-    grade = class_id.split("_")[0].upper()
-    stage = GRADE_TO_STAGE.get(grade, "Preparatory")
+    # Needed for both the gender scan below and generation itself, so fetched
+    # once, before the scan_only early return.
+    students = fetch_students(school_id, list(ratings.keys()))
+    gender_issue = _compute_gender_issue(ratings, students)
+
     by_label, alias_index, alias_conflicts = fetch_framework(stage)
     overrides = fetch_subject_overrides(stage)
 
@@ -395,12 +458,20 @@ def generate_aap_remarks(req: https_fn.CallableRequest) -> dict:
         "frameworkSubjects": sorted(by_label),
         "aliasConflicts": alias_conflicts,
         "unmatchedSubjects": unmatched,
+        "genderIssue": gender_issue,
+        "unresolvedResponses": unresolved_responses,
     }
     if scan_only:
         return scan_payload
 
+    if gender_issue and not confirm_gender_issue:
+        raise https_fn.HttpsError(
+            https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
+            "Gender data looks incomplete or suspicious for this class — "
+            "confirm before generating (confirm_gender_issue).",
+        )
+
     ai = OpenAI(api_key=OPENAI_API_KEY.value)
-    students = fetch_students(school_id, list(ratings.keys()))
 
     total = sum(1 for subjects in ratings.values() for s in subjects
                 if not only_subjects or normalize_subject(s) in only_subjects)
@@ -488,3 +559,138 @@ def generate_aap_remarks(req: https_fn.CallableRequest) -> dict:
         "skippedNoFramework": skipped_no_framework,
         **scan_payload,
     }
+
+
+def _serialize_remark(subject, data):
+    """A remark doc as the callable can return it: Firestore's
+    DatetimeWithNanoseconds on updatedAt isn't JSON-serializable as-is."""
+    out = {"id": subject, **data}
+    updated_at = out.get("updatedAt")
+    if updated_at is not None and hasattr(updated_at, "isoformat"):
+        out["updatedAt"] = updated_at.isoformat()
+    return out
+
+
+@https_fn.on_call(region="asia-south1", memory=options.MemoryOption.MB_256, timeout_sec=60)
+def list_aap_remarks(req: https_fn.CallableRequest) -> dict:
+    """{school_id, student_ids} -> {studentId: [remark, ...]}, one callable
+    read for the whole roster instead of a direct client Firestore read —
+    see module docstring for why this feature has no firestore.rules entry.
+    """
+    _require_ops_admin(req)
+    data = req.data or {}
+    school_id = data.get("school_id")
+    student_ids = list(data.get("student_ids") or [])
+    if not school_id or not student_ids:
+        return {}
+
+    school_ref = db.collection("schools").document(school_id)
+    out = {}
+    for student_id in student_ids:
+        docs = (school_ref.collection("students").document(student_id)
+                .collection("aap_remarks").stream())
+        rows = sorted(
+            (_serialize_remark(d.id, d.to_dict() or {}) for d in docs),
+            key=lambda r: r["id"],
+        )
+        out[student_id] = rows
+    return out
+
+
+@https_fn.on_call(region="asia-south1", memory=options.MemoryOption.MB_256, timeout_sec=30)
+def update_aap_remark(req: https_fn.CallableRequest) -> dict:
+    """{school_id, student_id, subject, comment?, status?} -> {}.
+
+    Saving an edited comment approves it in the same call: someone who has
+    read the text closely enough to change it has reviewed it, and a
+    separate "now approve it" click would only be a way to forget. Passing
+    only `status` (no `comment`) is the plain approve/needs-review toggle.
+    """
+    caller = _require_ops_admin(req)
+    data = req.data or {}
+    school_id = data.get("school_id")
+    student_id = data.get("student_id")
+    subject = data.get("subject")
+    if not school_id or not student_id or not subject:
+        raise https_fn.HttpsError(
+            https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
+            "school_id, student_id and subject are required",
+        )
+
+    update = {"updatedAt": firestore.SERVER_TIMESTAMP, "updatedBy": caller}
+    if data.get("comment") is not None:
+        update["comment"] = data["comment"]
+        update["status"] = "approved"
+    if data.get("status") is not None:
+        update["status"] = data["status"]
+
+    (db.collection("schools").document(school_id).collection("students").document(student_id)
+        .collection("aap_remarks").document(subject)).set(update, merge=True)
+    return {}
+
+
+@https_fn.on_call(region="asia-south1", memory=options.MemoryOption.MB_256, timeout_sec=120)
+def bulk_update_aap_remarks(req: https_fn.CallableRequest) -> dict:
+    """{school_id, targets: [{student_id, subject}], status} -> {updated}.
+
+    Flips many remarks in one call. Batched server-side at the same 450
+    chunk size the rest of this repo uses (Firestore's own cap is 500) —
+    approving a 40-student class across 7 subjects is 280 documents, and a
+    partially-applied bulk action is worse than one that didn't run.
+    """
+    caller = _require_ops_admin(req)
+    data = req.data or {}
+    school_id = data.get("school_id")
+    targets = data.get("targets") or []
+    status = data.get("status")
+    if not school_id or not targets or not status:
+        raise https_fn.HttpsError(
+            https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
+            "school_id, targets and status are required",
+        )
+
+    stamp = {"status": status, "updatedAt": firestore.SERVER_TIMESTAMP, "updatedBy": caller}
+    school_ref = db.collection("schools").document(school_id)
+    chunk = 450
+    for i in range(0, len(targets), chunk):
+        batch = db.batch()
+        for t in targets[i:i + chunk]:
+            doc_ref = (school_ref.collection("students").document(t["student_id"])
+                       .collection("aap_remarks").document(t["subject"]))
+            batch.set(doc_ref, stamp, merge=True)
+        batch.commit()
+    return {"updated": len(targets)}
+
+
+@https_fn.on_call(region="asia-south1", memory=options.MemoryOption.MB_256, timeout_sec=30)
+def save_aap_subject_mapping(req: https_fn.CallableRequest) -> dict:
+    """{stage, token, framework_subject} -> {}.
+
+    Confirms that a survey's subject token means a particular rubric row.
+    Global by decision: one confirmation resolves that spelling for every
+    school, the same self-learning shape as import_aliases/kb_entries. Keyed
+    by stage as well as token because "Science" is a different rubric row in
+    Middle than in Preparatory. `token` is normalised the same way
+    subject_match.py's matcher normalises it, so the id this writes and the
+    id fetch_subject_overrides reads back can never drift apart.
+    """
+    caller = _require_ops_admin(req)
+    data = req.data or {}
+    stage = str(data.get("stage") or "").strip()
+    token = str(data.get("token") or "").strip()
+    framework_subject = str(data.get("framework_subject") or "").strip()
+    if not stage or not token or not framework_subject:
+        raise https_fn.HttpsError(
+            https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
+            "stage, token and framework_subject are required",
+        )
+
+    doc_id = f"{stage}_{normalize_subject(token)}"
+    db.collection(SUBJECT_MAP_COLLECTION).document(doc_id).set({
+        "stage": stage,
+        "token": token,
+        "frameworkSubject": framework_subject,
+        "confirmedBy": caller,
+        "confirmedAt": firestore.SERVER_TIMESTAMP,
+    }, merge=True)
+    return {}
