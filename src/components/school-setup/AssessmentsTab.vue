@@ -261,8 +261,6 @@
         <Button label="Save Changes" :loading="savingEdit" @click="saveEdit" />
       </template>
     </Dialog>
-
-    <ConfirmDialog />
   </div>
 </template>
 
@@ -282,7 +280,6 @@ import Select from 'primevue/select'
 import Checkbox from 'primevue/checkbox'
 import Textarea from 'primevue/textarea'
 import ProgressSpinner from 'primevue/progressspinner'
-import ConfirmDialog from 'primevue/confirmdialog'
 import CsvImportDialog from './CsvImportDialog.vue'
 import ConfigEmptyState from './ConfigEmptyState.vue'
 

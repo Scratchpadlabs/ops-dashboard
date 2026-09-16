@@ -205,8 +205,6 @@
         <Button label="Save Access" :loading="savingTeacherAccess" @click="saveTeacherAccessMatrix" />
       </template>
     </Dialog>
-
-    <ConfirmDialog />
   </div>
 </template>
 
@@ -226,7 +224,6 @@ import Select from 'primevue/select'
 import MultiSelect from 'primevue/multiselect'
 import Checkbox from 'primevue/checkbox'
 import ProgressSpinner from 'primevue/progressspinner'
-import ConfirmDialog from 'primevue/confirmdialog'
 import CsvImportDialog from './CsvImportDialog.vue'
 import ConfigEmptyState from './ConfigEmptyState.vue'
 import KbClassifiedInput from '../shared/KbClassifiedInput.vue'

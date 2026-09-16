@@ -57,8 +57,6 @@
         </div>
       </div>
     </div>
-
-    <ConfirmDialog />
   </div>
 </template>
 
@@ -73,7 +71,6 @@ import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Select from 'primevue/select'
 import ProgressSpinner from 'primevue/progressspinner'
-import ConfirmDialog from 'primevue/confirmdialog'
 
 import { schoolCollection, schoolDoc } from '../../firebase/schoolCollections.js'
 import { db } from '../../firebase/config'
