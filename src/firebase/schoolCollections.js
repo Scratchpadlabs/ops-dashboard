@@ -61,6 +61,16 @@ export const studentAapRemarksCollection = (schoolId, studentId) =>
 export const studentAapRemarkDoc = (schoolId, studentId, subject) =>
   doc(db, 'schools', schoolId, 'students', studentId, 'aap_remarks', subject)
 
+// Confirmed survey-subject -> rubric-row mappings. Top-level and GLOBAL, not
+// scoped to a school: the same self-learning shape as import_aliases and
+// kb_entries — a school writing "Maths" where the rubric says
+// "Math / Arithmetic" is confirmed once and resolves everywhere after that.
+// Keyed by stage as well as token, because the same word is a different
+// rubric row at different stages.
+export const aapSubjectMapCollection = () => collection(db, 'aap_subject_map')
+export const aapSubjectMapDoc = (stage, token) =>
+  doc(db, 'aap_subject_map', `${stage}_${String(token).toLowerCase().replace(/[^a-z0-9]+/g, '')}`)
+
 // Setup wizard runs — top-level, resumable progress for the New School and
 // Reset School wizards. Not read by the teacher/student apps.
 export const wizardRunsCollection = () => collection(db, 'setup_wizard_runs')

@@ -294,6 +294,12 @@ const updateAapRemarkCallable = httpsCallable(functions, 'update_aap_remark', { 
 const bulkUpdateAapRemarksCallable = httpsCallable(functions, 'bulk_update_aap_remarks', { timeout: 120_000 })
 const saveAapSubjectMappingCallable = httpsCallable(functions, 'save_aap_subject_mapping', { timeout: 30_000 })
 
+// `subjects` narrows a run to the chosen subjects; omitted means every subject
+// the survey rated. `confirmGenderIssue` must be set once the dashboard has
+// shown the gender-quality warning and the user chose to proceed anyway.
+// Returns { written, processed, skippedApproved, skippedNoFramework,
+// unmatchedSubjects, ... } — `written` is the count that actually got a
+// comment, `processed` counts everything it looked at.
 export async function generateAapRemarksRemote({ schoolId, classId, studentIds, subjects, confirmGenderIssue }) {
   const payload = { school_id: schoolId, class_id: classId }
   if (studentIds?.length) payload.student_ids = studentIds

@@ -69,6 +69,49 @@ entirely. `aap_jobs` progress polling is the one exception, and it needs no
 rule either — it's a 4-segment path already covered by the generic
 `schools/{schoolId}/{collection}/{docId}` authenticated-read rule.
 
+`generate_aap_remarks` itself has four modes, all on the same entry point:
+- `{school_id, class_id}` — generate for the whole class
+- `+ {subjects: [...]}` — narrow the run to those subjects
+- `+ {student_ids: [...]}` — one student, and the ONLY way to overwrite a
+  remark already marked approved
+- `+ {scan_only: true}` — resolve and report, writing nothing and calling no
+  model. Backs the subject picker, the relate-subject dialog, and the
+  gender/stage confirmation gates described in "Known behavior" below.
+
+It returns `written` (records that got a comment) alongside `processed`
+(records looked at), plus `skippedApproved`, `skippedNoFramework` and
+`unmatchedSubjects`. **`processed` counts skips**: a run that writes nothing
+still reports every record as processed, which is exactly how the first live
+run announced "126 remarks processed" having written none. Show `written`.
+
+### Files needed in the folder:
+- main.py ✅
+- subject_match.py ✅ (pure matching logic, 29+ unit tests)
+- requirements.txt ✅
+
+### Subject matching — why subject_match.py exists
+framework.csv's "Subject Name" column holds GROUP LABELS, not subject names:
+`Math / Arithmetic`, `L1 (Marathi / Telugu / Kannada / Hindi / Sindhi)`,
+`World Around Us (Science / EVS / Social Studies / SST)`. A survey response
+carries one token — `Maths`, `EVS`, `SST`. The original flat `dict.get()` on
+the label could only ever reach the two rows spelled as a single plain word,
+so every other subject was skipped in silence. Lookup now goes: confirmed
+mapping → exact label → alias (punctuation and case removed) → plural
+relaxation. Anything unresolved is REPORTED, never guessed — a wrong guess
+puts the wrong rubric text on a child's report card.
+
+Confirmations live in `aap_subject_map` (global), written via the
+`save_aap_subject_mapping` callable when a human relates a subject in the
+dashboard's relate-subject dialog, and read here through the Admin SDK. Keyed
+by stage as well as token, because "Science" is a different rubric row in
+Middle than in Preparatory.
+
+Run the tests before deploying — they assert against the 15 real labels seeded
+for clarified-1501, so a regression is a regression against live data:
+```
+cd functions/generate_aap_remarks && python3 -m pytest tests/ -q
+```
+
 ### Seed the framework first (once, and after any framework.csv change):
 ```
 pip install --quiet google-cloud-firestore
