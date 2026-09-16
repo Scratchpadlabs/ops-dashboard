@@ -268,6 +268,77 @@ export async function createAuthAccountsRemote({ schoolId, roles, dryRun }) {
   return res.data
 }
 
+// ── AAP remarks (Awareness / Sensitivity / Creativity) ────────────────────
+// Server-side for the usual reason plus a stronger one: this is an OpenAI
+// call per student PER SUBJECT, deliberately paced, for a whole class — a run
+// that a browser tab has no business owning. Same 540s ceiling as the other
+// long callables, matching the function's own timeout_sec.
+//
+// The payload is snake_case where the rest of this file is camelCase: the
+// function reads school_id / class_id / student_ids literally (see
+// functions/generate_aap_remarks/main.py), so the mapping happens here rather
+// than leaking that spelling into the page.
+//
+// `studentIds` is the regenerate-one-student path — the ONLY way to force a
+// remark that is already approved to be written again. Omitted entirely for a
+// whole-class run so the function applies its skip-approved rule.
+//
+// Everything after generation (listing, editing, approving, bulk status,
+// subject-mapping confirmations) is ALSO a callable, not a direct Firestore
+// read/write — deliberately, so none of this feature needs a firestore.rules
+// entry. See functions/generate_aap_remarks/main.py for the server side.
+const generateAapRemarksCallable = httpsCallable(functions, 'generate_aap_remarks', { timeout: 540_000 })
+const scanAapSubjectsCallable = httpsCallable(functions, 'generate_aap_remarks', { timeout: 120_000 })
+const listAapRemarksCallable = httpsCallable(functions, 'list_aap_remarks', { timeout: 60_000 })
+const updateAapRemarkCallable = httpsCallable(functions, 'update_aap_remark', { timeout: 30_000 })
+const bulkUpdateAapRemarksCallable = httpsCallable(functions, 'bulk_update_aap_remarks', { timeout: 120_000 })
+const saveAapSubjectMappingCallable = httpsCallable(functions, 'save_aap_subject_mapping', { timeout: 30_000 })
+
+export async function generateAapRemarksRemote({ schoolId, classId, studentIds, subjects, confirmGenderIssue }) {
+  const payload = { school_id: schoolId, class_id: classId }
+  if (studentIds?.length) payload.student_ids = studentIds
+  if (subjects?.length) payload.subjects = subjects
+  if (confirmGenderIssue) payload.confirm_gender_issue = true
+  const res = await generateAapRemarksCallable(payload)
+  return res.data
+}
+
+// Read-only precheck: resolves subjects/gender/stage for the class without
+// calling the model or writing anything. See generate_aap_remarks's scan_only.
+export async function scanAapSubjectsRemote({ schoolId, classId }) {
+  const res = await scanAapSubjectsCallable({ school_id: schoolId, class_id: classId, scan_only: true })
+  return res.data
+}
+
+export async function listAapRemarksRemote({ schoolId, studentIds }) {
+  const res = await listAapRemarksCallable({ school_id: schoolId, student_ids: studentIds })
+  return res.data
+}
+
+export async function updateAapRemarkRemote({ schoolId, studentId, subject, comment, status }) {
+  const payload = { school_id: schoolId, student_id: studentId, subject }
+  if (comment != null) payload.comment = comment
+  if (status != null) payload.status = status
+  const res = await updateAapRemarkCallable(payload)
+  return res.data
+}
+
+// targets is [{ studentId, subject }]
+export async function bulkUpdateAapRemarksRemote({ schoolId, targets, status }) {
+  const payload = {
+    school_id: schoolId,
+    targets: targets.map(({ studentId, subject }) => ({ student_id: studentId, subject })),
+    status,
+  }
+  const res = await bulkUpdateAapRemarksCallable(payload)
+  return res.data
+}
+
+export async function saveAapSubjectMappingRemote({ stage, token, frameworkSubject }) {
+  const res = await saveAapSubjectMappingCallable({ stage, token, framework_subject: frameworkSubject })
+  return res.data
+}
+
 export function downloadReport({ filename, mime, content_base64 }) {
   const bytes = Uint8Array.from(atob(content_base64), c => c.charCodeAt(0))
   downloadBlob(new Blob([bytes], { type: mime }), filename)

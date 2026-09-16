@@ -21,10 +21,6 @@ stamps `authUid`. An account that already exists is treated as success (uid
 looked up, doc still marked done) so re-running after a partial failure is
 safe.
 
-### Files needed in the folder:
-- main.py ✅
-- requirements.txt ✅
-
 ### Deploy:
 ```
 cd functions/create_auth_accounts
@@ -43,6 +39,94 @@ is required at the IAM layer even though this is a callable — the function
 itself verifies `req.auth` against `OPS_ADMIN_EMAILS` before doing anything,
 same pattern as `school_reset`'s wizards. Keep that allowlist in sync with
 `src/config/opsAdmins.js`.
+
+---
+
+## generate_aap_remarks (AAP report-card remarks)
+
+Backs the **AAP Remarks** page (`/aap-remarks`, ops-admin only, same step-up
+password gate as School Setup). One function source, several callables — for
+a class, `generate_aap_remarks` resolves each student's
+Beginner/Proficient/Advanced level per subject from the AAP survey responses
+(survey ids prefixed `zzz`), looks the descriptor text up in the shared
+`aap_framework` collection, and writes a 40-55 word comment to
+`schools/{id}/students/{sid}/aap_remarks/{subject}`.
+
+Server-side because it is an OpenAI call per student **per subject**,
+deliberately paced — a whole class is minutes of work that must not depend on
+a browser tab staying open. `req.auth` is checked against `OPS_ADMIN_EMAILS`
+(now `functions/shared/ops_admins.py`, shared with every other callable in
+this repo) before anything runs.
+
+**Everything in this feature is a callable, on purpose — there is no
+firestore.rules entry for `aap_remarks`, `aap_jobs`, `aap_framework`, or
+`aap_subject_map`, and none is planned.** Listing, editing, approving, bulk
+status changes, and subject-mapping confirmations all go through the Admin
+SDK via `list_aap_remarks` / `update_aap_remark` / `bulk_update_aap_remarks` /
+`save_aap_subject_mapping`, the same way `class_map`/`resets`/`archives`
+elsewhere in this repo keep sensitive writes off the client-rules surface
+entirely. `aap_jobs` progress polling is the one exception, and it needs no
+rule either — it's a 4-segment path already covered by the generic
+`schools/{schoolId}/{collection}/{docId}` authenticated-read rule.
+
+### Seed the framework first (once, and after any framework.csv change):
+```
+pip install --quiet google-cloud-firestore
+python3 tools/migrate_aap_framework.py "/path/to/AAP REMARKS/framework.csv"
+```
+`aap_framework` is shared by every school — one doc per Stage x Subject, id
+`{Stage}_{Subject}`. A subject missing from it is reported by `scan_only`
+rather than silently skipped — see "Known behavior" below.
+
+### Deploy:
+```
+cd functions/generate_aap_remarks
+
+gcloud functions deploy generate_aap_remarks \
+  --gen2 --runtime python312 --region asia-south1 \
+  --source . --entry-point generate_aap_remarks \
+  --trigger-http --allow-unauthenticated --project clarified-1501 \
+  --memory 512MB --timeout 540s --max-instances 3 \
+  --set-secrets OPENAI_API_KEY=OPENAI_API_KEY:latest
+
+# Same source dir, one deploy per entry point:
+for fn in list_aap_remarks update_aap_remark bulk_update_aap_remarks save_aap_subject_mapping; do
+  gcloud functions deploy "$fn" \
+    --gen2 --runtime python312 --region asia-south1 \
+    --source . --entry-point "$fn" \
+    --trigger-http --allow-unauthenticated --project clarified-1501 \
+    --memory 256MB --timeout 60s --max-instances 3
+done
+```
+Same `OPENAI_API_KEY` Secret Manager secret as process_import — see that
+section for how to create it (only `generate_aap_remarks` needs it; the other
+four entry points never call the model). As with the other callables here,
+the flags above (not the `@https_fn.on_call(...)` decorator arguments) are
+what actually size the Cloud Run resource, since this repo deploys with plain
+`gcloud`.
+
+### Known behavior — read before relying on this in production
+
+1. **Progress can only be followed indirectly.** The callable returns its
+   `jobId` when the run FINISHES, so the id is useless for a live progress
+   bar. The page instead watches `aap_jobs` for the newest job on that class
+   that wasn't there when the button was pressed (`watchNewJob` in
+   `useAapRemarks.js`).
+2. **`totalStudents` / `processedStudents` count student x SUBJECT records**,
+   not students. The page labels them "remarks" for that reason.
+3. **Stage, gender, and unresolved-subject issues are all surfaced by
+   `scan_only` and gate the real run** rather than silently defaulting: an
+   unrecognised grade token blocks the run outright (fix by adding the alias
+   to `education_kb.json` — grade bands are a fixed global taxonomy, not a
+   per-school override); missing or suspiciously uniform gender requires an
+   explicit `confirm_gender_issue` flag from the dashboard before writing;
+   unmatched subjects require a saved `aap_subject_map` entry (via the
+   "Relate subjects" dialog) before they're included in a run.
+4. **Sequential, not concurrent.** One OpenAI call at a time with a small
+   pause between them, so a very large class risks the 540s function
+   timeout. Not yet chunked/parallelized — only one class has been run for
+   real so far. If a class run approaches the timeout, that's the trigger to
+   revisit this, not something to build ahead of evidence for.
 
 ---
 

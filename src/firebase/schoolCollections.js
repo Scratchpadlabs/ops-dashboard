@@ -45,6 +45,22 @@ export const surveyDoc = (schoolId, surveyId) => doc(db, 'schools', schoolId, 's
 export const surveyAssignmentsCollection = (schoolId) => collection(db, 'schools', schoolId, 'survey_assignments')
 export const surveyAssignmentDoc = (schoolId, runId) => doc(db, 'schools', schoolId, 'survey_assignments', runId)
 
+// AAP remarks (Awareness / Sensitivity / Creativity report-card comments).
+//
+// Generation runs server-side (functions/generate_aap_remarks) and logs its
+// progress to schools/{id}/aap_jobs/{jobId}, which the dashboard only READS —
+// the run doc is the function's own record of what it did.
+//
+// The remarks themselves hang off the STUDENT, one doc per subject, because
+// that is where the report generator reads them from. That makes them a level
+// deeper than schoolCollection() reaches, hence their own helpers.
+export const aapJobsCollection = (schoolId) => collection(db, 'schools', schoolId, 'aap_jobs')
+export const aapJobDoc = (schoolId, jobId) => doc(db, 'schools', schoolId, 'aap_jobs', jobId)
+export const studentAapRemarksCollection = (schoolId, studentId) =>
+  collection(db, 'schools', schoolId, 'students', studentId, 'aap_remarks')
+export const studentAapRemarkDoc = (schoolId, studentId, subject) =>
+  doc(db, 'schools', schoolId, 'students', studentId, 'aap_remarks', subject)
+
 // Setup wizard runs — top-level, resumable progress for the New School and
 // Reset School wizards. Not read by the teacher/student apps.
 export const wizardRunsCollection = () => collection(db, 'setup_wizard_runs')
