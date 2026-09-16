@@ -24,10 +24,17 @@ Callable from the ops dashboard (httpsCallable, region asia-south1):
 Skips anything already status == "approved", unless student_ids is passed
 explicitly -- that's the dashboard's regenerate-this-one action.
 
-Two things to double check against the real schema before deploying:
-  - gender field name/values on student docs (assumed "gender" -- the old
-    Master Sheet just had a "Gender" column, never confirmed the Firestore
-    field)
+Callers are checked against the ops-admin allowlist server-side, the same as
+every other callable in this repo -- the /aap-remarks page is admin-only, but
+a page is not a security boundary, and this function spends OpenAI credit and
+writes onto student records.
+
+Still worth knowing about the schema:
+  - gender on student docs is CONFIRMED: the field is "gender", canonicalised
+    to "Male"/"Female" by the import pipeline (clean_gender in
+    generate_import/normalize.py) and declared in src/schemas/schoolSchema.js.
+    Note the silent default in generate_comment -- a student whose gender is
+    blank or unrecognised is written about as "She".
   - fetch_survey_ratings scans every zzz-prefixed response for the school
     and filters to one class in memory. Fine for a single-class run; if
     this ever needs to run across a whole school in one go, worth adding
@@ -58,6 +65,10 @@ except ValueError:
 db = firestore.client()
 OPENAI_API_KEY = SecretParam("OPENAI_API_KEY")
 
+# Keep in sync with src/config/opsAdmins.js and the allowlists in
+# assign_survey/main.py and generate_import/main.py.
+OPS_ADMIN_EMAILS = {"sid@ops.clarified.in", "angel@ops.clarified.in"}
+
 GRADE_TO_STAGE = {
     "NURSERY": "Foundation", "LKG": "Foundation", "UKG": "Foundation",
     "I": "Foundation", "II": "Foundation",
@@ -85,6 +96,26 @@ FOCUS_STYLES = [
     "Give equal weight to all three descriptors.",
     "Blend all three into one seamless observation without separating them.",
 ]
+
+
+def _require_ops_admin(req: https_fn.CallableRequest) -> str:
+    """Verifies the callable's Firebase Auth token and the ops-admin
+    allowlist server-side. Returns the caller's email, recorded on the job
+    doc so a run that spent money and rewrote remarks has a name against it.
+
+    Deployed with --allow-unauthenticated, which only lets the request reach
+    the function at the IAM layer -- without this check every signed-in user
+    of every app on this project, teachers included, could invoke it.
+    """
+    if req.auth is None:
+        raise https_fn.HttpsError(
+            https_fn.FunctionsErrorCode.UNAUTHENTICATED, "Sign in required.")
+    email = str((req.auth.token or {}).get("email") or "").strip().lower()
+    if email not in OPS_ADMIN_EMAILS:
+        raise https_fn.HttpsError(
+            https_fn.FunctionsErrorCode.PERMISSION_DENIED,
+            "Not authorized to generate AAP remarks.")
+    return email
 
 
 def get_first_name(full_name):
@@ -220,6 +251,7 @@ Style instructions:
 @https_fn.on_call(region="asia-south1", secrets=[OPENAI_API_KEY],
                    memory=options.MemoryOption.MB_512, timeout_sec=540)
 def generate_aap_remarks(req: https_fn.CallableRequest) -> dict:
+    caller = _require_ops_admin(req)
     data = req.data or {}
     school_id = data.get("school_id")
     class_id = data.get("class_id")
@@ -246,7 +278,7 @@ def generate_aap_remarks(req: https_fn.CallableRequest) -> dict:
     job_ref = db.collection("schools").document(school_id).collection("aap_jobs").document()
     job_ref.set({
         "classId": class_id, "status": "running",
-        "startedAt": firestore.SERVER_TIMESTAMP,
+        "startedAt": firestore.SERVER_TIMESTAMP, "startedBy": caller,
         "totalStudents": total, "processedStudents": 0,
     })
 
