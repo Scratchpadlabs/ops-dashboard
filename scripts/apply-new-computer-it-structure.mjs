@@ -4,13 +4,21 @@
  * IX_AI, and X_IT with a newly received official structure, entirely
  * superseding the Practical(50)+Theory(50) split applied earlier this term.
  *
- * Grades I-VIII (I_Computer .. VIII_Computer) — total 100:
+ * Grades I-II (I_Computer, II_Computer) — total 100:
  *   Periodic Test-I   5   marks, none
  *   Multiple Assess   5   marks, none
  *   Portfolio         5   marks, none
  *   Sub Enrichment    5   marks, none
  *   Practical         20  marks, none
- *   Term / Board Exam 40  marks, sum_up x1.5 -> 60
+ *   Term / Board Exam 40  marks, sum_up x1.5 -> 60 (written paper is out of 40, scaled up)
+ *
+ * Grades III-VIII (III_Computer .. VIII_Computer) — total 100:
+ *   Periodic Test-I   5   marks, none
+ *   Multiple Assess   5   marks, none
+ *   Portfolio         5   marks, none
+ *   Sub Enrichment    5   marks, none
+ *   Practical         20  marks, none
+ *   Term / Board Exam 60  marks, none (written paper is already out of 60)
  *
  * Grades IX-X (IX_AI, X_IT) — total 100:
  *   Periodic Test-I   5   marks, none
@@ -51,17 +59,22 @@ import { getFirestore, FieldValue } from 'firebase-admin/firestore'
 
 const DEFAULT_PROJECT = 'clarified-1501'
 
-const GRADES_1_8 = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII'].map(g => `${g}_Computer`)
+const GRADES_1_2 = ['I', 'II'].map(g => `${g}_Computer`)
+const GRADES_3_8 = ['III', 'IV', 'V', 'VI', 'VII', 'VIII'].map(g => `${g}_Computer`)
 const GRADES_9_10 = ['IX_AI', 'X_IT']
 
-const STRUCTURE_1_8 = [
+const BASE_1_8 = [
   { name: 'Periodic Test-I', order: 1, maxMarks: 5, conversionType: 'none', conversionFactor: null },
   { name: 'Multiple Assess', order: 2, maxMarks: 5, conversionType: 'none', conversionFactor: null },
   { name: 'Portfolio', order: 3, maxMarks: 5, conversionType: 'none', conversionFactor: null },
   { name: 'Sub Enrichment', order: 4, maxMarks: 5, conversionType: 'none', conversionFactor: null },
   { name: 'Practical', order: 5, maxMarks: 20, conversionType: 'none', conversionFactor: null },
-  { name: 'Term Exam', order: 6, maxMarks: 40, conversionType: 'sum_up', conversionFactor: 1.5 },
 ]
+// I-II: written paper is out of 40, scaled x1.5 -> 60
+const STRUCTURE_1_2 = [...BASE_1_8, { name: 'Term Exam', order: 6, maxMarks: 40, conversionType: 'sum_up', conversionFactor: 1.5 }]
+// III-VIII: written paper is already out of 60, no scaling
+const STRUCTURE_3_8 = [...BASE_1_8, { name: 'Term Exam', order: 6, maxMarks: 60, conversionType: 'none', conversionFactor: null }]
+
 const STRUCTURE_9_10 = [
   { name: 'Periodic Test-I', order: 1, maxMarks: 5, conversionType: 'none', conversionFactor: null },
   { name: 'Multiple Assess', order: 2, maxMarks: 5, conversionType: 'none', conversionFactor: null },
@@ -143,7 +156,8 @@ async function main() {
   const rows = []
   const assessmentsCol = db.collection('schools').doc(schoolId).collection('assessments')
 
-  for (const subjectId of GRADES_1_8) await processSubject(rows, assessmentsCol, subjectId, STRUCTURE_1_8)
+  for (const subjectId of GRADES_1_2) await processSubject(rows, assessmentsCol, subjectId, STRUCTURE_1_2)
+  for (const subjectId of GRADES_3_8) await processSubject(rows, assessmentsCol, subjectId, STRUCTURE_3_8)
   for (const subjectId of GRADES_9_10) await processSubject(rows, assessmentsCol, subjectId, STRUCTURE_9_10)
 
   const header = 'subjectId,name,action\n'
