@@ -45,6 +45,12 @@ export const surveyDoc = (schoolId, surveyId) => doc(db, 'schools', schoolId, 's
 export const surveyAssignmentsCollection = (schoolId) => collection(db, 'schools', schoolId, 'survey_assignments')
 export const surveyAssignmentDoc = (schoolId, runId) => doc(db, 'schools', schoolId, 'survey_assignments', runId)
 
+// A teacher's answers to one survey, for one class+topic — written by the
+// teacher app's Mark a Lesson flow (ActivityDialog.vue / AcadSurvey.vue),
+// doc id `{teacherId}_{classId}_{topicId}`. Read/deleted by Reset Topic.
+export const surveyResponsesCollection = (schoolId, surveyId) => collection(db, 'schools', schoolId, 'surveys', surveyId, 'responses')
+export const surveyResponseDoc = (schoolId, surveyId, responseId) => doc(db, 'schools', schoolId, 'surveys', surveyId, 'responses', responseId)
+
 // Setup wizard runs — top-level, resumable progress for the New School and
 // Reset School wizards. Not read by the teacher/student apps.
 export const wizardRunsCollection = () => collection(db, 'setup_wizard_runs')
