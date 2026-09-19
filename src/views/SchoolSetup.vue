@@ -82,6 +82,7 @@
       <TabList>
         <Tab value="new-school"><i class="pi pi-sparkles text-xs mr-1.5"></i>New School</Tab>
         <Tab value="reset-school"><i class="pi pi-refresh text-xs mr-1.5"></i>Reset School</Tab>
+        <Tab value="reset-topic"><i class="pi pi-eraser text-xs mr-1.5"></i>Reset Topic</Tab>
         <Tab value="overview">Overview</Tab>
         <Tab value="terms-scales">Terms &amp; Scales</Tab>
         <Tab value="subjects">Subjects</Tab>
@@ -112,6 +113,7 @@
         <TabPanel value="reset-school">
           <ResetSchoolWizard @open-tab="handleOpenTab" @active-school="onResetTarget" />
         </TabPanel>
+        <TabPanel value="reset-topic"><ResetTopicTab :school-id="selectedSchoolId" /></TabPanel>
         <TabPanel value="overview"><OverviewTab :school-id="selectedSchoolId" :school="selectedSchoolObject" @saved="loadSchools" /></TabPanel>
         <TabPanel value="terms-scales"><TermsScalesTab :school-id="selectedSchoolId" /></TabPanel>
         <TabPanel value="subjects"><SubjectsTab :school-id="selectedSchoolId" /></TabPanel>
@@ -179,6 +181,7 @@ import ClassMapTab from '../components/school-setup/ClassMapTab.vue'
 import ClassHealthTab from '../components/school-setup/ClassHealthTab.vue'
 import NewSchoolWizard from '../components/school-setup/NewSchoolWizard.vue'
 import ResetSchoolWizard from '../components/school-setup/ResetSchoolWizard.vue'
+import ResetTopicTab from '../components/school-setup/ResetTopicTab.vue'
 
 // Dedicated sandbox school — every Phase 2+ CRUD tab should default here so
 // trial writes never touch a real school's config.
