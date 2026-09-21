@@ -48,6 +48,21 @@
       </div>
     </div>
 
+    <div v-if="result && result.diagnostics?.gradesWithNoResolvedClasses?.length"
+         class="bg-red-50 border border-red-200 rounded-xl px-4 py-3 mb-4 text-sm text-red-900">
+      <i class="pi pi-exclamation-triangle mr-1.5"></i>
+      Grade{{ result.diagnostics.gradesWithNoResolvedClasses.length === 1 ? '' : 's' }}
+      <span class="font-semibold">{{ result.diagnostics.gradesWithNoResolvedClasses.join(', ') }}</span>
+      {{ result.diagnostics.gradesWithNoResolvedClasses.length === 1 ? 'has' : 'have' }} subjects/topics
+      configured in School Setup, but no student's class field could be resolved for that grade at all —
+      so nothing could be built for it below. This is why a subject you know has topics can show zero rows.
+      <span v-if="result.diagnostics.unresolvedStudents?.length">
+        {{ result.diagnostics.unresolvedStudents.length }} student{{ result.diagnostics.unresolvedStudents.length === 1 ? '' : 's' }}
+        had an unreadable class value, e.g. "{{ result.diagnostics.unresolvedStudents[0].studentName }}":
+        "{{ result.diagnostics.unresolvedStudents[0].rawClassValue }}".
+      </span>
+    </div>
+
     <div v-if="rows.length" class="flex items-center gap-2 mb-3 flex-wrap">
       <Select v-model="statusFilter" :options="statusOptions" optionLabel="label" optionValue="value" class="w-52" />
       <InputText v-model="search" class="w-64" size="small" placeholder="Search class, subject, topic…" />

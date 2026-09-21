@@ -1028,7 +1028,9 @@ def _scan_school_aap_completion(school_id):
 
 
 def _whole_school_roster(school_id):
-    """{class_id: [{"id", "name"}, ...]} for every active student.
+    """(roster, unresolved) — roster is {class_id: [{"id", "name"}, ...]} for
+    every active student whose class resolved; unresolved is
+    [{"studentId", "studentName", "rawClassValue"}] for every one that didn't.
 
     raw_class_value/parse_class_value (class_resolver) do the robust part —
     finding the class field a school actually uses and splitting it into
@@ -1038,9 +1040,17 @@ def _whole_school_roster(school_id):
     and this report needs to land on the SAME class_id fetch_survey_ratings
     and _scan_school_aap_completion already use, or a submitted response and
     its own class's roster would silently never match.
+
+    A student whose class doesn't resolve at all used to just vanish from the
+    roster with nothing said about it — which, if it hit every student in a
+    grade, made every subject/topic configured for that grade disappear from
+    the report with no explanation. Returned instead of swallowed, same
+    "surface, don't guess" rule the rest of this file already follows for an
+    unrecognised grade or an unmatched subject.
     """
     school_ref = db.collection("schools").document(school_id)
     roster = defaultdict(list)
+    unresolved = []
     for doc in school_ref.collection("students").stream():
         data = doc.to_dict() or {}
         if str(data.get("type") or "student") != "student" or _is_inactive_student(data):
@@ -1048,12 +1058,14 @@ def _whole_school_roster(school_id):
         raw, _field = raw_class_value(data)
         parsed = parse_class_value(raw)
         if parsed["grade_ordinal"] is None:
-            continue  # unresolved class — reportable elsewhere, not this report's job to guess
+            name = f"{data.get('firstName', '')} {data.get('lastName', '')}".strip() or doc.id
+            unresolved.append({"studentId": doc.id, "studentName": name, "rawClassValue": raw})
+            continue
         grade, section = canonical_grade_section(parsed["grade_token"], parsed["section"])
         class_id = compose_class_id(grade, section)
         name = f"{data.get('firstName', '')} {data.get('lastName', '')}".strip() or doc.id
         roster[class_id].append({"id": doc.id, "name": name})
-    return roster
+    return roster, unresolved
 
 
 @https_fn.on_call(region="asia-south1", memory=options.MemoryOption.GB_1, timeout_sec=300)
@@ -1082,6 +1094,13 @@ def aap_survey_completion(req: https_fn.CallableRequest) -> dict:
         school-setup subject in their grade at all.
       unparsedResponses: response doc ids that don't fit the naming
         convention (same meaning as generate_aap_remarks's scan_only field).
+      diagnostics: { unresolvedStudents: [...], gradesWithNoResolvedClasses:
+        [...] } — why a subject/topic that IS configured in school-setup can
+        still be entirely absent from `rows`: every student in that grade
+        failed to resolve to a class at all, so the grade never appears in
+        the roster and nothing can be built for it. Surfaced rather than
+        silently producing zero rows for that subject, same principle as
+        generate_aap_remarks's own scan_only diagnostics.
     """
     _require_ops_admin(req)
     data = req.data or {}
@@ -1092,7 +1111,10 @@ def aap_survey_completion(req: https_fn.CallableRequest) -> dict:
 
     expected_by_grade = _expected_subjects_by_grade(school_id)
     responses_by_key, unparsed = _scan_school_aap_completion(school_id)
-    roster_by_class = _whole_school_roster(school_id)
+    roster_by_class, unresolved_students = _whole_school_roster(school_id)
+    grades_with_no_classes = sorted(
+        grade for grade in expected_by_grade
+        if not any(cid.split("_", 1)[0] == grade for cid in roster_by_class))
 
     # One subject-alias index per grade, built the same way generate_aap_remarks
     # builds one per stage from aap_framework — here from school-setup's own
@@ -1170,4 +1192,8 @@ def aap_survey_completion(req: https_fn.CallableRequest) -> dict:
         "rows": rows,
         "unmatchedSubjectTokens": sorted(unmatched_tokens),
         "unparsedResponses": unparsed,
+        "diagnostics": {
+            "unresolvedStudents": unresolved_students,
+            "gradesWithNoResolvedClasses": grades_with_no_classes,
+        },
     }
