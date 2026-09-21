@@ -954,22 +954,42 @@ def _is_inactive_student(data):
 
 
 def _expected_subjects_by_grade(school_id):
-    """{grade_token: [{"subject": name, "topics": [str, ...]}]} — school-
-    setup's OWN subject configuration (schools/{id}/subjects, doc id
-    "{Grade}_{Name}"), independent of anything any survey response claims.
-    This is the "what SHOULD exist" side of the completion report.
+    """(by_grade, merged_stream_grades) — school-setup's OWN subject
+    configuration (schools/{id}/subjects, doc id "{Grade}_{Name}"),
+    independent of anything any survey response claims. This is the "what
+    SHOULD exist" side of the completion report.
+    by_grade: {grade_token: [{"subject": name, "topics": [str, ...]}]}
 
-    The grade key goes through canonical_grade_section — the SAME function
-    fetch_survey_ratings already uses to match a response to a class — so a
-    subject filed under "III_English" and a response/roster grade spelled
-    differently land under the same key rather than three silently disjoint
-    notations of "grade" inside one report.
+    The grade token is parsed with parse_class_value (class_resolver), the
+    SAME tokenizer the roster side uses, before being canonicalized — not a
+    direct canonical_grade_section call on the raw id prefix. Some schools
+    fold a stream into the grade token itself ("XI Commerce", "XII Science"),
+    and canonical_grade_section has no multi-word fallback: fed "XI Commerce"
+    directly it cannot resolve a grade at all, so every subject filed under a
+    stream-qualified grade silently matched nothing. parse_class_value DOES
+    shrink from the full token down to "XI" + section "Commerce", so this
+    still lands on the same grade a plain "XI_..." class resolves to.
+
+    That comes at a real cost, surfaced rather than hidden: the stream
+    ("Commerce") is discarded for matching purposes, since neither the roster
+    nor a class id carries a stream field to match it back against. A
+    Commerce-only subject will therefore show as "expected" for every
+    section of that grade, streams included. merged_stream_grades lists every
+    raw grade token this happened to, so that tradeoff is visible rather than
+    a second silent mismatch.
     """
     school_ref = db.collection("schools").document(school_id)
     out = defaultdict(list)
+    merged_streams = set()
     for doc in school_ref.collection("subjects").stream():
         data = doc.to_dict() or {}
-        grade, _ = canonical_grade_section(doc.id.split("_", 1)[0], "")
+        raw_grade = doc.id.split("_", 1)[0]
+        parsed = parse_class_value(raw_grade)
+        if parsed["grade_ordinal"] is None:
+            continue  # doesn't resolve to any grade at all (e.g. a non-grade bucket like "Training")
+        if parsed["section"]:
+            merged_streams.add(raw_grade)
+        grade, _ = canonical_grade_section(parsed["grade_token"], parsed["section"] or "")
         name = str(data.get("name") or "").strip()
         if not name:
             continue
@@ -980,7 +1000,7 @@ def _expected_subjects_by_grade(school_id):
             if topic_name:
                 topics.append(topic_name)
         out[grade].append({"subject": name, "topics": topics})
-    return out
+    return out, sorted(merged_streams)
 
 
 def _scan_school_aap_completion(school_id):
@@ -1094,13 +1114,18 @@ def aap_survey_completion(req: https_fn.CallableRequest) -> dict:
         school-setup subject in their grade at all.
       unparsedResponses: response doc ids that don't fit the naming
         convention (same meaning as generate_aap_remarks's scan_only field).
-      diagnostics: { unresolvedStudents: [...], gradesWithNoResolvedClasses:
-        [...] } — why a subject/topic that IS configured in school-setup can
-        still be entirely absent from `rows`: every student in that grade
-        failed to resolve to a class at all, so the grade never appears in
-        the roster and nothing can be built for it. Surfaced rather than
-        silently producing zero rows for that subject, same principle as
-        generate_aap_remarks's own scan_only diagnostics.
+      diagnostics: { unresolvedStudents, gradesWithNoResolvedClasses,
+        mergedStreamGrades } — why a subject/topic that IS configured in
+        school-setup can still be entirely absent, or over-broad, in `rows`:
+        gradesWithNoResolvedClasses is every student in that grade failing to
+        resolve to a class at all (the grade never appears in the roster, so
+        nothing can be built for it); mergedStreamGrades is every raw subject
+        grade token that folded a stream into the grade ("XI Commerce") and
+        had to be collapsed to its base grade to match anything at all — a
+        stream-only subject will over-report as "expected" for every section
+        of that grade as a result. Surfaced rather than silently producing
+        wrong or missing rows, same principle as generate_aap_remarks's own
+        scan_only diagnostics.
     """
     _require_ops_admin(req)
     data = req.data or {}
@@ -1109,7 +1134,7 @@ def aap_survey_completion(req: https_fn.CallableRequest) -> dict:
         raise https_fn.HttpsError(
             https_fn.FunctionsErrorCode.INVALID_ARGUMENT, "school_id is required")
 
-    expected_by_grade = _expected_subjects_by_grade(school_id)
+    expected_by_grade, merged_stream_grades = _expected_subjects_by_grade(school_id)
     responses_by_key, unparsed = _scan_school_aap_completion(school_id)
     roster_by_class, unresolved_students = _whole_school_roster(school_id)
     grades_with_no_classes = sorted(
@@ -1195,5 +1220,6 @@ def aap_survey_completion(req: https_fn.CallableRequest) -> dict:
         "diagnostics": {
             "unresolvedStudents": unresolved_students,
             "gradesWithNoResolvedClasses": grades_with_no_classes,
+            "mergedStreamGrades": merged_stream_grades,
         },
     }

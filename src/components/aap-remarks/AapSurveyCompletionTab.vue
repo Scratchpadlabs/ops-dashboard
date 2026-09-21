@@ -63,6 +63,17 @@
       </span>
     </div>
 
+    <div v-if="result && result.diagnostics?.mergedStreamGrades?.length"
+         class="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4 text-sm text-amber-900">
+      <i class="pi pi-exclamation-triangle mr-1.5"></i>
+      Subject grade{{ result.diagnostics.mergedStreamGrades.length === 1 ? '' : 's' }}
+      <span class="font-semibold">{{ result.diagnostics.mergedStreamGrades.join(', ') }}</span>
+      fold a stream into the grade name in School Setup. There's no stream field on a class to match
+      against, so these were collapsed to their base grade (e.g. "XI Commerce" → grade XI) — a
+      stream-only subject will therefore show as expected for every section of that grade, streams
+      included, not just its own.
+    </div>
+
     <div v-if="rows.length" class="flex items-center gap-2 mb-3 flex-wrap">
       <Select v-model="statusFilter" :options="statusOptions" optionLabel="label" optionValue="value" class="w-52" />
       <InputText v-model="search" class="w-64" size="small" placeholder="Search class, subject, topic…" />
