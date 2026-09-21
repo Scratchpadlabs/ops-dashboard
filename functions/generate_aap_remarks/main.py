@@ -995,7 +995,12 @@ def _expected_subjects_by_grade(school_id):
             continue
         topics = []
         for t in (data.get("topics") or []):
-            topic_name = t.get("topic") if isinstance(t, dict) else t
+            # Real subject docs vary: SubjectsTab.vue's own editor writes
+            # {topic, description, quiz}, but topics written by another path
+            # (seen in production — cost/survey_initiated_by-bearing entries)
+            # use {id, name, ...} instead, with no "topic" key at all. Tried
+            # in this order so the display name always wins when both exist.
+            topic_name = (t.get("name") or t.get("topic")) if isinstance(t, dict) else t
             topic_name = str(topic_name or "").strip()
             if topic_name:
                 topics.append(topic_name)
