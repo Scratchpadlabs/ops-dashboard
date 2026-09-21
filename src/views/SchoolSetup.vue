@@ -98,6 +98,7 @@
         <Tab value="structure">Propose Structure</Tab>
         <Tab value="knowledge-base">Knowledge Base</Tab>
         <Tab value="sheets-status">Sheets Status</Tab>
+        <Tab value="sheets-overview">Sheets Overview</Tab>
         <Tab value="clone-school">Clone School</Tab>
         <Tab value="templates">Templates</Tab>
         <Tab value="publish"><i class="pi pi-cloud-upload text-xs mr-1.5"></i>Publish</Tab>
@@ -129,6 +130,7 @@
         <TabPanel value="structure"><StructureTab :school-id="selectedSchoolId" /></TabPanel>
         <TabPanel value="knowledge-base"><KnowledgeBaseTab /></TabPanel>
         <TabPanel value="sheets-status"><SheetsStatusTab :school-id="selectedSchoolId" /></TabPanel>
+        <TabPanel value="sheets-overview"><SheetsOverviewTab :school-id="selectedSchoolId" /></TabPanel>
         <TabPanel value="clone-school"><CloneSchoolTab :school-id="selectedSchoolId" :school="selectedSchoolObject" /></TabPanel>
         <TabPanel value="templates"><TemplatesTab :school-id="selectedSchoolId" /></TabPanel>
         <TabPanel value="publish"><PublishTab :school-id="selectedSchoolId" /></TabPanel>
@@ -172,6 +174,7 @@ import AssessmentsTab from '../components/school-setup/AssessmentsTab.vue'
 import CoScholasticTab from '../components/school-setup/CoScholasticTab.vue'
 import OverviewTab from '../components/school-setup/OverviewTab.vue'
 import SheetsStatusTab from '../components/school-setup/SheetsStatusTab.vue'
+import SheetsOverviewTab from '../components/school-setup/SheetsOverviewTab.vue'
 import CloneSchoolTab from '../components/school-setup/CloneSchoolTab.vue'
 import TemplatesTab from '../components/school-setup/TemplatesTab.vue'
 import PublishTab from '../components/school-setup/PublishTab.vue'

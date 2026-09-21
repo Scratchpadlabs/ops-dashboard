@@ -417,6 +417,17 @@ export async function bulkUpdateSmartRemarksRemote({ schoolId, studentIds, statu
   return res.data
 }
 
+// ── Sheets Overview ─────────────────────────────────────────────────────
+// Whole-school, per-class rollup across all four Smart Sheets areas
+// (academics, co-scholastic, attendance, remarks). Read-only. See
+// functions/sheets_overview for the server side.
+const sheetsOverviewCallable = httpsCallable(functions, 'sheets_overview', { timeout: 300_000 })
+
+export async function sheetsOverviewRemote({ schoolId }) {
+  const res = await sheetsOverviewCallable({ school_id: schoolId })
+  return res.data
+}
+
 export function downloadReport({ filename, mime, content_base64 }) {
   const bytes = Uint8Array.from(atob(content_base64), c => c.charCodeAt(0))
   downloadBlob(new Blob([bytes], { type: mime }), filename)
