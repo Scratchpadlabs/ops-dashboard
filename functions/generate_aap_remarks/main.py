@@ -217,6 +217,17 @@ def _parse_aap_response_id(doc_id):
     """doc id: teacherID_grade_section..._grade_subject_topic -> a dict of the
     parts, or None if the id doesn't fit the convention at all.
 
+    The grade appears twice, but NOT necessarily spelled the same way both
+    times — confirmed against real data (Hillgreen Highschool):
+    "thh0028_7_KALAM_VII_Maths_Term1" has the grade as Arabic "7" the first
+    time and Roman "VII" the second. Matching the second occurrence by exact
+    string equality (the original approach) never finds it for a doc id like
+    that, so EVERY response using this — apparently normal — convention was
+    silently discarded as unparseable, for every consumer of this function
+    including the already-deployed fetch_survey_ratings. Matched instead by
+    canonical grade equivalence, the same comparison canonical_grade_section
+    already does everywhere else grades are compared in this file.
+
     Shared by fetch_survey_ratings (which only needs grade/section/subject —
     it discards topic, since a remark is written per subject, not per topic)
     and the survey-completion scan below (which needs topic too, to tell two
@@ -226,7 +237,11 @@ def _parse_aap_response_id(doc_id):
         return None
     teacher_id = parts[0]
     grade = parts[1]
-    second_idx = next((i for i in range(2, len(parts)) if parts[i] == grade), None)
+    grade_canonical, _ = canonical_grade_section(grade, "")
+    second_idx = next(
+        (i for i in range(2, len(parts))
+         if canonical_grade_section(parts[i], "")[0] == grade_canonical),
+        None)
     if second_idx is None:
         return None
     section = "_".join(parts[2:second_idx])
