@@ -293,6 +293,8 @@ const listAapRemarksCallable = httpsCallable(functions, 'list_aap_remarks', { ti
 const updateAapRemarkCallable = httpsCallable(functions, 'update_aap_remark', { timeout: 30_000 })
 const bulkUpdateAapRemarksCallable = httpsCallable(functions, 'bulk_update_aap_remarks', { timeout: 120_000 })
 const saveAapSubjectMappingCallable = httpsCallable(functions, 'save_aap_subject_mapping', { timeout: 30_000 })
+const generateAapSummaryPdfCallable = httpsCallable(functions, 'generate_aap_summary_pdf', { timeout: 60_000 })
+const generateAapSummaryPdfsCallable = httpsCallable(functions, 'generate_aap_summary_pdfs', { timeout: 300_000 })
 
 // `subjects` narrows a run to the chosen subjects; omitted means every subject
 // the survey rated. `confirmGenderIssue` must be set once the dashboard has
@@ -342,6 +344,22 @@ export async function bulkUpdateAapRemarksRemote({ schoolId, targets, status }) 
 
 export async function saveAapSubjectMappingRemote({ stage, token, frameworkSubject }) {
   const res = await saveAapSubjectMappingCallable({ stage, token, framework_subject: frameworkSubject })
+  return res.data
+}
+
+// One "Summary For The Academic Year" page for one child, built from whatever
+// aap_remarks docs already exist for them. Returns { filename, mime,
+// content_base64 } — pass straight to downloadReport().
+export async function generateAapSummaryPdfRemote({ schoolId, studentId }) {
+  const res = await generateAapSummaryPdfCallable({ school_id: schoolId, student_id: studentId })
+  return res.data
+}
+
+// Same, for a whole class at once — one PDF per student, zipped, each named
+// "<student_id>.pdf" so the file can be matched back to a child for whatever
+// merge/print step happens outside this dashboard.
+export async function generateAapSummaryPdfsRemote({ schoolId, studentIds }) {
+  const res = await generateAapSummaryPdfsCallable({ school_id: schoolId, student_ids: studentIds })
   return res.data
 }
 

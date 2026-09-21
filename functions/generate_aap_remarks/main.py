@@ -1,6 +1,7 @@
 """
 Cloud Function: generate_aap_remarks (+ list_aap_remarks, update_aap_remark,
-bulk_update_aap_remarks, save_aap_subject_mapping — same source directory)
+bulk_update_aap_remarks, save_aap_subject_mapping, generate_aap_summary_pdf,
+generate_aap_summary_pdfs — same source directory)
 
 Generates AAP (Awareness / Sensitivity / Creativity) student remarks
 directly from Firestore survey responses -- no Google Sheets / Drive hop.
@@ -76,16 +77,26 @@ region (asia-south1), same OPENAI_API_KEY Secret Manager pattern already
 used for process_import.
 """
 
+import base64
+import datetime
+import io
 import math
 import random
 import re
 import time
+import zipfile
 from collections import defaultdict
 
 from firebase_admin import initialize_app, firestore
 from firebase_functions import https_fn, options
 from firebase_functions.params import SecretParam
 from openai import OpenAI
+from reportlab.lib import colors
+from reportlab.lib.enums import TA_CENTER
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import ParagraphStyle
+from reportlab.lib.units import mm
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from aap_rules import canonical_grade_section, gender_issue as _compute_gender_issue, resolve_stage
 from ops_admins import require_ops_admin as _require_ops_admin_base
@@ -255,13 +266,23 @@ def fetch_survey_ratings(school_id, class_id):
                         continue
                     raw[student_id][subject][trait].append(level_str)
 
-    ratings = {
-        student_id: {
-            subject: {trait: resolve_level(levels) for trait, levels in traits.items()}
-            for subject, traits in subjects.items()
-        }
-        for student_id, subjects in raw.items()
-    }
+    # A subject only reaches `raw` once at least one of its three questions was
+    # answered (blank / "Not Applicable" answers are never appended above) --
+    # that is what makes a student who never appeared for an optional subject
+    # (Hindi/Marathi/Sanskrit split) resolve to no subject entry at all, with
+    # no remark generated for it. But a subject that DID get at least one
+    # answer may still be missing one or two of its three traits, and those
+    # must not be treated as "never appeared" -- the school's convention is
+    # that a trait nobody rated defaults to the most favourable level rather
+    # than blocking or silently dropping the whole subject.
+    ratings = {}
+    for student_id, subjects in raw.items():
+        ratings[student_id] = {}
+        for subject, traits in subjects.items():
+            resolved = {trait: resolve_level(levels) for trait, levels in traits.items()}
+            for trait in ("awareness", "sensitivity", "creativity"):
+                resolved.setdefault(trait, "Advanced")
+            ratings[student_id][subject] = resolved
     return ratings, unparsed
 
 
@@ -694,3 +715,198 @@ def save_aap_subject_mapping(req: https_fn.CallableRequest) -> dict:
         "confirmedAt": firestore.SERVER_TIMESTAMP,
     }, merge=True)
     return {}
+
+
+# ── Per-student summary PDF ─────────────────────────────────────────────────
+# One page per child: "Summary For The Academic Year" — a table of every
+# subject the student has an aap_remarks doc for, its three trait levels and
+# the written comment. A subject the student never appeared for (an optional
+# language stream, say) has no aap_remarks doc at all (see fetch_survey_ratings
+# above), so it never reaches this table — nothing here has to re-check that.
+
+_NAVY = colors.HexColor("#1c3a5e")
+_GOLD = colors.HexColor("#f2b632")
+_ROW_BG = colors.HexColor("#f7f8f9")
+_BORDER = colors.HexColor("#d6dbe0")
+_LEVEL_COLOR = {
+    "Beginner": colors.HexColor("#d97706"),
+    "Proficient": colors.HexColor("#16a34a"),
+    "Advanced": colors.HexColor("#15803d"),
+}
+
+
+def _pdf_style(name, **kwargs):
+    defaults = dict(fontName="Helvetica", fontSize=9.5, leading=13, textColor=colors.HexColor("#0f172a"))
+    defaults.update(kwargs)
+    return ParagraphStyle(name, **defaults)
+
+
+def _watermark(student_id):
+    """Stamped at the bottom of the page so a loose printout or a file that
+    gets separated from the rest can still be traced back to a child."""
+    def draw(canvas_obj, doc):
+        canvas_obj.saveState()
+        canvas_obj.setFont("Helvetica", 7.5)
+        canvas_obj.setFillColor(colors.HexColor("#9ca3af"))
+        canvas_obj.drawCentredString(A4[0] / 2, 10 * mm, f"Student ID: {student_id}")
+        canvas_obj.restoreState()
+    return draw
+
+
+def _build_student_summary_pdf(student_id, remarks):
+    """remarks: [{ id (subject), awareness, sensitivity, creativity, comment }],
+    already limited to subjects this student actually has a remark doc for.
+    Returns the PDF as bytes."""
+    W, H = A4
+    M = 12 * mm
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=M, rightMargin=M,
+                             topMargin=0, bottomMargin=18 * mm)
+    story = []
+
+    header = Table(
+        [[Paragraph("Summary For The Academic Year",
+                     _pdf_style("hdr", fontName="Helvetica-Bold", fontSize=18,
+                                textColor=colors.white, alignment=TA_CENTER))]],
+        colWidths=[W - 2 * M], rowHeights=[16 * mm],
+    )
+    header.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), _NAVY),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+    ]))
+    story.append(header)
+
+    gold = Table([[""]], colWidths=[W - 2 * M], rowHeights=[3 * mm])
+    gold.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), _GOLD)]))
+    story.append(gold)
+    story.append(Spacer(1, 6 * mm))
+
+    col_w = [(W - 2 * M) * x for x in [0.16, 0.14, 0.20, 0.50]]
+    rows = [[
+        Paragraph("<b>Subjects</b>", _pdf_style("th", fontSize=11)),
+        Paragraph("<b>Abilities</b>", _pdf_style("th", fontSize=11)),
+        Paragraph("<b>Performance Level Descriptors</b>", _pdf_style("th", fontSize=11)),
+        Paragraph("<b>Summary</b>", _pdf_style("th", fontSize=11)),
+    ]]
+    spans, shading = [], []
+    r = 1
+    for remark in remarks:
+        subject = remark.get("id", "")
+        comment = remark.get("comment", "")
+        start = r
+        for trait, label in (("awareness", "Awareness"), ("sensitivity", "Sensitivity"),
+                              ("creativity", "Creativity")):
+            level = remark.get(trait) or ""
+            rows.append([
+                Paragraph(f"<b>{subject}</b>", _pdf_style("subj")) if trait == "awareness" else "",
+                Paragraph(label, _pdf_style("ab")),
+                Paragraph(f"<b>{level}</b>", _pdf_style("lvl", textColor=_LEVEL_COLOR.get(level, colors.black))),
+                Paragraph(comment, _pdf_style("cm")) if trait == "awareness" else "",
+            ])
+            r += 1
+        spans.append(("SPAN", (0, start), (0, start + 2)))
+        spans.append(("SPAN", (3, start), (3, start + 2)))
+        if len(shading) % 2 == 0:
+            shading.append(("BACKGROUND", (0, start), (-1, start + 2), _ROW_BG))
+        else:
+            shading.append(("BACKGROUND", (0, start), (-1, start + 2), colors.white))
+
+    table = Table(rows, colWidths=col_w, repeatRows=1)
+    table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), _GOLD),
+        ("GRID", (0, 0), (-1, -1), 0.5, _BORDER),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE" if len(rows) == 1 else "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        *spans,
+        *shading,
+    ]))
+    story.append(table)
+
+    if not remarks:
+        story.append(Spacer(1, 6 * mm))
+        story.append(Paragraph("No AAP remarks found for this student.", _pdf_style("empty", textColor=colors.grey)))
+
+    doc.build(story, onFirstPage=_watermark(student_id), onLaterPages=_watermark(student_id))
+    return buf.getvalue()
+
+
+def _fetch_student_remarks(school_ref, student_id):
+    docs = (school_ref.collection("students").document(student_id)
+            .collection("aap_remarks").stream())
+    return sorted((_serialize_remark(d.id, d.to_dict() or {}) for d in docs),
+                  key=lambda rmk: rmk["id"])
+
+
+def _fetch_student_name(school_ref, student_id):
+    doc = school_ref.collection("students").document(student_id).get()
+    if not doc.exists:
+        return student_id
+    data = doc.to_dict() or {}
+    return f"{data.get('firstName', '')} {data.get('lastName', '')}".strip() or student_id
+
+
+@https_fn.on_call(region="asia-south1", memory=options.MemoryOption.MB_256, timeout_sec=60)
+def generate_aap_summary_pdf(req: https_fn.CallableRequest) -> dict:
+    """{school_id, student_id} -> {filename, mime, content_base64}.
+
+    One "Summary For The Academic Year" page for one child, built from
+    whatever aap_remarks docs already exist for them — nothing here calls the
+    model or writes anything. Same ops-admin gate as the rest of this feature.
+    """
+    _require_ops_admin(req)
+    data = req.data or {}
+    school_id = data.get("school_id")
+    student_id = data.get("student_id")
+    if not school_id or not student_id:
+        raise https_fn.HttpsError(
+            https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
+            "school_id and student_id are required",
+        )
+
+    school_ref = db.collection("schools").document(school_id)
+    remarks = _fetch_student_remarks(school_ref, student_id)
+    pdf_bytes = _build_student_summary_pdf(student_id, remarks)
+
+    return {
+        "filename": f"{student_id}.pdf",
+        "mime": "application/pdf",
+        "content_base64": base64.b64encode(pdf_bytes).decode("ascii"),
+    }
+
+
+@https_fn.on_call(region="asia-south1", memory=options.MemoryOption.MB_512, timeout_sec=300)
+def generate_aap_summary_pdfs(req: https_fn.CallableRequest) -> dict:
+    """{school_id, student_ids} -> {filename, mime, content_base64} (a zip).
+
+    Bulk form of generate_aap_summary_pdf — one PDF per student inside a zip,
+    each named "<student_id>.pdf" so the caller can match files back to
+    children for whatever merge/print step they run next, outside this
+    dashboard.
+    """
+    _require_ops_admin(req)
+    data = req.data or {}
+    school_id = data.get("school_id")
+    student_ids = list(data.get("student_ids") or [])
+    if not school_id or not student_ids:
+        raise https_fn.HttpsError(
+            https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
+            "school_id and student_ids are required",
+        )
+
+    school_ref = db.collection("schools").document(school_id)
+    zip_buf = io.BytesIO()
+    with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for student_id in student_ids:
+            remarks = _fetch_student_remarks(school_ref, student_id)
+            pdf_bytes = _build_student_summary_pdf(student_id, remarks)
+            zf.writestr(f"{student_id}.pdf", pdf_bytes)
+
+    date_str = datetime.date.today().isoformat()
+    return {
+        "filename": f"AAP_summary_pdfs_{school_id}_{date_str}.zip",
+        "mime": "application/zip",
+        "content_base64": base64.b64encode(zip_buf.getvalue()).decode("ascii"),
+    }

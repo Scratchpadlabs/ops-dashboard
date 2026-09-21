@@ -66,7 +66,14 @@
                 </div>
               </div>
               <Button
-                icon="pi pi-refresh" text rounded size="small" class="ml-auto flex-shrink-0"
+                icon="pi pi-file-pdf" text rounded size="small" class="ml-auto flex-shrink-0"
+                :loading="downloadingStudentId === data.studentId"
+                :disabled="!!busyStudentId || !!downloadingStudentId || data.empty"
+                v-tooltip.top="'Download this student\'s summary PDF'"
+                @click="downloadPdf(data.studentId)"
+              />
+              <Button
+                icon="pi pi-refresh" text rounded size="small" class="flex-shrink-0"
                 :loading="busyStudentId === data.studentId"
                 :disabled="!!busyStudentId"
                 v-tooltip.top="'Regenerate every subject for this student — replaces approved remarks too'"
@@ -213,7 +220,7 @@ const props = defineProps({
 const emit = defineEmits(['regenerate', 'saved'])
 
 const toast = useToast()
-const { saveComment, setStatus, setStatusBulk } = useAapRemarks()
+const { saveComment, setStatus, setStatusBulk, downloadSummaryPdf } = useAapRemarks()
 
 const search = ref('')
 const needsReviewOnly = ref(false)
@@ -364,6 +371,21 @@ async function save() {
     toast.add({ severity: 'error', summary: 'Could not save', detail: e.message, life: 4000 })
   } finally {
     saving.value = false
+  }
+}
+
+// ── Per-student summary PDF ───────────────────────────────────────────────
+const downloadingStudentId = ref(null)
+
+async function downloadPdf(studentId) {
+  downloadingStudentId.value = studentId
+  try {
+    await downloadSummaryPdf(props.schoolId, studentId)
+  } catch (e) {
+    console.error('Could not generate the summary PDF', e)
+    toast.add({ severity: 'error', summary: 'Could not generate PDF', detail: e.message, life: 4000 })
+  } finally {
+    downloadingStudentId.value = null
   }
 }
 

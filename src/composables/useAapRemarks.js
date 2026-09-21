@@ -32,7 +32,8 @@ import { compareClassIds } from './useSurveys.js'
 import {
   classDetailRemote, generateAapRemarksRemote, scanAapSubjectsRemote,
   listAapRemarksRemote, updateAapRemarkRemote, bulkUpdateAapRemarksRemote,
-  saveAapSubjectMappingRemote,
+  saveAapSubjectMappingRemote, generateAapSummaryPdfRemote, generateAapSummaryPdfsRemote,
+  downloadReport,
 } from '../utils/api.js'
 
 export const STATUS_APPROVED = 'approved'
@@ -230,11 +231,22 @@ export function useAapRemarks() {
     await saveAapSubjectMappingRemote({ stage, token, frameworkSubject })
   }
 
+  // ── Per-student summary PDF ────────────────────────────────────────────────
+  async function downloadSummaryPdf(schoolId, studentId) {
+    const report = await generateAapSummaryPdfRemote({ schoolId, studentId })
+    downloadReport(report)
+  }
+
+  async function downloadSummaryPdfs(schoolId, studentIds) {
+    const report = await generateAapSummaryPdfsRemote({ schoolId, studentIds })
+    downloadReport(report)
+  }
+
   return {
     schools, classes, students, remarksByStudent, scan, scanning,
     loadingSchools, loadingClasses, loadingRoster,
     loadSchools, loadClasses, loadClass, loadRemarks, reloadStudent,
     recentJobIds, watchNewJob, generate, saveComment, setStatus, setStatusBulk,
-    scanSubjects, saveSubjectMapping,
+    scanSubjects, saveSubjectMapping, downloadSummaryPdf, downloadSummaryPdfs,
   }
 }

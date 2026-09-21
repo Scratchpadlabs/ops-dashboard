@@ -83,6 +83,8 @@
                 :disabled="!hasRemarks" @click="exportCsv" />
         <Button label="Export XLSX" icon="pi pi-file-excel" size="small" outlined
                 :disabled="!hasRemarks" @click="exportXlsx" />
+        <Button label="Download all PDFs" icon="pi pi-file-pdf" size="small" outlined
+                :loading="downloadingPdfs" :disabled="!hasRemarks" @click="downloadAllPdfs" />
         <span class="text-xs text-slate-400">
           Exports one row per student-subject, exactly as listed below.
         </span>
@@ -218,7 +220,7 @@ const {
   schools, classes, students, remarksByStudent, scan, scanning,
   loadingSchools, loadingClasses, loadingRoster,
   loadSchools, loadClasses, loadClass, reloadStudent,
-  recentJobIds, watchNewJob, generate, scanSubjects,
+  recentJobIds, watchNewJob, generate, scanSubjects, downloadSummaryPdfs,
 } = useAapRemarks()
 
 // ── Step-up gate ──────────────────────────────────────────────────────────
@@ -361,6 +363,25 @@ function exportCsv() {
 function exportXlsx() {
   const count = downloadAapXlsx(schoolId.value, classId.value, students.value, remarksByStudent.value)
   toast.add({ severity: 'success', summary: `Exported ${count} rows`, life: 2500 })
+}
+
+// Only students that actually have at least one remark — a student with no
+// AAP ratings has nothing to put on a summary page.
+const downloadingPdfs = ref(false)
+async function downloadAllPdfs() {
+  const studentIds = students.value
+    .filter(s => (remarksByStudent.value[s.id] || []).length)
+    .map(s => s.id)
+  if (!studentIds.length) return
+  downloadingPdfs.value = true
+  try {
+    await downloadSummaryPdfs(schoolId.value, studentIds)
+  } catch (e) {
+    console.error('Could not generate the class PDFs', e)
+    toast.add({ severity: 'error', summary: 'Could not generate PDFs', detail: e.message, life: 4000 })
+  } finally {
+    downloadingPdfs.value = false
+  }
 }
 
 // ── Generation run ────────────────────────────────────────────────────────
