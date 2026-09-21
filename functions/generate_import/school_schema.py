@@ -328,6 +328,9 @@ SCHOOL_SCHEMAS = {
             # without resolving a class at all, which is what makes "update
             # contact info, leave Grade/Section alone" possible.
             "externalId": _opt(STRING, allowEmpty=True),
+            # Added for the Students tab's "Additional Details" section,
+            # alongside aadhaarNumber/admNo/grEmisSts/rollNo above.
+            "address": _opt(STRING, allowEmpty=True),
         },
     },
     "staffs": {
@@ -347,6 +350,9 @@ SCHOOL_SCHEMAS = {
             "coScholasticClassIds": _opt(ARRAY),
             "needsAuthCreation": _opt(BOOL),
             "authUid": _opt(STRING, nullable=True),
+            # School-level admin in the teacher app — see schoolSchema.js for
+            # why this is distinct from the dashboard's own ops-admin check.
+            "admin": _opt(BOOL),
         },
     },
 }
