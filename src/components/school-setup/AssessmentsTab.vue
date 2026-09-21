@@ -93,31 +93,45 @@
     </div>
 
     <div v-else>
+      <!-- ── Filters ──────────────────────────────────────────────────────── -->
+      <div v-if="assessments.length" class="flex items-center gap-2 mb-3 flex-wrap">
+        <MultiSelect
+          v-model="classFilter" :options="gradeList"
+          placeholder="All classes" filter display="chip" class="w-56"
+        />
+        <MultiSelect
+          v-model="subjectFilter" :options="allSubjects" optionLabel="id" optionValue="id"
+          placeholder="All subjects" filter display="chip" class="w-64"
+        />
+        <Button v-if="hasActiveFilters" label="Clear Filters" text size="small" @click="clearFilters" />
+        <span class="text-xs text-slate-400 ml-auto">{{ filteredAssessments.length }} of {{ assessments.length }} assessment(s)</span>
+      </div>
+
       <!-- ── Matrix view ──────────────────────────────────────────────────── -->
       <div class="bg-white rounded-xl border border-slate-200 overflow-x-auto mb-5">
         <table class="w-full text-xs">
           <thead>
             <tr class="border-b border-slate-200">
               <th class="text-left px-3 py-2 font-semibold text-slate-400 uppercase">Assessment</th>
-              <th v-for="subj in allSubjects" :key="subj.id" class="text-center px-2 py-2 font-semibold text-slate-400 uppercase">{{ subj.id }}</th>
+              <th v-for="subj in filteredSubjects" :key="subj.id" class="text-center px-2 py-2 font-semibold text-slate-400 uppercase">{{ subj.id }}</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="name in assessmentNames" :key="name" class="border-b border-slate-100">
+            <tr v-for="name in filteredAssessmentNames" :key="name" class="border-b border-slate-100">
               <td class="px-3 py-2 font-medium text-slate-700">{{ name }}</td>
-              <td v-for="subj in allSubjects" :key="subj.id" class="text-center px-2 py-2">
+              <td v-for="subj in filteredSubjects" :key="subj.id" class="text-center px-2 py-2">
                 <i v-if="cellFor(name, subj.id)" class="pi pi-check-circle text-emerald-500"></i>
                 <span v-else class="text-slate-300">—</span>
               </td>
             </tr>
           </tbody>
         </table>
-        <div v-if="!assessmentNames.length" class="text-center text-sm text-slate-400 py-8">No assessments for this term yet</div>
+        <div v-if="!filteredAssessmentNames.length" class="text-center text-sm text-slate-400 py-8">{{ hasActiveFilters ? 'No assessments match the selected filters' : 'No assessments for this term yet' }}</div>
       </div>
 
       <!-- ── Flat table ───────────────────────────────────────────────────── -->
       <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <DataTable :value="assessments" size="small" stripedRows>
+        <DataTable :value="filteredAssessments" size="small" stripedRows>
           <Column field="order" header="#" style="width:50px" />
           <Column field="name" header="Name" />
           <Column field="subjectId" header="Subject" />
@@ -135,7 +149,7 @@
             </template>
           </Column>
         </DataTable>
-        <div v-if="!assessments.length" class="text-center text-sm text-slate-400 py-8">No assessments for this term yet</div>
+        <div v-if="!filteredAssessments.length" class="text-center text-sm text-slate-400 py-8">{{ hasActiveFilters ? 'No assessments match the selected filters' : 'No assessments for this term yet' }}</div>
       </div>
     </div>
 
@@ -277,6 +291,7 @@ import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
 import Select from 'primevue/select'
+import MultiSelect from 'primevue/multiselect'
 import Checkbox from 'primevue/checkbox'
 import Textarea from 'primevue/textarea'
 import ProgressSpinner from 'primevue/progressspinner'
@@ -314,10 +329,32 @@ const subjectNameSuffixes = computed(() =>
   Array.from(new Set(subjects.value.map(s => (s.id || '').split('_').slice(1).join('_')))).filter(Boolean).sort()
 )
 
-const assessmentNames = computed(() => Array.from(new Set(assessments.value.map(a => a.name))).sort())
 function cellFor(name, subjectId) {
-  return assessments.value.find(a => a.name === name && a.subjectId === subjectId) || null
+  return filteredAssessments.value.find(a => a.name === name && a.subjectId === subjectId) || null
 }
+
+// ── Class/subject filter ─────────────────────────────────────────────────
+const classFilter = ref([])
+const subjectFilter = ref([])
+const hasActiveFilters = computed(() => classFilter.value.length > 0 || subjectFilter.value.length > 0)
+function clearFilters() {
+  classFilter.value = []
+  subjectFilter.value = []
+}
+
+const filteredAssessments = computed(() => {
+  let list = assessments.value
+  if (classFilter.value.length) list = list.filter(a => classFilter.value.includes((a.subjectId || '').split('_')[0]))
+  if (subjectFilter.value.length) list = list.filter(a => subjectFilter.value.includes(a.subjectId))
+  return list
+})
+const filteredSubjects = computed(() => {
+  let list = allSubjects.value
+  if (classFilter.value.length) list = list.filter(s => classFilter.value.includes((s.id || '').split('_')[0]))
+  if (subjectFilter.value.length) list = list.filter(s => subjectFilter.value.includes(s.id))
+  return list
+})
+const filteredAssessmentNames = computed(() => Array.from(new Set(filteredAssessments.value.map(a => a.name))).sort())
 
 function scaleLabel(id) {
   return scales.value.find(s => s.id === id)?.name || id
@@ -785,7 +822,7 @@ function exportCsv() {
 }
 
 watch(() => props.schoolId, () => { loadStatic(); assessments.value = []; selectedTermId.value = null })
-watch(selectedTermId, () => { loadAssessments(); exitGridMode() })
+watch(selectedTermId, () => { loadAssessments(); exitGridMode(); clearFilters() })
 onMounted(loadStatic)
 </script>
 
