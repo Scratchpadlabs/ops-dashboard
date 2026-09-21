@@ -12,6 +12,7 @@ import Surveys from '../views/Surveys.vue'
 import ImportReview from '../views/ImportReview.vue'
 import ImportTemplates from '../views/ImportTemplates.vue'
 import AapRemarks from '../views/AapRemarks.vue'
+import SmartRemarks from '../views/SmartRemarks.vue'
 import Quotations from '../views/Quotations.vue'
 import Agreements from '../views/Agreements.vue'
 import Invoices from '../views/Invoices.vue'
@@ -33,6 +34,7 @@ const routes = [
   { path: '/import/:jobId', component: ImportReview,  name: 'import-review', meta: { opsAdminOnly: true } },
   { path: '/import-templates', component: ImportTemplates, name: 'import-templates', meta: { opsAdminOnly: true } },
   { path: '/aap-remarks',   component: AapRemarks,    name: 'aap-remarks', meta: { opsAdminOnly: true } },
+  { path: '/smart-remarks', component: SmartRemarks,  name: 'smart-remarks', meta: { opsAdminOnly: true } },
   { path: '/quotations',    component: Quotations,    name: 'quotations' },
   { path: '/agreements',    component: Agreements,    name: 'agreements' },
   { path: '/invoices',      component: Invoices,      name: 'invoices' },

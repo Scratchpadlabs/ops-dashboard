@@ -64,6 +64,9 @@ export const surveyAssignmentDoc = (schoolId, runId) => doc(db, 'schools', schoo
 export const aapJobsCollection = (schoolId) => collection(db, 'schools', schoolId, 'aap_jobs')
 export const aapJobDoc = (schoolId, jobId) => doc(db, 'schools', schoolId, 'aap_jobs', jobId)
 
+// Same shape, for Smart Remarks' generation jobs (functions/generate_smart_remarks).
+export const smartRemarksJobsCollection = (schoolId) => collection(db, 'schools', schoolId, 'smart_remarks_jobs')
+
 // A teacher's answers to one survey, for one class+topic — written by the
 // teacher app's Mark a Lesson flow (ActivityDialog.vue / AcadSurvey.vue),
 // doc id `{teacherId}_{classId}_{topicId}`. Read/deleted by Reset Topic.

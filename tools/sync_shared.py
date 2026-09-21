@@ -37,6 +37,7 @@ TARGETS = {
     "create_auth_accounts": ["ops_admins.py"],
     "provision_hosting": ["ops_admins.py"],
     "generate_aap_remarks": ["class_resolver.py", "education_kb.json", "ops_admins.py"],
+    "generate_smart_remarks": ["class_resolver.py", "education_kb.json", "ops_admins.py"],
 }
 
 

@@ -372,6 +372,51 @@ export async function aapSurveyCompletionRemote({ schoolId }) {
   return res.data
 }
 
+// ── Smart Remarks ────────────────────────────────────────────────────────
+// General-conduct remarks, generated from the "Smart Sheets" ticking system
+// (schools/{id}/remark_categories + remarks_sheets/*/entries) — a different
+// data source from AAP's survey responses. See functions/generate_smart_remarks
+// for the server side.
+const generateSmartRemarksCallable = httpsCallable(functions, 'generate_smart_remarks', { timeout: 540_000 })
+const scanSmartRemarksCallable = httpsCallable(functions, 'generate_smart_remarks', { timeout: 60_000 })
+const listSmartRemarksCallable = httpsCallable(functions, 'list_smart_remarks', { timeout: 60_000 })
+const updateSmartRemarkCallable = httpsCallable(functions, 'update_smart_remark', { timeout: 30_000 })
+const bulkUpdateSmartRemarksCallable = httpsCallable(functions, 'bulk_update_smart_remarks', { timeout: 120_000 })
+
+export async function generateSmartRemarksRemote({ schoolId, classId, studentIds, confirmGenderIssue }) {
+  const payload = { school_id: schoolId, class_id: classId }
+  if (studentIds?.length) payload.student_ids = studentIds
+  if (confirmGenderIssue) payload.confirm_gender_issue = true
+  const res = await generateSmartRemarksCallable(payload)
+  return res.data
+}
+
+// Read-only precheck: resolves the class's remark band, whether a sheet
+// exists, and any gender-quality issue, without calling the model or
+// writing anything.
+export async function scanSmartRemarksRemote({ schoolId, classId }) {
+  const res = await scanSmartRemarksCallable({ school_id: schoolId, class_id: classId, scan_only: true })
+  return res.data
+}
+
+export async function listSmartRemarksRemote({ schoolId, studentIds }) {
+  const res = await listSmartRemarksCallable({ school_id: schoolId, student_ids: studentIds })
+  return res.data
+}
+
+export async function updateSmartRemarkRemote({ schoolId, studentId, comment, status }) {
+  const payload = { school_id: schoolId, student_id: studentId }
+  if (comment != null) payload.comment = comment
+  if (status != null) payload.status = status
+  const res = await updateSmartRemarkCallable(payload)
+  return res.data
+}
+
+export async function bulkUpdateSmartRemarksRemote({ schoolId, studentIds, status }) {
+  const res = await bulkUpdateSmartRemarksCallable({ school_id: schoolId, student_ids: studentIds, status })
+  return res.data
+}
+
 export function downloadReport({ filename, mime, content_base64 }) {
   const bytes = Uint8Array.from(atob(content_base64), c => c.charCodeAt(0))
   downloadBlob(new Blob([bytes], { type: mime }), filename)
