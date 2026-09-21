@@ -295,6 +295,7 @@ const bulkUpdateAapRemarksCallable = httpsCallable(functions, 'bulk_update_aap_r
 const saveAapSubjectMappingCallable = httpsCallable(functions, 'save_aap_subject_mapping', { timeout: 30_000 })
 const generateAapSummaryPdfCallable = httpsCallable(functions, 'generate_aap_summary_pdf', { timeout: 60_000 })
 const generateAapSummaryPdfsCallable = httpsCallable(functions, 'generate_aap_summary_pdfs', { timeout: 300_000 })
+const aapSurveyCompletionCallable = httpsCallable(functions, 'aap_survey_completion', { timeout: 300_000 })
 
 // `subjects` narrows a run to the chosen subjects; omitted means every subject
 // the survey rated. `confirmGenderIssue` must be set once the dashboard has
@@ -360,6 +361,14 @@ export async function generateAapSummaryPdfRemote({ schoolId, studentId }) {
 // merge/print step happens outside this dashboard.
 export async function generateAapSummaryPdfsRemote({ schoolId, studentIds }) {
   const res = await generateAapSummaryPdfsCallable({ school_id: schoolId, student_ids: studentIds })
+  return res.data
+}
+
+// Whole-school AAP survey completion — which class/subject/topic is
+// not_started / partial / complete, with per-student per-question gaps for
+// anything short of complete. Read-only, no model calls.
+export async function aapSurveyCompletionRemote({ schoolId }) {
+  const res = await aapSurveyCompletionCallable({ school_id: schoolId })
   return res.data
 }
 

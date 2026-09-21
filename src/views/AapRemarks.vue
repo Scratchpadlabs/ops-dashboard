@@ -27,6 +27,14 @@
   <div v-else @click.capture="markActivity" @keydown.capture="markActivity" @mousemove="throttledActivity">
     <ConfirmDialog />
 
+    <Tabs value="remarks">
+      <TabList>
+        <Tab value="remarks"><i class="pi pi-comments text-xs mr-1.5"></i>Remarks</Tab>
+        <Tab value="completion"><i class="pi pi-list-check text-xs mr-1.5"></i>Survey Completion</Tab>
+      </TabList>
+      <TabPanels>
+        <TabPanel value="remarks">
+
     <div class="bg-white rounded-xl border border-slate-200 p-4 mb-4">
       <div class="flex items-end gap-3 flex-wrap">
         <div>
@@ -180,6 +188,13 @@
       @regenerate="regenerateStudent"
       @saved="onSaved"
     />
+
+        </TabPanel>
+        <TabPanel value="completion">
+          <AapSurveyCompletionTab />
+        </TabPanel>
+      </TabPanels>
+    </Tabs>
   </div>
 </template>
 
@@ -194,12 +209,18 @@ import Button from 'primevue/button'
 import ProgressBar from 'primevue/progressbar'
 import ProgressSpinner from 'primevue/progressspinner'
 import ConfirmDialog from 'primevue/confirmdialog'
+import Tabs from 'primevue/tabs'
+import TabList from 'primevue/tablist'
+import Tab from 'primevue/tab'
+import TabPanels from 'primevue/tabpanels'
+import TabPanel from 'primevue/tabpanel'
 
 import { useStepUpAuth } from '../composables/useStepUpAuth.js'
 import { useAapRemarks } from '../composables/useAapRemarks.js'
 import { downloadAapCsv, downloadAapXlsx } from '../utils/aapExport.js'
 import AapRemarksTable from '../components/aap-remarks/AapRemarksTable.vue'
 import AapSubjectMapDialog from '../components/aap-remarks/AapSubjectMapDialog.vue'
+import AapSurveyCompletionTab from '../components/aap-remarks/AapSurveyCompletionTab.vue'
 
 /**
  * AAP remarks — Awareness / Sensitivity / Creativity report-card comments.
