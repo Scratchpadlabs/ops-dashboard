@@ -968,10 +968,32 @@ def _is_inactive_student(data):
     return status in INACTIVE_ENROLLMENT_VALUES
 
 
+def _subject_has_competencies(data):
+    """True if this subject's curricular_goals carries at least one non-blank
+    competency. curricular_goals is a list of single-key maps, {goalText:
+    [competencyText, ...]} (School Setup's "Curricular goals" editor).
+
+    A subject with nothing here is treated as not yet configured for AAP
+    tracking — ignored rather than shown as "not started" for every class,
+    which would otherwise clutter the report with subjects nobody has set up
+    to assess yet.
+    """
+    for goal in (data.get("curricular_goals") or []):
+        if not isinstance(goal, dict):
+            continue
+        for competencies in goal.values():
+            if isinstance(competencies, list) and any(str(c).strip() for c in competencies):
+                return True
+    return False
+
+
 def _expected_subjects_by_grade(school_id):
-    """(by_grade, merged_stream_grades) — school-setup's OWN subject
-    configuration (schools/{id}/subjects, doc id "{Grade}_{Name}"),
-    independent of anything any survey response claims. This is the "what
+    """(by_grade, merged_stream_grades, skipped_blank_competencies) —
+    school-setup's OWN subject configuration (schools/{id}/subjects, doc id
+    "{Grade}_{Name}"), independent of anything any survey response claims.
+    A subject with no non-blank curricular_goals competency is left out of
+    by_grade entirely (see _subject_has_competencies) and named instead in
+    skipped_blank_competencies. This is the "what
     SHOULD exist" side of the completion report.
     by_grade: {grade_token: [{"subject": name, "topics": [str, ...]}]}
 
@@ -996,6 +1018,7 @@ def _expected_subjects_by_grade(school_id):
     school_ref = db.collection("schools").document(school_id)
     out = defaultdict(list)
     merged_streams = set()
+    skipped_blank_competencies = []
     for doc in school_ref.collection("subjects").stream():
         data = doc.to_dict() or {}
         raw_grade = doc.id.split("_", 1)[0]
@@ -1007,6 +1030,9 @@ def _expected_subjects_by_grade(school_id):
         grade, _ = canonical_grade_section(parsed["grade_token"], parsed["section"] or "")
         name = str(data.get("name") or "").strip()
         if not name:
+            continue
+        if not _subject_has_competencies(data):
+            skipped_blank_competencies.append(f"{grade} {name}")
             continue
         topics = []
         for t in (data.get("topics") or []):
@@ -1020,7 +1046,7 @@ def _expected_subjects_by_grade(school_id):
             if topic_name:
                 topics.append(topic_name)
         out[grade].append({"subject": name, "topics": topics})
-    return out, sorted(merged_streams)
+    return out, sorted(merged_streams), sorted(skipped_blank_competencies)
 
 
 def _scan_school_aap_completion(school_id):
@@ -1154,7 +1180,7 @@ def aap_survey_completion(req: https_fn.CallableRequest) -> dict:
         raise https_fn.HttpsError(
             https_fn.FunctionsErrorCode.INVALID_ARGUMENT, "school_id is required")
 
-    expected_by_grade, merged_stream_grades = _expected_subjects_by_grade(school_id)
+    expected_by_grade, merged_stream_grades, skipped_blank_competencies = _expected_subjects_by_grade(school_id)
     responses_by_key, unparsed = _scan_school_aap_completion(school_id)
     roster_by_class, unresolved_students = _whole_school_roster(school_id)
     grades_with_no_classes = sorted(
@@ -1241,5 +1267,6 @@ def aap_survey_completion(req: https_fn.CallableRequest) -> dict:
             "unresolvedStudents": unresolved_students,
             "gradesWithNoResolvedClasses": grades_with_no_classes,
             "mergedStreamGrades": merged_stream_grades,
+            "skippedBlankCompetencies": skipped_blank_competencies,
         },
     }

@@ -74,6 +74,14 @@
       included, not just its own.
     </div>
 
+    <div v-if="result && result.diagnostics?.skippedBlankCompetencies?.length"
+         class="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 mb-4 text-sm text-slate-600">
+      <i class="pi pi-info-circle mr-1.5"></i>
+      {{ result.diagnostics.skippedBlankCompetencies.length }} subject{{ result.diagnostics.skippedBlankCompetencies.length === 1 ? '' : 's' }}
+      with no curricular goal/competency set in School Setup {{ result.diagnostics.skippedBlankCompetencies.length === 1 ? 'was' : 'were' }} left out of this report entirely:
+      <span class="font-semibold">{{ result.diagnostics.skippedBlankCompetencies.join(', ') }}</span>
+    </div>
+
     <div v-if="rows.length" class="flex items-center gap-2 mb-3 flex-wrap">
       <Select v-model="statusFilter" :options="statusOptions" optionLabel="label" optionValue="value" class="w-52" />
       <InputText v-model="search" class="w-64" size="small" placeholder="Search class, subject, topic…" />
