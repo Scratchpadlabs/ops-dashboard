@@ -60,6 +60,14 @@
         </div>
       </div>
 
+      <div v-if="classId" class="flex items-center gap-2 flex-wrap mt-3">
+        <Button label="Export CSV" icon="pi pi-download" size="small" outlined
+                :disabled="!students.length" @click="exportCsv" />
+        <Button label="Export XLSX" icon="pi pi-file-excel" size="small" outlined
+                :disabled="!students.length" @click="exportXlsx" />
+        <span class="text-xs text-slate-400">Exports one row per student, exactly as listed below.</span>
+      </div>
+
       <p class="text-xs text-slate-400 mt-3">
         Generates one general-conduct comment per student from the ticked boxes on this class's
         Smart Sheets remarks. Remarks already marked approved are left alone — use the regenerate
@@ -142,6 +150,7 @@ import ConfirmDialog from 'primevue/confirmdialog'
 import { useStepUpAuth } from '../composables/useStepUpAuth.js'
 import { useSmartRemarks } from '../composables/useSmartRemarks.js'
 import SmartRemarksTable from '../components/smart-remarks/SmartRemarksTable.vue'
+import { downloadSmartRemarksCsv, downloadSmartRemarksXlsx } from '../utils/smartRemarksExport.js'
 
 /**
  * Smart Remarks — general-conduct report-card comments, generated from the
@@ -307,6 +316,16 @@ async function runGenerate(confirmGenderIssue = false) {
 const onSaved = (studentId) => studentId
   ? reloadStudent(schoolId.value, studentId)
   : loadClass(schoolId.value, classId.value)
+
+function exportCsv() {
+  const count = downloadSmartRemarksCsv(schoolId.value, classId.value, students.value, remarksByStudent.value)
+  toast.add({ severity: 'success', summary: `Exported ${count} rows`, life: 2500 })
+}
+
+function exportXlsx() {
+  const count = downloadSmartRemarksXlsx(schoolId.value, classId.value, students.value, remarksByStudent.value)
+  toast.add({ severity: 'success', summary: `Exported ${count} rows`, life: 2500 })
+}
 
 onMounted(async () => {
   try {
