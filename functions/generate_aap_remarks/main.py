@@ -794,9 +794,16 @@ def _watermark(student_id):
     can still be traced back to a child."""
     def draw(canvas_obj, doc):
         canvas_obj.saveState()
-        if os.path.exists(_BG_TEXTURE_PATH):
-            canvas_obj.drawImage(_BG_TEXTURE_PATH, 0, 0, width=A4[0], height=A4[1],
-                                  preserveAspectRatio=False, mask="auto")
+        try:
+            if os.path.exists(_BG_TEXTURE_PATH):
+                canvas_obj.drawImage(_BG_TEXTURE_PATH, 0, 0, width=A4[0], height=A4[1],
+                                      preserveAspectRatio=False, mask="auto")
+        except Exception:
+            # A bad/missing background asset should never break the PDF the
+            # remarks table is the substance of -- print so it still shows
+            # up in Cloud Logging, but skip the background and carry on.
+            import traceback
+            traceback.print_exc()
         canvas_obj.setFont("Helvetica", 7.5)
         canvas_obj.setFillColor(colors.HexColor("#9ca3af"))
         canvas_obj.drawCentredString(A4[0] / 2, 10 * mm, student_id)
