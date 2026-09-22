@@ -39,8 +39,8 @@
         </div>
         <div class="bg-white rounded-xl border border-slate-200 p-3">
           <div class="text-xs text-slate-400 uppercase tracking-wide font-semibold">Academics</div>
-          <div class="text-2xl font-bold text-slate-900 mt-1">{{ totals.academicsPct }}%</div>
-          <div class="text-[11px] text-slate-400">{{ totals.completedTopics }} / {{ totals.totalTopics }} topics done</div>
+          <div class="text-2xl font-bold text-slate-900 mt-1">{{ totals.academicsEntries }}</div>
+          <div class="text-[11px] text-slate-400">entries · {{ totals.academicsSheets }} sheet(s)</div>
         </div>
         <div class="bg-white rounded-xl border border-slate-200 p-3">
           <div class="text-xs text-slate-400 uppercase tracking-wide font-semibold">Co-Scholastic</div>
@@ -73,12 +73,10 @@
             </template>
           </Column>
 
-          <Column header="Academics" style="min-width:150px">
+          <Column header="Academics" style="min-width:140px">
             <template #body="{ data }">
-              <span class="px-2 py-0.5 rounded-full text-xs font-semibold" :class="ratioClass(data.academics.completedTopics, data.academics.totalTopics)">
-                {{ data.academics.completedTopics }} / {{ data.academics.totalTopics }} topics
-              </span>
-              <div class="text-[11px] text-slate-400 mt-0.5">{{ data.academics.subjectCount }} subject(s)</div>
+              <span class="text-sm text-slate-700">{{ data.academics.entryCount }} entries</span>
+              <div class="text-[11px] text-slate-400">{{ data.academics.sheetCount }} sheet(s)</div>
             </template>
           </Column>
 
@@ -156,11 +154,9 @@ const filteredRows = computed(() => {
 const totals = computed(() => {
   const rows = result.value?.rows || []
   const sum = (fn) => rows.reduce((acc, r) => acc + fn(r), 0)
-  const completedTopics = sum(r => r.academics.completedTopics)
-  const totalTopics = sum(r => r.academics.totalTopics)
   return {
-    completedTopics, totalTopics,
-    academicsPct: totalTopics ? Math.round((completedTopics / totalTopics) * 100) : 0,
+    academicsEntries: sum(r => r.academics.entryCount),
+    academicsSheets: sum(r => r.academics.sheetCount),
     coScholasticEntries: sum(r => r.coScholastic.entryCount),
     coScholasticSheets: sum(r => r.coScholastic.sheetCount),
     attendanceEntries: sum(r => r.attendance.entryCount),
@@ -169,12 +165,4 @@ const totals = computed(() => {
     remarksSheets: sum(r => r.remarks.sheetCount),
   }
 })
-
-function ratioClass(done, total) {
-  if (!total) return 'bg-slate-100 text-slate-500'
-  const pct = done / total
-  if (pct >= 1) return 'bg-green-50 text-green-700'
-  if (pct > 0) return 'bg-amber-50 text-amber-700'
-  return 'bg-slate-100 text-slate-500'
-}
 </script>

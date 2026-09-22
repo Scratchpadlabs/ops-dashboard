@@ -8,13 +8,13 @@ have been made" for each. Read-only, no writes, no model calls.
 Confirmed against real Firestore data (Hillgreen Highschool) before writing
 any of this, via tools/inspect_smart_sheets_structure.py:
 
-  - Academics: classes/{id}.subjects[].topics[] already carries an
-    `isCompleted` flag per topic, set by the teacher app. That is a free
-    signal — no entries subcollection reads needed for this one area, unlike
-    the other three. It is coarser than an entry count (a topic is marked
-    complete as a whole, not per student), and that asymmetry is left
-    visible rather than papered over: academics reports topic completion,
-    the other three report entry counts.
+  - Academics: schools/{id}/smart_sheet_entries docs WITHOUT
+    `type == "co-scholastic"` (i.e. carrying a `subjectId` instead) — same
+    collection as co-scholastic, split by this field, same as the other
+    areas. classes/{id}.subjects[].topics[].isCompleted was used here
+    previously, but that field is unrelated AAP-survey/curricular-goal
+    machinery (see AapSurveyCompletionTab), not marks-entry progress — using
+    it here reported the wrong thing under the "Academics" label.
   - Co-scholastic: schools/{id}/smart_sheet_entries docs with
     `type == "co-scholastic"` (no subjectId) — same collection as academics,
     split by this field. 82 of 414 real docs were this type.
@@ -60,32 +60,23 @@ def _blank_row(class_id, class_name):
     return {
         "classId": class_id,
         "className": class_name,
-        "academics": {"completedTopics": 0, "totalTopics": 0, "subjectCount": 0},
+        "academics": {"sheetCount": 0, "entryCount": 0},
         "coScholastic": {"sheetCount": 0, "entryCount": 0},
         "attendance": {"sheetCount": 0, "entryCount": 0},
         "remarks": {"sheetCount": 0, "entryCount": 0},
     }
 
 
-def _academics_from_classes(school_ref, rows):
-    """No entries reads — classes/{id}.subjects[].topics[].isCompleted is
-    already the completion signal the teacher app maintains."""
+def _init_rows_from_classes(school_ref, rows):
+    """Seeds one blank row per active class, so every roll-up below has
+    somewhere to land (and classes with zero sheets in every area still
+    show up)."""
     for doc in school_ref.collection("classes").stream():
         data = doc.to_dict() or {}
         if data.get("isActive") is False:
             continue
         row = rows.setdefault(doc.id, _blank_row(doc.id, data.get("name") or doc.id))
         row["className"] = data.get("name") or doc.id
-        subjects = data.get("subjects") or []
-        total = completed = 0
-        for subject in subjects:
-            for topic in (subject.get("topics") or []):
-                total += 1
-                if topic.get("isCompleted"):
-                    completed += 1
-        row["academics"] = {
-            "completedTopics": completed, "totalTopics": total, "subjectCount": len(subjects),
-        }
 
 
 def _count_entries(doc_ref):
@@ -122,7 +113,7 @@ def sheets_overview(req: https_fn.CallableRequest) -> dict:
     Returns:
       rows: one per active class —
         { classId, className,
-          academics: { completedTopics, totalTopics, subjectCount },
+          academics: { sheetCount, entryCount },
           coScholastic: { sheetCount, entryCount },
           attendance: { sheetCount, entryCount },
           remarks: { sheetCount, entryCount } }
@@ -141,9 +132,12 @@ def sheets_overview(req: https_fn.CallableRequest) -> dict:
     school_ref = db.collection("schools").document(school_id)
 
     rows = {}
-    _academics_from_classes(school_ref, rows)
+    _init_rows_from_classes(school_ref, rows)
 
     unknown = {}
+    unknown["academics"] = _roll_up_sheets(
+        school_ref, "smart_sheet_entries", rows, "academics",
+        classify=lambda d: str(d.get("type") or "").strip().lower() != "co-scholastic")
     unknown["coScholastic"] = _roll_up_sheets(
         school_ref, "smart_sheet_entries", rows, "coScholastic",
         classify=lambda d: str(d.get("type") or "").strip().lower() == "co-scholastic")
