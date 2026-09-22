@@ -81,6 +81,7 @@ import base64
 import datetime
 import io
 import math
+import os
 import random
 import re
 import time
@@ -784,11 +785,18 @@ def _centered(name, **kwargs):
     return _pdf_style(name, alignment=TA_CENTER, **kwargs)
 
 
+_BG_TEXTURE_PATH = os.path.join(os.path.dirname(__file__), "bg_texture.png")
+
+
 def _watermark(student_id):
-    """Stamped at the bottom of the page so a loose printout or a file that
-    gets separated from the rest can still be traced back to a child."""
+    """Draws the page background texture, then stamps the student id at the
+    bottom so a loose printout or a file that gets separated from the rest
+    can still be traced back to a child."""
     def draw(canvas_obj, doc):
         canvas_obj.saveState()
+        if os.path.exists(_BG_TEXTURE_PATH):
+            canvas_obj.drawImage(_BG_TEXTURE_PATH, 0, 0, width=A4[0], height=A4[1],
+                                  preserveAspectRatio=False, mask="auto")
         canvas_obj.setFont("Helvetica", 7.5)
         canvas_obj.setFillColor(colors.HexColor("#9ca3af"))
         canvas_obj.drawCentredString(A4[0] / 2, 10 * mm, student_id)
