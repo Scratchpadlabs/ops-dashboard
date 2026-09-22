@@ -1169,6 +1169,11 @@ def aap_survey_completion(req: https_fn.CallableRequest) -> dict:
         { classId, subject, topic, teacherId, expectedStudents,
           respondedStudents, status: "not_started"|"partial"|"complete",
           gaps: [{ studentId, studentName, missing: [trait, ...] }] }
+        respondedStudents is roster students with EVERY question answered
+        (expectedStudents - len(gaps)) — never the raw count of distinct
+        student ids in the response payload, which can equal the roster size
+        by coincidence while naming a different set of students than the
+        gaps list.
       unmatchedSubjectTokens: survey subject tokens that resolved to no
         school-setup subject in their grade at all.
       unparsedResponses: response doc ids that don't fit the naming
@@ -1242,11 +1247,19 @@ def aap_survey_completion(req: https_fn.CallableRequest) -> dict:
         gaps = make_gaps(roster, responded_students)
         status = "complete" if roster and not gaps else ("partial" if responded_students else "not_started")
 
+        # NOT len(responded_students) — that counts every distinct student id
+        # appearing anywhere in the response payload, which can equal the
+        # roster size by coincidence while actually being a different set of
+        # students (e.g. a stale/duplicate id in the response that isn't on
+        # today's roster, alongside a real roster student who never answered
+        # at all). That produced "32 / 32 responded" next to two students
+        # showing every question pending. Counted against the roster instead,
+        # so this number can never contradict the gaps list.
         subject_out = resolved_subject or subject_token
         rows.append({
             "classId": class_id, "subject": subject_out, "subjectToken": subject_token,
             "topic": topic, "teacherId": entry["teacher_id"],
-            "expectedStudents": len(roster), "respondedStudents": len(responded_students),
+            "expectedStudents": len(roster), "respondedStudents": len(roster) - len(gaps),
             "status": status, "gaps": gaps,
         })
         seen_keys.add((class_id, subject_out, topic))
