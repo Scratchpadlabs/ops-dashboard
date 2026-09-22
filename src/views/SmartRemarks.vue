@@ -113,7 +113,8 @@
     </div>
     <div v-else-if="scan && scan.multipleSheetsFound && !running" class="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4 text-sm text-amber-900">
       <i class="pi pi-exclamation-triangle mr-1.5"></i>
-      More than one remarks sheet was found for this class — the most recently edited one was used.
+      More than one remarks sheet was found for this class — ticks from every sheet were merged
+      (a key ticked differently across sheets uses whichever sheet was edited most recently).
     </div>
 
     <!-- ── Review table ──────────────────────────────────────────────────── -->
@@ -234,6 +235,7 @@ async function reload() {
     scan.value = await scanRemote({ schoolId: schoolId.value, classId: classId.value })
   } catch (e) {
     console.error('Could not check this class\'s remarks sheet', e)
+    toast.add({ severity: 'error', summary: 'Could not check this class\'s remarks sheet', detail: e.message, life: 5000 })
   }
 }
 
@@ -255,7 +257,7 @@ function stopWatching() {
 }
 
 const hasRemarks = computed(() =>
-  Object.values(remarksByStudent.value).some(r => r))
+  Object.values(remarksByStudent.value).some(r => r && r.length))
 
 function confirmGenerate() {
   if (!hasRemarks.value) { runGenerate(); return }

@@ -1,18 +1,20 @@
 /**
- * Smart Remarks export — CSV and XLSX, one row per student.
+ * Smart Remarks export — CSV and XLSX, one row per (student, category).
  *
- * Simpler than aapExport.js: there's no subject dimension here, so one row
- * per student is the whole export, not a pivot over anything. Students with
- * no remark still get a row (blank comment) — same reasoning as AAP's
- * export: "who has nothing yet" is one of the questions this file gets
- * opened to answer.
+ * Unlike aapExport.js's subject pivot, categories aren't fixed columns —
+ * they're separate rows, since a student can have anywhere from zero to
+ * several category remarks (General Remarks, Physical Development, ...),
+ * each independently written and reviewed. A student with nothing
+ * generated yet still gets one row (blank comment) — same reasoning as
+ * AAP's export: "who has nothing yet" is one of the questions this file
+ * gets opened to answer.
  */
 import * as XLSX from 'xlsx'
 
 import { toCsv, downloadCsv } from './csv.js'
 
 export const COLUMNS = [
-  'Student', 'Roll No', 'Student ID', 'Ticked Count', 'Comment', 'Status',
+  'Student', 'Roll No', 'Student ID', 'Category', 'Ticked Count', 'Comment', 'Status',
   'Low Confidence', 'Last Updated', 'Updated By',
 ]
 
@@ -24,24 +26,30 @@ function formatTimestamp(value) {
   })
 }
 
+function remarkRow(student, remark) {
+  return {
+    Student: student.name || student.id,
+    'Roll No': student.rollNo || '',
+    'Student ID': student.id,
+    Category: remark?.category || '',
+    'Ticked Count': remark?.tickedCount ?? '',
+    Comment: remark?.comment || (remark ? '' : 'No remarks ticked yet'),
+    Status: remark?.status || '',
+    'Low Confidence': remark?.lowConfidence ? 'Yes' : '',
+    'Last Updated': formatTimestamp(remark?.updatedAt),
+    'Updated By': remark?.updatedBy || '',
+  }
+}
+
 /**
  * @param students          roster rows ({ id, name, rollNo })
- * @param remarksByStudent  { studentId: remark doc | null }
+ * @param remarksByStudent  { studentId: [remark doc, ...] }
  */
 export function buildRows(students, remarksByStudent) {
-  return (students || []).map(student => {
-    const remark = remarksByStudent?.[student.id]
-    return {
-      Student: student.name || student.id,
-      'Roll No': student.rollNo || '',
-      'Student ID': student.id,
-      'Ticked Count': remark?.tickedCount ?? '',
-      Comment: remark?.comment || (remark ? '' : 'No remarks ticked yet'),
-      Status: remark?.status || '',
-      'Low Confidence': remark?.lowConfidence ? 'Yes' : '',
-      'Last Updated': formatTimestamp(remark?.updatedAt),
-      'Updated By': remark?.updatedBy || '',
-    }
+  return (students || []).flatMap(student => {
+    const remarks = remarksByStudent?.[student.id] || []
+    if (!remarks.length) return [remarkRow(student, null)]
+    return remarks.map(remark => remarkRow(student, remark))
   })
 }
 

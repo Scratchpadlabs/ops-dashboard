@@ -404,16 +404,23 @@ export async function listSmartRemarksRemote({ schoolId, studentIds }) {
   return res.data
 }
 
-export async function updateSmartRemarkRemote({ schoolId, studentId, comment, status }) {
-  const payload = { school_id: schoolId, student_id: studentId }
+export async function updateSmartRemarkRemote({ schoolId, studentId, categorySlug, comment, status }) {
+  const payload = { school_id: schoolId, student_id: studentId, category_slug: categorySlug }
   if (comment != null) payload.comment = comment
   if (status != null) payload.status = status
   const res = await updateSmartRemarkCallable(payload)
   return res.data
 }
 
-export async function bulkUpdateSmartRemarksRemote({ schoolId, studentIds, status }) {
-  const res = await bulkUpdateSmartRemarksCallable({ school_id: schoolId, student_ids: studentIds, status })
+// `items` is [{ studentId, categorySlug }, ...] — bulk actions apply to one
+// specific (student, category) remark each, not every category a student has.
+export async function bulkUpdateSmartRemarksRemote({ schoolId, items, status }) {
+  const payload = {
+    school_id: schoolId,
+    items: items.map(i => ({ student_id: i.studentId, category_slug: i.categorySlug })),
+    status,
+  }
+  const res = await bulkUpdateSmartRemarksCallable(payload)
   return res.data
 }
 

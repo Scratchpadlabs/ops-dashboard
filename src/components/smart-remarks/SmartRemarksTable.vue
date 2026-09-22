@@ -7,7 +7,7 @@
         <label for="smartNeedsReview" class="text-sm text-slate-600">Needs review only</label>
       </div>
       <span class="text-xs text-slate-400">
-        {{ visibleCount }} of {{ totalCount }} students · {{ approvedCount }} approved
+        {{ visibleCount }} of {{ totalCount }} remarks · {{ approvedCount }} approved
       </span>
       <span v-if="saving" class="text-xs text-slate-400"><i class="pi pi-spin pi-spinner text-xs mr-1"></i>saving…</span>
       <Button
@@ -30,12 +30,12 @@
     </div>
 
     <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
-      <DataTable :value="rows" dataKey="studentId" size="small" scrollable scrollHeight="560px">
+      <DataTable :value="rows" dataKey="rowKey" size="small" scrollable scrollHeight="560px">
         <Column style="width:44px">
           <template #body="{ data }">
             <Checkbox
-              v-if="!data.empty" :modelValue="selectedKeys.has(data.studentId)" binary
-              @update:modelValue="v => toggleRow(data.studentId, v)"
+              v-if="!data.empty" :modelValue="selectedKeys.has(data.rowKey)" binary
+              @update:modelValue="v => toggleRow(data.rowKey, v)"
             />
           </template>
         </Column>
@@ -48,6 +48,12 @@
               </div>
               <div class="text-[11px] text-slate-400">Roll {{ data.rollNo || '—' }}</div>
             </div>
+          </template>
+        </Column>
+
+        <Column header="Category" style="min-width:160px">
+          <template #body="{ data }">
+            <span v-if="!data.empty" class="text-xs font-medium text-slate-600">{{ data.category }}</span>
           </template>
         </Column>
 
@@ -142,15 +148,18 @@ import Checkbox from 'primevue/checkbox'
 import { useSmartRemarks, STATUS_APPROVED, STATUS_NEEDS_REVIEW } from '../../composables/useSmartRemarks.js'
 
 /**
- * The review table: one row per student (not per subject — this is a single
- * general-conduct remark, not one per topic). Editing and status toggling
- * write straight to the remark doc; regenerating a single student belongs to
- * the parent, same split as AapRemarksTable.
+ * The review table: one row per (student, category) — General Remarks,
+ * Physical Development, Socio-Emotional Development, etc. are independent
+ * remarks, never blended into one, so each gets its own row. A student with
+ * nothing generated yet still gets a single placeholder row. Editing and
+ * status toggling write straight to that category's remark doc;
+ * regenerating a single student belongs to the parent, same split as
+ * AapRemarksTable.
  */
 const props = defineProps({
   schoolId: { type: String, default: null },
   students: { type: Array, default: () => [] },
-  remarksByStudent: { type: Object, default: () => ({}) },
+  remarksByStudent: { type: Object, default: () => ({}) }, // { studentId: [remark, ...] }
 })
 const emit = defineEmits(['saved'])
 
@@ -162,16 +171,21 @@ const needsReviewOnly = ref(false)
 const saving = ref(false)
 const selectedKeys = ref(new Set())
 
-const allRows = computed(() => props.students.map(student => {
-  const remark = props.remarksByStudent[student.id]
-  if (!remark) {
-    return { studentId: student.id, studentName: student.name || student.id, rollNo: student.rollNo, empty: true }
+const allRows = computed(() => props.students.flatMap(student => {
+  const remarks = props.remarksByStudent[student.id] || []
+  const studentName = student.name || student.id
+  if (!remarks.length) {
+    return [{
+      rowKey: student.id, studentId: student.id, studentName, rollNo: student.rollNo, empty: true,
+    }]
   }
-  return {
-    studentId: student.id, studentName: student.name || student.id, rollNo: student.rollNo, empty: false,
+  return remarks.map(remark => ({
+    rowKey: `${student.id}::${remark.categorySlug}`,
+    studentId: student.id, studentName, rollNo: student.rollNo, empty: false,
+    categorySlug: remark.categorySlug, category: remark.category || '',
     comment: remark.comment || '', status: remark.status || STATUS_NEEDS_REVIEW,
     tickedCount: remark.tickedCount || 0, lowConfidence: !!remark.lowConfidence,
-  }
+  }))
 }))
 
 watch(() => props.students, () => clearSelection())
@@ -191,28 +205,28 @@ const approvedCount = computed(() => allRows.value.filter(r => r.status === STAT
 
 const selectableRows = computed(() => rows.value.filter(r => !r.empty))
 const allSelected = computed(() =>
-  selectableRows.value.length > 0 && selectableRows.value.every(r => selectedKeys.value.has(r.studentId)))
+  selectableRows.value.length > 0 && selectableRows.value.every(r => selectedKeys.value.has(r.rowKey)))
 
-function toggleRow(studentId, checked) {
+function toggleRow(rowKey, checked) {
   const next = new Set(selectedKeys.value)
-  if (checked) next.add(studentId)
-  else next.delete(studentId)
+  if (checked) next.add(rowKey)
+  else next.delete(rowKey)
   selectedKeys.value = next
 }
 
 function toggleSelectAll() {
   selectedKeys.value = allSelected.value
     ? new Set()
-    : new Set(selectableRows.value.map(r => r.studentId))
+    : new Set(selectableRows.value.map(r => r.rowKey))
 }
 
 const clearSelection = () => { selectedKeys.value = new Set() }
 
 async function applyBulk(status) {
-  const visible = new Set(selectableRows.value.map(r => r.studentId))
+  const visible = new Set(selectableRows.value.map(r => r.rowKey))
   const targets = selectableRows.value
-    .filter(r => selectedKeys.value.has(r.studentId) && visible.has(r.studentId))
-    .map(r => r.studentId)
+    .filter(r => selectedKeys.value.has(r.rowKey) && visible.has(r.rowKey))
+    .map(r => ({ studentId: r.studentId, categorySlug: r.categorySlug }))
   if (!targets.length) return
 
   saving.value = true
@@ -238,7 +252,9 @@ const editing = ref(null)
 const draft = ref('')
 
 const wordCount = computed(() => draft.value.trim().split(/\s+/).filter(Boolean).length)
-const editorHeader = computed(() => editing.value ? editing.value.studentName : 'Edit comment')
+const editorHeader = computed(() => editing.value
+  ? `${editing.value.studentName} — ${editing.value.category}`
+  : 'Edit comment')
 
 function openEditor(row) {
   editing.value = row
@@ -249,7 +265,7 @@ function openEditor(row) {
 async function save() {
   saving.value = true
   try {
-    await saveComment(props.schoolId, editing.value.studentId, draft.value.trim())
+    await saveComment(props.schoolId, editing.value.studentId, editing.value.categorySlug, draft.value.trim())
     editorVisible.value = false
     emit('saved', editing.value.studentId)
     toast.add({ severity: 'success', summary: 'Saved & approved', life: 2000 })
@@ -265,7 +281,7 @@ async function toggleStatus(row) {
   const next = row.status === STATUS_APPROVED ? STATUS_NEEDS_REVIEW : STATUS_APPROVED
   saving.value = true
   try {
-    await setStatus(props.schoolId, row.studentId, next)
+    await setStatus(props.schoolId, row.studentId, row.categorySlug, next)
     emit('saved', row.studentId)
   } catch (e) {
     console.error('Could not change smart remark status', e)
