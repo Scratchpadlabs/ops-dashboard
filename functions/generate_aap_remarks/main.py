@@ -758,12 +758,19 @@ def save_aap_subject_mapping(req: https_fn.CallableRequest) -> dict:
 
 _NAVY = colors.HexColor("#1c3a5e")
 _GOLD = colors.HexColor("#f2b632")
-_ROW_BG = colors.HexColor("#f7f8f9")
 _BORDER = colors.HexColor("#d6dbe0")
 _LEVEL_COLOR = {
     "Beginner": colors.HexColor("#d97706"),
     "Proficient": colors.HexColor("#16a34a"),
     "Advanced": colors.HexColor("#15803d"),
+}
+# Row tint keyed by TRAIT, not alternated per subject block — every
+# Awareness row across every subject gets the same tint, same for
+# Sensitivity/Creativity, matching the reference sample exactly.
+_TRAIT_BG = {
+    "awareness": colors.HexColor("#fdf1e6"),
+    "sensitivity": colors.HexColor("#f2f8ee"),
+    "creativity": colors.HexColor("#eef2fb"),
 }
 
 
@@ -784,7 +791,7 @@ def _watermark(student_id):
         canvas_obj.saveState()
         canvas_obj.setFont("Helvetica", 7.5)
         canvas_obj.setFillColor(colors.HexColor("#9ca3af"))
-        canvas_obj.drawCentredString(A4[0] / 2, 10 * mm, f"Student ID: {student_id}")
+        canvas_obj.drawCentredString(A4[0] / 2, 10 * mm, student_id)
         canvas_obj.restoreState()
     return draw
 
@@ -808,12 +815,16 @@ def _build_student_summary_pdf(student_id, remarks):
     )
     header.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), _NAVY),
+        ("ROUNDEDCORNERS", (0, 0), (-1, -1), [10, 10, 10, 10]),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
     ]))
     story.append(header)
 
     gold = Table([[""]], colWidths=[W - 2 * M], rowHeights=[3 * mm])
-    gold.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), _GOLD)]))
+    gold.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), _GOLD),
+        ("ROUNDEDCORNERS", (0, 0), (-1, -1), [4, 4, 4, 4]),
+    ]))
     story.append(gold)
     story.append(Spacer(1, 6 * mm))
 
@@ -839,17 +850,21 @@ def _build_student_summary_pdf(student_id, remarks):
                 Paragraph(f"<b>{level}</b>", _centered("lvl", textColor=_LEVEL_COLOR.get(level, colors.black))),
                 Paragraph(comment, _pdf_style("cm", alignment=TA_JUSTIFY)) if trait == "awareness" else "",
             ])
+            # Tint keyed by trait, restricted to the Abilities/Descriptors
+            # columns — the Subject and Summary columns (spanned across all
+            # three trait rows) stay plain white, matching the reference.
+            shading.append(("BACKGROUND", (1, r), (2, r), _TRAIT_BG[trait]))
             r += 1
         spans.append(("SPAN", (0, start), (0, start + 2)))
         spans.append(("SPAN", (3, start), (3, start + 2)))
-        if len(shading) % 2 == 0:
-            shading.append(("BACKGROUND", (0, start), (-1, start + 2), _ROW_BG))
-        else:
-            shading.append(("BACKGROUND", (0, start), (-1, start + 2), colors.white))
 
     table = Table(rows, colWidths=col_w, repeatRows=1)
     table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), _GOLD),
+        # Only the "Performance Level Descriptors" header cell is gold —
+        # the other three headers stay white with a bottom border, matching
+        # the reference sample rather than a solid gold header row.
+        ("BACKGROUND", (2, 0), (2, 0), _GOLD),
+        ("LINEBELOW", (0, 0), (-1, 0), 1, _NAVY),
         ("GRID", (0, 0), (-1, -1), 0.5, _BORDER),
         ("ALIGN", (0, 0), (-1, -1), "CENTER"),
         # Every cell centers horizontally by default (ALIGN above); the
