@@ -2,11 +2,15 @@
 Cloud Function: generate_smart_remarks (+ list_smart_remarks, update_smart_remark,
 bulk_update_smart_remarks — same source directory)
 
-Generates a consolidated general-conduct remark per student from the "Smart
-Sheets" remarks system, NOT the AAP survey (functions/generate_aap_remarks —
+Generates one general-conduct remark PER CATEGORY per student from the
+"Smart Sheets" remarks system, NOT the AAP survey (functions/generate_aap_remarks —
 a different feature entirely, subject-scoped Awareness/Sensitivity/
-Creativity ratings). This one turns a teacher's ticked checkboxes into one
-written paragraph per child.
+Creativity ratings). This one turns a teacher's ticked checkboxes into a
+written paragraph per child, one per remark category (General Remarks,
+Physical Development, Socio-Emotional Development, Cognitive Development,
+Aesthetic and Cultural Development, ...) — never blended into a single
+combined paragraph. Categories are independent write-ups because they are
+commonly ticked by different teachers at different times (see below).
 
 THE DATA (confirmed against real Firestore data, Hillgreen Highschool, before
 writing a line of this):
@@ -19,12 +23,29 @@ writing a line of this):
     tab enforces this and never lets a key be renumbered once any ticking
     exists (see src/utils/remarksImport.js's module docstring). That is what
     makes resolving a ticked key an exact dict lookup here, not a fuzzy
-    match like AAP's subject aliasing has to do.
+    match like AAP's subject aliasing has to do. The bank doc's own id
+    (e.g. "Foundational_General") is used as the stable `categorySlug` that
+    ties a ticked key back to one written remark — never the human-editable
+    `label`, which can be renamed in School Setup.
   - schools/{id}/remarks_sheets/{sheetId} (+entries/{studentId}) — the ticks
-    themselves, one sheet per class, created by the TEACHER APP on demand
-    (this dashboard never creates one). entries/{studentId} is a flat
-    {remarkKey: bool} map — no category or grade stored alongside it, since
-    the key alone already means one specific statement.
+    themselves, created by the TEACHER APP on demand (this dashboard never
+    creates one). entries/{studentId} is a flat {remarkKey: bool} map — no
+    category or grade stored alongside it, since the key alone already means
+    one specific statement.
+
+    Nothing in the schema enforces exactly one sheet per class — confirmed
+    by functions/sheets_overview: some classes had 3-4 remarks_sheets docs
+    (different tabs/teachers ticking different categories at different
+    times, or plain duplicates). Earlier code picked only the single
+    most-recently-edited sheet and silently discarded every other sheet's
+    ticks — a real data-loss bug (a teacher's ticks in an older sheet would
+    vanish the moment any other sheet for the class was touched, even a
+    near-empty one). This file now reads and merges entries from EVERY
+    remarks_sheets doc for the class instead: sheets are folded together
+    oldest-to-newest so a more-recently-edited sheet's value for a given key
+    wins if sheets actually disagree, but a key that exists in only one
+    sheet is never lost because a different sheet happened to be edited more
+    recently. See _fetch_merged_entries.
 
 THE ONE NON-OBVIOUS JOIN: a class's remark band is NOT the same string as its
 `stage` field. classes/{id}.stage takes schoolSchema.js's STAGES values
@@ -167,15 +188,20 @@ def _resolve_band(school_ref, class_id):
 
 
 def _fetch_remark_bank(school_ref, band):
-    """key -> {category, text, type} across every remark_categories doc that
-    applies to this band (doc id "{band}_{category}", or unprefixed = every
-    band). Exact-key index — see module docstring for why this needs no
-    fuzzy matching the way AAP's subject resolution does.
+    """key -> {category, categorySlug, text, type} across every
+    remark_categories doc that applies to this band (doc id
+    "{band}_{category}", or unprefixed = every band). Exact-key index — see
+    module docstring for why this needs no fuzzy matching the way AAP's
+    subject resolution does.
 
-    Returns (index, categories_in_order) — categories_in_order is every
-    category label that contributed at least one key, in the order
-    encountered, so the prompt can group observations the same way the bank
-    itself is organised.
+    `categorySlug` is the remark_categories doc's own id — a stable
+    identifier for "which category this key belongs to" that survives the
+    category being relabelled in School Setup (the `label` doesn't).
+
+    Returns (index, categories_in_order) — categories_in_order is
+    [{slug, label, order}, ...] for every category that contributed at
+    least one key, in the order encountered, so per-category remarks can be
+    listed/sorted the same way the bank itself is organised.
     """
     index = {}
     categories = []
@@ -190,32 +216,46 @@ def _fetch_remark_bank(school_ref, band):
         remarks = data.get("remarks") or []
         if not remarks:
             continue
-        categories.append(label)
+        categories.append({"slug": doc.id, "label": label, "order": data.get("order") or 0})
         for r in remarks:
             key = r.get("key")
             if not key:
                 continue
             index[key] = {
                 "category": label,
+                "categorySlug": doc.id,
                 "text": str(r.get("text") or "").strip(),
                 "type": r.get("type") or "positive",
             }
     return index, categories
 
 
-def _find_remarks_sheet(school_ref, class_id):
-    """The remarks_sheets doc for this class. Nothing in the schema enforces
-    exactly one per class, so the most recently edited wins and the count is
-    returned for the caller to surface — silently picking one is fine, but
-    silently HIDING that there were several is not.
+def _fetch_merged_entries(school_ref, class_id, roster_ids):
+    """Every remarks_sheets doc for this class, merged into one
+    {studentId: {remarkKey: bool}} map per student.
 
-    Returns (sheet_ref, sheet_count).
+    Nothing enforces one sheet per class (see module docstring), so this
+    reads ALL of them rather than guessing which one is "the" sheet. Sheets
+    are processed oldest-edited to newest-edited, updating (not replacing)
+    each student's dict as we go — a key that only ever appears in one sheet
+    survives untouched, and a key ticked differently across sheets resolves
+    to whatever the most-recently-edited sheet says, which is the closest
+    read of "what a teacher most recently intended" available from this data.
+
+    Returns (entries_by_student, sheet_refs, sheet_count).
     """
     docs = list(school_ref.collection("remarks_sheets").where("classId", "==", class_id).stream())
     if not docs:
-        return None, 0
-    docs.sort(key=lambda d: (d.to_dict() or {}).get("lastEditedAt") or 0, reverse=True)
-    return docs[0].reference, len(docs)
+        return {sid: {} for sid in roster_ids}, [], 0
+    docs.sort(key=lambda d: (d.to_dict() or {}).get("lastEditedAt") or 0)  # oldest first
+
+    entries_by_student = {sid: {} for sid in roster_ids}
+    for doc in docs:
+        for sid in roster_ids:
+            entry_doc = doc.reference.collection("entries").document(sid).get()
+            if entry_doc.exists:
+                entries_by_student[sid].update(entry_doc.to_dict() or {})
+    return entries_by_student, [d.reference for d in docs], len(docs)
 
 
 def _fetch_students(school_ref, student_ids):
@@ -268,36 +308,27 @@ def _class_roster(school_ref, class_id):
     return out
 
 
-def generate_smart_comment(ai, first_name, gender, ticked, used_openings=None):
-    """One consolidated remark from a student's ticked statements.
-    `ticked` is [{category, text, type}, ...] — already resolved, already
-    filtered to items this student actually has ticked true.
+def generate_smart_comment(ai, first_name, gender, category_label, ticked, used_openings=None):
+    """One remark, scoped to a SINGLE remark category, from a student's
+    ticked statements in that category. `ticked` is [{text, type}, ...] —
+    already resolved, already filtered to items this student actually has
+    ticked true, all belonging to `category_label`.
+
+    Categories are written up independently rather than blended into one
+    combined paragraph — see module docstring for why (different teachers,
+    different tabs, different sheets, different times).
     """
     used_openings = used_openings if used_openings is not None else set()
     pronoun = "He" if gender.strip().lower().startswith(("m", "boy")) else "She"
     his_her = "his" if pronoun == "He" else "her"
 
-    by_category = defaultdict(list)
-    for item in ticked:
-        by_category[item["category"]].append(item)
-    multi_category = len(by_category) > 1
     low_confidence = len(ticked) < LOW_CONFIDENCE_THRESHOLD
 
-    lines = []
-    for category, items in by_category.items():
-        positives = [i["text"] for i in items if i["type"] != "negative"]
-        negatives = [i["text"] for i in items if i["type"] == "negative"]
-        parts = positives + [f"(growth area) {n}" for n in negatives]
-        lines.append(f"- {category}: " + "; ".join(parts))
-    observations = "\n".join(lines)
+    positives = [i["text"] for i in ticked if i["type"] != "negative"]
+    negatives = [i["text"] for i in ticked if i["type"] == "negative"]
+    parts = positives + [f"(growth area) {n}" for n in negatives]
+    observations = "; ".join(parts)
 
-    structure_note = (
-        "This student's observations span more than one category, listed above — "
-        "structure the comment as one short clause per category, in the order given, "
-        "so each category's own observations clearly come through."
-        if multi_category else
-        "Blend all the observations into ONE natural paragraph — do not list them mechanically."
-    )
     confidence_note = (
         "\n- Only a few observations were ticked for this student so far — write in a way "
         "that reads as an early impression rather than a complete assessment, without saying "
@@ -309,17 +340,17 @@ def generate_smart_comment(ai, first_name, gender, ticked, used_openings=None):
     avoid_line = ("\n- Do NOT open with any of these phrasings, already used for "
                   f"other students in this class: {'; '.join(avoid)}" if avoid else "")
 
-    prompt = f"""You are a warm, caring schoolteacher writing a general conduct/behavior remark for a report card — NOT a subject-specific comment.
+    prompt = f"""You are a warm, caring schoolteacher writing a "{category_label}" remark for a report card.
 
 Student first name: {first_name}
 Pronoun: {pronoun}/{his_her}
 
-Observations the teacher ticked for this student, grouped by category:
+Observations the teacher ticked for this student under "{category_label}":
 {observations}
 
 Style instructions:
 - The comment {SENTENCE_STARTERS[len(used_openings) % len(SENTENCE_STARTERS)]}
-- {structure_note}{confidence_note}
+- Blend all the observations into ONE natural paragraph — do not list them mechanically.{confidence_note}
 - {CLOSINGS[len(used_openings) % len(CLOSINGS)]}
 - Write like a real teacher — simple, warm, everyday language parents and children understand easily
 - Use {first_name}'s name once near the start
@@ -379,15 +410,18 @@ def generate_smart_remarks(req: https_fn.CallableRequest) -> dict:
         )
 
     remark_bank, categories = _fetch_remark_bank(school_ref, band)
-    sheet_ref, sheet_count = _find_remarks_sheet(school_ref, class_id)
+    category_labels = [c["label"] for c in categories]
     roster_ids = _class_roster(school_ref, class_id)
     if only_student_ids:
         roster_ids = [sid for sid in roster_ids if sid in only_student_ids]
 
-    if sheet_ref is None:
+    entries_by_student, sheet_refs, sheet_count = _fetch_merged_entries(school_ref, class_id, roster_ids)
+    sheet_ids = [s.id for s in sheet_refs]
+
+    if not sheet_refs:
         payload = {
             "band": band, "classId": class_id, "students": len(roster_ids),
-            "categories": categories, "sheetFound": False,
+            "categories": category_labels, "sheetFound": False,
             "multipleSheetsFound": False, "genderIssue": None,
         }
         if scan_only:
@@ -397,17 +431,12 @@ def generate_smart_remarks(req: https_fn.CallableRequest) -> dict:
             "No remarks sheet exists yet for this class — nothing has been ticked by a teacher.",
         )
 
-    entries_by_student = {}
-    for sid in roster_ids:
-        doc = sheet_ref.collection("entries").document(sid).get()
-        entries_by_student[sid] = doc.to_dict() if doc.exists else {}
-
     students = _fetch_students(school_ref, roster_ids)
     g_issue = gender_issue(roster_ids, students)
 
     scan_payload = {
         "band": band, "classId": class_id, "students": len(roster_ids),
-        "categories": categories, "sheetFound": True,
+        "categories": category_labels, "sheetFound": True,
         "multipleSheetsFound": sheet_count > 1, "genderIssue": g_issue,
     }
     if scan_only:
@@ -429,7 +458,7 @@ def generate_smart_remarks(req: https_fn.CallableRequest) -> dict:
         "totalStudents": len(roster_ids), "processedStudents": 0,
     })
 
-    used_openings = set()
+    used_openings_by_category = defaultdict(set)
     processed = written = skipped_approved = skipped_no_ticks = 0
 
     try:
@@ -437,37 +466,51 @@ def generate_smart_remarks(req: https_fn.CallableRequest) -> dict:
             info = students.get(sid, {"name": sid, "gender": ""})
             first_name = get_first_name(info["name"])
 
-            doc_ref = (school_ref.collection("students").document(sid)
-                       .collection("smart_remarks").document("current"))
-            existing = doc_ref.get()
-            if (existing.exists and existing.to_dict().get("status") == "approved"
-                    and not only_student_ids):
-                processed += 1
-                skipped_approved += 1
-                continue
-
             entry = entries_by_student.get(sid) or {}
             ticked_keys = [k for k, v in entry.items() if v and k in remark_bank]
-            ticked = [remark_bank[k] for k in ticked_keys]
-            if not ticked:
-                processed += 1
-                skipped_no_ticks += 1
-                continue
 
-            comment = generate_smart_comment(ai, first_name, info["gender"], ticked,
-                                              used_openings=used_openings)
+            # Group this student's ticked keys by category — one remark per
+            # category, never one blended remark across categories.
+            by_category = defaultdict(list)
+            for key in ticked_keys:
+                item = remark_bank[key]
+                by_category[item["categorySlug"]].append({**item, "key": key})
 
-            doc_ref.set({
-                "classId": class_id, "band": band, "sheetId": sheet_ref.id,
-                "tickedKeys": ticked_keys, "tickedCount": len(ticked),
-                "lowConfidence": len(ticked) < LOW_CONFIDENCE_THRESHOLD,
-                "comment": comment, "status": "needs_review",
-                "updatedAt": firestore.SERVER_TIMESTAMP,
-            })
+            student_remarks_ref = school_ref.collection("students").document(sid).collection("smart_remarks")
+
+            for cat in categories:
+                slug = cat["slug"]
+                cat_ticked = by_category.get(slug) or []
+                doc_ref = student_remarks_ref.document(slug)
+
+                if not cat_ticked:
+                    skipped_no_ticks += 1
+                    continue
+
+                existing = doc_ref.get()
+                if (existing.exists and existing.to_dict().get("status") == "approved"
+                        and not only_student_ids):
+                    skipped_approved += 1
+                    continue
+
+                comment = generate_smart_comment(
+                    ai, first_name, info["gender"], cat["label"], cat_ticked,
+                    used_openings=used_openings_by_category[slug],
+                )
+
+                doc_ref.set({
+                    "classId": class_id, "band": band, "sheetIds": sheet_ids,
+                    "category": cat["label"], "categorySlug": slug, "categoryOrder": cat["order"],
+                    "tickedKeys": [i["key"] for i in cat_ticked], "tickedCount": len(cat_ticked),
+                    "lowConfidence": len(cat_ticked) < LOW_CONFIDENCE_THRESHOLD,
+                    "comment": comment, "status": "needs_review",
+                    "updatedAt": firestore.SERVER_TIMESTAMP,
+                })
+                written += 1
+                time.sleep(0.3)
+
             processed += 1
-            written += 1
             job_ref.update({"processedStudents": processed, "writtenRemarks": written})
-            time.sleep(0.3)
     except Exception as e:
         job_ref.update({
             "status": "failed", "error": str(e)[:500],
@@ -498,7 +541,15 @@ def _serialize_remark(data):
 
 @https_fn.on_call(region="asia-south1", memory=options.MemoryOption.MB_256, timeout_sec=60)
 def list_smart_remarks(req: https_fn.CallableRequest) -> dict:
-    """{school_id, student_ids} -> {studentId: remark|null}."""
+    """{school_id, student_ids} -> {studentId: [remark, ...]}.
+
+    One entry per category doc found in students/{sid}/smart_remarks —
+    sorted by categoryOrder then category label, same order the remark bank
+    itself is organised in. A student with nothing generated yet gets [].
+    The legacy pre-category "current" doc (single blended remark, from
+    before this file wrote one doc per category) is skipped — it has no
+    categorySlug and would sort/display as a broken row.
+    """
     _require_ops_admin(req)
     data = req.data or {}
     school_id = data.get("school_id")
@@ -509,25 +560,28 @@ def list_smart_remarks(req: https_fn.CallableRequest) -> dict:
     school_ref = db.collection("schools").document(school_id)
     out = {}
     for sid in student_ids:
-        doc = (school_ref.collection("students").document(sid)
-               .collection("smart_remarks").document("current").get())
-        out[sid] = _serialize_remark(doc.to_dict()) if doc.exists else None
+        docs = school_ref.collection("students").document(sid).collection("smart_remarks").stream()
+        remarks = [_serialize_remark(d.to_dict()) for d in docs if (d.to_dict() or {}).get("categorySlug")]
+        remarks.sort(key=lambda r: (r.get("categoryOrder") or 0, r.get("category") or ""))
+        out[sid] = remarks
     return out
 
 
 @https_fn.on_call(region="asia-south1", memory=options.MemoryOption.MB_256, timeout_sec=30)
 def update_smart_remark(req: https_fn.CallableRequest) -> dict:
-    """{school_id, student_id, comment?, status?} -> {}. Same shape as AAP's
-    update_aap_remark — saving an edited comment approves it in the same
-    call."""
+    """{school_id, student_id, category_slug, comment?, status?} -> {}. Same
+    shape as AAP's update_aap_remark — saving an edited comment approves it
+    in the same call. `category_slug` picks which of the student's
+    per-category remark docs this call targets."""
     caller = _require_ops_admin(req)
     data = req.data or {}
     school_id = data.get("school_id")
     student_id = data.get("student_id")
-    if not school_id or not student_id:
+    category_slug = data.get("category_slug")
+    if not school_id or not student_id or not category_slug:
         raise https_fn.HttpsError(
             https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
-            "school_id and student_id are required",
+            "school_id, student_id and category_slug are required",
         )
 
     update = {"updatedAt": firestore.SERVER_TIMESTAMP, "updatedBy": caller}
@@ -538,32 +592,36 @@ def update_smart_remark(req: https_fn.CallableRequest) -> dict:
         update["status"] = data["status"]
 
     (db.collection("schools").document(school_id).collection("students").document(student_id)
-        .collection("smart_remarks").document("current")).set(update, merge=True)
+        .collection("smart_remarks").document(category_slug)).set(update, merge=True)
     return {}
 
 
 @https_fn.on_call(region="asia-south1", memory=options.MemoryOption.MB_256, timeout_sec=120)
 def bulk_update_smart_remarks(req: https_fn.CallableRequest) -> dict:
-    """{school_id, student_ids, status} -> {updated}."""
+    """{school_id, items: [{student_id, category_slug}, ...], status} -> {updated}."""
     caller = _require_ops_admin(req)
     data = req.data or {}
     school_id = data.get("school_id")
-    student_ids = data.get("student_ids") or []
+    items = data.get("items") or []
     status = data.get("status")
-    if not school_id or not student_ids or not status:
+    if not school_id or not items or not status:
         raise https_fn.HttpsError(
             https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
-            "school_id, student_ids and status are required",
+            "school_id, items and status are required",
         )
 
     stamp = {"status": status, "updatedAt": firestore.SERVER_TIMESTAMP, "updatedBy": caller}
     school_ref = db.collection("schools").document(school_id)
     chunk = 450
-    for i in range(0, len(student_ids), chunk):
+    for i in range(0, len(items), chunk):
         batch = db.batch()
-        for sid in student_ids[i:i + chunk]:
+        for item in items[i:i + chunk]:
+            sid = item.get("student_id")
+            slug = item.get("category_slug")
+            if not sid or not slug:
+                continue
             doc_ref = (school_ref.collection("students").document(sid)
-                       .collection("smart_remarks").document("current"))
+                       .collection("smart_remarks").document(slug))
             batch.set(doc_ref, stamp, merge=True)
         batch.commit()
-    return {"updated": len(student_ids)}
+    return {"updated": len(items)}

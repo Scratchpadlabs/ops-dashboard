@@ -28,7 +28,9 @@ export function useSmartRemarks() {
   const schools = ref([])
   const classes = ref([])
   const students = ref([])
-  // { studentId: remark | null }
+  // { studentId: [remark, ...] } — one entry per remark category (General
+  // Remarks, Physical Development, ...), never blended into one. [] means
+  // nothing has been generated yet for that student.
   const remarksByStudent = ref({})
 
   const loadingSchools = ref(false)
@@ -92,17 +94,18 @@ export function useSmartRemarks() {
   const generate = generateSmartRemarksRemote
   const scan = scanSmartRemarksRemote
 
-  async function saveComment(schoolId, studentId, comment) {
-    await updateSmartRemarkRemote({ schoolId, studentId, comment, status: STATUS_APPROVED })
+  async function saveComment(schoolId, studentId, categorySlug, comment) {
+    await updateSmartRemarkRemote({ schoolId, studentId, categorySlug, comment, status: STATUS_APPROVED })
   }
 
-  async function setStatus(schoolId, studentId, status) {
-    await updateSmartRemarkRemote({ schoolId, studentId, status })
+  async function setStatus(schoolId, studentId, categorySlug, status) {
+    await updateSmartRemarkRemote({ schoolId, studentId, categorySlug, status })
   }
 
-  async function setStatusBulk(schoolId, studentIds, status) {
-    await bulkUpdateSmartRemarksRemote({ schoolId, studentIds, status })
-    return studentIds.length
+  // `items` is [{ studentId, categorySlug }, ...]
+  async function setStatusBulk(schoolId, items, status) {
+    await bulkUpdateSmartRemarksRemote({ schoolId, items, status })
+    return items.length
   }
 
   // ── Generation job progress ─────────────────────────────────────────────
