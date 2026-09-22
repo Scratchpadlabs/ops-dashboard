@@ -289,8 +289,13 @@ const baseNavItems = [
 ]
 
 const ADMIN_ONLY_NAV_PATHS = ['/school-setup', '/import', '/surveys', '/aap-remarks', '/smart-remarks']
+const HIDDEN_NAV_PATHS_BY_EMAIL = {
+  'ruchika@ops.clarified.in': ['/expenses'],
+}
 const navItems = computed(() =>
-  baseNavItems.filter(item => !ADMIN_ONLY_NAV_PATHS.includes(item.to) || isOpsAdmin(currentUserEmail.value))
+  baseNavItems
+    .filter(item => !ADMIN_ONLY_NAV_PATHS.includes(item.to) || isOpsAdmin(currentUserEmail.value))
+    .filter(item => !(HIDDEN_NAV_PATHS_BY_EMAIL[currentUserEmail.value] || []).includes(item.to))
 )
 
 const pageTitles = {

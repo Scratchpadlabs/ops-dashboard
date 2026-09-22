@@ -38,7 +38,7 @@ const routes = [
   { path: '/quotations',    component: Quotations,    name: 'quotations' },
   { path: '/agreements',    component: Agreements,    name: 'agreements' },
   { path: '/invoices',      component: Invoices,      name: 'invoices' },
-  { path: '/expenses',      component: Expenses,      name: 'expenses' },
+  { path: '/expenses',      component: Expenses,      name: 'expenses', meta: { hiddenFromEmails: ['ruchika@ops.clarified.in'] } },
   { path: '/settings',      component: Settings,      name: 'settings' },
 ]
 
@@ -69,6 +69,9 @@ router.beforeEach(async (to) => {
     return { path: '/' }
   }
   if (to.meta.opsAdminOnly && !isOpsAdmin(user?.email)) {
+    return { name: 'home' }
+  }
+  if (to.meta.hiddenFromEmails?.includes(String(user?.email).trim().toLowerCase())) {
     return { name: 'home' }
   }
   return true
