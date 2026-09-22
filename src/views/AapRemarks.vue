@@ -79,8 +79,11 @@
           :disabled="!classId || running || loadingRoster" :loading="loadingRoster"
           @click="reload"
         />
-        <div v-if="classId && !loadingRoster" class="text-xs text-slate-400 ml-auto pb-2">
-          {{ students.length }} student{{ students.length === 1 ? '' : 's' }} in this class
+        <div v-if="classId && !loadingRoster" class="text-xs ml-auto pb-2 text-right">
+          <div class="text-slate-400">{{ students.length }} student{{ students.length === 1 ? '' : 's' }} in this class</div>
+          <div :class="ratedStudentCount < students.length ? 'text-amber-600 font-medium' : 'text-slate-400'">
+            {{ ratedStudentCount }} of {{ students.length }} have ratings{{ selectedSubjects.length ? ' for the selected subject(s)' : '' }}
+          </div>
         </div>
       </div>
 
@@ -330,6 +333,17 @@ const unmatchedSubjects = computed(() => subjectSource.value?.unmatchedSubjects 
 
 const hasRemarks = computed(() =>
   Object.values(remarksByStudent.value).some(rows => rows.length))
+
+// How many students actually have a rating, scoped to the selected subjects
+// (or any subject, if none chosen) — the thing a "1 of 41" table full of
+// "No AAP survey ratings found" rows makes you scroll to notice otherwise.
+const ratedStudentCount = computed(() => {
+  const scope = selectedSubjects.value.length ? new Set(selectedSubjects.value) : null
+  return students.value.filter(s => {
+    const rows = remarksByStudent.value[s.id] || []
+    return rows.some(r => !scope || scope.has(r.id))
+  }).length
+})
 
 /**
  * Options for the subject picker: what the scan found, falling back to the

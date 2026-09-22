@@ -92,7 +92,7 @@ from firebase_functions import https_fn, options
 from firebase_functions.params import SecretParam
 from openai import OpenAI
 from reportlab.lib import colors
-from reportlab.lib.enums import TA_CENTER
+from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
@@ -773,6 +773,10 @@ def _pdf_style(name, **kwargs):
     return ParagraphStyle(name, **defaults)
 
 
+def _centered(name, **kwargs):
+    return _pdf_style(name, alignment=TA_CENTER, **kwargs)
+
+
 def _watermark(student_id):
     """Stamped at the bottom of the page so a loose printout or a file that
     gets separated from the rest can still be traced back to a child."""
@@ -815,10 +819,10 @@ def _build_student_summary_pdf(student_id, remarks):
 
     col_w = [(W - 2 * M) * x for x in [0.16, 0.14, 0.20, 0.50]]
     rows = [[
-        Paragraph("<b>Subjects</b>", _pdf_style("th", fontSize=11)),
-        Paragraph("<b>Abilities</b>", _pdf_style("th", fontSize=11)),
-        Paragraph("<b>Performance Level Descriptors</b>", _pdf_style("th", fontSize=11)),
-        Paragraph("<b>Summary</b>", _pdf_style("th", fontSize=11)),
+        Paragraph("<b>Subjects</b>", _centered("th", fontSize=11)),
+        Paragraph("<b>Abilities</b>", _centered("th", fontSize=11)),
+        Paragraph("<b>Performance Level Descriptors</b>", _centered("th", fontSize=11)),
+        Paragraph("<b>Summary</b>", _centered("th", fontSize=11)),
     ]]
     spans, shading = [], []
     r = 1
@@ -830,10 +834,10 @@ def _build_student_summary_pdf(student_id, remarks):
                               ("creativity", "Creativity")):
             level = remark.get(trait) or ""
             rows.append([
-                Paragraph(f"<b>{subject}</b>", _pdf_style("subj")) if trait == "awareness" else "",
-                Paragraph(label, _pdf_style("ab")),
-                Paragraph(f"<b>{level}</b>", _pdf_style("lvl", textColor=_LEVEL_COLOR.get(level, colors.black))),
-                Paragraph(comment, _pdf_style("cm")) if trait == "awareness" else "",
+                Paragraph(f"<b>{subject}</b>", _centered("subj")) if trait == "awareness" else "",
+                Paragraph(label, _centered("ab")),
+                Paragraph(f"<b>{level}</b>", _centered("lvl", textColor=_LEVEL_COLOR.get(level, colors.black))),
+                Paragraph(comment, _pdf_style("cm", alignment=TA_JUSTIFY)) if trait == "awareness" else "",
             ])
             r += 1
         spans.append(("SPAN", (0, start), (0, start + 2)))
@@ -847,7 +851,16 @@ def _build_student_summary_pdf(student_id, remarks):
     table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), _GOLD),
         ("GRID", (0, 0), (-1, -1), 0.5, _BORDER),
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        # Every cell centers horizontally by default (ALIGN above); the
+        # Summary column overrides back to justified text (set per-Paragraph,
+        # TA_JUSTIFY) since centering multi-line prose reads worse, not
+        # better. Vertically, the subject-name and summary cells span all
+        # three trait rows, so they're centered in that merged block rather
+        # than pinned to its top.
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE" if len(rows) == 1 else "TOP"),
+        ("VALIGN", (0, 1), (0, -1), "MIDDLE"),
+        ("VALIGN", (3, 1), (3, -1), "MIDDLE"),
         ("LEFTPADDING", (0, 0), (-1, -1), 6),
         ("RIGHTPADDING", (0, 0), (-1, -1), 6),
         ("TOPPADDING", (0, 0), (-1, -1), 6),
