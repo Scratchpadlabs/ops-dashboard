@@ -84,7 +84,7 @@
 
     <div v-if="rows.length" class="flex items-center gap-2 mb-3 flex-wrap">
       <Select v-model="statusFilter" :options="statusOptions" optionLabel="label" optionValue="value" class="w-52" />
-      <InputText v-model="search" class="w-64" size="small" placeholder="Search class, subject, topic…" />
+      <InputText v-model="search" class="w-64" size="small" placeholder="Search class, subject, topic, activity…" />
       <span class="text-xs text-slate-400">
         {{ filteredRows.length }} of {{ rows.length }} shown ·
         {{ counts.not_started }} not started · {{ counts.partial }} partial · {{ counts.complete }} complete
@@ -122,6 +122,33 @@
         <Column header="Teacher" field="teacherId" style="min-width:100px">
           <template #body="{ data }">{{ data.teacherId || '—' }}</template>
         </Column>
+        <Column header="Activity" style="min-width:160px">
+          <template #body="{ data }">
+            <span v-if="!data.responses?.length" class="text-xs text-slate-300">—</span>
+            <div v-else v-for="(r, i) in data.responses" :key="i" class="text-sm text-slate-700">
+              {{ activityLabel(r) }}
+              <i v-if="data.responses.length > 1 && i === 0" class="pi pi-exclamation-triangle text-amber-500 text-xs ml-1"
+                 v-tooltip.top="'Filed under more than one activity'"></i>
+            </div>
+          </template>
+        </Column>
+        <Column header="Goals / Competencies" style="min-width:220px">
+          <template #body="{ data }">
+            <span v-if="!data.responses?.length" class="text-xs text-slate-300">—</span>
+            <button v-else type="button" class="text-sm text-left hover:text-blue-600 group" @click="openEditor(data)">
+              <div v-for="(r, i) in data.responses" :key="i">
+                <span v-if="!r.selectedGoals.length && !r.selectedCompetencies.length" class="text-amber-700">
+                  Not selected
+                </span>
+                <span v-else class="text-slate-700" v-tooltip.top="goalsTooltip(r)">
+                  {{ r.selectedGoals.length }} goal{{ r.selectedGoals.length === 1 ? '' : 's' }} ·
+                  {{ r.selectedCompetencies.length }} competenc{{ r.selectedCompetencies.length === 1 ? 'y' : 'ies' }}
+                </span>
+              </div>
+              <span class="text-xs text-blue-600"><i class="pi pi-pencil text-xs mr-1"></i>View / edit</span>
+            </button>
+          </template>
+        </Column>
         <Column header="Gaps" style="min-width:200px">
           <template #body="{ data }">
             <button
@@ -147,6 +174,12 @@
         </div>
       </div>
     </Dialog>
+
+    <AapSurveyResponseDialog
+      v-model:visible="editorVisible" :schoolId="scannedSchoolId" :row="editorRow"
+      :activities="result?.activities || []" :goalOptionsBySubject="result?.goalOptions || {}"
+      :classStages="result?.classStages || {}" @saved="onResponseSaved"
+    />
   </div>
 </template>
 
@@ -160,6 +193,7 @@ import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Dialog from 'primevue/dialog'
 import ProgressSpinner from 'primevue/progressspinner'
+import AapSurveyResponseDialog from './AapSurveyResponseDialog.vue'
 
 import { useAapRemarks } from '../../composables/useAapRemarks.js'
 import { aapSurveyCompletionRemote } from '../../utils/api.js'
@@ -188,6 +222,9 @@ const schoolId = ref(null)
 const running = ref(false)
 const runError = ref('')
 const result = ref(null)
+// The school the current result belongs to — edits go there even if the
+// picker has since been changed without re-running the check.
+const scannedSchoolId = ref(null)
 
 const traitLabel = (t) => t.charAt(0).toUpperCase() + t.slice(1)
 
@@ -197,6 +234,7 @@ async function run() {
   result.value = null
   try {
     result.value = await aapSurveyCompletionRemote({ schoolId: schoolId.value })
+    scannedSchoolId.value = schoolId.value
   } catch (e) {
     console.error('AAP survey completion check failed', e)
     runError.value = e.message || 'Could not run the completion check'
@@ -232,7 +270,8 @@ const filteredRows = computed(() => {
   return rows.value.filter(r => {
     if (statusFilter.value && r.status !== statusFilter.value) return false
     if (!term) return true
-    return [r.classId, r.subject, r.topic].some(v => String(v || '').toLowerCase().includes(term))
+    return [r.classId, r.subject, r.topic, ...(r.responses || []).map(activityLabel)]
+      .some(v => String(v || '').toLowerCase().includes(term))
   })
 })
 
@@ -251,6 +290,31 @@ const gapsHeader = computed(() => gapsRow.value
 function openGaps(row) {
   gapsRow.value = row
   gapsVisible.value = true
+}
+
+const activityLabel = (r) => r.activityName
+  || result.value?.activities?.find(a => a.id === r.activityId)?.name
+  || r.activityId
+
+function goalsTooltip(r) {
+  const parts = []
+  if (r.selectedGoals.length) parts.push('Goals:\n• ' + r.selectedGoals.join('\n• '))
+  if (r.selectedCompetencies.length) parts.push('Competencies:\n• ' + r.selectedCompetencies.join('\n• '))
+  return parts.join('\n\n')
+}
+
+const editorVisible = ref(false)
+const editorRow = ref(null)
+function openEditor(row) {
+  editorRow.value = row
+  editorVisible.value = true
+}
+
+// Patch the saved response into the loaded result in place, rather than
+// re-running a whole-school scan for one edit. `rows` spreads each result
+// row shallowly, so row.responses IS the loaded result's (reactive) array.
+function onResponseSaved({ row, index, updated }) {
+  row.responses.splice(index, 1, { ...row.responses[index], ...updated })
 }
 
 function downloadXlsx() {

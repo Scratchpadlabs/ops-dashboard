@@ -247,8 +247,15 @@ def _parse_aap_response_id(doc_id):
     section = "_".join(parts[2:second_idx])
     subject = parts[second_idx + 1]
     topic = "_".join(parts[second_idx + 2:]) or None
+    # The teacher app builds the id as `${teacherId}_${classId}_${topicId}`,
+    # where topicId is itself "{Grade}_{Subject}_{Topic}" and "{Grade}_{Subject}"
+    # is the school-setup subject doc id — so both fall straight out of the
+    # split. Only the completion report's editor needs these (to offer that
+    # subject's curricular goals and to keep survey_initiated_by in step).
     return {"teacher_id": teacher_id, "grade": grade, "section": section,
-            "subject": subject, "topic": topic}
+            "subject": subject, "topic": topic,
+            "subject_doc_id": f"{parts[second_idx]}_{subject}",
+            "topic_id": "_".join(parts[second_idx:])}
 
 
 def fetch_survey_ratings(school_id, class_id):
@@ -1015,8 +1022,25 @@ def _subject_has_competencies(data):
     return False
 
 
+def _goal_options(data):
+    """A subject doc's curricular_goals as [{"goal", "competencies"}] — the
+    same goal -> competency choices the teacher app's Curricular Goals and
+    Competencies dialogs offer, so the dashboard's editor can offer them too."""
+    out = []
+    for goal_map in (data.get("curricular_goals") or []):
+        if not isinstance(goal_map, dict):
+            continue
+        for goal, competencies in goal_map.items():
+            goal = str(goal or "").strip()
+            if not goal:
+                continue
+            comps = [str(c).strip() for c in (competencies if isinstance(competencies, list) else [])]
+            out.append({"goal": goal, "competencies": [c for c in comps if c]})
+    return out
+
+
 def _expected_subjects_by_grade(school_id):
-    """(by_grade, merged_stream_grades, skipped_blank_competencies) —
+    """(by_grade, merged_stream_grades, skipped_blank_competencies, goals_by_doc) —
     school-setup's OWN subject configuration (schools/{id}/subjects, doc id
     "{Grade}_{Name}"), independent of anything any survey response claims.
     A subject with no non-blank curricular_goals competency is left out of
@@ -1047,8 +1071,12 @@ def _expected_subjects_by_grade(school_id):
     out = defaultdict(list)
     merged_streams = set()
     skipped_blank_competencies = []
+    goals_by_doc = {}
     for doc in school_ref.collection("subjects").stream():
         data = doc.to_dict() or {}
+        # Every subject doc, including ones skipped below — a response can
+        # still point at a subject whose goals were blanked after the fact.
+        goals_by_doc[doc.id] = _goal_options(data)
         raw_grade = doc.id.split("_", 1)[0]
         parsed = parse_class_value(raw_grade)
         if parsed["grade_ordinal"] is None:
@@ -1074,7 +1102,7 @@ def _expected_subjects_by_grade(school_id):
             if topic_name:
                 topics.append(topic_name)
         out[grade].append({"subject": name, "topics": topics})
-    return out, sorted(merged_streams), sorted(skipped_blank_competencies)
+    return out, sorted(merged_streams), sorted(skipped_blank_competencies), goals_by_doc
 
 
 def _scan_school_aap_completion(school_id):
@@ -1085,7 +1113,14 @@ def _scan_school_aap_completion(school_id):
     about which question is blank, not what level a student ended up at.
 
     Returns (by_key, unparsed_count) where by_key maps the tuple to
-    {"teacher_id": ..., "students": {student_id: {trait: bool_answered}}}.
+    {"teacher_id": ..., "students": {student_id: {trait: bool_answered}},
+     "responses": [{surveyId, responseId, subjectDocId, topicId, activityId,
+                    activityName, selectedGoals, selectedCompetencies}]}.
+
+    "responses" is a list, not one doc, because the activity IS the survey
+    doc a response lives under: a teacher who picked activity A and later B
+    for the same class/topic leaves one response under each. Showing both
+    is the honest answer; picking one would hide the other from the editor.
     """
     school_ref = db.collection("schools").document(school_id)
     by_key = {}
@@ -1104,9 +1139,21 @@ def _scan_school_aap_completion(school_id):
             grade, section = canonical_grade_section(parsed["grade"], parsed["section"])
             class_id = compose_class_id(grade, section)
             key = (class_id, parsed["subject"], parsed["topic"])
-            entry = by_key.setdefault(key, {"teacher_id": parsed["teacher_id"], "students": {}})
+            entry = by_key.setdefault(key, {"teacher_id": parsed["teacher_id"], "students": {}, "responses": []})
 
-            answers = resp.to_dict().get("answers", [])
+            resp_data = resp.to_dict() or {}
+            entry["responses"].append({
+                "surveyId": survey_doc.id,
+                "responseId": resp.id,
+                "subjectDocId": parsed["subject_doc_id"],
+                "topicId": parsed["topic_id"],
+                "activityId": resp_data.get("activityId") or survey_doc.id,
+                "activityName": resp_data.get("activityName") or "",
+                "selectedGoals": [str(g) for g in (resp_data.get("selectedGoals") or [])],
+                "selectedCompetencies": [str(c) for c in (resp_data.get("selectedCompetencies") or [])],
+            })
+
+            answers = resp_data.get("answers", [])
             for q_index, trait in enumerate(["awareness", "sensitivity", "creativity"]):
                 if q_index >= len(answers):
                     continue
@@ -1162,6 +1209,55 @@ def _whole_school_roster(school_id):
     return roster, unresolved
 
 
+def _aap_survey_ids_by_activity(school_ref):
+    """{activity_id: survey_doc_id} for every zzz-prefixed (AAP) survey. The
+    teacher app finds an activity's survey by its `id` field, which is
+    normally also the doc id — both are indexed so either spelling resolves."""
+    out = {}
+    for survey_doc in school_ref.collection("surveys").stream():
+        if not survey_doc.id.lower().startswith("zzz"):
+            continue
+        out.setdefault(survey_doc.id, survey_doc.id)
+        field_id = (survey_doc.to_dict() or {}).get("id")
+        if field_id:
+            out[str(field_id)] = survey_doc.id
+    return out
+
+
+def _aap_activities(school_id):
+    """Every activity the teacher app would offer that has an AAP survey
+    behind it: [{"id", "name", "stage"}]. An activity with no zzz survey is
+    left out — a response moved under it would fall out of this report."""
+    school_ref = db.collection("schools").document(school_id)
+    survey_ids = _aap_survey_ids_by_activity(school_ref)
+    out = []
+    for doc in school_ref.collection("activities").stream():
+        if doc.id not in survey_ids:
+            continue
+        data = doc.to_dict() or {}
+        out.append({"id": doc.id, "name": str(data.get("name") or doc.id),
+                    "stage": data.get("stage") or None})
+    out.sort(key=lambda a: a["name"].lower())
+    return out
+
+
+def _class_stages(school_id):
+    """{class_id: stage} from schools/{id}/classes — the same `stage` field
+    the teacher app filters its activity list by — keyed by the canonical
+    class_id this report uses, so a row can look its class up directly."""
+    out = {}
+    for doc in db.collection("schools").document(school_id).collection("classes").stream():
+        stage = (doc.to_dict() or {}).get("stage")
+        if not stage:
+            continue
+        parsed = parse_class_value(doc.id)
+        if parsed["grade_ordinal"] is None:
+            continue
+        grade, section = canonical_grade_section(parsed["grade_token"], parsed["section"])
+        out[compose_class_id(grade, section)] = stage
+    return out
+
+
 @https_fn.on_call(region="asia-south1", memory=options.MemoryOption.GB_1, timeout_sec=300)
 def aap_survey_completion(req: https_fn.CallableRequest) -> dict:
     """{school_id} -> whole-school AAP survey completion report. Read-only —
@@ -1183,7 +1279,12 @@ def aap_survey_completion(req: https_fn.CallableRequest) -> dict:
         shows up rather than being silently dropped.
         { classId, subject, topic, teacherId, expectedStudents,
           respondedStudents, status: "not_started"|"partial"|"complete",
-          gaps: [{ studentId, studentName, missing: [trait, ...] }] }
+          gaps: [{ studentId, studentName, missing: [trait, ...] }],
+          responses: [{ surveyId, responseId, subjectDocId, topicId,
+            activityId, activityName, selectedGoals, selectedCompetencies }] }
+        responses is empty for a not_started row; usually one entry
+        otherwise, more only if the teacher filed the same class/topic under
+        more than one activity (see _scan_school_aap_completion).
         respondedStudents is roster students with EVERY question answered
         (expectedStudents - len(gaps)) — never the raw count of distinct
         student ids in the response payload, which can equal the roster size
@@ -1205,6 +1306,12 @@ def aap_survey_completion(req: https_fn.CallableRequest) -> dict:
         of that grade as a result. Surfaced rather than silently producing
         wrong or missing rows, same principle as generate_aap_remarks's own
         scan_only diagnostics.
+      goalOptions: { subjectDocId: [{ goal, competencies: [...] }] } for
+        every subject a response points at — what the editor offers.
+      activities: [{ id, name, stage }] — AAP activities a response can be
+        moved to (see update_aap_survey_response).
+      classStages: { classId: stage } — to narrow `activities` to the ones
+        the teacher app would have offered that class.
     """
     _require_ops_admin(req)
     data = req.data or {}
@@ -1213,7 +1320,8 @@ def aap_survey_completion(req: https_fn.CallableRequest) -> dict:
         raise https_fn.HttpsError(
             https_fn.FunctionsErrorCode.INVALID_ARGUMENT, "school_id is required")
 
-    expected_by_grade, merged_stream_grades, skipped_blank_competencies = _expected_subjects_by_grade(school_id)
+    expected_by_grade, merged_stream_grades, skipped_blank_competencies, goals_by_doc = (
+        _expected_subjects_by_grade(school_id))
     responses_by_key, unparsed = _scan_school_aap_completion(school_id)
     roster_by_class, unresolved_students = _whole_school_roster(school_id)
     grades_with_no_classes = sorted(
@@ -1275,7 +1383,7 @@ def aap_survey_completion(req: https_fn.CallableRequest) -> dict:
             "classId": class_id, "subject": subject_out, "subjectToken": subject_token,
             "topic": topic, "teacherId": entry["teacher_id"],
             "expectedStudents": len(roster), "respondedStudents": len(roster) - len(gaps),
-            "status": status, "gaps": gaps,
+            "status": status, "gaps": gaps, "responses": entry["responses"],
         })
         seen_keys.add((class_id, subject_out, topic))
 
@@ -1296,12 +1404,18 @@ def aap_survey_completion(req: https_fn.CallableRequest) -> dict:
                         "topic": topic, "teacherId": None,
                         "expectedStudents": len(roster), "respondedStudents": 0,
                         "status": "not_started", "gaps": make_gaps(roster, {}),
+                        "responses": [],
                     })
 
     rows.sort(key=lambda r: (r["classId"], r["subject"], r["topic"] or ""))
 
+    referenced_subject_docs = {resp["subjectDocId"] for r in rows for resp in r["responses"]}
+
     return {
         "rows": rows,
+        "goalOptions": {doc_id: goals_by_doc.get(doc_id, []) for doc_id in sorted(referenced_subject_docs)},
+        "activities": _aap_activities(school_id),
+        "classStages": _class_stages(school_id),
         "unmatchedSubjectTokens": sorted(unmatched_tokens),
         "unparsedResponses": unparsed,
         "diagnostics": {
@@ -1310,4 +1424,140 @@ def aap_survey_completion(req: https_fn.CallableRequest) -> dict:
             "mergedStreamGrades": merged_stream_grades,
             "skippedBlankCompetencies": skipped_blank_competencies,
         },
+    }
+
+
+def _clean_str_list(values):
+    """Non-blank strings, trimmed, de-duplicated in first-seen order."""
+    if values is None:
+        return None
+    if not isinstance(values, list):
+        raise https_fn.HttpsError(
+            https_fn.FunctionsErrorCode.INVALID_ARGUMENT, "goals/competencies must be lists")
+    out = []
+    for v in values:
+        v = str(v or "").strip()
+        if v and v not in out:
+            out.append(v)
+    return out
+
+
+@https_fn.on_call(region="asia-south1", memory=options.MemoryOption.MB_256, timeout_sec=60)
+def update_aap_survey_response(req: https_fn.CallableRequest) -> dict:
+    """{school_id, survey_id, response_id, activity_id?, selected_goals?,
+    selected_competencies?} -> the response's new
+    {surveyId, responseId, activityId, activityName, selectedGoals,
+     selectedCompetencies}.
+
+    The completion report's editor for what a teacher picked before answering
+    the questions: the activity and the curricular goals/competencies. Only
+    the fields passed are changed; the answers themselves are never touched.
+
+    Goals/competencies are a plain field update on the response doc.
+
+    The activity is not: in the teacher app the activity IS the survey doc a
+    response lives under (surveys/{activityId}/responses/{id}), so changing it
+    means moving the doc there, same id, answers and all. Done in one
+    transaction with the delete of the old doc, so a failure can't leave the
+    response in both places or in neither. Refused if the target activity
+    already holds a response with the same id (the teacher filed this
+    class/topic under both) — merging two sets of answers is a judgement call,
+    not something to do silently. The topic's survey_initiated_by[teacher] is
+    moved along with it when it still named the old activity, so "Continue
+    Survey" in the teacher app reopens the response where it now lives
+    instead of starting an empty one under the old activity.
+    """
+    caller = _require_ops_admin(req)
+    data = req.data or {}
+    school_id = data.get("school_id")
+    survey_id = data.get("survey_id")
+    response_id = data.get("response_id")
+    if not school_id or not survey_id or not response_id:
+        raise https_fn.HttpsError(
+            https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
+            "school_id, survey_id and response_id are required")
+    if not str(survey_id).lower().startswith("zzz"):
+        raise https_fn.HttpsError(
+            https_fn.FunctionsErrorCode.INVALID_ARGUMENT, "Not an AAP survey")
+
+    goals = _clean_str_list(data.get("selected_goals"))
+    competencies = _clean_str_list(data.get("selected_competencies"))
+    activity_id = str(data.get("activity_id") or "").strip() or None
+
+    school_ref = db.collection("schools").document(school_id)
+    source_ref = school_ref.collection("surveys").document(survey_id).collection("responses").document(response_id)
+
+    update = {"opsEditedBy": caller, "opsEditedAt": firestore.SERVER_TIMESTAMP}
+    if goals is not None:
+        update["selectedGoals"] = goals
+    if competencies is not None:
+        update["selectedCompetencies"] = competencies
+
+    target_survey_id = survey_id
+    activity_name = None
+    if activity_id:
+        target_survey_id = _aap_survey_ids_by_activity(school_ref).get(activity_id)
+        if not target_survey_id:
+            raise https_fn.HttpsError(
+                https_fn.FunctionsErrorCode.FAILED_PRECONDITION,
+                f"Activity {activity_id} has no AAP survey to move this response under")
+        activity_snap = school_ref.collection("activities").document(activity_id).get()
+        activity_name = str((activity_snap.to_dict() or {}).get("name") or "") if activity_snap.exists else ""
+        update["activityId"] = activity_id
+        update["activityName"] = activity_name
+
+    parsed = _parse_aap_response_id(response_id)
+    target_ref = (school_ref.collection("surveys").document(target_survey_id)
+                  .collection("responses").document(response_id))
+    moving = target_survey_id != survey_id
+    subject_ref = school_ref.collection("subjects").document(parsed["subject_doc_id"]) if parsed else None
+
+    @firestore.transactional
+    def apply(transaction):
+        source_snap = source_ref.get(transaction=transaction)
+        if not source_snap.exists:
+            raise https_fn.HttpsError(
+                https_fn.FunctionsErrorCode.NOT_FOUND,
+                "That survey response no longer exists — re-run the completion check")
+        current = source_snap.to_dict() or {}
+        old_activity_id = current.get("activityId") or survey_id
+
+        subject_snap = None
+        if moving:
+            if target_ref.get(transaction=transaction).exists:
+                raise https_fn.HttpsError(
+                    https_fn.FunctionsErrorCode.ALREADY_EXISTS,
+                    "The teacher already has a response for this class/topic under that activity. "
+                    "Edit that one instead, or clear one of them first.")
+            if subject_ref is not None:
+                subject_snap = subject_ref.get(transaction=transaction)
+
+        merged = {**current, **update}
+        if moving:
+            transaction.set(target_ref, merged)
+            transaction.delete(source_ref)
+            if subject_snap is not None and subject_snap.exists and parsed:
+                topics = list((subject_snap.to_dict() or {}).get("topics") or [])
+                changed = False
+                for topic in topics:
+                    if not isinstance(topic, dict) or topic.get("id") != parsed["topic_id"]:
+                        continue
+                    initiated = topic.get("survey_initiated_by")
+                    if isinstance(initiated, dict) and initiated.get(parsed["teacher_id"]) == old_activity_id:
+                        initiated[parsed["teacher_id"]] = activity_id
+                        changed = True
+                if changed:
+                    transaction.update(subject_ref, {"topics": topics})
+        else:
+            transaction.update(source_ref, update)
+        return merged
+
+    merged = apply(db.transaction())
+    return {
+        "surveyId": target_survey_id,
+        "responseId": response_id,
+        "activityId": merged.get("activityId") or target_survey_id,
+        "activityName": merged.get("activityName") or "",
+        "selectedGoals": [str(g) for g in (merged.get("selectedGoals") or [])],
+        "selectedCompetencies": [str(c) for c in (merged.get("selectedCompetencies") or [])],
     }

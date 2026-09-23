@@ -14,12 +14,16 @@ const STATUS_LABEL = { not_started: 'Not started', partial: 'Partial', complete:
 
 export const SUMMARY_COLUMNS = [
   'Class', 'Subject', 'Topic', 'Status', 'Teacher', 'Expected Students',
-  'Responded Students', 'Gaps',
+  'Responded Students', 'Gaps', 'Activity', 'Curricular Goals', 'Competencies',
 ]
 
 export const DETAIL_COLUMNS = [
   'Class', 'Subject', 'Topic', 'Student', 'Student ID', 'Question', 'Status',
 ]
+
+// A row can carry more than one response (same class/topic filed under two
+// activities) — each value is listed, one per line, in the same order.
+const joinResponses = (r, pick) => (r.responses || []).map(pick).filter(Boolean).join('\n')
 
 export function buildSummaryRows(rows) {
   return (rows || []).map(r => ({
@@ -31,6 +35,9 @@ export function buildSummaryRows(rows) {
     'Expected Students': r.expectedStudents,
     'Responded Students': r.respondedStudents,
     Gaps: r.gaps?.length || 0,
+    Activity: joinResponses(r, x => x.activityName || x.activityId),
+    'Curricular Goals': joinResponses(r, x => (x.selectedGoals || []).join('; ')),
+    Competencies: joinResponses(r, x => (x.selectedCompetencies || []).join('; ')),
   }))
 }
 

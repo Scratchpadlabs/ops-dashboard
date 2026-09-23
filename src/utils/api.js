@@ -296,6 +296,7 @@ const saveAapSubjectMappingCallable = httpsCallable(functions, 'save_aap_subject
 const generateAapSummaryPdfCallable = httpsCallable(functions, 'generate_aap_summary_pdf', { timeout: 60_000 })
 const generateAapSummaryPdfsCallable = httpsCallable(functions, 'generate_aap_summary_pdfs', { timeout: 300_000 })
 const aapSurveyCompletionCallable = httpsCallable(functions, 'aap_survey_completion', { timeout: 300_000 })
+const updateAapSurveyResponseCallable = httpsCallable(functions, 'update_aap_survey_response', { timeout: 60_000 })
 
 // `subjects` narrows a run to the chosen subjects; omitted means every subject
 // the survey rated. `confirmGenderIssue` must be set once the dashboard has
@@ -369,6 +370,19 @@ export async function generateAapSummaryPdfsRemote({ schoolId, studentIds }) {
 // anything short of complete. Read-only, no model calls.
 export async function aapSurveyCompletionRemote({ schoolId }) {
   const res = await aapSurveyCompletionCallable({ school_id: schoolId })
+  return res.data
+}
+
+// Edits what a teacher picked before answering an AAP survey: the activity
+// and the curricular goals/competencies. Only the fields passed change.
+// Changing the activity MOVES the response to that activity's survey, so the
+// returned { surveyId, responseId, ... } is where it lives afterwards.
+export async function updateAapSurveyResponseRemote({ schoolId, surveyId, responseId, activityId, selectedGoals, selectedCompetencies }) {
+  const payload = { school_id: schoolId, survey_id: surveyId, response_id: responseId }
+  if (activityId) payload.activity_id = activityId
+  if (selectedGoals) payload.selected_goals = selectedGoals
+  if (selectedCompetencies) payload.selected_competencies = selectedCompetencies
+  const res = await updateAapSurveyResponseCallable(payload)
   return res.data
 }
 

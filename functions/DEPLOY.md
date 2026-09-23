@@ -141,7 +141,7 @@ gcloud functions deploy generate_aap_remarks \
   --set-secrets OPENAI_API_KEY=OPENAI_API_KEY:latest
 
 # Same source dir, one deploy per entry point:
-for fn in list_aap_remarks update_aap_remark bulk_update_aap_remarks save_aap_subject_mapping; do
+for fn in list_aap_remarks update_aap_remark bulk_update_aap_remarks save_aap_subject_mapping update_aap_survey_response; do
   gcloud functions deploy "$fn" \
     --gen2 --runtime python312 --region asia-south1 \
     --source . --entry-point "$fn" \
@@ -149,6 +149,22 @@ for fn in list_aap_remarks update_aap_remark bulk_update_aap_remarks save_aap_su
     --memory 256MB --timeout 60s --max-instances 3
 done
 ```
+
+`aap_survey_completion` (the Survey Completion tab's whole-school scan) is a
+heavier read and is deployed on its own:
+```
+gcloud functions deploy aap_survey_completion \
+  --gen2 --runtime python312 --region asia-south1 \
+  --source . --entry-point aap_survey_completion \
+  --trigger-http --allow-unauthenticated --project clarified-1501 \
+  --memory 1GB --timeout 300s --max-instances 3
+```
+`update_aap_survey_response` is that tab's editor for a response's activity
+and curricular goals/competencies. Changing the activity moves the response
+doc to the new activity's survey (the teacher app files responses under
+`surveys/{activityId}/responses`), so it must be deployed together with
+`aap_survey_completion` — the editor relies on the scan's new
+`responses`/`goalOptions`/`activities`/`classStages` fields.
 Same `OPENAI_API_KEY` Secret Manager secret as process_import — see that
 section for how to create it (only `generate_aap_remarks` needs it; the other
 four entry points never call the model). As with the other callables here,
