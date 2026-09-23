@@ -122,28 +122,23 @@
         <Column header="Teacher" field="teacherId" style="min-width:100px">
           <template #body="{ data }">{{ data.teacherId || '—' }}</template>
         </Column>
-        <Column header="Activity" style="min-width:160px">
+        <Column header="Activity · Goals / Competencies" style="min-width:300px">
           <template #body="{ data }">
             <span v-if="!data.responses?.length" class="text-xs text-slate-300">—</span>
-            <div v-else v-for="(r, i) in data.responses" :key="i" class="text-sm text-slate-700">
-              {{ activityLabel(r) }}
-              <i v-if="data.responses.length > 1 && i === 0" class="pi pi-exclamation-triangle text-amber-500 text-xs ml-1"
-                 v-tooltip.top="'Filed under more than one activity'"></i>
-            </div>
-          </template>
-        </Column>
-        <Column header="Goals / Competencies" style="min-width:220px">
-          <template #body="{ data }">
-            <span v-if="!data.responses?.length" class="text-xs text-slate-300">—</span>
-            <button v-else type="button" class="text-sm text-left hover:text-blue-600 group" @click="openEditor(data)">
-              <div v-for="(r, i) in data.responses" :key="i">
-                <span v-if="!r.selectedGoals.length && !r.selectedCompetencies.length" class="text-amber-700">
-                  Not selected
-                </span>
-                <span v-else class="text-slate-700" v-tooltip.top="goalsTooltip(r)">
+            <button v-else type="button" class="text-sm text-left hover:text-blue-600 w-full" @click="openEditor(data)">
+              <div v-if="data.responses.length > 1" class="text-xs font-semibold text-amber-700 mb-1">
+                <i class="pi pi-exclamation-triangle text-xs mr-1"></i>Filed under {{ data.responses.length }} activities
+              </div>
+              <div v-for="(r, i) in data.responses" :key="i"
+                   :class="data.responses.length > 1 ? 'border-l-2 border-amber-200 pl-2 mb-1' : ''">
+                <div class="text-slate-800">{{ activityLabel(r) }}</div>
+                <div v-if="!r.selectedGoals.length && !r.selectedCompetencies.length" class="text-xs text-amber-700">
+                  Goals/competencies not selected
+                </div>
+                <div v-else class="text-xs text-slate-500" v-tooltip.top="goalsTooltip(r)">
                   {{ r.selectedGoals.length }} goal{{ r.selectedGoals.length === 1 ? '' : 's' }} ·
                   {{ r.selectedCompetencies.length }} competenc{{ r.selectedCompetencies.length === 1 ? 'y' : 'ies' }}
-                </span>
+                </div>
               </div>
               <span class="text-xs text-blue-600"><i class="pi pi-pencil text-xs mr-1"></i>View / edit</span>
             </button>
