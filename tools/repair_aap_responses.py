@@ -124,6 +124,9 @@ def main():
     ap.add_argument("--project", required=True)
     ap.add_argument("--school", required=True)
     ap.add_argument("--apply", action="store_true", help="write the changes (default: dry run)")
+    ap.add_argument("--merge-conflicts", action="store_true",
+                    help="also merge duplicates whose answers disagree (keeps the copy with the most "
+                         "answers, discards the other's differing ratings); default keeps both")
     args = ap.parse_args()
 
     client, firestore = connect(args.project)
@@ -167,38 +170,70 @@ def main():
                    for k, v in q.items() if k != "questionText" and is_answered(v))
 
     # ── 1. duplicates ────────────────────────────────────────────────────
-    final = {}  # response id -> the doc dict that survives (with merged data)
+    def label(d):
+        return activity_names.get(d["activityId"]) or d["activityId"]
+
+    def merge_into(target, other):
+        """Fill target's blank student/question answers from other; returns
+        (filled, conflicts) — conflicts are answers both have, differently."""
+        answers = target.setdefault("answers", [])
+        filled = conflicts = 0
+        for q, other_q in enumerate((other.get("answers") or [])[:TRAITS]):
+            while len(answers) <= q:
+                answers.append({"questionText": other_q.get("questionText", "")})
+            for sid, v in other_q.items():
+                if sid == "questionText" or not is_answered(v):
+                    continue
+                mine = answers[q].get(sid)
+                if not is_answered(mine):
+                    answers[q][sid] = v
+                    filled += 1
+                elif mine != v:
+                    conflicts += 1
+        return filled, conflicts
+
+    def has_selection(data):
+        return bool(data.get("selectedGoals") or data.get("selectedCompetencies"))
+
+    final = []  # every response that survives, each with its (possibly merged) data
     for resp_id, docs in sorted(by_id.items()):
-        docs.sort(key=lambda d: d["updated"], reverse=True)
+        # Keeper: the copy with the most answers — that's where the teacher
+        # actually did the work — then one with goals picked, then the newest.
+        docs.sort(key=lambda d: (answered_count(d["data"]), has_selection(d["data"]), d["updated"]), reverse=True)
         keep = docs[0]
         merged = json.loads(json.dumps(keep["data"], default=str))
+        kept_too, dropped, notes = [], [], []
+        for other in docs[1:]:
+            trial = json.loads(json.dumps(merged, default=str))
+            filled, conflicts = merge_into(trial, other["data"])
+            if conflicts and not args.merge_conflicts:
+                # Two real, different ratings of the class under two activities:
+                # both stay, so no assessment is thrown away.
+                kept_too.append(other)
+                notes.append(f"KEEP BOTH {label(other)} ({answered_count(other['data'])} answers, {conflicts} differ)")
+                continue
+            merged = trial
+            dropped.append(other)
+            notes.append(f"drop {label(other)} ({answered_count(other['data'])} answers"
+                         f"{f', {filled} filled into the kept copy' if filled else ''}"
+                         f"{f', {conflicts} differing answers discarded' if conflicts else ''})")
+            if not has_selection(merged) and has_selection(other["data"]):
+                merged["selectedGoals"] = list(other["data"].get("selectedGoals") or [])
+                merged["selectedCompetencies"] = list(other["data"].get("selectedCompetencies") or [])
+        group = [{**keep, "merged": merged, "dropped": dropped}] + [
+            {**d, "merged": json.loads(json.dumps(d["data"], default=str)), "dropped": []} for d in kept_too]
+        # Same teacher, class and topic → the same goals/competencies apply;
+        # copy them to any copy in the group that has none.
+        donor = next((g["merged"] for g in group if has_selection(g["merged"])), None)
+        for g in group:
+            if donor is not None and not has_selection(g["merged"]):
+                g["merged"]["selectedGoals"] = list(donor.get("selectedGoals") or [])
+                g["merged"]["selectedCompetencies"] = list(donor.get("selectedCompetencies") or [])
+                notes.append(f"goals/competencies copied to {label(g)}")
         if len(docs) > 1:
-            answers = merged.setdefault("answers", [])
-            filled = conflicts = 0
-            for other in docs[1:]:
-                for q, other_q in enumerate((other["data"].get("answers") or [])[:TRAITS]):
-                    while len(answers) <= q:
-                        answers.append({"questionText": other_q.get("questionText", "")})
-                    for sid, v in other_q.items():
-                        if sid == "questionText" or not is_answered(v):
-                            continue
-                        mine = answers[q].get(sid)
-                        if not is_answered(mine):
-                            answers[q][sid] = v
-                            filled += 1
-                        elif mine != v:
-                            conflicts += 1
-                if not merged.get("selectedGoals") and not merged.get("selectedCompetencies") \
-                        and (other["data"].get("selectedGoals") or other["data"].get("selectedCompetencies")):
-                    merged["selectedGoals"] = list(other["data"].get("selectedGoals") or [])
-                    merged["selectedCompetencies"] = list(other["data"].get("selectedCompetencies") or [])
-            dropped = [f"{activity_names.get(d['activityId']) or d['activityId']} ({answered_count(d['data'])} answers)"
-                       for d in docs[1:]]
-            report["duplicates"].append(
-                f"{resp_id}: keep {activity_names.get(keep['activityId']) or keep['activityId']} "
-                f"({answered_count(keep['data'])} answers, newest) · drop {', '.join(dropped)} · "
-                f"{filled} blanks filled from dropped · {conflicts} conflicting answers")
-        final[resp_id] = {**keep, "merged": merged, "dropped": docs[1:]}
+            key = "duplicates_kept" if kept_too else "duplicates"
+            report[key].append(f"{resp_id}: keep {label(keep)} ({answered_count(keep['data'])} answers) · " + " · ".join(notes))
+        final.extend(group)
 
     # ── 2. missing goals / competencies ──────────────────────────────────
     def selection(entry):
@@ -207,14 +242,14 @@ def main():
 
     # Pools of existing complete selections, validated against School Setup.
     pools = defaultdict(list)
-    for e in final.values():
+    for e in final:
         g, c = clean_selection(*selection(e), options_by_subject.get(e["subjectId"], {}))
         if g and c:
-            pools[("tt", e["teacher"], e["subjectId"], e["topicId"])].append((g, c, e["id"]))
-            pools[("st", e["subjectId"], e["topicId"])].append((g, c, e["id"]))
-            pools[("ts", e["teacher"], e["subjectId"])].append((g, c, e["id"]))
+            pools[("tt", e["teacher"], e["subjectId"], e["topicId"])].append((g, c, e["ref"].path))
+            pools[("st", e["subjectId"], e["topicId"])].append((g, c, e["ref"].path))
+            pools[("ts", e["teacher"], e["subjectId"])].append((g, c, e["ref"].path))
 
-    for e in final.values():
+    for e in final:
         goals, comps = selection(e)
         if goals and comps:
             continue
@@ -229,7 +264,7 @@ def main():
             cands = [(g, c) for key in (("tt", e["teacher"], e["subjectId"], e["topicId"]),
                                         ("st", e["subjectId"], e["topicId"]),
                                         ("ts", e["teacher"], e["subjectId"]))
-                     for g, c, src in pools[key] if src != e["id"] and set(g) & set(goals)]
+                     for g, c, src in pools[key] if src != e["ref"].path and set(g) & set(goals)]
             comps_ok = [c for _, cs in cands for c in cs if any(c in options.get(g, []) for g in goals)]
             if comps_ok:
                 top = Counter(comps_ok).most_common(2)
@@ -239,7 +274,7 @@ def main():
             for key, label in ((("tt", e["teacher"], e["subjectId"], e["topicId"]), "same teacher, same topic, another class"),
                                (("st", e["subjectId"], e["topicId"]), "same subject + topic, another teacher"),
                                (("ts", e["teacher"], e["subjectId"]), "same teacher, same subject, another topic")):
-                pick = most_common([(g, c) for g, c, src in pools[key] if src != e["id"]])
+                pick = most_common([(g, c) for g, c, src in pools[key] if src != e["ref"].path])
                 if pick:
                     new, how = pick, label
                     break
@@ -257,7 +292,7 @@ def main():
         report["filled"].append(f"{e['id']}: {how} → goals={new[0]} competencies={new[1]}")
 
     # ── 3. activity fields ───────────────────────────────────────────────
-    for e in final.values():
+    for e in final:
         m = e["merged"]
         aid = e["activityId"]
         name = activity_names.get(aid, "")
@@ -271,7 +306,7 @@ def main():
     # ── plan writes ──────────────────────────────────────────────────────
     stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     subject_topic_updates = defaultdict(dict)  # subjectId -> {(topicId, teacher): activityId}
-    for e in final.values():
+    for e in final:
         original = e["data"]
         m = e["merged"]
         changed = any(json.dumps(original.get(k), default=str, sort_keys=True) != json.dumps(m.get(k), default=str, sort_keys=True)
@@ -313,7 +348,9 @@ def main():
     # ── report ───────────────────────────────────────────────────────────
     total = sum(len(v) for v in by_id.values())
     print(f"\n{args.school}: {total} AAP response docs, {len(by_id)} distinct class/topic responses")
-    for title, key in (("DUPLICATE ACTIVITIES (resolved)", "duplicates"),
+    for title, key in (("DUPLICATE ACTIVITIES merged into one", "duplicates"),
+                       ("DUPLICATE ACTIVITIES kept as separate assessments (answers disagree; "
+                        "--merge-conflicts to merge)", "duplicates_kept"),
                        ("GOALS/COMPETENCIES FILLED", "filled"),
                        ("ACTIVITY ID CORRECTED", "activity"),
                        ("UNRESOLVED — fill in via the dashboard", "unresolved")):
