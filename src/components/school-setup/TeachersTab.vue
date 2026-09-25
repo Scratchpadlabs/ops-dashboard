@@ -407,7 +407,12 @@ async function classifyImportRow(raw) {
   // whatever classIds/assignments/coScholasticClassIds the row carries and
   // gets every class and subject instead, so a CSV import can't produce a
   // half-access "admin".
-  const admin = TRUTHY.has((raw.admin || '').trim().toLowerCase())
+  // A blank admin cell keeps an existing teacher's current setting, like every
+  // other column here is additive. Only an explicit "false"/"no"/"0" removes
+  // admin; otherwise re-importing an older CSV (from before the admin column)
+  // would silently strip admin from the school's admins.
+  const adminCell = (raw.admin || '').trim().toLowerCase()
+  const admin = adminCell ? TRUTHY.has(adminCell) : !!existing?.admin
   let finalCoScholasticClassIds = coScholasticClassIds
   let finalAssignments = assignments
   if (admin) {
