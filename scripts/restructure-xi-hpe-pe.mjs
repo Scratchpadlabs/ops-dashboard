@@ -39,7 +39,8 @@
  *
  * Flags:
  *   --term=<termId>          required; run once per term
- *   --scale=<id>             required; grading_scales doc ID for HPE (A1…E)
+ *   --scale=<id>             grading_scales doc ID for HPE (A1…E); run without
+ *                            it to list the school's scales and exit
  *   --school=<id>            default Hillgreen_Highschool
  *   --commit                 actually write
  *   --remove-hpe-academic    also do step 3
@@ -91,8 +92,8 @@ const scaleId = value('scale')
 const projectId = value('project') || process.env.GOOGLE_CLOUD_PROJECT || DEFAULT_PROJECT
 const outPath = value('out') || `xi-hpe-pe-${schoolId}-${termId}-${new Date().toISOString().replace(/[:.]/g, '-')}.csv`
 
-if (!termId || !scaleId) {
-  console.error('Both --term=<termId> and --scale=<gradingScaleId> are required.')
+if (!termId) {
+  console.error('--term=<termId> is required (e.g. --term=Term_1_2026_27).')
   process.exit(1)
 }
 
@@ -267,6 +268,18 @@ async function main() {
   console.log(`School:  ${schoolId}`)
   console.log(`Term:    ${termId}`)
   console.log(`Mode:    ${commit ? 'COMMIT' : 'DRY RUN (no writes)'}${removeHpeAcademic ? ' + remove HPE from Academics' : ''}${force ? ' + FORCE' : ''}\n`)
+
+  if (!scaleId) {
+    const scales = await db.collection('schools').doc(schoolId).collection('grading_scales').get()
+    console.log('No --scale given. Grading scales in this school:\n')
+    for (const d of scales.docs) {
+      const levels = (d.data().levels || []).map(l => l.label).join(' ')
+      console.log(`  --scale=${d.id}    ${d.data().name || ''}  [${levels}]`)
+    }
+    if (scales.empty) console.log('  (none — create the A1–E scale in Terms & Scales first)')
+    console.log('\nRe-run with the --scale=… of the A1–E scale.')
+    return
+  }
 
   const plan = await buildPlan(db)
   writeReport(plan)
