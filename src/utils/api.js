@@ -418,10 +418,13 @@ const listSmartRemarksCallable = httpsCallable(functions, 'list_smart_remarks', 
 const updateSmartRemarkCallable = httpsCallable(functions, 'update_smart_remark', { timeout: 30_000 })
 const bulkUpdateSmartRemarksCallable = httpsCallable(functions, 'bulk_update_smart_remarks', { timeout: 120_000 })
 
-export async function generateSmartRemarksRemote({ schoolId, classId, studentIds, confirmGenderIssue }) {
+// jobId: a smart_remarks_jobs doc id minted by the caller, so the page can
+// watch that exact job while the call is still running.
+export async function generateSmartRemarksRemote({ schoolId, classId, studentIds, confirmGenderIssue, jobId }) {
   const payload = { school_id: schoolId, class_id: classId }
   if (studentIds?.length) payload.student_ids = studentIds
   if (confirmGenderIssue) payload.confirm_gender_issue = true
+  if (jobId) payload.job_id = jobId
   const res = await generateSmartRemarksCallable(payload)
   return res.data
 }
