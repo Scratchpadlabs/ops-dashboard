@@ -465,6 +465,33 @@ gcloud functions deploy class_health \
 - `class_health` — read-only resolution report across every active school;
   the in-app twin of `tools/class_inventory.py`.
 
+### class_months (per-class attendance months)
+
+Also in `functions/school_reset`. The teacher app reads attendance months and
+their working days from `schools/{id}/classes/{classId}/months` (one doc per
+month, id = `YYYY-MM`), not from the school-wide `schools/{id}/months`. The
+School Setup **Months** tab reads and writes that path through this callable
+(Admin SDK) because firestore.rules grants the dashboard nothing that deep.
+
+```
+cd ~/ops-dashboard/functions/school_reset
+
+gcloud functions deploy class_months \
+  --gen2 --runtime python312 --region asia-south1 \
+  --source . --entry-point class_months \
+  --trigger-http --allow-unauthenticated --project clarified-1501 \
+  --memory 512MB --timeout 120s --max-instances 3
+```
+
+- `action: "list"` — every class with its months, plus the legacy
+  school-wide months (the Months tab offers to copy those into classes that
+  have none).
+- `action: "save"` — rows `{classId, key, label, month, year, order,
+  workingDays}`, validated against the `months` schema; any bad row rejects
+  the whole save. Stamps `updatedAt`/`updatedBy`.
+- `action: "delete"` — rows `{classId, key}`.
+- Ops-admin only (`ops_admins.py`).
+
 **IMPORTANT — `functions/shared` is mirrored, not imported.** `gcloud
 functions deploy --source .` uploads one folder, so `class_resolver.py`,
 `promotion.py` and `education_kb.json` are COPIES kept in step by
