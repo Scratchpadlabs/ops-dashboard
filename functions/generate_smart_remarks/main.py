@@ -492,8 +492,14 @@ def generate_smart_remarks(req: https_fn.CallableRequest) -> dict:
     roster_ids = [sid for sid in candidate_ids
                   if sid in base_set or students.get(sid, {}).get("active")]
     roster_ids.sort(key=lambda sid: _roster_sort_key(sid, students.get(sid)))
+    # tickedCount: boxes ticked true that resolve to a statement in this
+    # class's remark bank — what generation will actually use. Lets the
+    # dashboard tell "ticked, not generated yet" apart from "nothing ticked".
     roster = [{"id": sid, "name": students.get(sid, {}).get("name") or sid,
-               "rollNo": students.get(sid, {}).get("rollNo") or ""} for sid in roster_ids]
+               "rollNo": students.get(sid, {}).get("rollNo") or "",
+               "tickedCount": sum(1 for k, v in (entries_by_student.get(sid) or {}).items()
+                                  if v and k in remark_bank)}
+              for sid in roster_ids]
 
     if not sheet_refs:
         payload = {
