@@ -11,7 +11,7 @@ subsystems — Email Forwarding (MX), and URL Redirect records are invisible to
 the API. So the obvious read-modify-write loop still destroys mail routing for
 the domain, and does it silently, with a 200 OK.
 
-myhpc.in is a live domain. Losing its MX records to a school-provisioning
+myhpc.app is a live domain. Losing its MX records to a school-provisioning
 button would be a genuinely bad afternoon.
 
 The guardrails here, in the order they fire:
@@ -84,7 +84,7 @@ class ZoneWrite:
 
 
 def _split_domain(domain: str) -> tuple[str, str]:
-    """'myhpc.in' -> ('myhpc', 'in'). Multi-label TLDs (co.uk) are not used here."""
+    """'myhpc.app' -> ('myhpc', 'app'). Multi-label TLDs (co.uk) are not used here."""
     parts = domain.strip(".").split(".")
     if len(parts) < 2:
         raise NamecheapError(f"Not a registrable domain: {domain!r}")
@@ -310,7 +310,9 @@ def apply_records(
     return ZoneWrite(before=before, after=after, added=added, verified=verified, warnings=warnings)
 
 
-def records_from_firebase_dns_updates(dns_updates: dict, host_label: str) -> list[Record]:
+def records_from_firebase_dns_updates(
+    dns_updates: dict, host_label: str, zone: str | None = None
+) -> list[Record]:
     """
     Translate Firebase Hosting's `requiredDnsUpdates` into Namecheap records.
 
@@ -327,5 +329,25 @@ def records_from_firebase_dns_updates(dns_updates: dict, host_label: str) -> lis
             rdata = rec.get("rdata") or ""
             if not rtype or not rdata:
                 continue
-            out.append(Record(name=host_label, type=rtype, address=rdata))
+            out.append(Record(name=_relative_name(rec.get("domainName"), zone) or host_label,
+                              type=rtype, address=rdata))
     return out
+
+
+def _relative_name(fqdn: str | None, zone: str | None) -> str | None:
+    """
+    'www.school.myhpc.app.' in zone 'myhpc.app' -> 'www.school'.
+
+    Firebase names each record it wants; some (the ACME challenge) sit on a
+    different name from the served host, so the name is taken from the record
+    when it falls inside the zone. None means "use the host label".
+    """
+    if not fqdn or not zone:
+        return None
+    name = fqdn.strip(".").lower()
+    zone = zone.strip(".").lower()
+    if name == zone:
+        return "@"
+    if name.endswith("." + zone):
+        return name[: -len(zone) - 1]
+    return None

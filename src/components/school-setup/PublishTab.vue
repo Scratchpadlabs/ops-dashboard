@@ -10,7 +10,7 @@
             <div class="text-sm font-semibold text-slate-800 mb-1">Hosting</div>
             <p class="text-sm text-slate-500 max-w-2xl">
               Creates the Firebase Hosting site for this school, points
-              <span class="font-mono text-xs">{{ subdomain || '…' }}.{{ BASE_DOMAIN }}</span>
+              <span class="font-mono text-xs">{{ HOST_PREFIX }}.{{ subdomain || '…' }}.{{ BASE_DOMAIN }}</span>
               at it, and builds the teacher and student apps with this school's id.
               Nothing in the teacher repo is modified.
             </p>
@@ -33,6 +33,7 @@
           <div>
             <label class="form-label">Subdomain</label>
             <div class="flex items-center gap-2">
+              <span class="text-sm text-slate-400 whitespace-nowrap">{{ HOST_PREFIX }}.</span>
               <InputText v-model="subdomain" class="w-full font-mono text-sm" />
               <span class="text-sm text-slate-400 whitespace-nowrap">.{{ BASE_DOMAIN }}</span>
             </div>
@@ -139,7 +140,10 @@ import { previewHosting, provisionHosting, hostingStatus, suggestSiteId } from '
 
 const props = defineProps({ schoolId: { type: String, default: '' } })
 
-const BASE_DOMAIN = 'myhpc.in'
+// Schools are served at www.<school>.myhpc.app — keep in step with
+// HOSTING_BASE_DOMAIN / HOSTING_HOST_PREFIX in functions/provision_hosting/main.py.
+const BASE_DOMAIN = 'myhpc.app'
+const HOST_PREFIX = 'www'
 
 const STEP_ROWS = [
   { key: 'site', label: 'Hosting site created' },

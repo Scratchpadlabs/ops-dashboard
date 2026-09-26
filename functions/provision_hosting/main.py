@@ -75,7 +75,9 @@ PROJECT_ID = "clarified-1501"
 HOSTING_API = "https://firebasehosting.googleapis.com/v1beta1"
 HOSTING_SCOPES = ["https://www.googleapis.com/auth/firebase.hosting"]
 
-BASE_DOMAIN = os.environ.get("HOSTING_BASE_DOMAIN", "myhpc.in")
+BASE_DOMAIN = os.environ.get("HOSTING_BASE_DOMAIN", "myhpc.app")
+# Schools are served at www.<school>.myhpc.app.
+HOST_PREFIX = os.environ.get("HOSTING_HOST_PREFIX", "www")
 GITHUB_OWNER = os.environ.get("GITHUB_OWNER", "Scratchpadlabs")
 GITHUB_REPO = os.environ.get("GITHUB_REPO", "ops-dashboard")
 GITHUB_WORKFLOW = os.environ.get("GITHUB_WORKFLOW", "deploy-school.yml")
@@ -284,12 +286,15 @@ def _plan(db, school_id: str, site_id: str | None, subdomain: str | None) -> dic
     if err:
         raise ValueError(err)
     label = (subdomain or resolved_site).strip().lower()
+    # Host name relative to the BASE_DOMAIN zone — what Namecheap calls the record.
+    host = f"{HOST_PREFIX}.{label}" if HOST_PREFIX else label
     return {
         "school_id": school_id,
         "school_name": (school.to_dict() or {}).get("name", school_id),
         "site_id": resolved_site,
         "subdomain": label,
-        "domain": f"{label}.{BASE_DOMAIN}",
+        "host": host,
+        "domain": f"{host}.{BASE_DOMAIN}",
         "default_url": f"https://{resolved_site}.web.app",
     }
 
@@ -393,7 +398,7 @@ def hosting_provision(req: https_fn.Request) -> https_fn.Response:
             )
 
             desired = records_from_firebase_dns_updates(
-                domain_doc.get("requiredDnsUpdates", {}), plan["subdomain"]
+                domain_doc.get("requiredDnsUpdates", {}), plan["host"], BASE_DOMAIN
             )
             client = NamecheapClient()
             preserve = load_preserve_records(db)

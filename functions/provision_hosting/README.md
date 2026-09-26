@@ -68,13 +68,14 @@ read-only checkout.
 Namecheap's `setHosts` replaces the **entire** zone, and `getHosts` does not
 return records managed by Namecheap subsystems (Email Forwarding MX, URL
 Redirects). A naive read-modify-write therefore deletes mail routing for
-`myhpc.in` silently, with a 200 OK.
+`myhpc.app` silently, with a 200 OK.
 
 `namecheap_dns.py` is built to make that impossible, but one guardrail depends
 on you: records the API cannot see must be declared so they are re-asserted on
 every write.
 
-Create `hosting_config/dns_preserve` in Firestore:
+Create `hosting_config/dns_preserve` in Firestore — the records must be **`myhpc.app`'s**, the zone
+schools are provisioned into (`www.<school>.myhpc.app`):
 
 ```json
 {
