@@ -402,6 +402,7 @@
 
 <script setup>
 import { ref, reactive, computed, watch, onMounted } from 'vue'
+import { useAutoRefresh } from '../composables/useAutoRefresh.js'
 import { useRoute } from 'vue-router'
 import { db, auth } from '../firebase/config'
 import { activeYear, effectiveAcademicYear } from '../composables/useAcademicYear.js'
@@ -695,14 +696,14 @@ function statusChipClass(inv) {
 
 // ── Data loading ──────────────────────────────────────────────────────────────
 
-async function loadInvoices() {
-  loading.value = true
+async function loadInvoices({ silent = false } = {}) {
+  if (!silent) loading.value = true
   try {
     const q = query(opsCollection('invoices'), orderBy('created_at', 'desc'), limit(500))
     const snap = await getDocs(q)
     invoices.value = snap.docs.map(d => ({ id: d.id, ...d.data() }))
   } catch (e) {
-    toast.add({ severity: 'error', summary: 'Error', detail: 'Could not load invoices', life: 3000 })
+    if (!silent) toast.add({ severity: 'error', summary: 'Error', detail: 'Could not load invoices', life: 3000 })
   } finally {
     loading.value = false
   }
@@ -1036,6 +1037,9 @@ function formatPct(pct) {
   if (pct == null) return '0'
   return Number(pct).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 1 })
 }
+
+// Refresh in place every few minutes / on returning to the tab.
+useAutoRefresh(opts => loadInvoices(opts))
 
 onMounted(async () => {
   await Promise.all([loadInvoices(), loadLookupData(), loadSettings(), loadPaymentPlans()])

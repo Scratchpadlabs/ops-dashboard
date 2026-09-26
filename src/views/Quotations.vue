@@ -327,6 +327,7 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { useAutoRefresh } from '../composables/useAutoRefresh.js'
 import { db, auth } from '../firebase/config'
 import { activeYear, effectiveAcademicYear } from '../composables/useAcademicYear.js'
 import { opsCollection, opsDoc } from '../firebase/collections.js'
@@ -444,14 +445,14 @@ watch(() => route.query.highlight, (id) => {
 })
 
 // ── Load ──────────────────────────────────────────────────────────────────────
-async function loadQuotations() {
-  loading.value = true
+async function loadQuotations({ silent = false } = {}) {
+  if (!silent) loading.value = true
   try {
     const q = query(opsCollection('quotations'), orderBy('created_at', 'desc'), limit(500))
     const snap = await getDocs(q)
     quotations.value = snap.docs.map(d => ({ id: d.id, ...d.data() }))
   } catch (e) {
-    toast.add({ severity: 'error', summary: 'Error', detail: 'Could not load quotations', life: 3000 })
+    if (!silent) toast.add({ severity: 'error', summary: 'Error', detail: 'Could not load quotations', life: 3000 })
   } finally {
     loading.value = false
   }
@@ -774,6 +775,9 @@ function formatPrice(n) {
   if (n == null) return '0'
   return Math.floor(Number(n)).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
 }
+
+// Refresh in place every few minutes / on returning to the tab.
+useAutoRefresh(opts => Promise.all([loadQuotations(opts), loadAgreements()]))
 
 onMounted(async () => {
   await Promise.all([loadQuotations(), loadAllSchools(), loadAgreements(), loadSettings()])

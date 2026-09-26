@@ -105,8 +105,8 @@ export function useTasks() {
   const tasks = ref([])
   const tasksLoading = ref(false)
 
-  async function loadTasks() {
-    tasksLoading.value = true
+  async function loadTasks({ silent = false } = {}) {
+    if (!silent) tasksLoading.value = true
     try {
       const snap = await getDocs(query(opsCollection('tasks'), orderBy('created_at', 'desc'), limit(500)))
       tasks.value = snap.docs.map(d => ({ id: d.id, ...d.data() }))

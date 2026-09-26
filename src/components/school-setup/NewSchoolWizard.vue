@@ -411,7 +411,7 @@ const HANDOFF_STEPS = {
     placeholder: 'e.g. 8 subjects across I–V',
   },
   'new.academics': {
-    body: 'Set terms, grading scales, months and remark categories. Applying a template from the Templates tab is usually the fastest route; you can adjust afterwards.',
+    body: 'Set terms, grading scales, months and remark categories. Applying a template from the Templates tab is usually the fastest route; you can adjust afterwards. Attendance months are class-wise: once classes exist, use Generate Academic Year in the Months tab (or copy a template\'s school-wide months into every class from there).',
     links: [{ to: 'templates', label: 'Templates' }, { to: 'terms-scales', label: 'Terms & Scales' },
              { to: 'months', label: 'Months' }, { to: 'remarks', label: 'Remarks' }],
     placeholder: 'e.g. 2 terms, 5-point scale, template applied',

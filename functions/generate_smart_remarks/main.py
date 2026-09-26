@@ -445,6 +445,14 @@ def generate_smart_remarks(req: https_fn.CallableRequest) -> dict:
     only_student_ids = set(data.get("student_ids", []))
     scan_only = bool(data.get("scan_only"))
     confirm_gender_issue = bool(data.get("confirm_gender_issue"))
+    # Optional: the dashboard mints the job doc id up front so it can watch
+    # that exact doc (and tell one class's run from the next in a multi-class
+    # batch). Older clients omit it and get a generated id, as before.
+    job_id = data.get("job_id")
+    if job_id is not None and (not isinstance(job_id, str) or not job_id
+                               or "/" in job_id or len(job_id) > 128):
+        raise https_fn.HttpsError(
+            https_fn.FunctionsErrorCode.INVALID_ARGUMENT, "job_id must be a plain document id")
 
     if not school_id or not class_id:
         raise https_fn.HttpsError(
@@ -545,15 +553,43 @@ def generate_smart_remarks(req: https_fn.CallableRequest) -> dict:
 
     ai = OpenAI(api_key=OPENAI_API_KEY.value)
 
-    job_ref = school_ref.collection("smart_remarks_jobs").document()
+    # (student, category) pairs with at least one tick — one remark each, so
+    # this is what the progress bar should count, not students.
+    category_slugs = {c["slug"] for c in categories}
+    total_remarks = sum(
+        len({remark_bank[k]["categorySlug"]
+             for k, v in (entries_by_student.get(sid) or {}).items()
+             if v and k in remark_bank} & category_slugs)
+        for sid in roster_ids)
+
+    jobs = school_ref.collection("smart_remarks_jobs")
+    job_ref = jobs.document(job_id) if job_id else jobs.document()
     job_ref.set({
         "classId": class_id, "band": band, "status": "running",
         "startedAt": firestore.SERVER_TIMESTAMP, "startedBy": caller,
         "totalStudents": len(roster_ids), "processedStudents": 0,
+        "totalRemarks": total_remarks, "processedRemarks": 0, "writtenRemarks": 0,
+        "skippedApproved": 0, "currentStudent": "",
     })
 
     used_openings_by_category = defaultdict(set)
     processed = written = skipped_approved = skipped_no_ticks = 0
+    processed_remarks = 0
+    last_progress = 0.0
+
+    def report(current_name, force=False):
+        # One doc takes ~1 sustained write/sec; skipped (approved) remarks
+        # can arrive faster than that, so throttle to the model's pace.
+        nonlocal last_progress
+        now = time.monotonic()
+        if not force and now - last_progress < 1.0:
+            return
+        last_progress = now
+        job_ref.update({
+            "processedStudents": processed, "processedRemarks": processed_remarks,
+            "writtenRemarks": written, "skippedApproved": skipped_approved,
+            "currentStudent": current_name,
+        })
 
     try:
         for sid in roster_ids:
@@ -571,6 +607,8 @@ def generate_smart_remarks(req: https_fn.CallableRequest) -> dict:
                 by_category[item["categorySlug"]].append({**item, "key": key})
 
             student_remarks_ref = school_ref.collection("students").document(sid).collection("smart_remarks")
+            if by_category:
+                report(info["name"], force=True)
 
             for cat in categories:
                 slug = cat["slug"]
@@ -585,6 +623,8 @@ def generate_smart_remarks(req: https_fn.CallableRequest) -> dict:
                 if (existing.exists and existing.to_dict().get("status") == "approved"
                         and not only_student_ids):
                     skipped_approved += 1
+                    processed_remarks += 1
+                    report(info["name"])
                     continue
 
                 comment = generate_smart_comment(
@@ -601,21 +641,25 @@ def generate_smart_remarks(req: https_fn.CallableRequest) -> dict:
                     "updatedAt": firestore.SERVER_TIMESTAMP,
                 })
                 written += 1
+                processed_remarks += 1
+                report(info["name"])
                 time.sleep(0.3)
 
             processed += 1
-            job_ref.update({"processedStudents": processed, "writtenRemarks": written})
+            report(info["name"])
     except Exception as e:
         job_ref.update({
             "status": "failed", "error": str(e)[:500],
             "completedAt": firestore.SERVER_TIMESTAMP,
             "processedStudents": processed, "writtenRemarks": written,
+            "processedRemarks": processed_remarks,
         })
         raise
 
     job_ref.update({
         "status": "done", "completedAt": firestore.SERVER_TIMESTAMP,
         "processedStudents": processed, "writtenRemarks": written,
+        "processedRemarks": processed_remarks, "currentStudent": "",
         "skippedApproved": skipped_approved, "skippedNoTicks": skipped_no_ticks,
     })
     return {

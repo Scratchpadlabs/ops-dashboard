@@ -246,6 +246,7 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { useAutoRefresh } from '../composables/useAutoRefresh.js'
 import { useRoute } from 'vue-router'
 import { db, storage, auth } from '../firebase/config'
 import { activeYear, effectiveAcademicYear } from '../composables/useAcademicYear.js'
@@ -355,14 +356,14 @@ async function loadSettings() {
 }
 
 // ── Load ──────────────────────────────────────────────────────────────────────
-async function loadAgreements() {
-  loading.value = true
+async function loadAgreements({ silent = false } = {}) {
+  if (!silent) loading.value = true
   try {
     const q = query(opsCollection('agreements'), orderBy('created_at', 'desc'), limit(500))
     const snap = await getDocs(q)
     agreements.value = snap.docs.map(d => ({ id: d.id, ...d.data() }))
   } catch (e) {
-    toast.add({ severity: 'error', summary: 'Error', detail: 'Could not load agreements', life: 3000 })
+    if (!silent) toast.add({ severity: 'error', summary: 'Error', detail: 'Could not load agreements', life: 3000 })
   } finally {
     loading.value = false
   }
@@ -569,6 +570,9 @@ function formatPrice(n) {
   if (n == null) return '0'
   return Number(n).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
 }
+
+// Refresh in place every few minutes / on returning to the tab.
+useAutoRefresh(opts => loadAgreements(opts))
 
 onMounted(async () => {
   await Promise.all([loadAgreements(), loadAllSchools(), loadSettings()])

@@ -14,7 +14,7 @@
  * the `roster` field.
  */
 import { ref } from 'vue'
-import { getDocs, query, orderBy, limit, onSnapshot } from 'firebase/firestore'
+import { getDocs, query, orderBy, limit, onSnapshot, doc } from 'firebase/firestore'
 
 import { rootSchoolsCollection, schoolCollection, smartRemarksJobsCollection } from '../firebase/schoolCollections.js'
 import { compareClassIds } from './useSurveys.js'
@@ -119,9 +119,27 @@ export function useSmartRemarks() {
   }
 
   // ── Generation job progress ─────────────────────────────────────────────
-  // Same "job doc written before the model calls start" pattern as AAP —
-  // the callable only returns jobId once the whole run finishes, so a
-  // still-running job is found rather than addressed.
+  // The page mints the job id (newJobId) and passes it to the callable, then
+  // watches for that doc. A function deployed before job_id existed ignores
+  // it and makes its own id, so the watcher also accepts "the newest job for
+  // this class that wasn't there before" — the original AAP-style lookup.
+  function newJobId(schoolId) {
+    return doc(smartRemarksJobsCollection(schoolId)).id
+  }
+
+  function watchJob(schoolId, classId, jobId, knownJobIds, cb) {
+    return onSnapshot(
+      query(smartRemarksJobsCollection(schoolId), orderBy('startedAt', 'desc'), limit(20)),
+      (snap) => {
+        const jobs = snap.docs.map(d => ({ ...d.data(), id: d.id }))
+        const job = jobs.find(j => j.id === jobId)
+          || jobs.find(j => j.classId === classId && !knownJobIds.has(j.id))
+        if (job) cb(job)
+      },
+      (e) => { console.error('Smart remarks job listener failed', e) },
+    )
+  }
+
   async function recentJobIds(schoolId) {
     const snap = await getDocs(query(smartRemarksJobsCollection(schoolId), orderBy('startedAt', 'desc'), limit(20)))
     return new Set(snap.docs.map(d => d.id))
@@ -145,6 +163,6 @@ export function useSmartRemarks() {
     loadingSchools, loadingClasses, loadingRoster,
     loadSchools, loadClasses, loadClass, loadRemarks, reloadStudent,
     generate, scan, saveComment, setStatus, setStatusBulk,
-    recentJobIds, watchNewJob,
+    recentJobIds, watchNewJob, newJobId, watchJob,
   }
 }

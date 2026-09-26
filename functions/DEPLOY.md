@@ -197,6 +197,50 @@ what actually size the Cloud Run resource, since this repo deploys with plain
 
 ---
 
+## generate_smart_remarks (Smart / general conduct remarks)
+
+Generates one conduct remark per (student, remark category) from the ticks
+teachers make on the Smart Sheets Remarks tab (`remarks_sheets/*/entries`
+against `remark_categories`), and writes them to
+`schools/{id}/students/{sid}/smart_remarks/{categorySlug}` as
+`needs_review`. One class per call; the dashboard's multi-class run simply
+calls it once per class, in sequence.
+
+### Deploy:
+```
+cd functions/generate_smart_remarks
+
+gcloud functions deploy generate_smart_remarks \
+  --gen2 --runtime python312 --region asia-south1 \
+  --source . --entry-point generate_smart_remarks \
+  --trigger-http --allow-unauthenticated --project clarified-1501 \
+  --memory 512MB --timeout 540s --max-instances 3 \
+  --set-secrets OPENAI_API_KEY=OPENAI_API_KEY:latest
+
+for fn in list_smart_remarks update_smart_remark bulk_update_smart_remarks; do
+  gcloud functions deploy "$fn" \
+    --gen2 --runtime python312 --region asia-south1 \
+    --source . --entry-point "$fn" \
+    --trigger-http --allow-unauthenticated --project clarified-1501 \
+    --memory 256MB --timeout 120s --max-instances 3
+done
+```
+
+### Progress
+- The dashboard passes a `job_id` it minted itself and watches
+  `smart_remarks_jobs/{job_id}` directly. Without `job_id` (an older page)
+  the function generates one, and the page falls back to watching for the
+  newest job on that class.
+- The job doc carries `totalRemarks` / `processedRemarks` (one per ticked
+  student x category), `writtenRemarks`, `skippedApproved`,
+  `totalStudents` / `processedStudents` and `currentStudent`, updated at most
+  about once a second.
+- A run killed by the 540s timeout never reaches its `except`, so its job
+  doc stays `running`; the page treats the callable's error as the class
+  having failed regardless.
+
+---
+
 ## generate_pending_letter (v2: compose dialog, draft/render modes)
 
 PDF per school listing outstanding pending items from the Data Receivable
@@ -464,6 +508,33 @@ gcloud functions deploy class_health \
   school with the same odd value resolves without anyone confirming it again.
 - `class_health` — read-only resolution report across every active school;
   the in-app twin of `tools/class_inventory.py`.
+
+### class_months (per-class attendance months)
+
+Also in `functions/school_reset`. The teacher app reads attendance months and
+their working days from `schools/{id}/classes/{classId}/months` (one doc per
+month, id = `YYYY-MM`), not from the school-wide `schools/{id}/months`. The
+School Setup **Months** tab reads and writes that path through this callable
+(Admin SDK) because firestore.rules grants the dashboard nothing that deep.
+
+```
+cd ~/ops-dashboard/functions/school_reset
+
+gcloud functions deploy class_months \
+  --gen2 --runtime python312 --region asia-south1 \
+  --source . --entry-point class_months \
+  --trigger-http --allow-unauthenticated --project clarified-1501 \
+  --memory 512MB --timeout 120s --max-instances 3
+```
+
+- `action: "list"` — every class with its months, plus the legacy
+  school-wide months (the Months tab offers to copy those into classes that
+  have none).
+- `action: "save"` — rows `{classId, key, label, month, year, order,
+  workingDays}`, validated against the `months` schema; any bad row rejects
+  the whole save. Stamps `updatedAt`/`updatedBy`.
+- `action: "delete"` — rows `{classId, key}`.
+- Ops-admin only (`ops_admins.py`).
 
 **IMPORTANT — `functions/shared` is mirrored, not imported.** `gcloud
 functions deploy --source .` uploads one folder, so `class_resolver.py`,

@@ -252,6 +252,27 @@ export async function saveClassMapRemote({ schoolId, rows, shareAliases = true }
   return res.data
 }
 
+// Per-class attendance months (schools/{id}/classes/{classId}/months) — what
+// the teacher app reads working days from. Behind a callable because that
+// path is deeper than anything firestore.rules grants the dashboard. See
+// class_months in functions/school_reset/main.py.
+const classMonthsCallable = httpsCallable(functions, 'class_months', { timeout: 120_000 })
+
+export async function listClassMonthsRemote({ schoolId }) {
+  const res = await classMonthsCallable({ schoolId, action: 'list' })
+  return res.data
+}
+
+export async function saveClassMonthsRemote({ schoolId, rows }) {
+  const res = await classMonthsCallable({ schoolId, action: 'save', rows })
+  return res.data
+}
+
+export async function deleteClassMonthsRemote({ schoolId, rows }) {
+  const res = await classMonthsCallable({ schoolId, action: 'delete', rows })
+  return res.data
+}
+
 export async function classHealthRemote() {
   const res = await classHealthCallable({})
   return res.data
@@ -397,10 +418,13 @@ const listSmartRemarksCallable = httpsCallable(functions, 'list_smart_remarks', 
 const updateSmartRemarkCallable = httpsCallable(functions, 'update_smart_remark', { timeout: 30_000 })
 const bulkUpdateSmartRemarksCallable = httpsCallable(functions, 'bulk_update_smart_remarks', { timeout: 120_000 })
 
-export async function generateSmartRemarksRemote({ schoolId, classId, studentIds, confirmGenderIssue }) {
+// jobId: a smart_remarks_jobs doc id minted by the caller, so the page can
+// watch that exact job while the call is still running.
+export async function generateSmartRemarksRemote({ schoolId, classId, studentIds, confirmGenderIssue, jobId }) {
   const payload = { school_id: schoolId, class_id: classId }
   if (studentIds?.length) payload.student_ids = studentIds
   if (confirmGenderIssue) payload.confirm_gender_issue = true
+  if (jobId) payload.job_id = jobId
   const res = await generateSmartRemarksCallable(payload)
   return res.data
 }
