@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "test": "node --test tests/*.test.mjs",
     "migrate:co-scholastic": "node scripts/migrate-co-scholastic-subjects.mjs",
     "backfill:co-scholastic-classids": "node scripts/backfill-teacher-co-scholastic-classids.mjs",
     "backfill:topics": "node scripts/backfill-topics.mjs"
