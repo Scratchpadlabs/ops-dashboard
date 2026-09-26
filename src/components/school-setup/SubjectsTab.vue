@@ -454,7 +454,7 @@ function addGoal() {
 
 // ── Topics + quiz ────────────────────────────────────────────────────────
 // Same fixed Term 1 / Term 2 / Optional template classes.subjects[].topics
-// seeds (see defaultTopicsForSubject in ClassesTeachersTab.vue/StructureTab.vue)
+// seeds (see defaultTopicsForSubject in ClassesTeachersTab.vue)
 // so a subject created here and one linked to a class via those tabs start
 // from the same three topics, just in each collection's own shape.
 function defaultTopics() {
