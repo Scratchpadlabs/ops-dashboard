@@ -105,26 +105,19 @@ INACTIVE_ENROLLMENT_VALUES = {
 # shows what "enough" looks like across schools.
 LOW_CONFIDENCE_THRESHOLD = 3
 
-# Style variation, same reasoning as generate_aap_remarks's SENTENCE_STARTERS:
-# a whole class read off one style instruction reads as one comment with the
-# names swapped.
-SENTENCE_STARTERS = [
-    "begins with the student's name and their strongest quality",
-    "opens with what makes this student stand out day to day",
-    "leads with the student's most noticeable habit this term",
-    "starts by describing how the student carries themself in class",
-    "opens on a specific moment that captures this student's character",
-    "begins with how classmates and teachers experience this student",
-    "starts with the student's approach to their work",
-    "leads with the student's growth since the term began",
-]
-CLOSINGS = [
-    "End with something the student can build on next term.",
-    "End on what the teacher looks forward to seeing.",
-    "End with a warm sentence about the student as a classmate.",
-    "End with a specific encouragement, not a general one.",
-]
-
+# Words that make a report-card comment read as machine-written or too
+# formal for parents. A draft containing any of them is regenerated (the
+# last attempt is kept if all fail, so a class never stalls on this).
+FANCY_WORDS = (
+    "demonstrate", "exemplary", "commendable", "exceptional", "remarkable",
+    "showcase", "foster", "journey", "thrive", "vibrant", "meticulous",
+    "delve", "testament", "nurture", "embrace", "strive", "endeavor",
+    "endeavour", "diligent", "proficien", "invaluable", "unwavering",
+    "commitment", "dedication", "enthusiasm", "eagerness", "keen",
+    "learning community", "valued member", "positive attitude", "holistic",
+    "a joy to", "delight", "shines", "blossom", "flourish", "impressive",
+    "truly", "consistently", "noteworthy", "admirable", "aptitude",
+)
 
 def _require_ops_admin(req: https_fn.CallableRequest) -> str:
     return _require_ops_admin_base(req, "Not authorized to generate smart remarks.")
@@ -369,11 +362,28 @@ def _class_roster(school_ref, class_id):
     return out
 
 
+def _word_limits(n_ticked):
+    """Length follows the teacher's input: about one short sentence per
+    ticked statement. A fixed 40-70 words forced the model to pad a one- or
+    two-tick student with invented detail."""
+    return max(8, 8 * n_ticked), 14 * n_ticked + 6
+
+
+def _looks_fancy(comment):
+    lowered = comment.lower()
+    return any(w in lowered for w in FANCY_WORDS)
+
+
 def generate_smart_comment(ai, first_name, gender, category_label, ticked, used_openings=None):
     """One remark, scoped to a SINGLE remark category, from a student's
     ticked statements in that category. `ticked` is [{text, type}, ...] —
     already resolved, already filtered to items this student actually has
     ticked true, all belonging to `category_label`.
+
+    The comment must say what the teacher ticked and nothing else — plain
+    enough for any parent to read, about one short sentence per ticked
+    statement. No invented examples, feelings, predictions or praise the
+    teacher didn't tick.
 
     Categories are written up independently rather than blended into one
     combined paragraph — see module docstring for why (different teachers,
@@ -383,53 +393,43 @@ def generate_smart_comment(ai, first_name, gender, category_label, ticked, used_
     pronoun = "He" if gender.strip().lower().startswith(("m", "boy")) else "She"
     his_her = "his" if pronoun == "He" else "her"
 
-    low_confidence = len(ticked) < LOW_CONFIDENCE_THRESHOLD
-
     positives = [i["text"] for i in ticked if i["type"] != "negative"]
     negatives = [i["text"] for i in ticked if i["type"] == "negative"]
-    parts = positives + [f"(growth area) {n}" for n in negatives]
-    observations = "; ".join(parts)
-
-    confidence_note = (
-        "\n- Only a few observations were ticked for this student so far — write in a way "
-        "that reads as an early impression rather than a complete assessment, without saying "
-        "so clinically (e.g. \"is beginning to show\", \"so far\")."
-        if low_confidence else ""
-    )
+    lines = [f"- {t}" for t in positives] + [f"- (needs to improve) {t}" for t in negatives]
+    observations = "\n".join(lines)
+    min_words, max_words = _word_limits(len(ticked))
 
     avoid = sorted(used_openings)[:8]
-    avoid_line = ("\n- Do NOT open with any of these phrasings, already used for "
-                  f"other students in this class: {'; '.join(avoid)}" if avoid else "")
+    avoid_line = ("\n- Do not start with any of these openings, already used for other "
+                  f"students: {'; '.join(avoid)}" if avoid else "")
 
-    prompt = f"""You are a warm, caring schoolteacher writing a "{category_label}" remark for a report card.
+    prompt = f"""Write a short "{category_label}" remark for a school report card.
 
-Student first name: {first_name}
-Pronoun: {pronoun}/{his_her}
+Student: {first_name} ({pronoun}/{his_her})
 
-Observations the teacher ticked for this student under "{category_label}":
+The teacher ticked ONLY these statements for this student:
 {observations}
 
-Style instructions:
-- The comment {SENTENCE_STARTERS[len(used_openings) % len(SENTENCE_STARTERS)]}
-- Blend all the observations into ONE natural paragraph — do not list them mechanically.{confidence_note}
-- {CLOSINGS[len(used_openings) % len(CLOSINGS)]}
-- Write like a real teacher — simple, warm, everyday language parents and children understand easily
-- Use {first_name}'s name once near the start
-- Use correct pronoun ({pronoun}/{his_her})
-- A growth area (marked above) must be phrased constructively, never harshly
-- Avoid formal/robotic phrases like "learning community", "valued member", "demonstrates proficiency"
-- MUST be between 40 and 70 words
-- Return only the comment, nothing else{avoid_line}"""
+Rules:
+- Say only what the ticked statements say. Do not add anything else: no examples, no events, no feelings, no predictions, no extra praise, no advice the teacher did not tick.
+- Keep close to the teacher's own words. One short sentence for each statement, or join two related ones.
+- Use very simple, everyday English that any parent can understand. Short sentences. No fancy or formal words.
+- Start with {first_name}'s name. After that use {pronoun}/{his_her}.
+- A "(needs to improve)" statement should be written kindly and simply, e.g. "{pronoun} needs to work on ..." or "{pronoun} should try to ...".
+- Between {min_words} and {max_words} words.
+- Return only the remark.{avoid_line}"""
 
     comment = ""
     for _ in range(3):
         resp = ai.chat.completions.create(
-            model="gpt-4o-mini", max_tokens=300, temperature=1.0,
+            model="gpt-4o-mini", max_tokens=200, temperature=0.4,
             messages=[{"role": "user", "content": prompt}],
         )
-        comment = resp.choices[0].message.content.strip()
+        comment = resp.choices[0].message.content.strip().strip('"')
+        words = len(comment.split())
         opening = " ".join(comment.split()[:4]).lower()
-        if 40 <= len(comment.split()) <= 70 and opening not in used_openings:
+        if (min_words <= words <= max_words and not _looks_fancy(comment)
+                and opening not in used_openings):
             break
     used_openings.add(" ".join(comment.split()[:4]).lower())
     return comment
@@ -492,8 +492,14 @@ def generate_smart_remarks(req: https_fn.CallableRequest) -> dict:
     roster_ids = [sid for sid in candidate_ids
                   if sid in base_set or students.get(sid, {}).get("active")]
     roster_ids.sort(key=lambda sid: _roster_sort_key(sid, students.get(sid)))
+    # tickedCount: boxes ticked true that resolve to a statement in this
+    # class's remark bank — what generation will actually use. Lets the
+    # dashboard tell "ticked, not generated yet" apart from "nothing ticked".
     roster = [{"id": sid, "name": students.get(sid, {}).get("name") or sid,
-               "rollNo": students.get(sid, {}).get("rollNo") or ""} for sid in roster_ids]
+               "rollNo": students.get(sid, {}).get("rollNo") or "",
+               "tickedCount": sum(1 for k, v in (entries_by_student.get(sid) or {}).items()
+                                  if v and k in remark_bank)}
+              for sid in roster_ids]
 
     if not sheet_refs:
         payload = {

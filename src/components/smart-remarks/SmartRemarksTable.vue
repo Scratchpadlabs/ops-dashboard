@@ -59,7 +59,7 @@
 
         <Column header="Ticked" style="min-width:90px">
           <template #body="{ data }">
-            <span v-if="!data.empty" class="text-xs text-slate-500">{{ data.tickedCount }}</span>
+            <span v-if="!data.empty || data.tickedCount != null" class="text-xs text-slate-500">{{ data.tickedCount }}</span>
           </template>
         </Column>
 
@@ -76,8 +76,14 @@
               </span>
               {{ data.comment || 'No comment — click to write one' }}
             </button>
+            <span v-else-if="data.tickedCount > 0" class="text-xs text-blue-600">
+              {{ data.tickedCount }} box{{ data.tickedCount === 1 ? '' : 'es' }} ticked in Smart Sheets — not generated yet.
+            </span>
+            <span v-else-if="data.tickedCount === 0" class="text-xs text-slate-400">
+              Nothing ticked in Smart Sheets yet for this student.
+            </span>
             <span v-else class="text-xs text-slate-400">
-              No remarks ticked yet for this student.
+              No remark generated yet for this student.
             </span>
           </template>
         </Column>
@@ -177,6 +183,7 @@ const allRows = computed(() => props.students.flatMap(student => {
   if (!remarks.length) {
     return [{
       rowKey: student.id, studentId: student.id, studentName, rollNo: student.rollNo, empty: true,
+      tickedCount: student.tickedCount,
     }]
   }
   return remarks.map(remark => ({

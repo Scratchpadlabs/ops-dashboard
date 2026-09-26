@@ -117,6 +117,11 @@
       class, but none of them match a statement in any remark category assigned to it. Check the class's
       remark categories in School Setup.
     </div>
+    <div v-else-if="scan && scan.tickedStudents && !hasRemarks && !running" class="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 mb-4 text-sm text-blue-900">
+      <i class="pi pi-info-circle mr-1.5"></i>
+      {{ scan.tickedStudents }} of {{ scan.students }} students have boxes ticked in Smart Sheets.
+      Click <b>Generate remarks</b> to write their comments.
+    </div>
     <div v-else-if="scan && scan.multipleSheetsFound && !running" class="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4 text-sm text-amber-900">
       <i class="pi pi-exclamation-triangle mr-1.5"></i>
       More than one remarks sheet was found for this class — ticks from every sheet were merged
