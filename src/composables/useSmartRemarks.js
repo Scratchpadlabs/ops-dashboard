@@ -6,10 +6,12 @@
  * data-shape writeup — this composable is the thin client wrapper, same
  * shape as useAapRemarks.js.
  *
- * The roster comes from `class_detail` (functions/assign_survey), same as
- * AAP Remarks — that callable already resolves a class the way the rest of
- * the dashboard does, including schools whose students key their class off
- * a different field entirely.
+ * The roster comes from the generator's own scan (generate_smart_remarks,
+ * scan_only), so the students listed here are exactly the ones it reads
+ * ticks for and writes remarks to — students on `currentClassId` (what the
+ * teacher app ticks by) plus anyone with ticks in the class's sheets.
+ * `class_detail` is only a fallback for a deployed function that predates
+ * the `roster` field.
  */
 import { ref } from 'vue'
 import { getDocs, query, orderBy, limit, onSnapshot } from 'firebase/firestore'
@@ -67,15 +69,23 @@ export function useSmartRemarks() {
     }
   }
 
+  // Returns the scan result (band, sheetFound, tick counts, ...) so the
+  // view can show its findings without a second call.
   async function loadClass(schoolId, classId) {
     students.value = []
     remarksByStudent.value = {}
-    if (!schoolId || !classId) return
+    if (!schoolId || !classId) return null
     loadingRoster.value = true
     try {
-      const detail = await classDetailRemote({ schoolId, classId })
-      students.value = detail.students || []
+      const scanResult = await scanSmartRemarksRemote({ schoolId, classId })
+      if (Array.isArray(scanResult?.roster)) {
+        students.value = scanResult.roster
+      } else {
+        const detail = await classDetailRemote({ schoolId, classId })
+        students.value = detail.students || []
+      }
       await loadRemarks(schoolId, students.value.map(s => s.id))
+      return scanResult
     } finally {
       loadingRoster.value = false
     }

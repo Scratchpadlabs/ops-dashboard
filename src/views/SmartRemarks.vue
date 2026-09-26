@@ -101,15 +101,21 @@
     </div>
 
     <!-- ── Scan-time findings ───────────────────────────────────────────── -->
-    <div v-if="scan && !scan.band && !running" class="bg-red-50 border border-red-200 rounded-xl px-4 py-3 mb-4 text-sm text-red-900">
+    <div v-if="scan && !scan.band && !scan.categories?.length && !running" class="bg-red-50 border border-red-200 rounded-xl px-4 py-3 mb-4 text-sm text-red-900">
       <i class="pi pi-exclamation-triangle mr-1.5"></i>
       This class's stage ("{{ scan.stageIssue || 'not set' }}") doesn't map to a known remark band
       (Foundational/Preparatory/Middle/Secondary). Set the class's stage in School Setup before
       generating remarks for it.
     </div>
-    <div v-else-if="scan && scan.band && !scan.sheetFound && !running" class="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4 text-sm text-amber-900">
+    <div v-else-if="scan && !scan.sheetFound && !running" class="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4 text-sm text-amber-900">
       <i class="pi pi-exclamation-triangle mr-1.5"></i>
       No remarks sheet exists yet for this class — a teacher hasn't ticked any boxes for it.
+    </div>
+    <div v-else-if="scan && scan.unmatchedTicks && !scan.tickedStudents && !running" class="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4 text-sm text-amber-900">
+      <i class="pi pi-exclamation-triangle mr-1.5"></i>
+      Teachers have ticked {{ scan.unmatchedTicks }} box{{ scan.unmatchedTicks === 1 ? '' : 'es' }} for this
+      class, but none of them match a statement in any remark category assigned to it. Check the class's
+      remark categories in School Setup.
     </div>
     <div v-else-if="scan && scan.multipleSheetsFound && !running" class="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4 text-sm text-amber-900">
       <i class="pi pi-exclamation-triangle mr-1.5"></i>
@@ -168,7 +174,7 @@ const {
   schools, classes, students, remarksByStudent,
   loadingSchools, loadingClasses, loadingRoster,
   loadSchools, loadClasses, loadClass, reloadStudent,
-  generate, scan: scanRemote, recentJobIds, watchNewJob,
+  generate, recentJobIds, watchNewJob,
 } = useSmartRemarks()
 
 // ── Step-up gate ──────────────────────────────────────────────────────────
@@ -225,17 +231,10 @@ watch(classId, () => {
 async function reload() {
   if (!classId.value) return
   try {
-    await loadClass(schoolId.value, classId.value)
+    scan.value = await loadClass(schoolId.value, classId.value)
   } catch (e) {
-    console.error('Could not load the class roster', e)
+    console.error('Could not load the class', e)
     toast.add({ severity: 'error', summary: 'Could not load this class', detail: e.message, life: 5000 })
-    return
-  }
-  try {
-    scan.value = await scanRemote({ schoolId: schoolId.value, classId: classId.value })
-  } catch (e) {
-    console.error('Could not check this class\'s remarks sheet', e)
-    toast.add({ severity: 'error', summary: 'Could not check this class\'s remarks sheet', detail: e.message, life: 5000 })
   }
 }
 

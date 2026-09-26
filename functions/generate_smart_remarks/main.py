@@ -187,12 +187,24 @@ def _resolve_band(school_ref, class_id):
     return _BAND_BY_STAGE.get(stage), stage
 
 
-def _fetch_remark_bank(school_ref, band):
+def _fetch_remark_bank(school_ref, band, class_id):
     """key -> {category, categorySlug, text, type} across every
-    remark_categories doc that applies to this band (doc id
-    "{band}_{category}", or unprefixed = every band). Exact-key index — see
+    remark_categories doc that applies to this class. Exact-key index — see
     module docstring for why this needs no fuzzy matching the way AAP's
     subject resolution does.
+
+    A category applies if its `classIds` contains this class — the exact
+    rule the teacher app uses to decide which checkboxes it shows
+    (SmartSheets.vue fetchRemarkCategories: `classIds array-contains`) — OR
+    its doc-id band prefix matches this class's band (unprefixed = every
+    band). Scoping by band alone dropped real ticks whenever the two
+    disagreed (a class's `stage` edited after the bank was imported, a
+    category assigned to extra classes in School Setup, a missing `stage`):
+    the teacher saw and ticked the box, but its key was never in this index,
+    so every such tick was silently counted as "nothing ticked". Keys are
+    unique school-wide, so taking the union can never make one key mean two
+    things. `band` may be None (stage unset/unknown) — then only `classIds`
+    decides.
 
     `categorySlug` is the remark_categories doc's own id — a stable
     identifier for "which category this key belongs to" that survives the
@@ -209,9 +221,11 @@ def _fetch_remark_bank(school_ref, band):
         doc_band = doc.id.split("_", 1)[0] if "_" in doc.id else ""
         if doc_band not in _KNOWN_BANDS:
             doc_band = ""  # not a real band prefix — this category applies to every band
-        if doc_band and doc_band != band:
-            continue
         data = doc.to_dict() or {}
+        in_class_ids = class_id in (data.get("classIds") or [])
+        in_band = band is not None and (not doc_band or doc_band == band)
+        if not (in_class_ids or in_band):
+            continue
         label = str(data.get("label") or doc.id).strip()
         remarks = data.get("remarks") or []
         if not remarks:
@@ -230,7 +244,7 @@ def _fetch_remark_bank(school_ref, band):
     return index, categories
 
 
-def _fetch_merged_entries(school_ref, class_id, roster_ids):
+def _fetch_merged_entries(school_ref, class_id):
     """Every remarks_sheets doc for this class, merged into one
     {studentId: {remarkKey: bool}} map per student.
 
@@ -242,20 +256,54 @@ def _fetch_merged_entries(school_ref, class_id, roster_ids):
     to whatever the most-recently-edited sheet says, which is the closest
     read of "what a teacher most recently intended" available from this data.
 
+    Every entries doc in each sheet is read, not just the ones for a
+    precomputed roster: the teacher app lists students by `currentClassId`,
+    so a student can have ticks here that a roster built another way would
+    never look up. The caller unions these ids into the roster.
+
     Returns (entries_by_student, sheet_refs, sheet_count).
     """
     docs = list(school_ref.collection("remarks_sheets").where("classId", "==", class_id).stream())
     if not docs:
-        return {sid: {} for sid in roster_ids}, [], 0
-    docs.sort(key=lambda d: (d.to_dict() or {}).get("lastEditedAt") or 0)  # oldest first
+        return {}, [], 0
+    docs.sort(key=lambda d: _edited_at_key((d.to_dict() or {}).get("lastEditedAt")))  # oldest first
 
-    entries_by_student = {sid: {} for sid in roster_ids}
+    entries_by_student = defaultdict(dict)
     for doc in docs:
-        for sid in roster_ids:
-            entry_doc = doc.reference.collection("entries").document(sid).get()
-            if entry_doc.exists:
-                entries_by_student[sid].update(entry_doc.to_dict() or {})
-    return entries_by_student, [d.reference for d in docs], len(docs)
+        for entry_doc in doc.reference.collection("entries").stream():
+            entries_by_student[entry_doc.id].update(entry_doc.to_dict() or {})
+    return dict(entries_by_student), [d.reference for d in docs], len(docs)
+
+
+def _edited_at_key(value):
+    """Sortable seconds for a sheet's lastEditedAt. The teacher app creates
+    every sheet with lastEditedAt: null and only stamps a server timestamp
+    on the first save, so a class with one untouched sheet next to an edited
+    one mixes None and datetimes — sorting those raw raised TypeError and
+    failed the whole call for exactly the classes with several sheets."""
+    if value is None:
+        return 0.0
+    if hasattr(value, "timestamp"):
+        try:
+            return float(value.timestamp())
+        except Exception:
+            return 0.0
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _roster_sort_key(sid, info):
+    """Roll number (numeric first), then name — the order the teacher app
+    lists a remarks sheet in."""
+    info = info or {}
+    roll = str(info.get("rollNo") or "").strip()
+    try:
+        roll_key = (0, float(roll), "")
+    except ValueError:
+        roll_key = (1, 0.0, roll.lower()) if roll else (2, 0.0, "")
+    return roll_key + (str(info.get("name") or sid).lower(), sid)
 
 
 def _fetch_students(school_ref, student_ids):
@@ -267,31 +315,44 @@ def _fetch_students(school_ref, student_ids):
         if not doc.exists:
             continue
         data = doc.to_dict()
-        name = f"{data.get('firstName', '')} {data.get('lastName', '')}".strip() or doc.id
-        out[doc.id] = {"name": name, "gender": data.get("gender", "")}
+        # The teacher app and import pipeline write a single `name`;
+        # firstName/lastName is kept as a fallback for older records.
+        name = (str(data.get("name") or "").strip()
+                or f"{data.get('firstName', '')} {data.get('lastName', '')}".strip()
+                or doc.id)
+        out[doc.id] = {
+            "name": name, "gender": str(data.get("gender") or ""),
+            "rollNo": data.get("rollNo") or "",
+            "active": str(data.get("type") or "student") == "student" and not _is_inactive_student(data),
+        }
     return out
 
 
 def _class_roster(school_ref, class_id):
-    """Every active student in this class. Indexed equality query first (the
-    common case, same fast path class_detail in functions/assign_survey
-    uses); a school that doesn't key students.classId cleanly falls back to
-    a full scan resolved through the SAME canonicalisation the rest of this
-    file uses, so a fallback match can never land on a class_id notation
-    fetch_remarks_sheet or the caller wouldn't recognise.
+    """Every active student in this class. Indexed equality queries first:
+    `currentClassId` — the exact field the teacher app lists a remarks sheet's
+    students by (SmartSheets.vue: where('currentClassId', '==', classId)), so
+    the students whose ticks we read are the students the teacher ticked —
+    then `classId`, which on some records is a stale previous-year class and
+    so must never win over currentClassId. A school that keys neither cleanly
+    falls back to a full scan resolved through the SAME canonicalisation the
+    rest of this file uses, so a fallback match can never land on a class_id
+    notation fetch_remarks_sheet or the caller wouldn't recognise.
     """
-    out = []
-    try:
-        for d in school_ref.collection("students").where("classId", "==", class_id).stream():
-            data = d.to_dict() or {}
-            if str(data.get("type") or "student") != "student" or _is_inactive_student(data):
-                continue
-            out.append(d.id)
-    except Exception as e:
-        print(f"_class_roster: indexed lookup failed, falling back to scan: {e}")
+    for field in ("currentClassId", "classId"):
+        out = []
+        try:
+            for d in school_ref.collection("students").where(field, "==", class_id).stream():
+                data = d.to_dict() or {}
+                if str(data.get("type") or "student") != "student" or _is_inactive_student(data):
+                    continue
+                out.append(d.id)
+        except Exception as e:
+            print(f"_class_roster: indexed lookup on {field} failed: {e}")
+        if out:
+            return out
 
-    if out:
-        return out
+    out = []
 
     target_grade_raw, _, target_section_raw = class_id.partition("_")
     target = _canonical_grade_section(target_grade_raw, target_section_raw)
@@ -394,35 +455,52 @@ def generate_smart_remarks(req: https_fn.CallableRequest) -> dict:
     school_ref = db.collection("schools").document(school_id)
 
     band, raw_stage = _resolve_band(school_ref, class_id)
-    if band is None:
+    remark_bank, categories = _fetch_remark_bank(school_ref, band, class_id)
+    category_labels = [c["label"] for c in categories]
+
+    # No band is only blocking when it leaves this class with no remark bank
+    # at all. Categories assigned to the class by classIds (what the teacher
+    # app shows) still apply without one.
+    if band is None and not categories:
         payload = {
             "band": None, "stageIssue": raw_stage, "classId": class_id,
-            "students": 0, "categories": [], "sheetFound": False,
+            "students": 0, "roster": [], "categories": [], "sheetFound": False,
             "multipleSheetsFound": False, "genderIssue": None,
+            "tickedStudents": 0, "unmatchedTicks": 0,
         }
         if scan_only:
             return payload
         raise https_fn.HttpsError(
             https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
             f"This class's stage ('{raw_stage or 'not set'}') doesn't map to a known remark "
-            "band (Foundational/Preparatory/Middle/Secondary). Set classes/{id}.stage before "
-            "running smart remarks for this class.",
+            "band (Foundational/Preparatory/Middle/Secondary), and no remark category lists "
+            "this class. Set classes/{id}.stage before running smart remarks for this class.",
         )
 
-    remark_bank, categories = _fetch_remark_bank(school_ref, band)
-    category_labels = [c["label"] for c in categories]
-    roster_ids = _class_roster(school_ref, class_id)
-    if only_student_ids:
-        roster_ids = [sid for sid in roster_ids if sid in only_student_ids]
-
-    entries_by_student, sheet_refs, sheet_count = _fetch_merged_entries(school_ref, class_id, roster_ids)
+    entries_by_student, sheet_refs, sheet_count = _fetch_merged_entries(school_ref, class_id)
     sheet_ids = [s.id for s in sheet_refs]
+
+    # Anyone with an entries doc in this class's sheets was listed under this
+    # class by the teacher app, so they belong on the roster even if the
+    # roster queries resolved the class some other way.
+    base_roster = _class_roster(school_ref, class_id)
+    base_set = set(base_roster)
+    candidate_ids = base_roster + sorted(sid for sid in entries_by_student if sid not in base_set)
+    if only_student_ids:
+        candidate_ids = [sid for sid in candidate_ids if sid in only_student_ids]
+    students = _fetch_students(school_ref, candidate_ids)
+    roster_ids = [sid for sid in candidate_ids
+                  if sid in base_set or students.get(sid, {}).get("active")]
+    roster_ids.sort(key=lambda sid: _roster_sort_key(sid, students.get(sid)))
+    roster = [{"id": sid, "name": students.get(sid, {}).get("name") or sid,
+               "rollNo": students.get(sid, {}).get("rollNo") or ""} for sid in roster_ids]
 
     if not sheet_refs:
         payload = {
-            "band": band, "classId": class_id, "students": len(roster_ids),
+            "band": band, "classId": class_id, "students": len(roster_ids), "roster": roster,
             "categories": category_labels, "sheetFound": False,
             "multipleSheetsFound": False, "genderIssue": None,
+            "tickedStudents": 0, "unmatchedTicks": 0,
         }
         if scan_only:
             return payload
@@ -431,13 +509,23 @@ def generate_smart_remarks(req: https_fn.CallableRequest) -> dict:
             "No remarks sheet exists yet for this class — nothing has been ticked by a teacher.",
         )
 
-    students = _fetch_students(school_ref, roster_ids)
     g_issue = gender_issue(roster_ids, students)
 
+    ticked_students = unmatched_ticks = 0
+    for sid in roster_ids:
+        true_keys = [k for k, v in (entries_by_student.get(sid) or {}).items() if v]
+        if any(k in remark_bank for k in true_keys):
+            ticked_students += 1
+        unmatched_ticks += sum(1 for k in true_keys if k not in remark_bank)
+    if unmatched_ticks:
+        print(f"generate_smart_remarks: {school_id}/{class_id}: {unmatched_ticks} ticked key(s) "
+              "match no remark_categories statement for this class")
+
     scan_payload = {
-        "band": band, "classId": class_id, "students": len(roster_ids),
+        "band": band, "classId": class_id, "students": len(roster_ids), "roster": roster,
         "categories": category_labels, "sheetFound": True,
         "multipleSheetsFound": sheet_count > 1, "genderIssue": g_issue,
+        "tickedStudents": ticked_students, "unmatchedTicks": unmatched_ticks,
     }
     if scan_only:
         return scan_payload
