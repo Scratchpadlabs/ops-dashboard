@@ -137,6 +137,7 @@
 
 <script setup>
 import { ref, computed, onMounted, provide, watch } from 'vue'
+import { useAutoRefresh } from '../composables/useAutoRefresh.js'
 import { useRouter } from 'vue-router'
 import { getDocs, query, orderBy, limit, setDoc, serverTimestamp } from 'firebase/firestore'
 import Select from 'primevue/select'
@@ -309,6 +310,10 @@ const selectedSchoolObject = computed(() => schools.value.find(s => s.id === sel
 // eagerly, so declaring this any earlier reads the const in its temporal dead
 // zone and throws during setup — which renders the whole page blank.
 watch(selectedSchoolObject, refreshOutstanding, { immediate: true })
+
+// The school list (and each school's name/active flag) refreshes in place;
+// the tabs keep their own data, since they hold edits in progress.
+useAutoRefresh(() => loadSchools())
 
 async function loadSchools() {
   loadingSchools.value = true

@@ -481,6 +481,7 @@
 
 <script setup>
 import { ref, reactive, computed, watch, onMounted } from 'vue'
+import { useAutoRefresh } from '../composables/useAutoRefresh.js'
 import { useRoute } from 'vue-router'
 import { auth, storage } from '../firebase/config'
 import { activeYear, effectiveAcademicYear } from '../composables/useAcademicYear.js'
@@ -945,14 +946,14 @@ const smartPrompts = computed(() => {
 
 // ── Data loading ──────────────────────────────────────────────────────────────
 
-async function loadExpenses() {
-  loading.value = true
+async function loadExpenses({ silent = false } = {}) {
+  if (!silent) loading.value = true
   try {
     const q = query(opsCollection('expenses'), orderBy('created_at', 'desc'), limit(500))
     const snap = await getDocs(q)
     expenses.value = snap.docs.map(d => ({ id: d.id, ...d.data() }))
   } catch (e) {
-    toast.add({ severity: 'error', summary: 'Error', detail: 'Could not load expenses', life: 3000 })
+    if (!silent) toast.add({ severity: 'error', summary: 'Error', detail: 'Could not load expenses', life: 3000 })
   } finally {
     loading.value = false
   }
@@ -1210,6 +1211,9 @@ function formatRupee(amount) {
   if (!amount) return '₹0'
   return '₹' + Math.round(Number(amount)).toLocaleString('en-IN')
 }
+
+// Refresh in place every few minutes / on returning to the tab.
+useAutoRefresh(opts => Promise.all([loadExpenses(opts), loadInvoices()]))
 
 onMounted(async () => {
   await Promise.all([loadExpenses(), loadInvoices(), loadCategories(), loadAllSchools()])

@@ -206,6 +206,7 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
+import { useAutoRefresh } from '../composables/useAutoRefresh.js'
 import { auth } from '../firebase/config'
 import { opsDoc } from '../firebase/collections.js'
 import { updateDoc, deleteDoc, serverTimestamp } from 'firebase/firestore'
@@ -420,6 +421,9 @@ const calendarCells = computed(() => {
   }
   return cells
 })
+
+// Refresh in place every few minutes / on returning to the tab.
+useAutoRefresh(opts => loadTasks(opts))
 
 onMounted(() => {
   Promise.all([loadTasks(), loadAllSchools()])

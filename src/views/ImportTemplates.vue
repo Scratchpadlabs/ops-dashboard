@@ -13,7 +13,7 @@
     </div>
   </div>
 
-  <div v-else>
+  <div v-else @click.capture="markActivity" @keydown.capture="markActivity">
     <div class="flex items-center gap-3 mb-4">
       <Button icon="pi pi-arrow-left" text rounded @click="router.push({ name: 'import' })" />
       <div class="text-sm font-bold text-slate-900">Import Templates</div>
@@ -165,7 +165,7 @@ const router = useRouter()
 const confirm = useConfirm()
 const toast = useToast()
 
-const { isElevated, reauthenticate } = useStepUpAuth()
+const { isElevated, markActivity, reauthenticate } = useStepUpAuth()
 const password = ref('')
 const reauthing = ref(false)
 const reauthError = ref('')

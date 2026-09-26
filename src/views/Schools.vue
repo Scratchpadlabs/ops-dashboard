@@ -284,6 +284,7 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
+import { useAutoRefresh } from '../composables/useAutoRefresh.js'
 import { useRouter } from 'vue-router'
 import { db, auth } from '../firebase/config'
 import { opsCollection, opsDoc } from '../firebase/collections.js'
@@ -398,14 +399,14 @@ function rmStyle(rm) {
 }
 
 // ── Load ──────────────────────────────────────────────────────────────────────
-async function loadSchools() {
-  loading.value = true
+async function loadSchools({ silent = false } = {}) {
+  if (!silent) loading.value = true
   try {
     const q    = query(opsCollection('schools'), orderBy('created_at', 'desc'), limit(500))
     const snap = await getDocs(q)
     schools.value = snap.docs.map(d => ({ id: d.id, ...d.data() }))
   } catch (e) {
-    toast.add({ severity: 'error', summary: 'Error', detail: 'Could not load schools', life: 3000 })
+    if (!silent) toast.add({ severity: 'error', summary: 'Error', detail: 'Could not load schools', life: 3000 })
   } finally {
     loading.value = false
   }
@@ -617,6 +618,9 @@ function formatDate(ts) {
   const d = ts.toDate ? ts.toDate() : new Date(ts)
   return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
 }
+
+// Refresh in place every few minutes / on returning to the tab.
+useAutoRefresh(opts => Promise.all([loadSchools(opts), loadInvoicesForPositions()]))
 
 onMounted(async () => {
   await Promise.all([loadSchools(), loadModuleSettings(), loadPaymentPlans(), loadInvoicesForPositions()])
