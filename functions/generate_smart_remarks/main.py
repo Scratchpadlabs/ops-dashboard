@@ -113,10 +113,10 @@ FANCY_WORDS = (
     "showcase", "foster", "journey", "thrive", "vibrant", "meticulous",
     "delve", "testament", "nurture", "embrace", "strive", "endeavor",
     "endeavour", "diligent", "proficien", "invaluable", "unwavering",
-    "commitment", "dedication", "enthusiasm", "eagerness", "keen",
+    "commitment", "dedication", "eagerness", "keen",
     "learning community", "valued member", "positive attitude", "holistic",
     "a joy to", "delight", "shines", "blossom", "flourish", "impressive",
-    "truly", "consistently", "noteworthy", "admirable", "aptitude",
+    "truly", "noteworthy", "admirable", "aptitude",
 )
 
 def _require_ops_admin(req: https_fn.CallableRequest) -> str:
@@ -363,10 +363,10 @@ def _class_roster(school_ref, class_id):
 
 
 def _word_limits(n_ticked):
-    """Length follows the teacher's input: about one short sentence per
-    ticked statement. A fixed 40-70 words forced the model to pad a one- or
-    two-tick student with invented detail."""
-    return max(8, 8 * n_ticked), 14 * n_ticked + 6
+    """Length follows the teacher's input: roughly one sentence per ticked
+    statement plus a short encouraging close. A fixed 40-70 words forced the
+    model to pad a one- or two-tick student with invented detail."""
+    return max(18, 9 * n_ticked + 6), 16 * n_ticked + 24
 
 
 def _looks_fancy(comment):
@@ -380,10 +380,11 @@ def generate_smart_comment(ai, first_name, gender, category_label, ticked, used_
     already resolved, already filtered to items this student actually has
     ticked true, all belonging to `category_label`.
 
-    The comment must say what the teacher ticked and nothing else — plain
-    enough for any parent to read, about one short sentence per ticked
-    statement. No invented examples, feelings, predictions or praise the
-    teacher didn't tick.
+    The comment reads like a warm class teacher wrote it: one flowing
+    paragraph, good points first, any needs-improvement tick phrased as a
+    kind, hopeful next step, and one short line of encouragement at the end.
+    Its facts are only what the teacher ticked — no invented examples,
+    events or qualities — in English plain enough for any parent.
 
     Categories are written up independently rather than blended into one
     combined paragraph — see module docstring for why (different teachers,
@@ -395,7 +396,7 @@ def generate_smart_comment(ai, first_name, gender, category_label, ticked, used_
 
     positives = [i["text"] for i in ticked if i["type"] != "negative"]
     negatives = [i["text"] for i in ticked if i["type"] == "negative"]
-    lines = [f"- {t}" for t in positives] + [f"- (needs to improve) {t}" for t in negatives]
+    lines = [f"- {t}" for t in positives] + [f"- (needs improvement) {t}" for t in negatives]
     observations = "\n".join(lines)
     min_words, max_words = _word_limits(len(ticked))
 
@@ -403,26 +404,33 @@ def generate_smart_comment(ai, first_name, gender, category_label, ticked, used_
     avoid_line = ("\n- Do not start with any of these openings, already used for other "
                   f"students: {'; '.join(avoid)}" if avoid else "")
 
-    prompt = f"""Write a short "{category_label}" remark for a school report card.
+    prompt = f"""You are a caring class teacher writing the "{category_label}" remark on a student's report card. Parents will read it.
 
 Student: {first_name} ({pronoun}/{his_her})
 
-The teacher ticked ONLY these statements for this student:
+What you observed (you ticked ONLY these):
 {observations}
 
-Rules:
-- Say only what the ticked statements say. Do not add anything else: no examples, no events, no feelings, no predictions, no extra praise, no advice the teacher did not tick.
-- Keep close to the teacher's own words. One short sentence for each statement, or join two related ones.
-- Use very simple, everyday English that any parent can understand. Short sentences. No fancy or formal words.
-- Start with {first_name}'s name. After that use {pronoun}/{his_her}.
-- A "(needs to improve)" statement should be written kindly and simply, e.g. "{pronoun} needs to work on ..." or "{pronoun} should try to ...".
-- Between {min_words} and {max_words} words.
-- Return only the remark.{avoid_line}"""
+How to write it:
+- Write it the way a warm, experienced teacher writes a report card remark: one short paragraph that flows naturally, not a list of separate sentences stuck together. Link ideas with simple words like "and", "also", "at times", "with a little more effort".
+- Start with {first_name}'s name and the good points first.
+- A "(needs improvement)" point must sound kind and hopeful, never like a complaint. Say what {pronoun.lower()} can do better, as a gentle next step, e.g. "{pronoun} is encouraged to ...", "{pronoun} can work on ...", "With a little more effort, {pronoun.lower()} can ...". Never use words like "bad", "poor", "fails" or "problem".
+- End with ONE short, sincere line of encouragement (e.g. "Keep it up, {first_name}!", "Keep up the good work!", "I am sure {pronoun.lower()} will do even better."). It must not add any new fact about the student.
+- Use only what is ticked above. Do not invent examples, events, subjects, hobbies or qualities that were not ticked.
+- Simple, everyday English that every parent can understand. No fancy or formal words.
+- Between {min_words} and {max_words} words. Return only the remark.{avoid_line}
+
+Examples of the style (different students, for tone only — do not copy their content):
+Ticked: helps classmates; completes homework neatly
+Remark: Riya is a helpful girl who is always ready to support her classmates. She also completes her homework neatly and on time. Keep it up, Riya!
+
+Ticked: participates in class discussions; (needs improvement) does not complete classwork on time
+Remark: Aman takes an active part in class discussions and shares his ideas confidently. He is encouraged to finish his classwork on time, and with a little more effort he will do even better. Keep going, Aman!"""
 
     comment = ""
     for _ in range(3):
         resp = ai.chat.completions.create(
-            model="gpt-4o-mini", max_tokens=200, temperature=0.4,
+            model="gpt-4o-mini", max_tokens=220, temperature=0.6,
             messages=[{"role": "user", "content": prompt}],
         )
         comment = resp.choices[0].message.content.strip().strip('"')
