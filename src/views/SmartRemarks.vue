@@ -56,6 +56,11 @@
           @click="openMulti"
         />
         <Button
+          label="Download multiple classes" icon="pi pi-download" outlined
+          :disabled="!schoolId || !classes.length || running"
+          @click="openExport()"
+        />
+        <Button
           label="Refresh" icon="pi pi-refresh" outlined
           :disabled="!classId || running || loadingRoster" :loading="loadingRoster"
           @click="reload"
@@ -87,6 +92,7 @@
       @cancel="cancelling = true"
       @dismiss="runItems = []"
       @view="id => { if (!running) classId = id }"
+      @download="ids => openExport(ids)"
     />
 
     <!-- ── Scan-time findings ───────────────────────────────────────────── -->
@@ -134,6 +140,42 @@
       :remarks-by-student="remarksByStudent"
       @saved="onSaved"
     />
+
+    <!-- ── Multi-class download ──────────────────────────────────────────── -->
+    <Dialog v-model:visible="exportVisible" header="Download remarks for multiple classes" modal :style="{ width: '560px' }" :closable="!exporting">
+      <div class="space-y-4 pt-1">
+        <div>
+          <label class="form-label">Classes</label>
+          <MultiSelect
+            v-model="exportClassIds" :options="classes" optionLabel="label" optionValue="id"
+            placeholder="Pick classes" class="w-full" filter display="chip" :maxSelectedLabels="6"
+            :disabled="exporting"
+          />
+          <div class="flex gap-3 mt-1.5 text-xs">
+            <button type="button" class="text-blue-600 hover:underline" :disabled="exporting" @click="exportClassIds = classes.map(c => c.id)">Select all {{ classes.length }}</button>
+            <button type="button" class="text-slate-500 hover:underline" :disabled="exporting" @click="exportClassIds = []">Clear</button>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <Checkbox v-model="exportApprovedOnly" binary inputId="exportApprovedOnly" :disabled="exporting" />
+          <label for="exportApprovedOnly" class="text-sm text-slate-700">Approved remarks only</label>
+        </div>
+        <p class="text-xs text-slate-400">
+          Excel: an <b>All classes</b> sheet plus one sheet per class. CSV: one file with a Class column.
+        </p>
+        <div v-if="exporting" class="text-sm text-slate-600 flex items-center gap-2">
+          <i class="pi pi-spin pi-spinner text-sm"></i>
+          Collecting remarks — {{ exportDone }} of {{ exportClassIds.length }} classes…
+        </div>
+      </div>
+      <template #footer>
+        <Button label="Cancel" text :disabled="exporting" @click="exportVisible = false" />
+        <Button label="Download CSV" icon="pi pi-download" outlined :loading="exporting && exportFormat === 'csv'"
+                :disabled="exporting || !exportClassIds.length" @click="runExport('csv')" />
+        <Button label="Download Excel" icon="pi pi-file-excel" :loading="exporting && exportFormat === 'xlsx'"
+                :disabled="exporting || !exportClassIds.length" @click="runExport('xlsx')" />
+      </template>
+    </Dialog>
 
     <!-- ── Multi-class generation ────────────────────────────────────────── -->
     <Dialog v-model:visible="multiVisible" header="Generate for multiple classes" modal :style="{ width: '720px' }" :closable="!checking">
@@ -213,6 +255,7 @@ import Password from 'primevue/password'
 import Button from 'primevue/button'
 import Dialog from 'primevue/dialog'
 import MultiSelect from 'primevue/multiselect'
+import Checkbox from 'primevue/checkbox'
 import ProgressSpinner from 'primevue/progressspinner'
 import ConfirmDialog from 'primevue/confirmdialog'
 
@@ -221,7 +264,10 @@ import { useSmartRemarks } from '../composables/useSmartRemarks.js'
 import SmartRemarksTable from '../components/smart-remarks/SmartRemarksTable.vue'
 import SmartRemarksRunPanel from '../components/smart-remarks/SmartRemarksRunPanel.vue'
 import { RUN_STATUS, preflightVerdict, mapLimit } from '../utils/smartRemarksProgress.js'
-import { downloadSmartRemarksCsv, downloadSmartRemarksXlsx } from '../utils/smartRemarksExport.js'
+import {
+  downloadSmartRemarksCsv, downloadSmartRemarksXlsx,
+  downloadSmartRemarksMultiCsv, downloadSmartRemarksMultiXlsx,
+} from '../utils/smartRemarksExport.js'
 
 /**
  * Smart Remarks — general-conduct report-card comments, generated from the
@@ -237,7 +283,7 @@ const { isElevated, markActivity, reauthenticate } = useStepUpAuth()
 const {
   schools, classes, students, remarksByStudent,
   loadingSchools, loadingClasses, loadingRoster,
-  loadSchools, loadClasses, loadClass, reloadStudent,
+  loadSchools, loadClasses, loadClass, reloadStudent, fetchClassForExport,
   generate, scan: scanClass, recentJobIds, newJobId, watchJob,
 } = useSmartRemarks()
 
@@ -497,6 +543,61 @@ const onSaved = (studentId) => studentId
 function exportCsv() {
   const count = downloadSmartRemarksCsv(schoolId.value, classId.value, students.value, remarksByStudent.value)
   toast.add({ severity: 'success', summary: `Exported ${count} rows`, life: 2500 })
+}
+
+// ── Multi-class download ──────────────────────────────────────────────────
+const exportVisible = ref(false)
+const exportClassIds = ref([])
+const exportApprovedOnly = ref(false)
+const exporting = ref(false)
+const exportFormat = ref('')
+const exportDone = ref(0)
+
+function openExport(ids) {
+  exportClassIds.value = ids?.length ? [...ids] : (classId.value ? [classId.value] : [])
+  exportVisible.value = true
+}
+
+async function runExport(format) {
+  const sid = schoolId.value
+  const order = classes.value.map(c => c.id)
+  const picked = [...exportClassIds.value].sort((a, b) => order.indexOf(a) - order.indexOf(b))
+  exporting.value = true
+  exportFormat.value = format
+  exportDone.value = 0
+  const failed = []
+  try {
+    const blocks = await mapLimit(picked, 3, async (id) => {
+      try {
+        const data = await fetchClassForExport(sid, id)
+        return { classId: id, label: classLabel(id), ...data }
+      } catch (e) {
+        console.error(`Could not load ${id} for export`, e)
+        failed.push(classLabel(id))
+        return null
+      } finally {
+        exportDone.value++
+      }
+    })
+    const ok = blocks.filter(Boolean)
+    if (!ok.length) throw new Error('None of the picked classes could be loaded.')
+    const opts = { approvedOnly: exportApprovedOnly.value }
+    const rows = format === 'csv'
+      ? downloadSmartRemarksMultiCsv(sid, ok, opts)
+      : downloadSmartRemarksMultiXlsx(sid, ok, opts)
+    toast.add({
+      severity: failed.length ? 'warn' : 'success',
+      summary: `Downloaded ${ok.length} class${ok.length === 1 ? '' : 'es'}, ${rows} rows`,
+      detail: failed.length ? `Could not load: ${failed.join(', ')}` : undefined,
+      life: failed.length ? 8000 : 3000,
+    })
+    exportVisible.value = false
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Download failed', detail: e.message, life: 6000 })
+  } finally {
+    exporting.value = false
+    exportFormat.value = ''
+  }
 }
 
 function exportXlsx() {

@@ -97,6 +97,19 @@ export function useSmartRemarks() {
     remarksByStudent.value = { ...remarksByStudent.value, ...byStudent }
   }
 
+  // Roster + remarks for one class without touching the on-screen state —
+  // used by the multi-class export, which walks many classes in turn.
+  async function fetchClassForExport(schoolId, classId) {
+    const scanResult = await scanSmartRemarksRemote({ schoolId, classId })
+    let roster = scanResult?.roster
+    if (!Array.isArray(roster)) {
+      roster = (await classDetailRemote({ schoolId, classId })).students || []
+    }
+    const ids = roster.map(s => s.id)
+    const byStudent = ids.length ? await listSmartRemarksRemote({ schoolId, studentIds: ids }) : {}
+    return { students: roster, remarksByStudent: byStudent || {} }
+  }
+
   async function reloadStudent(schoolId, studentId) {
     await loadRemarks(schoolId, [studentId])
   }
@@ -161,7 +174,7 @@ export function useSmartRemarks() {
   return {
     schools, classes, students, remarksByStudent,
     loadingSchools, loadingClasses, loadingRoster,
-    loadSchools, loadClasses, loadClass, loadRemarks, reloadStudent,
+    loadSchools, loadClasses, loadClass, loadRemarks, reloadStudent, fetchClassForExport,
     generate, scan, saveComment, setStatus, setStatusBulk,
     recentJobIds, watchNewJob, newJobId, watchJob,
   }
