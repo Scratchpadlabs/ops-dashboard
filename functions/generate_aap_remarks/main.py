@@ -11,7 +11,7 @@ region asia-south1): { school_id, class_id, student_ids?, subjects?,
 scan_only?, confirm_gender_issue? }
 
   1. Reads AAP survey responses for that class from Firestore (survey ids
-     prefixed "zzz")
+     prefixed "zzz", or any survey backing an activity — _aap_survey_docs)
   2. Resolves each student's Beginner/Proficient/Advanced rating per
      subject/trait -- same aggregation as extract_firestore.py's
      resolve_level
@@ -59,7 +59,7 @@ Still worth knowing about the schema:
     Note the silent default in generate_comment -- a student whose gender is
     blank or unrecognised is written about as "She" unless the gender-issue
     gate above catches it first.
-  - fetch_survey_ratings scans every zzz-prefixed response for the school
+  - fetch_survey_ratings scans every AAP survey response for the school
     and filters to one class in memory. Fine for a single-class run; if
     this ever needs to run across a whole school in one go, worth adding
     a classSection field to response docs at write time so it's a real
@@ -213,6 +213,28 @@ def resolve_level(raw_levels):
     return LEVEL_NAME[score]
 
 
+def _aap_survey_docs(school_ref):
+    """Every AAP survey doc for a school: zzz-prefixed, or backing an activity.
+
+    The teacher app files a response under the survey whose id (doc id or
+    `id` field) is the chosen activity's id (ActivityDialog.vue /
+    findActivitySurvey). Older activities got zzz-prefixed ids, but newer
+    stage packs don't — Hillgreen's secondary activities are
+    "secondary_02_classroom_observation_based_writing" etc. — so a zzz-only
+    filter silently dropped every response filed under them, and grade 9-12
+    rows showed "Not started" with the answers sitting in Firestore.
+    Surveys with no activity (AAM*, SEW*) are other survey kinds and stay
+    out."""
+    activity_ids = {ref.id for ref in school_ref.collection("activities").list_documents()}
+    out = []
+    for survey_doc in school_ref.collection("surveys").stream():
+        field_id = str((survey_doc.to_dict() or {}).get("id") or "")
+        if (survey_doc.id.lower().startswith("zzz") or survey_doc.id in activity_ids
+                or (field_id and field_id in activity_ids)):
+            out.append(survey_doc)
+    return out
+
+
 def _parse_aap_response_id(doc_id):
     """doc id: teacherID_grade_section..._grade_subject_topic -> a dict of the
     parts, or None if the id doesn't fit the convention at all.
@@ -286,9 +308,7 @@ def fetch_survey_ratings(school_id, class_id):
         sdata = sdoc.to_dict() or {}
         subject_names[sdoc.id] = str(sdata.get("name") or "").strip()
 
-    for survey_doc in school_ref.collection("surveys").stream():
-        if not survey_doc.id.lower().startswith("zzz"):
-            continue
+    for survey_doc in _aap_survey_docs(school_ref):
         responses = (school_ref.collection("surveys").document(survey_doc.id)
                      .collection("responses").stream())
         for resp in responses:
@@ -1152,7 +1172,7 @@ def _split_topic_id(topic_id, subject_doc_ids):
 
 
 def _scan_school_aap_completion(school_id, class_doc_ids=(), subject_doc_ids=()):
-    """Whole-school scan of zzz-prefixed AAP survey responses.
+    """Whole-school scan of AAP survey responses (see _aap_survey_docs).
 
     The teacher app names every response `${teacherId}_${classDocId}_${topicId}`
     (AcadSurvey.vue / ActivityDialog.vue), where classDocId is the classes/{id}
@@ -1185,9 +1205,7 @@ def _scan_school_aap_completion(school_id, class_doc_ids=(), subject_doc_ids=())
     class_doc_ids = list(class_doc_ids)
     subject_doc_ids = list(subject_doc_ids)
 
-    for survey_doc in school_ref.collection("surveys").stream():
-        if not survey_doc.id.lower().startswith("zzz"):
-            continue
+    for survey_doc in _aap_survey_docs(school_ref):
         responses = (school_ref.collection("surveys").document(survey_doc.id)
                      .collection("responses").stream())
         for resp in responses:
@@ -1287,13 +1305,11 @@ def _whole_school_roster(school_id):
 
 
 def _aap_survey_ids_by_activity(school_ref):
-    """{activity_id: survey_doc_id} for every zzz-prefixed (AAP) survey. The
-    teacher app finds an activity's survey by its `id` field, which is
+    """{activity_id: survey_doc_id} for every AAP survey (_aap_survey_docs).
+    The teacher app finds an activity's survey by its `id` field, which is
     normally also the doc id — both are indexed so either spelling resolves."""
     out = {}
-    for survey_doc in school_ref.collection("surveys").stream():
-        if not survey_doc.id.lower().startswith("zzz"):
-            continue
+    for survey_doc in _aap_survey_docs(school_ref):
         out.setdefault(survey_doc.id, survey_doc.id)
         field_id = (survey_doc.to_dict() or {}).get("id")
         if field_id:
@@ -1303,7 +1319,7 @@ def _aap_survey_ids_by_activity(school_ref):
 
 def _aap_activities(school_id):
     """Every activity the teacher app would offer that has an AAP survey
-    behind it: [{"id", "name", "stage"}]. An activity with no zzz survey is
+    behind it: [{"id", "name", "stage"}]. An activity with no AAP survey is
     left out — a response moved under it would fall out of this report."""
     school_ref = db.collection("schools").document(school_id)
     survey_ids = _aap_survey_ids_by_activity(school_ref)
@@ -1416,7 +1432,7 @@ def aap_survey_completion(req: https_fn.CallableRequest) -> dict:
 
     Cross-references three independent sources: what school-setup says
     SHOULD exist (subjects + topics per grade), what teachers have actually
-    submitted (zzz-prefixed responses, per class/subject/topic), and who is
+    submitted (AAP survey responses, per class/subject/topic), and who is
     actually on each class's roster (class_resolver). A survey subject token
     and a school-setup subject name are two independently-spelled fields, so
     they are reconciled through the same alias matcher generate_aap_remarks
@@ -1673,15 +1689,15 @@ def update_aap_survey_response(req: https_fn.CallableRequest) -> dict:
         raise https_fn.HttpsError(
             https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
             "school_id, survey_id and response_id are required")
-    if not str(survey_id).lower().startswith("zzz"):
-        raise https_fn.HttpsError(
-            https_fn.FunctionsErrorCode.INVALID_ARGUMENT, "Not an AAP survey")
 
     goals = _clean_str_list(data.get("selected_goals"))
     competencies = _clean_str_list(data.get("selected_competencies"))
     activity_id = str(data.get("activity_id") or "").strip() or None
 
     school_ref = db.collection("schools").document(school_id)
+    if survey_id not in {s.id for s in _aap_survey_docs(school_ref)}:
+        raise https_fn.HttpsError(
+            https_fn.FunctionsErrorCode.INVALID_ARGUMENT, "Not an AAP survey")
     source_ref = school_ref.collection("surveys").document(survey_id).collection("responses").document(response_id)
 
     update = {"opsEditedBy": caller, "opsEditedAt": firestore.SERVER_TIMESTAMP}
