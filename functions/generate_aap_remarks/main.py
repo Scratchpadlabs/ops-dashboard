@@ -1286,6 +1286,7 @@ def _scan_school_aap_completion(school_id, class_doc_ids=(), subject_doc_ids=())
                 "topic_id": topic_id, "subject_doc_id": subject_doc_id,
                 "subject_token": subject_token, "topic": topic,
                 "students": {}, "notApplicable": 0, "responses": [], "questions": [],
+                "q1NotApplicable": set(), "q1Answered": set(),
             })
 
             resp_data = resp.to_dict() or {}
@@ -1316,6 +1317,9 @@ def _scan_school_aap_completion(school_id, class_doc_ids=(), subject_doc_ids=())
                     row[trait] = bool(level_str)
                     if level_str == "Not Applicable":
                         entry["notApplicable"] += 1
+                    if q_index == 0:
+                        (entry["q1NotApplicable"] if level_str == "Not Applicable"
+                         else entry["q1Answered"]).add(student_id)
     return by_key, unparsed
 
 
@@ -1509,7 +1513,8 @@ def aap_survey_completion(req: https_fn.CallableRequest) -> dict:
         responses is empty for a not_started row; usually one entry
         otherwise, more only if the teacher filed the same class/topic under
         more than one activity (see _scan_school_aap_completion).
-        expectedStudents is the roster minus the topic's absentList
+        expectedStudents is the roster minus absent students: the topic's
+        absentList plus anyone answered "Not Applicable" on question 1
         (absentStudents counts those left out — see build_row).
         respondedStudents is roster students with EVERY question answered
         (expectedStudents - len(gaps)) — never the raw count of distinct
@@ -1587,7 +1592,17 @@ def aap_survey_completion(req: https_fn.CallableRequest) -> dict:
         # (SurveysView.vue): answering "Not Applicable" to question 1 marks the
         # student absent, and the app then disables questions 2-3 for them, so
         # counting them would leave a gap nobody can close.
-        absent = set(absent)
+        # "Not Applicable" on question 1 IS the teacher app's absent mark
+        # (AcadSurvey.vue handleOptionSelect -> markAbsent), so it counts even
+        # when the absentList write itself didn't land — seen at Hillgreen,
+        # where secondary-activity responses carry question-1 N/A for students
+        # missing from the topic's absentList. Unless another response for
+        # the same row rated that student on question 1.
+        q1_na, q1_answered = set(), set()
+        for e in entries:
+            q1_na |= e["q1NotApplicable"]
+            q1_answered |= e["q1Answered"]
+        absent = set(absent) | (q1_na - q1_answered)
         full_roster = roster_by_class.get(class_id, [])
         roster = [s for s in full_roster if s["id"] not in absent]
         students = {}
