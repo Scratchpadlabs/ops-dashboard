@@ -105,6 +105,26 @@ INACTIVE_ENROLLMENT_VALUES = {
 # shows what "enough" looks like across schools.
 LOW_CONFIDENCE_THRESHOLD = 3
 
+# The teacher app stores a teacher's own free-text remark for a category in
+# the same entries doc as the ticks, under "note__{categoryKey}" (the
+# category key is the remark_categories doc id, i.e. our categorySlug).
+# See scratchpad_teacher src/views/smart-sheets/types.ts REMARK_NOTE_PREFIX.
+NOTE_PREFIX = "note__"
+
+
+def _student_notes(entry):
+    """{categorySlug: text} for every non-blank teacher remark in an entry."""
+    out = {}
+    for k, v in (entry or {}).items():
+        if k.startswith(NOTE_PREFIX) and isinstance(v, str) and v.strip():
+            out[k[len(NOTE_PREFIX):]] = v.strip()
+    return out
+
+
+def _true_tick_keys(entry):
+    return [k for k, v in (entry or {}).items() if v is True and not k.startswith(NOTE_PREFIX)]
+
+
 # Words that make a report-card comment read as machine-written or too
 # formal for parents. A draft containing any of them is regenerated (the
 # last attempt is kept if all fail, so a class never stalls on this).
@@ -362,10 +382,14 @@ def _class_roster(school_ref, class_id):
     return out
 
 
-def _word_limits(n_ticked):
+def _word_limits(n_ticked, note_words=0):
     """Length follows the teacher's input: roughly one sentence per ticked
     statement plus a short encouraging close. A fixed 40-70 words forced the
     model to pad a one- or two-tick student with invented detail."""
+    if note_words:
+        # The teacher's own words are kept close to verbatim, so the remark
+        # needs room for roughly all of them on top of the ticked points.
+        return max(18, 9 * n_ticked + min(note_words, 40)), 16 * n_ticked + note_words + 28
     return max(18, 9 * n_ticked + 6), 16 * n_ticked + 24
 
 
@@ -374,11 +398,15 @@ def _looks_fancy(comment):
     return any(w in lowered for w in FANCY_WORDS)
 
 
-def generate_smart_comment(ai, first_name, gender, category_label, ticked, used_openings=None):
+def generate_smart_comment(ai, first_name, gender, category_label, ticked, used_openings=None,
+                           teacher_note=""):
     """One remark, scoped to a SINGLE remark category, from a student's
     ticked statements in that category. `ticked` is [{text, type}, ...] —
     already resolved, already filtered to items this student actually has
-    ticked true, all belonging to `category_label`.
+    ticked true, all belonging to `category_label` (may be empty when the
+    teacher only wrote their own remark). `teacher_note` is that free text
+    from the Smart Sheets "Teacher's own remark" box — first-hand teacher
+    input, so its content is kept and only smoothed into the remark.
 
     The comment reads like a warm class teacher wrote it: one flowing
     paragraph, good points first, any needs-improvement tick phrased as a
@@ -397,8 +425,14 @@ def generate_smart_comment(ai, first_name, gender, category_label, ticked, used_
     positives = [i["text"] for i in ticked if i["type"] != "negative"]
     negatives = [i["text"] for i in ticked if i["type"] == "negative"]
     lines = [f"- {t}" for t in positives] + [f"- (needs improvement) {t}" for t in negatives]
-    observations = "\n".join(lines)
-    min_words, max_words = _word_limits(len(ticked))
+    observations = "\n".join(lines) or "- (nothing ticked — use only the teacher's own words below)"
+    teacher_note = (teacher_note or "").strip()
+    min_words, max_words = _word_limits(len(ticked), len(teacher_note.split()))
+    note_block = (f"""
+
+The teacher also wrote this in their own words:
+"{teacher_note}"
+Include what the teacher wrote, keeping its meaning and facts exactly. You may fix grammar and fit it into the paragraph, but do not change what it says, soften it into something else, or add to it. If it points out something to improve, phrase that kindly as below.""" if teacher_note else "")
 
     avoid = sorted(used_openings)[:8]
     avoid_line = ("\n- Do not start with any of these openings, already used for other "
@@ -409,14 +443,14 @@ def generate_smart_comment(ai, first_name, gender, category_label, ticked, used_
 Student: {first_name} ({pronoun}/{his_her})
 
 What you observed (you ticked ONLY these):
-{observations}
+{observations}{note_block}
 
 How to write it:
 - Write it the way a warm, experienced teacher writes a report card remark: one short paragraph that flows naturally, not a list of separate sentences stuck together. Link ideas with simple words like "and", "also", "at times", "with a little more effort".
 - Start with {first_name}'s name and the good points first.
 - A "(needs improvement)" point must sound kind and hopeful, never like a complaint. Say what {pronoun.lower()} can do better, as a gentle next step, e.g. "{pronoun} is encouraged to ...", "{pronoun} can work on ...", "With a little more effort, {pronoun.lower()} can ...". Never use words like "bad", "poor", "fails" or "problem".
 - End with ONE short, sincere line of encouragement (e.g. "Keep it up, {first_name}!", "Keep up the good work!", "I am sure {pronoun.lower()} will do even better."). It must not add any new fact about the student.
-- Use only what is ticked above. Do not invent examples, events, subjects, hobbies or qualities that were not ticked.
+- Use only what is ticked above and what the teacher wrote. Do not invent examples, events, subjects, hobbies or qualities that are not there.
 - Simple, everyday English that every parent can understand. No fancy or formal words.
 - Between {min_words} and {max_words} words. Return only the remark.{avoid_line}
 
@@ -513,8 +547,10 @@ def generate_smart_remarks(req: https_fn.CallableRequest) -> dict:
     # dashboard tell "ticked, not generated yet" apart from "nothing ticked".
     roster = [{"id": sid, "name": students.get(sid, {}).get("name") or sid,
                "rollNo": students.get(sid, {}).get("rollNo") or "",
-               "tickedCount": sum(1 for k, v in (entries_by_student.get(sid) or {}).items()
-                                  if v and k in remark_bank)}
+               "tickedCount": sum(1 for k in _true_tick_keys(entries_by_student.get(sid))
+                                  if k in remark_bank),
+               "noteCount": len(set(_student_notes(entries_by_student.get(sid)))
+                                & {c["slug"] for c in categories})}
               for sid in roster_ids]
 
     if not sheet_refs:
@@ -535,8 +571,9 @@ def generate_smart_remarks(req: https_fn.CallableRequest) -> dict:
 
     ticked_students = unmatched_ticks = 0
     for sid in roster_ids:
-        true_keys = [k for k, v in (entries_by_student.get(sid) or {}).items() if v]
-        if any(k in remark_bank for k in true_keys):
+        true_keys = _true_tick_keys(entries_by_student.get(sid))
+        has_note = bool(set(_student_notes(entries_by_student.get(sid))) & {c["slug"] for c in categories})
+        if has_note or any(k in remark_bank for k in true_keys):
             ticked_students += 1
         unmatched_ticks += sum(1 for k in true_keys if k not in remark_bank)
     if unmatched_ticks:
@@ -561,13 +598,14 @@ def generate_smart_remarks(req: https_fn.CallableRequest) -> dict:
 
     ai = OpenAI(api_key=OPENAI_API_KEY.value)
 
-    # (student, category) pairs with at least one tick — one remark each, so
-    # this is what the progress bar should count, not students.
+    # (student, category) pairs with at least one tick or a teacher's own
+    # remark — one remark each, so this is what the progress bar should
+    # count, not students.
     category_slugs = {c["slug"] for c in categories}
     total_remarks = sum(
-        len({remark_bank[k]["categorySlug"]
-             for k, v in (entries_by_student.get(sid) or {}).items()
-             if v and k in remark_bank} & category_slugs)
+        len(({remark_bank[k]["categorySlug"]
+              for k in _true_tick_keys(entries_by_student.get(sid)) if k in remark_bank}
+             | set(_student_notes(entries_by_student.get(sid)))) & category_slugs)
         for sid in roster_ids)
 
     jobs = school_ref.collection("smart_remarks_jobs")
@@ -605,7 +643,8 @@ def generate_smart_remarks(req: https_fn.CallableRequest) -> dict:
             first_name = get_first_name(info["name"])
 
             entry = entries_by_student.get(sid) or {}
-            ticked_keys = [k for k, v in entry.items() if v and k in remark_bank]
+            ticked_keys = [k for k in _true_tick_keys(entry) if k in remark_bank]
+            notes = _student_notes(entry)
 
             # Group this student's ticked keys by category — one remark per
             # category, never one blended remark across categories.
@@ -615,15 +654,16 @@ def generate_smart_remarks(req: https_fn.CallableRequest) -> dict:
                 by_category[item["categorySlug"]].append({**item, "key": key})
 
             student_remarks_ref = school_ref.collection("students").document(sid).collection("smart_remarks")
-            if by_category:
+            if by_category or notes:
                 report(info["name"], force=True)
 
             for cat in categories:
                 slug = cat["slug"]
                 cat_ticked = by_category.get(slug) or []
+                cat_note = notes.get(slug, "")
                 doc_ref = student_remarks_ref.document(slug)
 
-                if not cat_ticked:
+                if not cat_ticked and not cat_note:
                     skipped_no_ticks += 1
                     continue
 
@@ -637,14 +677,15 @@ def generate_smart_remarks(req: https_fn.CallableRequest) -> dict:
 
                 comment = generate_smart_comment(
                     ai, first_name, info["gender"], cat["label"], cat_ticked,
-                    used_openings=used_openings_by_category[slug],
+                    used_openings=used_openings_by_category[slug], teacher_note=cat_note,
                 )
 
                 doc_ref.set({
                     "classId": class_id, "band": band, "sheetIds": sheet_ids,
                     "category": cat["label"], "categorySlug": slug, "categoryOrder": cat["order"],
                     "tickedKeys": [i["key"] for i in cat_ticked], "tickedCount": len(cat_ticked),
-                    "lowConfidence": len(cat_ticked) < LOW_CONFIDENCE_THRESHOLD,
+                    "teacherNote": cat_note,
+                    "lowConfidence": len(cat_ticked) < LOW_CONFIDENCE_THRESHOLD and not cat_note,
                     "comment": comment, "status": "needs_review",
                     "updatedAt": firestore.SERVER_TIMESTAMP,
                 })
