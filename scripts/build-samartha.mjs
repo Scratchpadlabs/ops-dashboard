@@ -44,14 +44,16 @@
  * text. Date cells are swapped back here; text is parsed day-first.
  *
  * ── Usage ───────────────────────────────────────────────────────────────────
- *   # Dry run (default): prints the plan, writes nothing.
+ *   # Dry run (default): prints the plan, writes nothing. --students is optional.
  *   node scripts/build-samartha.mjs --students=/path/to/student-details.xlsx
  *
  *   # Apply.
  *   node scripts/build-samartha.mjs --students=/path/to/student-details.xlsx --commit
  *
  * Flags:
- *   --students=<path>  the student-details workbook (required; sheet "All Students Master")
+ *   --students=<path>  the student-details workbook (sheet "All Students Master").
+ *                      Optional: without it the student DOB / admission no. /
+ *                      Aadhaar fix is skipped and everything else still runs.
  *   --commit           actually write and create Auth accounts
  *   --plan=<path>      write the full plan as JSON (default: none)
  *   --project=<id>     Firestore project (default clarified-1501)
@@ -81,10 +83,6 @@ const COMMIT = flag('commit')
 const STUDENTS_PATH = value('students')
 const PLAN_PATH = value('plan')
 const PROJECT = value('project') || process.env.GOOGLE_CLOUD_PROJECT || 'clarified-1501'
-if (!STUDENTS_PATH) {
-  console.error('--students=<path to student-details .xlsx> is required')
-  process.exit(1)
-}
 
 // ── Source data ─────────────────────────────────────────────────────────────
 const SCHOOL_FIELDS = {
@@ -514,7 +512,8 @@ async function main() {
   }
 
   // Students
-  const sheet = readStudentSheet(STUDENTS_PATH)
+  if (!STUDENTS_PATH) report.warnings.push('no --students sheet given: student DOB / admission no. / Aadhaar left unchanged')
+  const sheet = STUDENTS_PATH ? readStudentSheet(STUDENTS_PATH) : []
   const studentsSnap = await school.collection('students').get()
   const byKey = new Map()
   for (const d of studentsSnap.docs) {
@@ -541,7 +540,7 @@ async function main() {
       bump('updated', 'students')
     }
   }
-  const unmatchedDocs = studentsSnap.docs.filter(d => !matched.has(d.id))
+  const unmatchedDocs = STUDENTS_PATH ? studentsSnap.docs.filter(d => !matched.has(d.id)) : []
   for (const d of unmatchedDocs) report.warnings.push(`student not in sheet: ${d.id} ${d.data().currentClassId} ${d.data().name}`)
   if (noDob.length) report.warnings.push(`${noDob.length} students have no DOB in the sheet (placeholder kept): ${noDob.join('; ')}`)
 
