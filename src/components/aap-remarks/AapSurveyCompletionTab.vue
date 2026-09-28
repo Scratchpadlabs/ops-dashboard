@@ -14,17 +14,25 @@
           :disabled="!schoolId" @click="run"
         />
         <Button
-          label="Download Excel" icon="pi pi-file-excel" outlined
-          :disabled="!rows.length" @click="downloadXlsx"
+          :label="isFiltered ? `Download Excel (${filteredRows.length} rows)` : 'Download Excel'"
+          icon="pi pi-file-excel" outlined
+          :disabled="!filteredRows.length" @click="downloadXlsx"
         />
+        <Button
+          icon="pi pi-download" label="CSV" outlined
+          :disabled="!filteredRows.length" @click="csvMenu.toggle($event)"
+          aria-haspopup="true" aria-controls="aap_csv_menu"
+        />
+        <Menu ref="csvMenu" id="aap_csv_menu" :model="csvItems" popup />
         <div v-if="rows.length" class="text-xs text-slate-400 ml-auto pb-2">
           {{ rows.length }} class/subject/topic row{{ rows.length === 1 ? '' : 's' }} · scanned whole school
         </div>
       </div>
       <p class="text-xs text-slate-400 mt-3">
-        Whole-school scan: cross-references school-setup's subjects/topics, every AAP survey
-        response, and each class's roster. A subject/topic with no response yet is "Not started";
-        one with a response but gaps for some students/questions is "Partial".
+        Whole-school scan: each class's own subjects and topics (as set up for that class — what the
+        teacher app surveys from), every AAP survey response, and each class's roster. A topic with no
+        response yet is "Not started"; one with a response but gaps for some students/questions is
+        "Partial". "Not Applicable" counts as answered. Downloads contain the rows currently filtered.
       </p>
     </div>
 
@@ -46,6 +54,25 @@
         {{ result.unparsedResponses }} response doc{{ result.unparsedResponses === 1 ? '' : 's' }} across the
         school didn't fit the expected naming convention and couldn't be read at all.
       </div>
+    </div>
+
+    <div v-if="result && result.diagnostics?.responsesNotInSetup"
+         class="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4 text-sm text-amber-900">
+      <i class="pi pi-exclamation-triangle mr-1.5"></i>
+      {{ result.diagnostics.responsesNotInSetup }} survey{{ result.diagnostics.responsesNotInSetup === 1 ? ' was' : 's were' }}
+      filed for a topic that isn't in that class's subjects (a topic renamed or removed after the survey, or a
+      subject the class no longer has). They're listed below with a
+      <span class="font-semibold">"Not in class setup"</span> tag rather than dropped —
+      <button type="button" class="underline font-semibold" @click="sourceFilter = 'response_only'">show them</button>.
+    </div>
+
+    <div v-if="result && result.diagnostics?.classesWithoutSubjects?.length"
+         class="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 mb-4 text-sm text-slate-600">
+      <i class="pi pi-info-circle mr-1.5"></i>
+      {{ result.diagnostics.classesWithoutSubjects.length }} class{{ result.diagnostics.classesWithoutSubjects.length === 1 ? ' has' : 'es have' }}
+      no subjects assigned, so the grade-wide School Setup subject list was used for
+      {{ result.diagnostics.classesWithoutSubjects.length === 1 ? 'it' : 'them' }}:
+      <span class="font-semibold">{{ result.diagnostics.classesWithoutSubjects.join(', ') }}</span>
     </div>
 
     <div v-if="result && result.diagnostics?.gradesWithNoResolvedClasses?.length"
@@ -82,13 +109,34 @@
       <span class="font-semibold">{{ result.diagnostics.skippedBlankCompetencies.join(', ') }}</span>
     </div>
 
-    <div v-if="rows.length" class="flex items-center gap-2 mb-3 flex-wrap">
-      <Select v-model="statusFilter" :options="statusOptions" optionLabel="label" optionValue="value" class="w-52" />
-      <InputText v-model="search" class="w-64" size="small" placeholder="Search class, subject, topic, activity…" />
-      <span class="text-xs text-slate-400">
-        {{ filteredRows.length }} of {{ rows.length }} shown ·
-        {{ counts.not_started }} not started · {{ counts.partial }} partial · {{ counts.complete }} complete
-      </span>
+    <div v-if="rows.length" class="bg-white rounded-xl border border-slate-200 p-3 mb-3">
+      <div class="flex items-center gap-2 flex-wrap">
+        <Select v-model="statusFilter" :options="statusOptions" optionLabel="label" optionValue="value" class="w-44" size="small" />
+        <MultiSelect v-model="gradeFilter" :options="gradeOptions" placeholder="All grades" class="w-36" size="small"
+                     :maxSelectedLabels="2" selectedItemsLabel="{0} grades" />
+        <MultiSelect v-model="classFilter" :options="classOptions" placeholder="All classes" class="w-44" size="small"
+                     filter :maxSelectedLabels="2" selectedItemsLabel="{0} classes" />
+        <MultiSelect v-model="subjectFilter" :options="subjectOptions" placeholder="All subjects" class="w-44" size="small"
+                     filter :maxSelectedLabels="2" selectedItemsLabel="{0} subjects" />
+        <MultiSelect v-model="topicFilter" :options="topicOptions" placeholder="All topics" class="w-40" size="small"
+                     filter :maxSelectedLabels="2" selectedItemsLabel="{0} topics" />
+        <Select v-model="teacherFilter" :options="teacherOptions" placeholder="Any teacher" class="w-40" size="small"
+                filter showClear />
+        <Select v-model="taughtFilter" :options="taughtOptions" optionLabel="label" optionValue="value" class="w-56" size="small" />
+        <Select v-model="sourceFilter" :options="sourceOptions" optionLabel="label" optionValue="value" class="w-48" size="small" />
+        <InputText v-model="search" class="w-56" size="small" placeholder="Search class, subject, topic, activity…" />
+        <Button v-if="isFiltered" label="Clear filters" icon="pi pi-filter-slash" size="small" text @click="clearFilters" />
+      </div>
+      <div class="text-xs text-slate-500 mt-2 flex gap-3 flex-wrap">
+        <span>{{ filteredRows.length }} of {{ rows.length }} shown</span>
+        <button type="button" class="hover:underline" @click="statusFilter = 'not_started'">{{ counts.not_started }} not started</button>
+        <button type="button" class="hover:underline text-amber-700" @click="statusFilter = 'partial'">{{ counts.partial }} partial</button>
+        <button type="button" class="hover:underline text-green-700" @click="statusFilter = 'complete'">{{ counts.complete }} complete</button>
+        <button type="button" class="hover:underline text-red-600 font-semibold" @click="statusFilter = 'not_started'; taughtFilter = 'taught'">
+          {{ counts.taughtNotSurveyed }} taught but not surveyed
+        </button>
+        <span v-if="filteredStudentsPending">· {{ filteredStudentsPending }} student-question gaps</span>
+      </div>
     </div>
 
     <div v-if="running" class="flex items-center justify-center py-20">
@@ -107,7 +155,20 @@
         <Column header="Class" field="classId" style="min-width:100px" />
         <Column header="Subject" field="subject" style="min-width:140px" />
         <Column header="Topic" style="min-width:140px">
-          <template #body="{ data }">{{ data.topic || '—' }}</template>
+          <template #body="{ data }">
+            <div>{{ data.topic || '—' }}</div>
+            <span v-if="data.source === 'response_only'" class="text-[10px] font-semibold uppercase tracking-wide text-amber-700"
+                  v-tooltip.top="'A survey was filed for this topic, but it is not in this class\'s subjects'">Not in class setup</span>
+          </template>
+        </Column>
+        <Column header="Taught" style="min-width:100px">
+          <template #body="{ data }">
+            <span v-if="data.taught === true" class="text-xs text-green-700" v-tooltip.top="'Marked taught in the teacher app'">
+              <i class="pi pi-check text-xs mr-0.5"></i>{{ shortDate(data.completedAt) || 'Yes' }}
+            </span>
+            <span v-else-if="data.taught === false" class="text-xs text-slate-400">Not yet</span>
+            <span v-else class="text-xs text-slate-300">—</span>
+          </template>
         </Column>
         <Column header="Status" style="min-width:130px">
           <template #body="{ data }">
@@ -117,7 +178,10 @@
           </template>
         </Column>
         <Column header="Responded" style="min-width:110px">
-          <template #body="{ data }">{{ data.respondedStudents }} / {{ data.expectedStudents }}</template>
+          <template #body="{ data }">
+            {{ data.respondedStudents }} / {{ data.expectedStudents }}
+            <div v-if="data.notApplicable" class="text-[11px] text-slate-400">{{ data.notApplicable }} N/A</div>
+          </template>
         </Column>
         <Column header="Teacher" field="teacherId" style="min-width:100px">
           <template #body="{ data }">{{ data.teacherId || '—' }}</template>
@@ -182,6 +246,8 @@
 import { ref, computed, onMounted } from 'vue'
 import { useToast } from 'primevue/usetoast'
 import Select from 'primevue/select'
+import MultiSelect from 'primevue/multiselect'
+import Menu from 'primevue/menu'
 import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
 import DataTable from 'primevue/datatable'
@@ -192,7 +258,9 @@ import AapSurveyResponseDialog from './AapSurveyResponseDialog.vue'
 
 import { useAapRemarks } from '../../composables/useAapRemarks.js'
 import { aapSurveyCompletionRemote } from '../../utils/api.js'
-import { downloadAapCompletionXlsx } from '../../utils/aapCompletionExport.js'
+import {
+  downloadAapCompletionXlsx, downloadAapCompletionCsv, downloadAapPendingCsv,
+} from '../../utils/aapCompletionExport.js'
 
 /**
  * Whole-school AAP survey completion — a separate concern from the Remarks
@@ -259,22 +327,101 @@ const statusOptions = [
 ]
 const statusFilter = ref('')
 const search = ref('')
+const gradeFilter = ref([])
+const classFilter = ref([])
+const subjectFilter = ref([])
+const topicFilter = ref([])
+const teacherFilter = ref(null)
+const taughtFilter = ref('')
+const sourceFilter = ref('')
 
-const filteredRows = computed(() => {
+const taughtOptions = [
+  { label: 'Taught or not', value: '' },
+  { label: 'Marked taught in class', value: 'taught' },
+  { label: 'Not marked taught yet', value: 'not_taught' },
+]
+const sourceOptions = [
+  { label: 'All rows', value: '' },
+  { label: 'Class setup topics only', value: 'setup' },
+  { label: 'Not in class setup', value: 'response_only' },
+]
+
+const gradeOf = (r) => String(r.classId || '').split('_')[0]
+const uniq = (values) => [...new Set(values.filter(Boolean))]
+  .sort((a, b) => String(a).localeCompare(String(b), undefined, { numeric: true }))
+const teachersOf = (r) => String(r.teacherId || '').split(',').map(t => t.trim()).filter(Boolean)
+
+// Each option list narrows to what the filters to its left still allow, so
+// picking grade 7 leaves only grade-7 classes in the class list.
+const gradeOptions = computed(() => uniq(rows.value.map(gradeOf)))
+const classOptions = computed(() => uniq(rows.value
+  .filter(r => !gradeFilter.value.length || gradeFilter.value.includes(gradeOf(r)))
+  .map(r => r.classId)))
+const subjectOptions = computed(() => uniq(rows.value
+  .filter(r => (!gradeFilter.value.length || gradeFilter.value.includes(gradeOf(r)))
+    && (!classFilter.value.length || classFilter.value.includes(r.classId)))
+  .map(r => r.subject)))
+const topicOptions = computed(() => uniq(rows.value
+  .filter(r => !subjectFilter.value.length || subjectFilter.value.includes(r.subject))
+  .map(r => r.topic)))
+const teacherOptions = computed(() => uniq(rows.value.flatMap(teachersOf)))
+
+const isFiltered = computed(() => !!(statusFilter.value || search.value.trim() || gradeFilter.value.length
+  || classFilter.value.length || subjectFilter.value.length || topicFilter.value.length
+  || teacherFilter.value || taughtFilter.value || sourceFilter.value))
+
+function clearFilters() {
+  statusFilter.value = ''
+  search.value = ''
+  gradeFilter.value = []
+  classFilter.value = []
+  subjectFilter.value = []
+  topicFilter.value = []
+  teacherFilter.value = null
+  taughtFilter.value = ''
+  sourceFilter.value = ''
+}
+
+// Everything except status — the counts line shows how the current scope
+// splits by status, and clicking a count then narrows to it.
+const scopedRows = computed(() => {
   const term = search.value.trim().toLowerCase()
   return rows.value.filter(r => {
-    if (statusFilter.value && r.status !== statusFilter.value) return false
+    if (gradeFilter.value.length && !gradeFilter.value.includes(gradeOf(r))) return false
+    if (classFilter.value.length && !classFilter.value.includes(r.classId)) return false
+    if (subjectFilter.value.length && !subjectFilter.value.includes(r.subject)) return false
+    if (topicFilter.value.length && !topicFilter.value.includes(r.topic)) return false
+    if (teacherFilter.value && !teachersOf(r).includes(teacherFilter.value)) return false
+    if (taughtFilter.value === 'taught' && r.taught !== true) return false
+    if (taughtFilter.value === 'not_taught' && r.taught === true) return false
+    if (sourceFilter.value === 'response_only' && r.source !== 'response_only') return false
+    if (sourceFilter.value === 'setup' && r.source === 'response_only') return false
     if (!term) return true
-    return [r.classId, r.subject, r.topic, ...(r.responses || []).map(activityLabel)]
+    return [r.classId, r.subject, r.topic, r.teacherId, ...(r.responses || []).map(activityLabel)]
       .some(v => String(v || '').toLowerCase().includes(term))
   })
 })
 
+const filteredRows = computed(() => scopedRows.value
+  .filter(r => !statusFilter.value || r.status === statusFilter.value))
+
 const counts = computed(() => {
-  const out = { not_started: 0, partial: 0, complete: 0 }
-  for (const r of rows.value) out[r.status] = (out[r.status] || 0) + 1
+  const out = { not_started: 0, partial: 0, complete: 0, taughtNotSurveyed: 0 }
+  for (const r of scopedRows.value) {
+    out[r.status] = (out[r.status] || 0) + 1
+    if (r.status === 'not_started' && r.taught === true) out.taughtNotSurveyed++
+  }
   return out
 })
+
+const filteredStudentsPending = computed(() => filteredRows.value
+  .reduce((sum, r) => sum + (r.gaps || []).reduce((n, g) => n + (g.missing?.length || 0), 0), 0))
+
+const shortDate = (iso) => {
+  if (!iso) return ''
+  const d = new Date(iso)
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+}
 
 const gapsVisible = ref(false)
 const gapsRow = ref(null)
@@ -313,9 +460,28 @@ function onResponseSaved({ row, index, updated }) {
 }
 
 function downloadXlsx() {
-  const { summaryRows, detailRows } = downloadAapCompletionXlsx(schoolId.value, rows.value)
+  const { summaryRows, detailRows } = downloadAapCompletionXlsx(
+    scannedSchoolId.value, filteredRows.value, { filtered: isFiltered.value })
   toast.add({ severity: 'success', summary: `Exported ${summaryRows} rows, ${detailRows} pending items`, life: 3000 })
 }
+
+const csvMenu = ref(null)
+const csvItems = [
+  {
+    label: 'Summary (one row per topic)', icon: 'pi pi-list',
+    command: () => {
+      const { summaryRows } = downloadAapCompletionCsv(scannedSchoolId.value, filteredRows.value, { filtered: isFiltered.value })
+      toast.add({ severity: 'success', summary: `Exported ${summaryRows} rows`, life: 2500 })
+    },
+  },
+  {
+    label: 'Pending students (one row per gap)', icon: 'pi pi-users',
+    command: () => {
+      const { detailRows } = downloadAapPendingCsv(scannedSchoolId.value, filteredRows.value, { filtered: isFiltered.value })
+      toast.add({ severity: 'success', summary: `Exported ${detailRows} pending items`, life: 2500 })
+    },
+  },
+]
 </script>
 
 <style scoped>
