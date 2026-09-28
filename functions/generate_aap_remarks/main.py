@@ -278,6 +278,13 @@ def fetch_survey_ratings(school_id, class_id):
     target_grade_raw, _, target_section_raw = class_id.partition("_")
     target = canonical_grade_section(target_grade_raw, target_section_raw)
     unparsed = 0
+    # Subject names can contain underscores ("VII_Social_Science_Term1"), so
+    # the parsed token alone would file that under "Social". The real subject
+    # doc id the topic id starts with gives the full name.
+    subject_names = {}
+    for sdoc in school_ref.collection("subjects").stream():
+        sdata = sdoc.to_dict() or {}
+        subject_names[sdoc.id] = str(sdata.get("name") or "").strip()
 
     for survey_doc in school_ref.collection("surveys").stream():
         if not survey_doc.id.lower().startswith("zzz"):
@@ -290,6 +297,9 @@ def fetch_survey_ratings(school_id, class_id):
                 unparsed += 1
                 continue
             grade, section, subject = parsed["grade"], parsed["section"], parsed["subject"]
+            subject_doc_id, token, _topic = _split_topic_id(parsed["topic_id"], subject_names)
+            if subject_doc_id in subject_names:
+                subject = subject_names[subject_doc_id] or token.replace("_", " ")
             # Canonical comparison, not raw string equality: a response
             # spelling its grade "1" and the class doc spelling it "I" are
             # the same class once both go through the shared grade index.
@@ -1105,26 +1115,75 @@ def _expected_subjects_by_grade(school_id):
     return out, sorted(merged_streams), sorted(skipped_blank_competencies), goals_by_doc
 
 
-def _scan_school_aap_completion(school_id):
-    """Whole-school scan of zzz-prefixed AAP survey responses, grouped by
-    (class_id, subject_token, topic). Unlike fetch_survey_ratings this is not
-    scoped to one class, keeps topic (which that function discards), and
-    tracks PRESENCE per trait rather than a resolved level — completion cares
-    about which question is blank, not what level a student ended up at.
+def _canonical_class_id(raw):
+    """Canonical class_id (the notation the roster and reports key on) for a
+    raw class value such as a classes/{id} doc id, or None if no grade
+    resolves."""
+    parsed = parse_class_value(raw)
+    if parsed["grade_ordinal"] is None:
+        return None
+    grade, section = canonical_grade_section(parsed["grade_token"], parsed["section"])
+    return compose_class_id(grade, section)
 
-    Returns (by_key, unparsed_count) where by_key maps the tuple to
-    {"teacher_id": ..., "students": {student_id: {trait: bool_answered}},
-     "responses": [{surveyId, responseId, subjectDocId, topicId, activityId,
-                    activityName, selectedGoals, selectedCompetencies}]}.
+
+def _longest_prefix(text, candidates):
+    """Longest c in candidates with text == c or text starting with c + "_"."""
+    best = None
+    for c in candidates:
+        if (text == c or text.startswith(c + "_")) and (best is None or len(c) > len(best)):
+            best = c
+    return best
+
+
+def _split_topic_id(topic_id, subject_doc_ids):
+    """(subject_doc_id, subject_name_part, topic_part) for a topic id shaped
+    "{Grade}_{Subject}_{Topic}". Subject and topic names can both contain
+    underscores ("VII_Social_Science_Term1"), so a plain split guessed the
+    subject as "Social" and the topic as "Science_Term1". The subject is
+    instead the longest real subject doc id the topic id starts with."""
+    doc_id = _longest_prefix(topic_id, subject_doc_ids)
+    if doc_id:
+        rest = topic_id[len(doc_id) + 1:]
+        return doc_id, doc_id.split("_", 1)[1] if "_" in doc_id else doc_id, rest or None
+    parts = topic_id.split("_")
+    if len(parts) >= 3:
+        return f"{parts[0]}_{parts[1]}", parts[1], "_".join(parts[2:])
+    return None, parts[1] if len(parts) > 1 else topic_id, None
+
+
+def _scan_school_aap_completion(school_id, class_doc_ids=(), subject_doc_ids=()):
+    """Whole-school scan of zzz-prefixed AAP survey responses.
+
+    The teacher app names every response `${teacherId}_${classDocId}_${topicId}`
+    (AcadSurvey.vue / ActivityDialog.vue), where classDocId is the classes/{id}
+    doc and topicId is that class's own topic id. So a response is matched
+    by finding the real class doc id right after the teacher id — exact, not
+    parsed — and everything after it IS the topic id. Only an id that starts
+    with no known class doc falls back to the old parse
+    (_parse_aap_response_id), which has to guess where the grade repeats.
+
+    Returns (by_key, unparsed_count). Keys are:
+      ("topic", class_id, topic_id)  — matched to a real class doc
+      ("parsed", class_id, subject_token, topic) — fallback parse
+    and each value is
+    {"teacher_id", "class_doc_id", "topic_id", "subject_doc_id",
+     "subject_token", "topic", "students": {student_id: {trait: answered}},
+     "notApplicable": int, "responses": [...]}.
 
     "responses" is a list, not one doc, because the activity IS the survey
     doc a response lives under: a teacher who picked activity A and later B
     for the same class/topic leaves one response under each. Showing both
     is the honest answer; picking one would hide the other from the editor.
+
+    "Not Applicable" counts as answered: it is a choice the teacher made for
+    that child (absent, not relevant), not a blank. Counting it as missing
+    meant a class with one N/A child could never show Complete.
     """
     school_ref = db.collection("schools").document(school_id)
     by_key = {}
     unparsed = 0
+    class_doc_ids = list(class_doc_ids)
+    subject_doc_ids = list(subject_doc_ids)
 
     for survey_doc in school_ref.collection("surveys").stream():
         if not survey_doc.id.lower().startswith("zzz"):
@@ -1132,21 +1191,37 @@ def _scan_school_aap_completion(school_id):
         responses = (school_ref.collection("surveys").document(survey_doc.id)
                      .collection("responses").stream())
         for resp in responses:
-            parsed = _parse_aap_response_id(resp.id)
-            if not parsed:
-                unparsed += 1
-                continue
-            grade, section = canonical_grade_section(parsed["grade"], parsed["section"])
-            class_id = compose_class_id(grade, section)
-            key = (class_id, parsed["subject"], parsed["topic"])
-            entry = by_key.setdefault(key, {"teacher_id": parsed["teacher_id"], "students": {}, "responses": []})
+            teacher_id, _, rest = resp.id.partition("_")
+            class_doc = _longest_prefix(rest, class_doc_ids) if rest else None
+            topic_id = rest[len(class_doc) + 1:] if class_doc else ""
+            if class_doc and topic_id:
+                class_id = _canonical_class_id(class_doc) or class_doc
+                subject_doc_id, subject_token, topic = _split_topic_id(topic_id, subject_doc_ids)
+                key = ("topic", class_id, topic_id)
+            else:
+                parsed = _parse_aap_response_id(resp.id)
+                if not parsed:
+                    unparsed += 1
+                    continue
+                grade, section = canonical_grade_section(parsed["grade"], parsed["section"])
+                class_id = compose_class_id(grade, section)
+                topic_id = parsed["topic_id"]
+                subject_doc_id, subject_token, topic = _split_topic_id(topic_id, subject_doc_ids)
+                class_doc = None
+                key = ("parsed", class_id, subject_token, topic)
+            entry = by_key.setdefault(key, {
+                "teacher_id": teacher_id, "class_id": class_id, "class_doc_id": class_doc,
+                "topic_id": topic_id, "subject_doc_id": subject_doc_id,
+                "subject_token": subject_token, "topic": topic,
+                "students": {}, "notApplicable": 0, "responses": [],
+            })
 
             resp_data = resp.to_dict() or {}
             entry["responses"].append({
                 "surveyId": survey_doc.id,
                 "responseId": resp.id,
-                "subjectDocId": parsed["subject_doc_id"],
-                "topicId": parsed["topic_id"],
+                "subjectDocId": subject_doc_id,
+                "topicId": topic_id,
                 "activityId": resp_data.get("activityId") or survey_doc.id,
                 "activityName": resp_data.get("activityName") or "",
                 "selectedGoals": [str(g) for g in (resp_data.get("selectedGoals") or [])],
@@ -1155,7 +1230,7 @@ def _scan_school_aap_completion(school_id):
 
             answers = resp_data.get("answers", [])
             for q_index, trait in enumerate(["awareness", "sensitivity", "creativity"]):
-                if q_index >= len(answers):
+                if q_index >= len(answers) or not isinstance(answers[q_index], dict):
                     continue
                 for student_id, level_str in answers[q_index].items():
                     if student_id == "questionText":
@@ -1164,7 +1239,9 @@ def _scan_school_aap_completion(school_id):
                     # Last response doc standing wins for a given key — only
                     # relevant if a topic was genuinely resubmitted, in which
                     # case the newer submission IS the current truth.
-                    row[trait] = bool(level_str) and level_str != "Not Applicable"
+                    row[trait] = bool(level_str)
+                    if level_str == "Not Applicable":
+                        entry["notApplicable"] += 1
     return by_key, unparsed
 
 
@@ -1198,13 +1275,13 @@ def _whole_school_roster(school_id):
             continue
         raw, _field = raw_class_value(data)
         parsed = parse_class_value(raw)
+        name = (str(data.get("name") or "").strip()
+                or f"{data.get('firstName', '')} {data.get('lastName', '')}".strip() or doc.id)
         if parsed["grade_ordinal"] is None:
-            name = f"{data.get('firstName', '')} {data.get('lastName', '')}".strip() or doc.id
             unresolved.append({"studentId": doc.id, "studentName": name, "rawClassValue": raw})
             continue
         grade, section = canonical_grade_section(parsed["grade_token"], parsed["section"])
         class_id = compose_class_id(grade, section)
-        name = f"{data.get('firstName', '')} {data.get('lastName', '')}".strip() or doc.id
         roster[class_id].append({"id": doc.id, "name": name})
     return roster, unresolved
 
@@ -1256,6 +1333,80 @@ def _class_stages(school_id):
         grade, section = canonical_grade_section(parsed["grade_token"], parsed["section"])
         out[compose_class_id(grade, section)] = stage
     return out
+
+
+def _iso(value):
+    if value is not None and hasattr(value, "isoformat"):
+        try:
+            return value.isoformat()
+        except Exception:
+            return None
+    return None
+
+
+def _class_topic_setup(school_id, subject_docs):
+    """What each class actually teaches, from classes/{id}.subjects[] — the
+    same per-class list the teacher app's Mark Lesson screen shows and
+    surveys from (subjectId + topics[{id, topic, isCompleted, completedAt}]).
+
+    Returns (by_class, class_doc_ids, classes_without_subjects):
+      by_class: {class_id: {"classDocId", "topics": [{subjectDocId, subject,
+                 topicId, topic, taught, completedAt}]}} — only subjects whose
+                 school-setup doc has a curricular competency (the teacher app
+                 only surveys those).
+      class_doc_ids: every class doc id, for matching response ids.
+      classes_without_subjects: class_ids with no subjects array at all —
+                 those fall back to the grade-wide school-setup list.
+    """
+    by_class = {}
+    class_doc_ids = []
+    without = []
+    for doc in db.collection("schools").document(school_id).collection("classes").stream():
+        data = doc.to_dict() or {}
+        class_doc_ids.append(doc.id)
+        if data.get("isActive") is False:
+            continue
+        class_id = _canonical_class_id(doc.id)
+        if not class_id:
+            continue
+        subjects = data.get("subjects") or []
+        if not subjects:
+            without.append(class_id)
+            continue
+        topics = []
+        for subj in subjects:
+            if not isinstance(subj, dict):
+                continue
+            sdoc = str(subj.get("subjectId") or "")
+            info = subject_docs.get(sdoc)
+            if not info or not info["hasCompetencies"]:
+                continue
+            for t in subj.get("topics") or []:
+                if not isinstance(t, dict) or not t.get("id"):
+                    continue
+                topics.append({
+                    "subjectDocId": sdoc, "subject": info["name"],
+                    "topicId": str(t["id"]),
+                    "topic": str(t.get("topic") or t.get("name") or t["id"]).strip(),
+                    "taught": bool(t.get("isCompleted")),
+                    "completedAt": _iso(t.get("completedAt")),
+                })
+        by_class[class_id] = {"classDocId": doc.id, "topics": topics}
+    return by_class, class_doc_ids, without
+
+
+def _subject_docs(school_id):
+    """{subject doc id: {"name", "hasCompetencies"}} from schools/{id}/subjects."""
+    out = {}
+    for doc in db.collection("schools").document(school_id).collection("subjects").stream():
+        data = doc.to_dict() or {}
+        name = str(data.get("name") or "").strip() or (doc.id.split("_", 1)[1] if "_" in doc.id else doc.id)
+        out[doc.id] = {"name": name, "hasCompetencies": _subject_has_competencies(data)}
+    return out
+
+
+def _norm_topic(value):
+    return re.sub(r"[^a-z0-9]", "", str(value or "").lower())
 
 
 @https_fn.on_call(region="asia-south1", memory=options.MemoryOption.GB_1, timeout_sec=300)
@@ -1322,7 +1473,10 @@ def aap_survey_completion(req: https_fn.CallableRequest) -> dict:
 
     expected_by_grade, merged_stream_grades, skipped_blank_competencies, goals_by_doc = (
         _expected_subjects_by_grade(school_id))
-    responses_by_key, unparsed = _scan_school_aap_completion(school_id)
+    subject_docs = _subject_docs(school_id)
+    class_setup, class_doc_ids, classes_without_subjects = _class_topic_setup(school_id, subject_docs)
+    responses_by_key, unparsed = _scan_school_aap_completion(
+        school_id, class_doc_ids=class_doc_ids, subject_doc_ids=list(subject_docs))
     roster_by_class, unresolved_students = _whole_school_roster(school_id)
     grades_with_no_classes = sorted(
         grade for grade in expected_by_grade
@@ -1351,65 +1505,106 @@ def aap_survey_completion(req: https_fn.CallableRequest) -> dict:
                 gaps.append({"studentId": sid, "studentName": student["name"], "missing": missing})
         return gaps
 
+    def build_row(class_id, subject, topic, entries, *, topic_id=None, subject_doc_id=None,
+                  taught=None, completed_at=None, source="class", subject_token=None):
+        roster = roster_by_class.get(class_id, [])
+        students = {}
+        responses = []
+        teacher_ids = []
+        not_applicable = 0
+        for e in entries:
+            for sid, traits in e["students"].items():
+                merged = students.setdefault(sid, {})
+                for t, v in traits.items():
+                    merged[t] = merged.get(t, False) or v
+            responses.extend(e["responses"])
+            not_applicable += e["notApplicable"]
+            if e["teacher_id"] not in teacher_ids:
+                teacher_ids.append(e["teacher_id"])
+        gaps = make_gaps(roster, students)
+        # NOT len(students) — that counts every distinct student id appearing
+        # anywhere in the response payload, which can equal the roster size
+        # by coincidence while naming a different set of students. Counted
+        # against the roster, so this number can never contradict the gaps.
+        status = "complete" if roster and not gaps else ("partial" if students else "not_started")
+        return {
+            "classId": class_id, "subject": subject, "subjectToken": subject_token,
+            "topic": topic, "topicId": topic_id, "subjectDocId": subject_doc_id,
+            "teacherId": ", ".join(teacher_ids) or None,
+            "expectedStudents": len(roster), "respondedStudents": len(roster) - len(gaps),
+            "status": status, "gaps": gaps, "responses": responses,
+            "taught": taught, "completedAt": completed_at, "source": source,
+            "notApplicable": not_applicable,
+        }
+
     rows = []
     unmatched_tokens = set()
-    seen_keys = set()
+    used = set()
 
-    for (class_id, subject_token, topic), entry in responses_by_key.items():
-        if not class_id:
-            continue
-        grade = class_id.split("_", 1)[0]
-        by_label, alias_index, _conflicts = index_by_grade.get(grade, ({}, {}, []))
-        fw, _how = resolve_subject(subject_token, by_label, alias_index)
-        resolved_subject = fw["subject"] if fw else None
-        if not resolved_subject:
-            unmatched_tokens.add(subject_token)
+    # Responses indexed for lookup: exact (class_id, topic_id), and a looser
+    # (class_id, subject doc, normalized topic) for responses that had to be
+    # parsed or whose topic id was renamed since.
+    by_topic_id = defaultdict(list)
+    by_loose = defaultdict(list)
+    for key, entry in responses_by_key.items():
+        by_topic_id[(entry["class_id"], entry["topic_id"])].append(key)
+        by_loose[(entry["class_id"], entry["subject_doc_id"], _norm_topic(entry["topic"]))].append(key)
 
-        roster = roster_by_class.get(class_id, [])
-        responded_students = entry["students"]
-        gaps = make_gaps(roster, responded_students)
-        status = "complete" if roster and not gaps else ("partial" if responded_students else "not_started")
+    # 1. Every topic each class actually teaches (classes/{id}.subjects).
+    for class_id, setup in sorted(class_setup.items()):
+        if class_id not in roster_by_class and not any(
+                by_topic_id.get((class_id, t["topicId"])) for t in setup["topics"]):
+            continue  # no students and no responses: an unused class doc
+        for t in setup["topics"]:
+            keys = [k for k in by_topic_id.get((class_id, t["topicId"]), []) if k not in used]
+            if not keys:
+                keys = [k for k in by_loose.get((class_id, t["subjectDocId"], _norm_topic(t["topic"])), [])
+                        if k not in used]
+            used.update(keys)
+            rows.append(build_row(
+                class_id, t["subject"], t["topic"], [responses_by_key[k] for k in keys],
+                topic_id=t["topicId"], subject_doc_id=t["subjectDocId"],
+                taught=t["taught"], completed_at=t["completedAt"], source="class"))
 
-        # NOT len(responded_students) — that counts every distinct student id
-        # appearing anywhere in the response payload, which can equal the
-        # roster size by coincidence while actually being a different set of
-        # students (e.g. a stale/duplicate id in the response that isn't on
-        # today's roster, alongside a real roster student who never answered
-        # at all). That produced "32 / 32 responded" next to two students
-        # showing every question pending. Counted against the roster instead,
-        # so this number can never contradict the gaps list.
-        subject_out = resolved_subject or subject_token
-        rows.append({
-            "classId": class_id, "subject": subject_out, "subjectToken": subject_token,
-            "topic": topic, "teacherId": entry["teacher_id"],
-            "expectedStudents": len(roster), "respondedStudents": len(roster) - len(gaps),
-            "status": status, "gaps": gaps, "responses": entry["responses"],
-        })
-        seen_keys.add((class_id, subject_out, topic))
-
-    # Anything school-setup expects that never got a single response doc, for
-    # any class in that grade — the "never started" case, with no submission
-    # to inspect, so every roster student is a gap by construction.
+    # 2. Classes with no subjects array: the grade-wide school-setup list, as
+    #    before, matched on subject name + normalized topic.
+    fallback_classes = set(classes_without_subjects) | (set(roster_by_class) - set(class_setup))
     for grade, subjects in expected_by_grade.items():
-        classes_in_grade = [cid for cid in roster_by_class if cid.split("_", 1)[0] == grade]
-        for subj in subjects:
-            for topic in (subj["topics"] or [None]):
-                for class_id in classes_in_grade:
-                    key = (class_id, subj["subject"], topic)
-                    if key in seen_keys:
-                        continue
-                    roster = roster_by_class.get(class_id, [])
-                    rows.append({
-                        "classId": class_id, "subject": subj["subject"], "subjectToken": None,
-                        "topic": topic, "teacherId": None,
-                        "expectedStudents": len(roster), "respondedStudents": 0,
-                        "status": "not_started", "gaps": make_gaps(roster, {}),
-                        "responses": [],
-                    })
+        by_label, alias_index, _conflicts = index_by_grade.get(grade, ({}, {}, []))
+        for class_id in sorted(c for c in fallback_classes if c.split("_", 1)[0] == grade):
+            for subj in subjects:
+                for topic in (subj["topics"] or [None]):
+                    keys = []
+                    for key, entry in responses_by_key.items():
+                        if key in used or entry["class_id"] != class_id:
+                            continue
+                        fw, _how = resolve_subject(entry["subject_token"], by_label, alias_index)
+                        if fw and fw["subject"] == subj["subject"] and _norm_topic(entry["topic"]) == _norm_topic(topic):
+                            keys.append(key)
+                    used.update(keys)
+                    rows.append(build_row(
+                        class_id, subj["subject"], topic, [responses_by_key[k] for k in keys],
+                        source="school_setup"))
+
+    # 3. Responses that matched nothing configured — shown, never dropped.
+    for key, entry in responses_by_key.items():
+        if key in used:
+            continue
+        grade = entry["class_id"].split("_", 1)[0]
+        by_label, alias_index, _conflicts = index_by_grade.get(grade, ({}, {}, []))
+        fw, _how = resolve_subject(entry["subject_token"], by_label, alias_index)
+        info = subject_docs.get(entry["subject_doc_id"] or "")
+        subject = (info or {}).get("name") or (fw["subject"] if fw else None)
+        if not subject:
+            unmatched_tokens.add(entry["subject_token"])
+        rows.append(build_row(
+            entry["class_id"], subject or entry["subject_token"], entry["topic"], [entry],
+            topic_id=entry["topic_id"], subject_doc_id=entry["subject_doc_id"],
+            source="response_only", subject_token=entry["subject_token"]))
 
     rows.sort(key=lambda r: (r["classId"], r["subject"], r["topic"] or ""))
 
-    referenced_subject_docs = {resp["subjectDocId"] for r in rows for resp in r["responses"]}
+    referenced_subject_docs = {resp["subjectDocId"] for r in rows for resp in r["responses"] if resp["subjectDocId"]}
 
     return {
         "rows": rows,
@@ -1423,6 +1618,8 @@ def aap_survey_completion(req: https_fn.CallableRequest) -> dict:
             "gradesWithNoResolvedClasses": grades_with_no_classes,
             "mergedStreamGrades": merged_stream_grades,
             "skippedBlankCompetencies": skipped_blank_competencies,
+            "classesWithoutSubjects": sorted(classes_without_subjects),
+            "responsesNotInSetup": sum(1 for r in rows if r["source"] == "response_only"),
         },
     }
 
