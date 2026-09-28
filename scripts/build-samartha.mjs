@@ -464,10 +464,14 @@ async function main() {
     const classTeacherOf = Object.entries(CLASS_TEACHERS).find(([, k]) => k === key)?.[0] || ''
     const { firstName, lastName } = splitName(t.name)
 
-    if (t.existing) {
-      const cur = staffDocs[t.existing]
-      if (!cur) throw new Error(`${t.existing} (${t.name}) not found`)
-      if (!normName(cur.name).includes(t.match)) throw new Error(`${t.existing} is "${cur.name}", expected ${t.name}`)
+    // A teacher this script created on an earlier run is found by its exact
+    // name, so a re-run updates that doc instead of adding a duplicate.
+    const existingId = t.existing
+      || Object.keys(staffDocs).find(id => staffDocs[id].created_by === ACTOR && normName(staffDocs[id].name) === normName(t.name))
+    if (existingId) {
+      const cur = staffDocs[existingId]
+      if (!cur) throw new Error(`${existingId} (${t.name}) not found`)
+      if (!normName(cur.name).includes(t.match || normName(t.name))) throw new Error(`${existingId} is "${cur.name}", expected ${t.name}`)
       const mergedAssignments = { ...(cur.assignments || {}) }
       for (const [c, subs] of Object.entries(assignments)) mergedAssignments[c] = union(mergedAssignments[c] || [], subs)
       const patch = {
@@ -477,9 +481,11 @@ async function main() {
         coScholasticClassIds: (cur.coScholasticClassIds || []).filter(c => CLASS_IDS.includes(c)),
         classTeacherOf,
       }
-      ops.push({ ref: school.collection('staffs').doc(t.existing), data: { ...patch, ...stamp(false) }, mode: 'merge', label: `staffs/${t.existing} (${cur.name} → ${t.name})` })
+      ops.push({ ref: school.collection('staffs').doc(existingId), data: { ...patch, ...stamp(false) }, mode: 'merge', label: `staffs/${existingId} (${cur.name} → ${t.name})` })
       bump('updated', 'staffs (existing, assigned)')
-      staffIdOf[key] = t.existing
+      staffIdOf[key] = existingId
+      // Login still pending from an earlier run (e.g. an Auth call failed) — retry it.
+      if (cur.needsAuthCreation === true && cur.email) authToCreate.push({ docId: existingId, email: cur.email, displayName: t.name })
       continue
     }
 
