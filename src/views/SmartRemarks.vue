@@ -108,7 +108,7 @@
     </div>
     <div v-else-if="scan && scan.tickedStudents && !hasRemarks && !running" class="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 mb-4 text-sm text-blue-900">
       <i class="pi pi-info-circle mr-1.5"></i>
-      {{ scan.tickedStudents }} of {{ scan.students }} students have boxes ticked in Smart Sheets.
+      {{ scan.tickedStudents }} of {{ scan.students }} students have boxes ticked or a teacher's own remark in Smart Sheets.
       Click <b>Generate remarks</b> to write their comments.
     </div>
     <div v-else-if="scan && scan.multipleSheetsFound && !running" class="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4 text-sm text-amber-900">

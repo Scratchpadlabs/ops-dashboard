@@ -76,8 +76,11 @@
               </span>
               {{ data.comment || 'No comment — click to write one' }}
             </button>
-            <span v-else-if="data.tickedCount > 0" class="text-xs text-blue-600">
-              {{ data.tickedCount }} box{{ data.tickedCount === 1 ? '' : 'es' }} ticked in Smart Sheets — not generated yet.
+            <span v-else-if="data.tickedCount > 0 || data.noteCount > 0" class="text-xs text-blue-600">
+              <template v-if="data.tickedCount > 0">{{ data.tickedCount }} box{{ data.tickedCount === 1 ? '' : 'es' }} ticked</template>
+              <template v-if="data.tickedCount > 0 && data.noteCount > 0"> + </template>
+              <template v-if="data.noteCount > 0">teacher's own remark</template>
+              in Smart Sheets — not generated yet.
             </span>
             <span v-else-if="data.tickedCount === 0" class="text-xs text-slate-400">
               Nothing ticked in Smart Sheets yet for this student.
@@ -126,6 +129,10 @@
 
     <Dialog v-model:visible="editorVisible" modal :style="{ width: '640px' }" :header="editorHeader">
       <div v-if="editing">
+        <div v-if="editing.teacherNote" class="mb-3 text-sm bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+          <div class="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-0.5">Teacher's own remark</div>
+          <div class="text-slate-700 whitespace-pre-line">{{ editing.teacherNote }}</div>
+        </div>
         <Textarea v-model="draft" rows="5" class="w-full" autoResize />
         <div class="flex items-center gap-2 mt-2">
           <span class="text-xs text-slate-400">{{ wordCount }} words</span>
@@ -183,7 +190,7 @@ const allRows = computed(() => props.students.flatMap(student => {
   if (!remarks.length) {
     return [{
       rowKey: student.id, studentId: student.id, studentName, rollNo: student.rollNo, empty: true,
-      tickedCount: student.tickedCount,
+      tickedCount: student.tickedCount, noteCount: student.noteCount || 0,
     }]
   }
   return remarks.map(remark => ({
@@ -192,6 +199,7 @@ const allRows = computed(() => props.students.flatMap(student => {
     categorySlug: remark.categorySlug, category: remark.category || '',
     comment: remark.comment || '', status: remark.status || STATUS_NEEDS_REVIEW,
     tickedCount: remark.tickedCount || 0, lowConfidence: !!remark.lowConfidence,
+    teacherNote: remark.teacherNote || '',
   }))
 }))
 
