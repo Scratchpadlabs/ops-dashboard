@@ -23,7 +23,7 @@ const STATUS_LABEL = { not_started: 'Not started', partial: 'Partial', complete:
 
 export const SUMMARY_COLUMNS = [
   'Class', 'Subject', 'Topic', 'Status', 'Taught in class', 'Taught on', 'Teacher',
-  'Expected Students', 'Responded Students', 'Gaps', 'Not Applicable answers',
+  'Expected Students', 'Absent (not expected)', 'Responded Students', 'Gaps', 'Not Applicable answers',
   'Activity', 'Curricular Goals', 'Competencies', 'Note',
 ]
 
@@ -61,6 +61,7 @@ export function buildSummaryRows(rows) {
     'Taught on': formatDate(r.completedAt),
     Teacher: r.teacherId || '',
     'Expected Students': r.expectedStudents,
+    'Absent (not expected)': r.absentStudents || 0,
     'Responded Students': r.respondedStudents,
     Gaps: r.gaps?.length || 0,
     'Not Applicable answers': r.notApplicable || 0,

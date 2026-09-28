@@ -1461,6 +1461,7 @@ def _class_topic_setup(school_id, subject_docs):
                     "topicId": str(t["id"]),
                     "topic": str(t.get("topic") or t.get("name") or t["id"]).strip(),
                     "taught": bool(t.get("isCompleted")),
+                    "absent": [str(s) for s in (t.get("absentList") or [])],
                     "completedAt": _iso(t.get("completedAt")),
                 })
         by_class[class_id] = {"classDocId": doc.id, "topics": topics}
@@ -1501,13 +1502,15 @@ def aap_survey_completion(req: https_fn.CallableRequest) -> dict:
         both, so a submission for a topic school-setup doesn't list still
         shows up rather than being silently dropped.
         { classId, subject, topic, teacherId, expectedStudents,
-          respondedStudents, status: "not_started"|"partial"|"complete",
+          respondedStudents, absentStudents, status: "not_started"|"partial"|"complete",
           gaps: [{ studentId, studentName, missing: [trait, ...] }],
           responses: [{ surveyId, responseId, subjectDocId, topicId,
             activityId, activityName, selectedGoals, selectedCompetencies }] }
         responses is empty for a not_started row; usually one entry
         otherwise, more only if the teacher filed the same class/topic under
         more than one activity (see _scan_school_aap_completion).
+        expectedStudents is the roster minus the topic's absentList
+        (absentStudents counts those left out — see build_row).
         respondedStudents is roster students with EVERY question answered
         (expectedStudents - len(gaps)) — never the raw count of distinct
         student ids in the response payload, which can equal the roster size
@@ -1578,8 +1581,15 @@ def aap_survey_completion(req: https_fn.CallableRequest) -> dict:
         return gaps
 
     def build_row(class_id, subject, topic, entries, *, topic_id=None, subject_doc_id=None,
-                  taught=None, completed_at=None, source="class", subject_token=None):
-        roster = roster_by_class.get(class_id, [])
+                  taught=None, completed_at=None, source="class", subject_token=None, absent=()):
+        # A student on the topic's absentList is left out of what this row
+        # expects, same as the teacher app's own completion check
+        # (SurveysView.vue): answering "Not Applicable" to question 1 marks the
+        # student absent, and the app then disables questions 2-3 for them, so
+        # counting them would leave a gap nobody can close.
+        absent = set(absent)
+        full_roster = roster_by_class.get(class_id, [])
+        roster = [s for s in full_roster if s["id"] not in absent]
         students = {}
         responses = []
         teacher_ids = []
@@ -1606,6 +1616,7 @@ def aap_survey_completion(req: https_fn.CallableRequest) -> dict:
             "topic": topic, "topicId": topic_id, "subjectDocId": subject_doc_id,
             "teacherId": ", ".join(teacher_ids) or None,
             "expectedStudents": len(roster), "respondedStudents": len(roster) - len(gaps),
+            "absentStudents": len(full_roster) - len(roster),
             "status": status, "gaps": gaps, "responses": responses,
             "taught": taught, "completedAt": completed_at, "source": source,
             "notApplicable": not_applicable,
@@ -1638,7 +1649,7 @@ def aap_survey_completion(req: https_fn.CallableRequest) -> dict:
             rows.append(build_row(
                 class_id, t["subject"], t["topic"], [responses_by_key[k] for k in keys],
                 topic_id=t["topicId"], subject_doc_id=t["subjectDocId"],
-                taught=t["taught"], completed_at=t["completedAt"], source="class"))
+                taught=t["taught"], completed_at=t["completedAt"], source="class", absent=t["absent"]))
 
     # 2. Classes with no subjects array: the grade-wide school-setup list, as
     #    before, matched on subject name + normalized topic.

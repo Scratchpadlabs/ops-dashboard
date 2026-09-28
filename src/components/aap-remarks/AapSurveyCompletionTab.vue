@@ -180,6 +180,7 @@
         <Column header="Responded" style="min-width:110px">
           <template #body="{ data }">
             {{ data.respondedStudents }} / {{ data.expectedStudents }}
+            <div v-if="data.absentStudents" class="text-[11px] text-slate-400">{{ data.absentStudents }} absent</div>
             <div v-if="data.notApplicable" class="text-[11px] text-slate-400">{{ data.notApplicable }} N/A</div>
           </template>
         </Column>
