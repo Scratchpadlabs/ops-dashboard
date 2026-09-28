@@ -11,7 +11,8 @@ region asia-south1): { school_id, class_id, student_ids?, subjects?,
 scan_only?, confirm_gender_issue? }
 
   1. Reads AAP survey responses for that class from Firestore (survey ids
-     prefixed "zzz", or any survey backing an activity — _aap_survey_docs)
+     prefixed "zzz" or tagged with all three traits; never a student-filled
+     survey — _aap_survey_docs)
   2. Resolves each student's Beginner/Proficient/Advanced rating per
      subject/trait -- same aggregation as extract_firestore.py's
      resolve_level
@@ -213,26 +214,64 @@ def resolve_level(raw_levels):
     return LEVEL_NAME[score]
 
 
-def _aap_survey_docs(school_ref):
-    """Every AAP survey doc for a school: zzz-prefixed, or backing an activity.
+AAP_TRAITS = ("awareness", "sensitivity", "creativity")
 
-    The teacher app files a response under the survey whose id (doc id or
-    `id` field) is the chosen activity's id (ActivityDialog.vue /
-    findActivitySurvey). Older activities got zzz-prefixed ids, but newer
-    stage packs don't — Hillgreen's secondary activities are
-    "secondary_02_classroom_observation_based_writing" etc. — so a zzz-only
-    filter silently dropped every response filed under them, and grade 9-12
-    rows showed "Not started" with the answers sitting in Firestore.
-    Surveys with no activity (AAM*, SEW*) are other survey kinds and stay
-    out."""
-    activity_ids = {ref.id for ref in school_ref.collection("activities").list_documents()}
-    out = []
-    for survey_doc in school_ref.collection("surveys").stream():
-        field_id = str((survey_doc.to_dict() or {}).get("id") or "")
-        if (survey_doc.id.lower().startswith("zzz") or survey_doc.id in activity_ids
-                or (field_id and field_id in activity_ids)):
-            out.append(survey_doc)
-    return out
+
+def _is_student_survey(data):
+    """True for a survey students fill in themselves (type: "student" — All
+    About Me, SEW, ...), as opposed to one a teacher fills in about them."""
+    return str((data or {}).get("type") or "").strip().lower() == "student"
+
+
+def _is_aap_survey(survey_doc):
+    """True for an AAP (awareness / sensitivity / creativity) survey: not
+    student-filled, and its questions tagged with all three traits.
+
+    Not "zzz-prefixed" alone: newer stage packs name the activity survey
+    after the activity ("secondary_02_classroom_observation_based_writing"),
+    and a zzz-only filter silently dropped every response filed under them.
+    Not "backs an activity" either: some schools run TEACHERAAM (a teacher-
+    filled All About Me, answers like "Calm and composed") as an activity,
+    and rating remarks from it would invent an "All About Me" subject.
+    Checked against every school: all zzz and secondary AAP surveys carry the
+    three tags, TEACHERAAM carries its own. The zzz prefix still counts, for
+    an older survey doc with no question tags."""
+    data = survey_doc.to_dict() or {}
+    if _is_student_survey(data):
+        return False
+    tags = {str(q.get("tag") or "").upper() for q in (data.get("questions") or []) if isinstance(q, dict)}
+    return survey_doc.id.lower().startswith("zzz") or {t.upper() for t in AAP_TRAITS} <= tags
+
+
+def _aap_survey_docs(school_ref):
+    """Every AAP survey doc for a school (_is_aap_survey) — what remarks are
+    rated from."""
+    return [s for s in school_ref.collection("surveys").stream() if _is_aap_survey(s)]
+
+
+def _completion_survey_docs(school_ref):
+    """[(survey_doc, is_aap)] for every survey NOT marked for students — what
+    the completion report tracks. Student-filled surveys are answered by the
+    students themselves, so there is no teacher/class/topic to complete."""
+    return [(s, _is_aap_survey(s)) for s in school_ref.collection("surveys").stream()
+            if not _is_student_survey(s.to_dict())]
+
+
+def _question_keys(survey_data, is_aap, answer_count):
+    """Keys for a response's answers, by position. An AAP survey's first three
+    answers are awareness/sensitivity/creativity (the same positional reading
+    fetch_survey_ratings uses). Any other survey is keyed by its own question
+    tags, one per question it actually asks, so its completion counts every
+    question rather than the first three under AAP names."""
+    if is_aap:
+        return list(AAP_TRAITS)
+    questions = [q for q in (survey_data.get("questions") or []) if isinstance(q, dict)]
+    keys = []
+    for i in range(max(answer_count, len(questions))):
+        tag = str(questions[i].get("tag") or "").strip().lower() if i < len(questions) else ""
+        key = tag or f"question_{i + 1}"
+        keys.append(key if key not in keys else f"{key}_{i + 1}")
+    return keys
 
 
 def _parse_aap_response_id(doc_id):
@@ -307,19 +346,31 @@ def fetch_survey_ratings(school_id, class_id):
     for sdoc in school_ref.collection("subjects").stream():
         sdata = sdoc.to_dict() or {}
         subject_names[sdoc.id] = str(sdata.get("name") or "").strip()
+    class_doc_ids = [ref.id for ref in school_ref.collection("classes").list_documents()]
 
     for survey_doc in _aap_survey_docs(school_ref):
         responses = (school_ref.collection("surveys").document(survey_doc.id)
                      .collection("responses").stream())
         for resp in responses:
-            parsed = _parse_aap_response_id(resp.id)
-            if not parsed:
-                unparsed += 1
-                continue
-            grade, section, subject = parsed["grade"], parsed["section"], parsed["subject"]
-            subject_doc_id, token, _topic = _split_topic_id(parsed["topic_id"], subject_names)
-            if subject_doc_id in subject_names:
-                subject = subject_names[subject_doc_id] or token.replace("_", " ")
+            # The real class doc id right after the teacher id first, same as
+            # _scan_school_aap_completion. The id parse alone can't read a
+            # stream-qualified topic id ("thh0041_11_SCI_B_XI Science_Physics_Term1":
+            # "XI Science" is not a grade token), so every grade 11/12 response
+            # was dropped as unparsed.
+            _teacher, _, rest = resp.id.partition("_")
+            class_doc = _longest_prefix(rest, class_doc_ids) if rest else None
+            topic_id = rest[len(class_doc) + 1:] if class_doc else ""
+            class_parsed = parse_class_value(class_doc) if class_doc and topic_id else None
+            if class_parsed and class_parsed["grade_ordinal"] is not None:
+                grade, section = class_parsed["grade_token"], class_parsed["section"]
+            else:
+                parsed = _parse_aap_response_id(resp.id)
+                if not parsed:
+                    unparsed += 1
+                    continue
+                grade, section, topic_id = parsed["grade"], parsed["section"], parsed["topic_id"]
+            subject_doc_id, token, _topic = _split_topic_id(topic_id, subject_names)
+            subject = subject_names.get(subject_doc_id) or token.replace("_", " ")
             # Canonical comparison, not raw string equality: a response
             # spelling its grade "1" and the class doc spelling it "I" are
             # the same class once both go through the shared grade index.
@@ -1172,7 +1223,9 @@ def _split_topic_id(topic_id, subject_doc_ids):
 
 
 def _scan_school_aap_completion(school_id, class_doc_ids=(), subject_doc_ids=()):
-    """Whole-school scan of AAP survey responses (see _aap_survey_docs).
+    """Whole-school scan of every survey not marked for students
+    (_completion_survey_docs): AAP surveys, plus teacher-filled ones such as
+    TEACHERAAM, each completed against its own questions (_question_keys).
 
     The teacher app names every response `${teacherId}_${classDocId}_${topicId}`
     (AcadSurvey.vue / ActivityDialog.vue), where classDocId is the classes/{id}
@@ -1188,7 +1241,7 @@ def _scan_school_aap_completion(school_id, class_doc_ids=(), subject_doc_ids=())
     and each value is
     {"teacher_id", "class_doc_id", "topic_id", "subject_doc_id",
      "subject_token", "topic", "students": {student_id: {trait: answered}},
-     "notApplicable": int, "responses": [...]}.
+     "notApplicable": int, "responses": [...], "questions": [key, ...]}.
 
     "responses" is a list, not one doc, because the activity IS the survey
     doc a response lives under: a teacher who picked activity A and later B
@@ -1205,7 +1258,8 @@ def _scan_school_aap_completion(school_id, class_doc_ids=(), subject_doc_ids=())
     class_doc_ids = list(class_doc_ids)
     subject_doc_ids = list(subject_doc_ids)
 
-    for survey_doc in _aap_survey_docs(school_ref):
+    for survey_doc, is_aap in _completion_survey_docs(school_ref):
+        survey_data = survey_doc.to_dict() or {}
         responses = (school_ref.collection("surveys").document(survey_doc.id)
                      .collection("responses").stream())
         for resp in responses:
@@ -1231,10 +1285,13 @@ def _scan_school_aap_completion(school_id, class_doc_ids=(), subject_doc_ids=())
                 "teacher_id": teacher_id, "class_id": class_id, "class_doc_id": class_doc,
                 "topic_id": topic_id, "subject_doc_id": subject_doc_id,
                 "subject_token": subject_token, "topic": topic,
-                "students": {}, "notApplicable": 0, "responses": [],
+                "students": {}, "notApplicable": 0, "responses": [], "questions": [],
             })
 
             resp_data = resp.to_dict() or {}
+            answers = resp_data.get("answers", [])
+            keys = _question_keys(survey_data, is_aap, len(answers))
+            entry["questions"] += [k for k in keys if k not in entry["questions"]]
             entry["responses"].append({
                 "surveyId": survey_doc.id,
                 "responseId": resp.id,
@@ -1246,8 +1303,7 @@ def _scan_school_aap_completion(school_id, class_doc_ids=(), subject_doc_ids=())
                 "selectedCompetencies": [str(c) for c in (resp_data.get("selectedCompetencies") or [])],
             })
 
-            answers = resp_data.get("answers", [])
-            for q_index, trait in enumerate(["awareness", "sensitivity", "creativity"]):
+            for q_index, trait in enumerate(keys):
                 if q_index >= len(answers) or not isinstance(answers[q_index], dict):
                     continue
                 for student_id, level_str in answers[q_index].items():
@@ -1432,7 +1488,7 @@ def aap_survey_completion(req: https_fn.CallableRequest) -> dict:
 
     Cross-references three independent sources: what school-setup says
     SHOULD exist (subjects + topics per grade), what teachers have actually
-    submitted (AAP survey responses, per class/subject/topic), and who is
+    submitted (every survey not marked for students, per class/subject/topic), and who is
     actually on each class's roster (class_resolver). A survey subject token
     and a school-setup subject name are two independently-spelled fields, so
     they are reconciled through the same alias matcher generate_aap_remarks
@@ -1507,16 +1563,16 @@ def aap_survey_completion(req: https_fn.CallableRequest) -> dict:
         for grade, subjects in expected_by_grade.items()
     }
 
-    def make_gaps(roster, responded_students):
+    def make_gaps(roster, responded_students, questions):
         gaps = []
         for student in roster:
             sid = student["id"]
             traits = responded_students.get(sid)
             if not traits:
                 gaps.append({"studentId": sid, "studentName": student["name"],
-                             "missing": ["awareness", "sensitivity", "creativity"]})
+                             "missing": list(questions)})
                 continue
-            missing = [t for t in ("awareness", "sensitivity", "creativity") if not traits.get(t)]
+            missing = [t for t in questions if not traits.get(t)]
             if missing:
                 gaps.append({"studentId": sid, "studentName": student["name"], "missing": missing})
         return gaps
@@ -1528,7 +1584,9 @@ def aap_survey_completion(req: https_fn.CallableRequest) -> dict:
         responses = []
         teacher_ids = []
         not_applicable = 0
+        questions = []
         for e in entries:
+            questions += [q for q in e["questions"] if q not in questions]
             for sid, traits in e["students"].items():
                 merged = students.setdefault(sid, {})
                 for t, v in traits.items():
@@ -1537,7 +1595,7 @@ def aap_survey_completion(req: https_fn.CallableRequest) -> dict:
             not_applicable += e["notApplicable"]
             if e["teacher_id"] not in teacher_ids:
                 teacher_ids.append(e["teacher_id"])
-        gaps = make_gaps(roster, students)
+        gaps = make_gaps(roster, students, questions or list(AAP_TRAITS))
         # NOT len(students) — that counts every distinct student id appearing
         # anywhere in the response payload, which can equal the roster size
         # by coincidence while naming a different set of students. Counted
@@ -1695,9 +1753,9 @@ def update_aap_survey_response(req: https_fn.CallableRequest) -> dict:
     activity_id = str(data.get("activity_id") or "").strip() or None
 
     school_ref = db.collection("schools").document(school_id)
-    if survey_id not in {s.id for s in _aap_survey_docs(school_ref)}:
+    if survey_id not in {s.id for s, _is_aap in _completion_survey_docs(school_ref)}:
         raise https_fn.HttpsError(
-            https_fn.FunctionsErrorCode.INVALID_ARGUMENT, "Not an AAP survey")
+            https_fn.FunctionsErrorCode.INVALID_ARGUMENT, "Not a teacher-filled survey")
     source_ref = school_ref.collection("surveys").document(survey_id).collection("responses").document(response_id)
 
     update = {"opsEditedBy": caller, "opsEditedAt": firestore.SERVER_TIMESTAMP}

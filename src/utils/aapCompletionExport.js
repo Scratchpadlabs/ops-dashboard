@@ -17,6 +17,8 @@ import * as XLSX from 'xlsx'
 import { toCsv, downloadCsv } from './csv.js'
 
 const TRAIT_LABEL = { awareness: 'Awareness', sensitivity: 'Sensitivity', creativity: 'Creativity' }
+// A non-AAP survey's gaps are keyed by its own question tags.
+const questionLabel = (key) => { const s = String(key).replace(/_/g, ' '); return s.charAt(0).toUpperCase() + s.slice(1) }
 const STATUS_LABEL = { not_started: 'Not started', partial: 'Partial', complete: 'Complete' }
 
 export const SUMMARY_COLUMNS = [
@@ -82,7 +84,7 @@ export function buildDetailRows(rows) {
           Topic: r.topic || '—',
           Student: gap.studentName,
           'Student ID': gap.studentId,
-          Question: TRAIT_LABEL[trait] || trait,
+          Question: TRAIT_LABEL[trait] || questionLabel(trait),
           Status: 'Pending',
         })
       }

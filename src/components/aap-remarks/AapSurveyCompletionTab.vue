@@ -289,7 +289,9 @@ const result = ref(null)
 // picker has since been changed without re-running the check.
 const scannedSchoolId = ref(null)
 
-const traitLabel = (t) => t.charAt(0).toUpperCase() + t.slice(1)
+// Awareness/Sensitivity/Creativity, or a non-AAP survey's own question tag
+// ("classroom_demeanour" -> "Classroom demeanour").
+const traitLabel = (t) => { const s = String(t).replace(/_/g, ' '); return s.charAt(0).toUpperCase() + s.slice(1) }
 
 async function run() {
   running.value = true
