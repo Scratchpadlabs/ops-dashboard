@@ -139,6 +139,19 @@ FANCY_WORDS = (
     "truly", "noteworthy", "admirable", "aptitude",
 )
 
+# Qualities the model likes to add on its own ("an active and enthusiastic
+# student with a curious mind"). Allowed only when the teacher's ticked
+# statements or own remark actually say them — otherwise they are praise
+# the teacher never gave. Matched as stems ("enthusias" covers
+# enthusiastic/enthusiasm).
+UNTICKED_QUALITIES = (
+    "enthusias", "curious", "curiosity", "eager", "creativ", "active",
+    "bright", "intelligen", "talent", "gifted", "hard-work", "hardwork",
+    "hard work", "dedicat", "passion", "motivated", "confident", "joy",
+    "wonderful", "amazing", "brilliant", "outstanding", "excellent",
+    "positive attitude", "love for learning", "love of learning",
+)
+
 def _require_ops_admin(req: https_fn.CallableRequest) -> str:
     return _require_ops_admin_base(req, "Not authorized to generate smart remarks.")
 
@@ -393,9 +406,21 @@ def _word_limits(n_ticked, note_words=0):
     return max(18, 9 * n_ticked + 6), 16 * n_ticked + 24
 
 
-def _looks_fancy(comment):
+def _wording_problems(comment, source_text):
+    """Phrases in `comment` that the teacher's input doesn't support: formal
+    or AI-sounding words, and qualities (enthusiastic, curious, ...) that
+    appear in neither the ticked statements nor the teacher's own remark.
+    A word the teacher used themself is always allowed."""
     lowered = comment.lower()
-    return any(w in lowered for w in FANCY_WORDS)
+    source = source_text.lower()
+    found = []
+    for w in FANCY_WORDS + UNTICKED_QUALITIES:
+        if w in source:
+            continue
+        pattern = r"\b" + re.escape(w) + (r"\b" if w in ("joy", "kind", "active") else "")
+        if re.search(pattern, lowered):
+            found.append(w)
+    return found
 
 
 def generate_smart_comment(ai, first_name, gender, category_label, ticked, used_openings=None,
@@ -421,6 +446,7 @@ def generate_smart_comment(ai, first_name, gender, category_label, ticked, used_
     used_openings = used_openings if used_openings is not None else set()
     pronoun = "He" if gender.strip().lower().startswith(("m", "boy")) else "She"
     his_her = "his" if pronoun == "He" else "her"
+    him_her = "him" if pronoun == "He" else "her"
 
     positives = [i["text"] for i in ticked if i["type"] != "negative"]
     negatives = [i["text"] for i in ticked if i["type"] == "negative"]
@@ -451,6 +477,7 @@ How to write it:
 - A "(needs improvement)" point must sound kind and hopeful, never like a complaint. Say what {pronoun.lower()} can do better, as a gentle next step, e.g. "{pronoun} is encouraged to ...", "{pronoun} can work on ...", "With a little more effort, {pronoun.lower()} can ...". Never use words like "bad", "poor", "fails" or "problem".
 - End with ONE short, sincere line of encouragement (e.g. "Keep it up, {first_name}!", "Keep up the good work!", "I am sure {pronoun.lower()} will do even better."). It must not add any new fact about the student.
 - Use only what is ticked above and what the teacher wrote. Do not invent examples, events, subjects, hobbies or qualities that are not there.
+- Do not describe {first_name} with any quality the teacher did not tick — for example do not call {him_her} "enthusiastic", "active", "curious", "creative", "hard-working", "bright", "confident" or say {pronoun.lower()} "brings joy", unless those exact ideas are ticked above. The encouraging last line must not praise any new quality either.
 - Simple, everyday English that every parent can understand. No fancy or formal words.
 - Between {min_words} and {max_words} words. Return only the remark.{avoid_line}
 
@@ -459,22 +486,35 @@ Ticked: helps classmates; completes homework neatly
 Remark: Riya is a helpful girl who is always ready to support her classmates. She also completes her homework neatly and on time. Keep it up, Riya!
 
 Ticked: participates in class discussions; (needs improvement) does not complete classwork on time
-Remark: Aman takes an active part in class discussions and shares his ideas confidently. He is encouraged to finish his classwork on time, and with a little more effort he will do even better. Keep going, Aman!"""
+Remark: Aman takes part in class discussions and shares his ideas. He is encouraged to finish his classwork on time, and with a little more effort he will do even better. Keep going, Aman!"""
 
-    comment = ""
-    for _ in range(3):
+    source_text = " ".join([i["text"] for i in ticked] + [teacher_note])
+
+    # Up to 4 drafts. A draft with unsupported wording is retried with the
+    # offending words named; if every draft has some, keep the one with the
+    # fewest problems (then in length range) rather than simply the last.
+    best, best_key = "", None
+    extra = ""
+    for _ in range(4):
         resp = ai.chat.completions.create(
-            model="gpt-4o-mini", max_tokens=220, temperature=0.6,
-            messages=[{"role": "user", "content": prompt}],
+            model="gpt-4o-mini", max_tokens=220, temperature=0.5,
+            messages=[{"role": "user", "content": prompt + extra}],
         )
         comment = resp.choices[0].message.content.strip().strip('"')
         words = len(comment.split())
         opening = " ".join(comment.split()[:4]).lower()
-        if (min_words <= words <= max_words and not _looks_fancy(comment)
-                and opening not in used_openings):
+        problems = _wording_problems(comment, source_text)
+        in_range = min_words <= words <= max_words
+        key = (len(problems), not in_range, opening in used_openings)
+        if best_key is None or key < best_key:
+            best, best_key = comment, key
+        if key == (0, False, False):
             break
-    used_openings.add(" ".join(comment.split()[:4]).lower())
-    return comment
+        if problems:
+            extra = ("\n\nYour last draft used words the teacher did not give: "
+                     f"{', '.join(sorted(set(problems)))}. Rewrite without them.")
+    used_openings.add(" ".join(best.split()[:4]).lower())
+    return best
 
 
 @https_fn.on_call(region="asia-south1", secrets=[OPENAI_API_KEY],
