@@ -18,6 +18,9 @@
         <span v-if="runElapsed">{{ runElapsed }}</span>
         <Button v-if="running && items.length > 1" :label="cancelling ? 'Stopping after this class…' : 'Stop after this class'"
                 size="small" text severity="secondary" :disabled="cancelling" @click="$emit('cancel')" />
+        <Button v-if="!running && doneCount" :label="`Download ${doneCount === 1 ? 'this class' : `these ${doneCount} classes`}`"
+                icon="pi pi-download" size="small" outlined
+                @click="$emit('download', items.filter(i => i.status === RUN_STATUS.DONE).map(i => i.classId))" />
         <Button v-if="!running" icon="pi pi-times" size="small" text rounded severity="secondary" v-tooltip.left="'Dismiss'" @click="$emit('dismiss')" />
       </div>
     </div>
@@ -87,7 +90,7 @@ const props = defineProps({
   // Ticks every second from the parent so elapsed/ETA stay live.
   now: { type: Number, required: true },
 })
-defineEmits(['cancel', 'dismiss', 'view'])
+defineEmits(['cancel', 'dismiss', 'view', 'download'])
 
 const overall = computed(() => overallProgress(props.items))
 const countedTotal = computed(() => props.items.filter(i => i.status !== RUN_STATUS.SKIPPED).length)
