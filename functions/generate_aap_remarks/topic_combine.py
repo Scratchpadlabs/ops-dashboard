@@ -145,15 +145,17 @@ def trait_observation(descriptors, trait, combined):
     if trend in (None, "single", "steady") or low == high:
         return text
 
-    per_topic = ", ".join(
-        f"{row['topic']}: {row[trait]}" for row in combined["topicLevels"] if row.get(trait))
+    # Levels in teaching order, WITHOUT topic names: the comment must not name
+    # topics ("Term 1" means nothing on a report card), so the model is never
+    # handed one to repeat.
+    path = " -> ".join(row[trait] for row in combined["topicLevels"] if row.get(trait))
     # The best topic's descriptor only when it says something the combined
     # level's doesn't — repeating the same sentence adds nothing.
     best = descriptors.get(high.lower(), "") if high != level else ""
     if trend == "improving":
-        note = f"Improved across topics ({per_topic})." + (f" Most recently: {best}" if best else "")
+        note = f"Improved over the term ({path})." + (f" Most recently: {best}" if best else "")
     elif trend == "declining":
-        note = f"Was stronger in earlier topics ({per_topic})." + (f" Earlier they showed: {best}" if best else "")
+        note = f"Was stronger earlier in the term ({path})." + (f" Earlier they showed: {best}" if best else "")
     else:
-        note = f"Varied from topic to topic ({per_topic})." + (f" At best: {best}" if best else "")
+        note = f"Varied through the term ({path})." + (f" At best: {best}" if best else "")
     return f"{text} {note}".strip()

@@ -173,6 +173,17 @@
           </span>
         </div>
         <div v-if="editing.topicLevels.length > 1" class="text-xs text-slate-500 mb-3 whitespace-pre-line">{{ topicTooltip(editing) }}</div>
+        <!-- What the class worked on, as the generator saw it: the comment
+             should paraphrase one of these, never claim more. -->
+        <div v-if="editing.curricularGoals.length || editing.competencies.length"
+             class="text-xs text-slate-600 bg-slate-50 rounded-lg px-3 py-2 mb-3 space-y-1">
+          <div v-if="editing.curricularGoals.length">
+            <span class="font-semibold text-slate-500">Curricular goals:</span> {{ editing.curricularGoals.join('; ') }}
+          </div>
+          <div v-if="editing.competencies.length">
+            <span class="font-semibold text-slate-500">Competencies:</span> {{ editing.competencies.join('; ') }}
+          </div>
+        </div>
 
         <Textarea v-model="draft" rows="6" class="w-full" autoResize />
 
@@ -284,6 +295,8 @@ const allRows = computed(() => {
       subject: remark.id,
       topics: remark.topics || [],
       topicLevels: remark.topicLevels || [],
+      curricularGoals: remark.curricularGoals || [],
+      competencies: remark.competencies || [],
       awareness: remark.awareness, sensitivity: remark.sensitivity, creativity: remark.creativity,
       comment: remark.comment || '',
       status: remark.status || STATUS_NEEDS_REVIEW,

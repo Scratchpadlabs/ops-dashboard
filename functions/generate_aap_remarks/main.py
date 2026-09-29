@@ -81,11 +81,12 @@ used for process_import.
 import base64
 import datetime
 import io
+import json
 import random
 import re
 import time
 import zipfile
-from collections import defaultdict
+from collections import Counter, defaultdict
 
 from firebase_admin import initialize_app, firestore
 from firebase_functions import https_fn, options
@@ -96,7 +97,10 @@ from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
-from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import (
+    BaseDocTemplate, Flowable, Frame, PageBreak, PageTemplate, Paragraph, SimpleDocTemplate,
+    Spacer, Table, TableStyle,
+)
 
 from aap_rules import canonical_grade_section, gender_issue as _compute_gender_issue, resolve_stage
 from class_resolver import compose_class_id, parse_class_value, raw_class_value
@@ -254,7 +258,7 @@ def _topic_names(school_ref):
 
 
 def fetch_survey_ratings(school_id, class_id):
-    """Returns (topic_ratings, unparsed_response_count).
+    """Returns (topic_ratings, unparsed_response_count, context).
 
     topic_ratings is {student_id: {subject: {topic_key: {"topic", "order",
     "traits": {trait: [raw answers]}}}}} for one class — kept per TOPIC,
@@ -271,9 +275,31 @@ def fetch_survey_ratings(school_id, class_id):
     doc naming convention this function does not control (see module
     docstring) failing silently is exactly how a class can be under-counted
     without anyone noticing.
+
+    context is {subject: {topic_key: {"goals", "competencies", "activities"}}}
+    — what the teacher ticked on each response (curricular goals and
+    competencies) and the activity it was run under, each a Counter. It is
+    per CLASS, not per student: every student surveyed in that response
+    worked on the same goals, so it grounds the comment in what the class
+    did without telling students apart (the ratings still do that).
     """
     school_ref = db.collection("schools").document(school_id)
     raw = defaultdict(lambda: defaultdict(dict))
+    context = defaultdict(lambda: defaultdict(lambda: {
+        "goals": Counter(), "competencies": Counter(), "activities": Counter()}))
+    activity_names = {}
+
+    def activity_name(resp_data, survey_id):
+        name = str(resp_data.get("activityName") or "").strip()
+        if name:
+            return name
+        activity_id = str(resp_data.get("activityId") or survey_id)
+        if activity_id not in activity_names:
+            snap = school_ref.collection("activities").document(activity_id).get()
+            activity_names[activity_id] = (
+                str((snap.to_dict() or {}).get("name") or "").strip() if snap.exists else "")
+        return activity_names[activity_id]
+
     target_grade_raw, _, target_section_raw = class_id.partition("_")
     target = canonical_grade_section(target_grade_raw, target_section_raw)
     unparsed = 0
@@ -309,7 +335,15 @@ def fetch_survey_ratings(school_id, class_id):
             topic = name or (topic_token or "").replace("_", " ").strip() or "General"
             topic_key = _norm_topic(topic)
 
-            answers = resp.to_dict().get("answers", [])
+            resp_data = resp.to_dict() or {}
+            ctx = context[subject][topic_key]
+            ctx["goals"].update(_clean_list(resp_data.get("selectedGoals")))
+            ctx["competencies"].update(_clean_list(resp_data.get("selectedCompetencies")))
+            name = activity_name(resp_data, survey_doc.id)
+            if name:
+                ctx["activities"][name] += 1
+
+            answers = resp_data.get("answers", [])
             for q_index, trait in enumerate(TRAITS):
                 if q_index >= len(answers):
                     break
@@ -328,7 +362,47 @@ def fetch_survey_ratings(school_id, class_id):
     # (Hindi/Marathi/Sanskrit split) resolve to no subject entry at all, with
     # no remark generated for it. A subject that DID get an answer but is
     # missing a trait is handled when combining (topic_combine.DEFAULT_LEVEL).
-    return {sid: dict(subjects) for sid, subjects in raw.items()}, unparsed
+    return {sid: dict(subjects) for sid, subjects in raw.items()}, unparsed, context
+
+
+def _clean_list(value):
+    """A response's selectedGoals/selectedCompetencies as clean strings. The
+    teacher app writes a list; an older path wrote a JSON string of one."""
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except ValueError:
+            value = [value]
+    return [str(v).strip() for v in (value if isinstance(value, list) else []) if str(v).strip()]
+
+
+def _strip_code(text):
+    """"C-3.1 Compares past and present" -> "Compares past and present": the
+    reference code is for the teacher's framework, never for a parent, so
+    the model is not handed one it could echo."""
+    return re.sub(r"^\s*(CG|C)\s*[-.]?\s*\d+(\.\d+)*\s*[:.)\-–]?\s*", "", str(text), flags=re.I) or str(text)
+
+
+# How many goals / competencies reach the prompt: the most-ticked ones across
+# the responses in scope. More than this and a 40-55 word comment can't use
+# them anyway — it just starts listing.
+MAX_GOALS_IN_PROMPT = 3
+MAX_COMPETENCIES_IN_PROMPT = 5
+
+
+def learning_context(context, subject, topic_keys):
+    """The goals, competencies and activities behind one subject remark,
+    pooled over the topics that fed its rating, most-ticked first."""
+    goals, competencies, activities = Counter(), Counter(), Counter()
+    for key in topic_keys:
+        ctx = context.get(subject, {}).get(key)
+        if not ctx:
+            continue
+        goals.update(ctx["goals"])
+        competencies.update(ctx["competencies"])
+        activities.update(ctx["activities"])
+    top = lambda counter: [k for k, _ in counter.most_common()]  # noqa: E731
+    return {"goals": top(goals), "competencies": top(competencies), "activities": top(activities)}
 
 
 def _topic_sort_key(entry):
@@ -358,9 +432,13 @@ def subject_ratings(topic_ratings, only_topics=None):
                 entries = [(k, e) for k, e in entries if k in keep]
             if not entries:
                 continue
-            rows = [{"topic": e["topic"], "levels": resolve_topic(e["traits"])}
-                    for _, e in sorted(entries, key=lambda kv: _topic_sort_key(kv[1]))]
-            out.setdefault(student_id, {})[subject] = combine_topics(rows)
+            entries.sort(key=lambda kv: _topic_sort_key(kv[1]))
+            rows = [{"topic": e["topic"], "levels": resolve_topic(e["traits"])} for _, e in entries]
+            combined = combine_topics(rows)
+            # Which topics fed this rating, so the goals/competencies the
+            # teacher ticked for exactly those topics can be looked up.
+            combined["topicKeys"] = [k for k, _ in entries]
+            out.setdefault(student_id, {})[subject] = combined
     return out
 
 
@@ -408,16 +486,21 @@ def fetch_subject_overrides(stage):
 
 
 def generate_comment(ai, first_name, gender, subject, aw, sen, cre, used_openings=None,
-                     topics=None, varied=False):
+                     varied=False, learning=None):
     """One comment. `used_openings` is the set of opening phrasings already
     written in THIS run — a repeat is retried rather than accepted, which is
     what stops a class reading as one sentence with the names swapped.
 
-    `topics` names the topics the ratings were combined from, and `varied`
-    says the topics disagreed for at least one trait — the observations then
-    carry the movement across topics (topic_combine.trait_observation), and
-    the prompt asks for it to be described as progress rather than averaged
-    away."""
+    `varied` says the topics disagreed for at least one trait — the
+    observations then carry the movement across topics
+    (topic_combine.trait_observation), and the prompt asks for it to be
+    described as progress rather than averaged away.
+
+    `learning` is learning_context()'s {goals, competencies, activities}:
+    what the class worked on, given to the model as background so the
+    comment can be concrete. Topic and activity names are data points only —
+    the prompt forbids naming them, since "Term 1" or an activity title
+    means nothing to a parent reading a report card."""
     used_openings = used_openings if used_openings is not None else set()
     pronoun = "He" if gender.strip().lower().startswith(("m", "boy")) else "She"
     his_her = "his" if pronoun == "He" else "her"
@@ -428,20 +511,39 @@ def generate_comment(ai, first_name, gender, subject, aw, sen, cre, used_opening
     avoid_line = ("\n- Do NOT open with any of these phrasings, already used for "
                   f"other students in this class: {'; '.join(avoid)}" if avoid else "")
 
-    topics_line = (f"\nTopics covered: {', '.join(topics)}" if topics and len(topics) > 1 else "")
-    varied_line = ("\n- The observations describe how the student changed across topics: reflect "
+    varied_line = ("\n- The observations describe how the student changed over the term: reflect "
                    "that journey naturally (growth, or a gentle nudge to regain earlier form) "
-                   "without naming levels or listing every topic" if varied else "")
+                   "without naming levels" if varied else "")
+
+    learning = learning or {}
+    goals = [_strip_code(g) for g in learning.get("goals", [])[:MAX_GOALS_IN_PROMPT]]
+    competencies = [_strip_code(c) for c in learning.get("competencies", [])[:MAX_COMPETENCIES_IN_PROMPT]]
+    activities = learning.get("activities", [])[:2]
+    context_lines = []
+    if goals:
+        context_lines.append(f"- Curricular goals the class worked towards: {'; '.join(goals)}")
+    if competencies:
+        context_lines.append(f"- Competencies the class practised: {'; '.join(competencies)}")
+    if activities:
+        context_lines.append(f"- Classroom activity: {'; '.join(activities)}")
+    context_block = ("\n\nLearning context (background for you -- NOT to be quoted):\n"
+                     + "\n".join(context_lines)) if context_lines else ""
+    context_rules = ("\n- Ground one sentence in what the student worked on, drawing on the "
+                     "curricular goals/competencies above, paraphrased in simple everyday words "
+                     "-- never quote or list them"
+                     "\n- Say the student is developing or working on a skill; never claim they "
+                     "have mastered a competency"
+                     if goals or competencies else "")
 
     prompt = f"""You are a warm, caring schoolteacher writing a report card comment for a young student.
 
 Student first name: {first_name}
 Pronoun: {pronoun}/{his_her}
-Subject: {subject}{topics_line}
+Subject: {subject}
 
 Awareness observation: {aw}
 Sensitivity observation: {sen}
-Creativity observation: {cre}
+Creativity observation: {cre}{context_block}
 
 Style instructions:
 - The comment {random.choice(SENTENCE_STARTERS)}
@@ -454,6 +556,7 @@ Style instructions:
 - Use correct pronoun ({pronoun}/{his_her})
 - Avoid formal/robotic phrases like "learning community", "valued member", "demonstrates proficiency"
 - MUST be between 40 and 55 words
+- Do NOT mention any activity name, topic name, unit name or term name{context_rules}
 - Return only the comment, nothing else{varied_line}{avoid_line}"""
 
     comment = ""
@@ -535,7 +638,7 @@ def generate_aap_remarks(req: https_fn.CallableRequest) -> dict:
             "for this class.",
         )
 
-    topic_ratings, unresolved_responses = fetch_survey_ratings(school_id, class_id)
+    topic_ratings, unresolved_responses, context = fetch_survey_ratings(school_id, class_id)
     if only_student_ids:
         topic_ratings = {sid: s for sid, s in topic_ratings.items() if sid in only_student_ids}
     ratings = subject_ratings(topic_ratings, only_topics)
@@ -661,10 +764,11 @@ def generate_aap_remarks(req: https_fn.CallableRequest) -> dict:
                 varied = any(combined["trends"][t] in ("improving", "declining", "mixed")
                              for t in TRAITS)
 
+                learning = learning_context(context, subject, combined["topicKeys"])
                 comment = generate_comment(ai, first_name, info["gender"], subject,
                                            aw_text, sen_text, cre_text,
                                            used_openings=used_openings[subject],
-                                           topics=combined["topics"], varied=varied)
+                                           varied=varied, learning=learning)
 
                 doc_ref.set({
                     "awareness": levels["awareness"], "sensitivity": levels["sensitivity"],
@@ -674,6 +778,10 @@ def generate_aap_remarks(req: https_fn.CallableRequest) -> dict:
                     # so a reviewer can see why a level came out as it did.
                     "topics": combined["topics"], "topicLevels": combined["topicLevels"],
                     "trends": combined["trends"],
+                    # What the class worked on, as the prompt saw it — so a
+                    # reviewer can check a comment's claim against it.
+                    "curricularGoals": learning["goals"][:MAX_GOALS_IN_PROMPT],
+                    "competencies": learning["competencies"][:MAX_COMPETENCIES_IN_PROMPT],
                     "status": "needs_review", "updatedAt": firestore.SERVER_TIMESTAMP,
                 })
                 processed += 1
@@ -890,15 +998,67 @@ def _watermark(student_id):
     return draw
 
 
+_PDF_MARGIN = 12 * mm
+_PDF_BOTTOM = 18 * mm
+
+
 def _build_student_summary_pdf(student_id, remarks):
     """remarks: [{ id (subject), awareness, sensitivity, creativity, comment }],
     already limited to subjects this student actually has a remark doc for.
     Returns the PDF as bytes."""
-    W, H = A4
-    M = 12 * mm
     buf = io.BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=M, rightMargin=M,
-                             topMargin=0, bottomMargin=18 * mm)
+    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=_PDF_MARGIN, rightMargin=_PDF_MARGIN,
+                             topMargin=0, bottomMargin=_PDF_BOTTOM)
+    doc.build(_student_story(remarks),
+              onFirstPage=_watermark(student_id), onLaterPages=_watermark(student_id))
+    return buf.getvalue()
+
+
+class _StudentMark(Flowable):
+    """Zero-size marker at the start of each student in a combined PDF: it
+    records whose pages follow, so the page-END hook stamps the right id."""
+
+    def __init__(self, student_id):
+        super().__init__()
+        self.student_id = student_id
+
+    def wrap(self, *_):
+        return 0, 0
+
+    def draw(self):
+        self.canv._aap_student_id = self.student_id
+
+
+def _build_combined_summary_pdf(students):
+    """One PDF holding every student's summary page(s), each starting on a new
+    page — the file a school prints for a whole class. `students` is
+    [(student_id, remarks)]. Each page carries its own student's id, stamped
+    at page END (by then the marker for that page's student has been drawn)."""
+    buf = io.BytesIO()
+    doc = BaseDocTemplate(buf, pagesize=A4)
+    frame = Frame(_PDF_MARGIN, _PDF_BOTTOM, A4[0] - 2 * _PDF_MARGIN, A4[1] - _PDF_BOTTOM,
+                  leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0)
+
+    def stamp(canvas_obj, _doc):
+        student_id = getattr(canvas_obj, "_aap_student_id", "")
+        if student_id:
+            _watermark(student_id)(canvas_obj, _doc)
+
+    doc.addPageTemplates([PageTemplate(id="summary", frames=[frame], onPageEnd=stamp)])
+    story = []
+    for i, (student_id, remarks) in enumerate(students):
+        if i:
+            story.append(PageBreak())
+        story.append(_StudentMark(student_id))
+        story.extend(_student_story(remarks))
+    doc.build(story)
+    return buf.getvalue()
+
+
+def _student_story(remarks):
+    """The flowables of one student's summary page(s)."""
+    W, H = A4
+    M = _PDF_MARGIN
     story = []
 
     header = Table(
@@ -982,9 +1142,7 @@ def _build_student_summary_pdf(student_id, remarks):
     if not remarks:
         story.append(Spacer(1, 6 * mm))
         story.append(Paragraph("No AAP remarks found for this student.", _pdf_style("empty", textColor=colors.grey)))
-
-    doc.build(story, onFirstPage=_watermark(student_id), onLaterPages=_watermark(student_id))
-    return buf.getvalue()
+    return story
 
 
 def _fetch_student_remarks(school_ref, student_id):
@@ -1033,37 +1191,72 @@ def generate_aap_summary_pdf(req: https_fn.CallableRequest) -> dict:
 
 @https_fn.on_call(region="asia-south1", memory=options.MemoryOption.MB_512, timeout_sec=300)
 def generate_aap_summary_pdfs(req: https_fn.CallableRequest) -> dict:
-    """{school_id, student_ids} -> {filename, mime, content_base64} (a zip).
+    """{school_id, student_ids | classes, approved_only?} ->
+    {filename, mime, content_base64, students, skipped} (a zip).
 
     Bulk form of generate_aap_summary_pdf — one PDF per student inside a zip,
     each named "<student_id>.pdf" so the caller can match files back to
-    children for whatever merge/print step they run next, outside this
-    dashboard.
+    children for whatever merge/print step they run next.
+
+    `classes` ([{class_id, label?, student_ids}]) is the multi-class form:
+    one folder per class, each holding the per-student PDFs AND one combined
+    "<class>_all_students.pdf" with every child's page in roster order —
+    the file a school actually prints. `approved_only` leaves out remarks
+    not yet approved, and a student left with none gets no page at all.
     """
     _require_ops_admin(req)
     data = req.data or {}
     school_id = data.get("school_id")
-    student_ids = list(data.get("student_ids") or [])
-    if not school_id or not student_ids:
+    approved_only = bool(data.get("approved_only"))
+    groups = []
+    for c in data.get("classes") or []:
+        if not isinstance(c, dict):
+            continue
+        ids = [str(sid) for sid in (c.get("student_ids") or []) if sid]
+        label = str(c.get("label") or c.get("class_id") or "").strip()
+        if ids:
+            groups.append((_safe_filename(label) or "class", ids))
+    if not groups and data.get("student_ids"):
+        groups = [(None, [str(sid) for sid in data["student_ids"]])]
+    if not school_id or not groups:
         raise https_fn.HttpsError(
             https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
-            "school_id and student_ids are required",
+            "school_id and student_ids (or classes) are required",
         )
 
     school_ref = db.collection("schools").document(school_id)
     zip_buf = io.BytesIO()
+    written = skipped = 0
     with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        for student_id in student_ids:
-            remarks = _fetch_student_remarks(school_ref, student_id)
-            pdf_bytes = _build_student_summary_pdf(student_id, remarks)
-            zf.writestr(f"{student_id}.pdf", pdf_bytes)
+        for folder, student_ids in groups:
+            prefix = f"{folder}/" if folder else ""
+            pages = []
+            for student_id in student_ids:
+                remarks = _fetch_student_remarks(school_ref, student_id)
+                if approved_only:
+                    remarks = [r for r in remarks if r.get("status") == "approved"]
+                    if not remarks:
+                        skipped += 1
+                        continue
+                zf.writestr(f"{prefix}{student_id}.pdf", _build_student_summary_pdf(student_id, remarks))
+                pages.append((student_id, remarks))
+                written += 1
+            if folder and pages:
+                zf.writestr(f"{prefix}{folder}_all_students.pdf", _build_combined_summary_pdf(pages))
 
     date_str = datetime.date.today().isoformat()
+    scope = "classes" if groups[0][0] else "pdfs"
     return {
-        "filename": f"AAP_summary_pdfs_{school_id}_{date_str}.zip",
+        "filename": f"AAP_summary_{scope}_{school_id}_{date_str}.zip",
         "mime": "application/zip",
         "content_base64": base64.b64encode(zip_buf.getvalue()).decode("ascii"),
+        "students": written,
+        "skipped": skipped,
     }
+
+
+def _safe_filename(text):
+    return re.sub(r"[^A-Za-z0-9]+", "_", str(text or "")).strip("_")
 
 
 # ── Whole-school survey completion ──────────────────────────────────────────
