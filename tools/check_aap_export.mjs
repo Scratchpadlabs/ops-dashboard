@@ -83,5 +83,26 @@ ok('school and class are in the name, spaces normalised',
   exportFilename('A K CSchool', 'IV_A', 'xlsx').startsWith('AAP_remarks_A_K_CSchool_IV_A_'),
   exportFilename('A K CSchool', 'IV_A', 'xlsx'))
 
+console.log('=== several classes in one export ===')
+const multiStudents = [
+  { id: 'sakc0024', name: 'Ahamad Raza', rollNo: '', classId: 'IV_A' },
+  { id: 'sakc0031', name: 'Divya Shah', rollNo: '4', classId: 'IV_B' },
+]
+const multiRemarks = {
+  sakc0024: remarksByStudent.sakc0024,
+  sakc0031: [{ ...remark('Maths', 'Proficient', 'Divya reasons carefully in Maths.'), topics: ['Term 1', 'Term 2'] }],
+}
+const multi = buildWideRows(multiStudents, multiRemarks)
+ok('a Class column leads when rows carry a class',
+  multi.columns[0] === 'Class' && multi.rows[1].Class === 'IV_B', JSON.stringify(multi.columns.slice(0, 4)))
+ok('subjects are the union across classes',
+  JSON.stringify(multi.subjects) === JSON.stringify(['English', 'Hindi', 'Maths']), JSON.stringify(multi.subjects))
+const multiDetail = buildDetailRows(multiStudents, multiRemarks)
+ok('the detail sheet names the class and the combined topics',
+  multiDetail.some(r => r.Class === 'IV_B' && r.Topics === 'Term 1 + Term 2'),
+  JSON.stringify(multiDetail.at(-1)))
+ok('a single-class roster without classId keeps the old columns',
+  !columns.includes('Class') && !('Class' in detail[0]))
+
 console.log(`\n${pass} passed, ${fail} failed`)
 process.exit(fail ? 1 : 0)

@@ -320,15 +320,18 @@ const aapSurveyCompletionCallable = httpsCallable(functions, 'aap_survey_complet
 const updateAapSurveyResponseCallable = httpsCallable(functions, 'update_aap_survey_response', { timeout: 60_000 })
 
 // `subjects` narrows a run to the chosen subjects; omitted means every subject
-// the survey rated. `confirmGenderIssue` must be set once the dashboard has
+// the survey rated. `topics` ([{ subject, topic }], by name) narrows it further
+// to those topics — several topics of one subject are combined into a single
+// rubric server-side (functions/generate_aap_remarks/topic_combine.py). `confirmGenderIssue` must be set once the dashboard has
 // shown the gender-quality warning and the user chose to proceed anyway.
 // Returns { written, processed, skippedApproved, skippedNoFramework,
 // unmatchedSubjects, ... } — `written` is the count that actually got a
 // comment, `processed` counts everything it looked at.
-export async function generateAapRemarksRemote({ schoolId, classId, studentIds, subjects, confirmGenderIssue }) {
+export async function generateAapRemarksRemote({ schoolId, classId, studentIds, subjects, topics, confirmGenderIssue }) {
   const payload = { school_id: schoolId, class_id: classId }
   if (studentIds?.length) payload.student_ids = studentIds
   if (subjects?.length) payload.subjects = subjects
+  if (topics?.length) payload.topics = topics.map(t => ({ subject: t.subject, topic: t.topic }))
   if (confirmGenderIssue) payload.confirm_gender_issue = true
   const res = await generateAapRemarksCallable(payload)
   return res.data

@@ -52,6 +52,20 @@ export const MAX_WORDS = 55
 // be checked by tools/check_aap_export.mjs.
 export { countWords } from '../utils/aapExport.js'
 
+/** `fn` over `items`, at most `limit` at a time, results in input order. */
+async function mapLimit(items, limit, fn) {
+  const out = new Array(items.length)
+  let next = 0
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++
+      out[i] = await fn(items[i], i)
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker))
+  return out
+}
+
 export function useAapRemarks() {
   const schools = ref([])
   const classes = ref([])
@@ -102,18 +116,37 @@ export function useAapRemarks() {
     }
   }
 
-  /** The class roster plus whatever remarks already exist for it. */
-  async function loadClass(schoolId, classId) {
+  /**
+   * The rosters of one or more classes, plus whatever remarks already exist
+   * for them. Each student carries its `classId`, which is what a
+   * regenerate-one-student run and the exports' Class column go by.
+   *
+   * Returns false when a newer load started while this one was in flight —
+   * its results are dropped rather than painted over the newer selection.
+   */
+  let rosterToken = 0
+  async function loadClass(schoolId, classIds) {
+    const ids = [].concat(classIds || []).filter(Boolean)
+    const token = ++rosterToken
     students.value = []
     remarksByStudent.value = {}
-    if (!schoolId || !classId) return
+    if (!schoolId || !ids.length) { loadingRoster.value = false; return true }
     loadingRoster.value = true
     try {
-      const detail = await classDetailRemote({ schoolId, classId })
-      students.value = detail.students || []
-      await loadRemarks(schoolId, students.value.map(s => s.id))
+      const rosters = await mapLimit(ids, 4, async (classId) => {
+        const detail = await classDetailRemote({ schoolId, classId })
+        const roster = (detail.students || []).map(s => ({ ...s, classId }))
+        const byStudent = roster.length
+          ? await listAapRemarksRemote({ schoolId, studentIds: roster.map(s => s.id) })
+          : {}
+        return { roster, byStudent }
+      })
+      if (token !== rosterToken) return false
+      students.value = rosters.flatMap(r => r.roster)
+      remarksByStudent.value = Object.assign({}, ...rosters.map(r => r.byStudent))
+      return true
     } finally {
-      loadingRoster.value = false
+      if (token === rosterToken) loadingRoster.value = false
     }
   }
 
@@ -198,23 +231,31 @@ export function useAapRemarks() {
     return targets.length
   }
 
-  // ── Subjects ────────────────────────────────────────────────────────────
-  const scan = ref(null)          // last scan_only result for the loaded class
+  // ── Subjects & topics ───────────────────────────────────────────────────
+  // Last scan_only result per selected class: { classId: payload }.
+  const scans = ref({})
   const scanning = ref(false)
 
   /**
-   * What the survey actually says for this class, and which rubric row each
-   * subject resolves to. Reads only — no model calls, no writes — so it is
-   * safe to run before deciding whether a generation run is worth starting.
+   * What the survey actually says for each class — its subjects, the topics
+   * rated under each, and which rubric row each subject resolves to. Reads
+   * only — no model calls, no writes — so it is safe to run before deciding
+   * whether a generation run is worth starting. One call per class, a few at
+   * a time: the function scans one class per call.
    */
-  async function scanSubjects(schoolId, classId) {
-    if (!schoolId || !classId) { scan.value = null; return null }
+  let scanToken = 0
+  async function scanSubjects(schoolId, classIds) {
+    const ids = [].concat(classIds || []).filter(Boolean)
+    const token = ++scanToken
+    if (!schoolId || !ids.length) { scans.value = {}; scanning.value = false; return scans.value }
     scanning.value = true
     try {
-      scan.value = await scanAapSubjectsRemote({ schoolId, classId })
-      return scan.value
+      const results = await mapLimit(ids, 3, classId => scanAapSubjectsRemote({ schoolId, classId }))
+      if (token !== scanToken) return scans.value
+      scans.value = Object.fromEntries(ids.map((id, i) => [id, results[i]]))
+      return scans.value
     } finally {
-      scanning.value = false
+      if (token === scanToken) scanning.value = false
     }
   }
 
@@ -243,7 +284,7 @@ export function useAapRemarks() {
   }
 
   return {
-    schools, classes, students, remarksByStudent, scan, scanning,
+    schools, classes, students, remarksByStudent, scans, scanning,
     loadingSchools, loadingClasses, loadingRoster,
     loadSchools, loadClasses, loadClass, loadRemarks, reloadStudent,
     recentJobIds, watchNewJob, generate, saveComment, setStatus, setStatusBulk,

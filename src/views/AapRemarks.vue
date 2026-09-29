@@ -46,19 +46,23 @@
           />
         </div>
         <div>
-          <label class="form-label">Class</label>
-          <Select
-            v-model="classId" :options="classes" optionLabel="label" optionValue="id"
-            placeholder="Select a class" class="w-56" :loading="loadingClasses"
-            :disabled="!schoolId || running" filter
+          <label class="form-label">Classes</label>
+          <!-- Several classes at once: a run goes class by class (one
+               generate_aap_remarks call each, the function's own unit), and
+               the review table below shows every selected class together. -->
+          <MultiSelect
+            v-model="classIds" :options="classes" optionLabel="label" optionValue="id"
+            placeholder="Select classes" class="w-64" :loading="loadingClasses"
+            :disabled="!schoolId || running" filter :maxSelectedLabels="3"
+            :selectedItemsLabel="`${classIds.length} classes`"
           />
         </div>
         <div>
           <label class="form-label">Subjects</label>
           <MultiSelect
             v-model="selectedSubjects" :options="subjectOptions" optionLabel="label" optionValue="value"
-            placeholder="All subjects" class="w-72" :loading="scanning"
-            :disabled="!classId || running" filter display="chip" :maxSelectedLabels="2"
+            placeholder="All subjects" class="w-64" :loading="scanning"
+            :disabled="!hasClasses || running" filter display="chip" :maxSelectedLabels="2"
           >
             <template #option="{ option }">
               <div class="flex items-center gap-2">
@@ -69,25 +73,71 @@
             </template>
           </MultiSelect>
         </div>
+        <div>
+          <label class="form-label">Topics</label>
+          <!-- Grouped by subject, values keyed by NAME so "Term 1" means the
+               same topic in every selected section. Two or more topics of one
+               subject are combined into one rubric per trait server-side
+               (topic_combine.py). -->
+          <MultiSelect
+            v-model="selectedTopics" :options="topicOptions"
+            optionLabel="label" optionValue="value"
+            optionGroupLabel="label" optionGroupChildren="items"
+            :placeholder="topicOptions.length ? 'All topics' : (scanning ? 'Reading topics…' : 'No topics found')"
+            class="w-64" :loading="scanning"
+            :disabled="!hasClasses || running || !topicOptions.length" filter :maxSelectedLabels="2"
+            :selectedItemsLabel="`${selectedTopics.length} topics`"
+          >
+            <template #optiongroup="{ option }">
+              <span class="text-xs font-semibold text-slate-500 uppercase tracking-wide">{{ option.label }}</span>
+            </template>
+            <template #option="{ option }">
+              <div class="flex items-center gap-2 w-full">
+                <span>{{ option.label }}</span>
+                <span class="text-[11px] text-slate-400 ml-auto">{{ option.students }} rated</span>
+              </div>
+            </template>
+          </MultiSelect>
+        </div>
         <Button
           label="Generate remarks" icon="pi pi-sparkles"
-          :loading="running" :disabled="!schoolId || !classId"
+          :loading="running" :disabled="!schoolId || !hasClasses || selectionPending"
           @click="confirmGenerate"
         />
         <Button
           label="Refresh" icon="pi pi-refresh" outlined
-          :disabled="!classId || running || loadingRoster" :loading="loadingRoster"
+          :disabled="!hasClasses || running || loadingRoster" :loading="loadingRoster"
           @click="reload"
         />
-        <div v-if="classId && !loadingRoster" class="text-xs ml-auto pb-2 text-right">
-          <div class="text-slate-400">{{ students.length }} student{{ students.length === 1 ? '' : 's' }} in this class</div>
+        <div v-if="hasClasses && !loadingRoster && !selectionPending" class="text-xs ml-auto pb-2 text-right">
+          <div class="text-slate-400">
+            {{ students.length }} student{{ students.length === 1 ? '' : 's' }}
+            in {{ classIds.length === 1 ? 'this class' : `${classIds.length} classes` }}
+          </div>
           <div :class="ratedStudentCount < students.length ? 'text-amber-600 font-medium' : 'text-slate-400'">
-            {{ ratedStudentCount }} of {{ students.length }} have ratings{{ selectedSubjects.length ? ' for the selected subject(s)' : '' }}
+            {{ ratedStudentCount }} of {{ students.length }} have ratings{{ scopeSubjects ? ' for the selected subject(s)' : '' }}
           </div>
         </div>
       </div>
 
-      <div v-if="classId" class="flex items-center gap-2 flex-wrap mt-3">
+      <!-- What the topic pick will actually do, said before the run rather
+           than discovered in the table afterwards. -->
+      <div v-if="selectedTopicPairs.length" class="mt-3 text-xs rounded-lg bg-indigo-50 text-indigo-900 px-3 py-2">
+        <div v-for="group in topicPlan" :key="group.subject" class="flex items-center gap-1.5 flex-wrap">
+          <span class="font-semibold">{{ group.subject }}:</span>
+          <span>{{ group.topics.join(' + ') }}</span>
+          <span v-if="group.topics.length > 1" class="px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 font-semibold">
+            combined rubric
+          </span>
+        </div>
+        <div class="text-indigo-700/70 mt-1">
+          Only these subjects are generated. Where a subject has several topics, each trait's level is the
+          average of its per-topic levels (rounded half up), and the comment describes any growth or dip
+          across the topics.
+        </div>
+      </div>
+
+      <div v-if="hasClasses" class="flex items-center gap-2 flex-wrap mt-3">
         <Button label="Scan subjects" icon="pi pi-search" size="small" text
                 :loading="scanning" :disabled="running" @click="runScan" />
         <Button label="Export CSV" icon="pi pi-download" size="small" outlined
@@ -119,6 +169,9 @@
           <div class="text-sm font-semibold text-slate-900">
             <i class="pi pi-spin pi-spinner text-sm mr-2 text-blue-500"></i>
             Generating remarks for {{ runningLabel }}
+            <span v-if="runQueue.length > 1" class="text-xs font-normal text-slate-500 ml-1">
+              (class {{ runIndex + 1 }} of {{ runQueue.length }})
+            </span>
           </div>
           <!-- totalStudents/processedStudents count student x SUBJECT records,
                not students — the function increments once per remark doc. The
@@ -139,7 +192,7 @@
         </p>
       </div>
 
-      <div v-if="runError" class="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2" :class="running ? 'mt-3' : ''">
+      <div v-if="runError" class="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2 whitespace-pre-line" :class="running ? 'mt-3' : ''">
         {{ runError }}
       </div>
     </div>
@@ -148,37 +201,43 @@
     <!-- Shown from the scan AND from a run's result: a subject nothing matches
          produces no comment and no error, which is precisely the failure that
          is invisible unless the page says so out loud. -->
-    <div v-if="unmatchedSubjects.length && !running"
-         class="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4 flex items-center gap-3 flex-wrap">
-      <i class="pi pi-exclamation-triangle text-amber-500"></i>
-      <div class="text-sm text-amber-900 min-w-0">
-        <strong>{{ unmatchedSubjects.length }}</strong>
-        subject{{ unmatchedSubjects.length === 1 ? '' : 's' }} in this class
-        match{{ unmatchedSubjects.length === 1 ? 'es' : '' }} no
-        {{ scanStage || 'rubric' }} row, so no comment can be written for
-        {{ unmatchedSubjects.length === 1 ? 'it' : 'them' }}:
-        <span class="font-semibold">{{ unmatchedSubjects.map(s => s.subject).join(', ') }}</span>
+    <!-- One banner per Stage: classes of different Stages (a multi-class pick
+         across grades) have different rubric rows, and a mapping is saved
+         per Stage. -->
+    <template v-if="!running">
+      <div v-for="group in unmatchedByStage" :key="group.stage || 'none'"
+           class="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4 flex items-center gap-3 flex-wrap">
+        <i class="pi pi-exclamation-triangle text-amber-500"></i>
+        <div class="text-sm text-amber-900 min-w-0">
+          <strong>{{ group.subjects.length }}</strong>
+          subject{{ group.subjects.length === 1 ? '' : 's' }} in
+          {{ group.classIds.length === 1 ? group.classIds[0] : `${group.classIds.length} classes` }}
+          match{{ group.subjects.length === 1 ? 'es' : '' }} no
+          {{ group.stage || 'rubric' }} row, so no comment can be written for
+          {{ group.subjects.length === 1 ? 'it' : 'them' }}:
+          <span class="font-semibold">{{ group.subjects.map(s => s.subject).join(', ') }}</span>
+        </div>
+        <Button label="Relate subjects" icon="pi pi-link" size="small" class="ml-auto"
+                :disabled="!group.stage" @click="openMapDialog(group.stage)" />
       </div>
-      <Button label="Relate subjects" icon="pi pi-link" size="small" class="ml-auto"
-              :disabled="!scanStage" @click="mapDialogVisible = true" />
-    </div>
+    </template>
 
     <AapSubjectMapDialog
       v-model:visible="mapDialogVisible"
       :school-id="schoolId"
-      :stage="scanStage"
-      :unmatched="unmatchedSubjects"
-      :framework-subjects="frameworkSubjects"
+      :stage="mapGroup?.stage || ''"
+      :unmatched="mapGroup?.subjects || []"
+      :framework-subjects="mapGroup?.frameworkSubjects || []"
       @saved="onMappingsSaved"
     />
 
     <!-- ── Review table ──────────────────────────────────────────────────── -->
-    <div v-if="!classId" class="text-center py-20 bg-white rounded-xl border border-slate-200">
+    <div v-if="!hasClasses" class="text-center py-20 bg-white rounded-xl border border-slate-200">
       <i class="pi pi-comments text-4xl text-slate-300 mb-3 block"></i>
-      <p class="text-slate-500 font-medium">Pick a school and class to review its AAP remarks</p>
+      <p class="text-slate-500 font-medium">Pick a school and one or more classes to review their AAP remarks</p>
     </div>
 
-    <div v-else-if="loadingRoster" class="flex items-center justify-center py-20">
+    <div v-else-if="loadingRoster || selectionPending" class="flex items-center justify-center py-20">
       <ProgressSpinner style="width:32px;height:32px" />
     </div>
 
@@ -188,6 +247,7 @@
       :students="students"
       :remarks-by-student="remarksByStudent"
       :busy-student-id="regeneratingStudentId"
+      :show-class="classIds.length > 1"
       @regenerate="regenerateStudent"
       @saved="onSaved"
     />
@@ -228,8 +288,9 @@ import AapSurveyCompletionTab from '../components/aap-remarks/AapSurveyCompletio
 /**
  * AAP remarks — Awareness / Sensitivity / Creativity report-card comments.
  *
- * Generate for a class, then review: edit a comment, approve it, or regenerate
- * one student. Generation is the Cloud Function (functions/generate_aap_remarks,
+ * Generate for one or more classes — optionally scoped to subjects and to
+ * topics, several topics of a subject being combined into one rubric — then
+ * review: edit a comment, approve it, or regenerate one student. Generation is the Cloud Function (functions/generate_aap_remarks,
  * asia-south1); everything else is a direct write to the remark doc.
  *
  * Gated exactly like School Setup — ops admins only (router meta), plus a
@@ -241,7 +302,7 @@ const confirm = useConfirm()
 const { isElevated, markActivity, reauthenticate } = useStepUpAuth()
 
 const {
-  schools, classes, students, remarksByStudent, scan, scanning,
+  schools, classes, students, remarksByStudent, scans, scanning,
   loadingSchools, loadingClasses, loadingRoster,
   loadSchools, loadClasses, loadClass, reloadStudent,
   recentJobIds, watchNewJob, generate, scanSubjects, downloadSummaryPdfs,
@@ -278,13 +339,17 @@ function throttledActivity() {
 
 // ── Selection ─────────────────────────────────────────────────────────────
 const schoolId = ref(null)
-const classId = ref(null)
+const classIds = ref([])
+const hasClasses = computed(() => classIds.value.length > 0)
+
+const classLabel = (id) => classes.value.find(c => c.id === id)?.label || id
+const classesLabel = (ids) => ids.length <= 3 ? ids.map(classLabel).join(', ') : `${ids.length} classes`
 
 watch(schoolId, async (id) => {
-  // Clearing the class first also clears the table, via the watcher below —
+  // Clearing the classes first also clears the table, via the watcher below —
   // a roster from the previous school must never be on screen under a new
   // school's name, however briefly.
-  classId.value = null
+  classIds.value = []
   if (!id) return
   try {
     await loadClasses(id)
@@ -294,67 +359,85 @@ watch(schoolId, async (id) => {
   }
 })
 
-// ── Subjects ──────────────────────────────────────────────────────────────
+// ── Subjects & topics ─────────────────────────────────────────────────────
 const selectedSubjects = ref([])
+const selectedTopics = ref([])     // values: `${subject}::${topicKey}`
 const mapDialogVisible = ref(false)
-// A run reports the same subject fields a scan does, so whichever happened
-// last is the current truth about this class's subjects.
-const lastRunSummary = ref(null)
+const mapStage = ref('')
 
-// Changing class resets everything derived from the old one. Kept here rather
-// than inside reload() so the Refresh button — which is also reload() — re-reads
-// Firestore without silently throwing away the subject scope you just chose.
-watch(classId, () => {
+// Changing classes resets everything derived from the old ones. Debounced:
+// ticking five classes one by one is one roster load and one scan, not five.
+// Kept out of reload() so the Refresh button — which is also reload() —
+// re-reads Firestore without throwing away the subject/topic scope.
+const selectionPending = ref(false)
+let selectionTimer = null
+watch(classIds, () => {
   selectedSubjects.value = []
-  lastRunSummary.value = null
-  scan.value = null
-  reload()
+  selectedTopics.value = []
+  // Called empty rather than just clearing the refs: each bumps its load
+  // token, so a roster or scan still in flight for the OLD pick is dropped
+  // when it lands instead of being painted under the new one.
+  loadClass(null, [])
+  scanSubjects(null, [])
+  selectionPending.value = true
+  clearTimeout(selectionTimer)
+  selectionTimer = setTimeout(async () => {
+    selectionPending.value = false
+    // The scan is what lists each class's topics, so it runs on every class
+    // change rather than only when nothing has been generated yet.
+    await Promise.all([reload(), runScan()])
+  }, 500)
 })
 
 async function reload() {
   try {
-    await loadClass(schoolId.value, classId.value)
+    await loadClass(schoolId.value, classIds.value)
   } catch (e) {
     console.error('Could not load the class roster', e)
-    toast.add({ severity: 'error', summary: 'Could not load this class', detail: e.message, life: 5000 })
-    return
+    toast.add({ severity: 'error', summary: 'Could not load these classes', detail: e.message, life: 5000 })
   }
-  // A class with nothing generated yet is the one case where the subject list
-  // can't be inferred from existing remarks, and it is also the case where
-  // someone is about to press Generate — so the scan is worth its reads here
-  // and offered as a button the rest of the time.
-  if (classId.value && !hasRemarks.value) await runScan()
 }
-
-const subjectSource = computed(() => lastRunSummary.value || scan.value)
-const scanStage = computed(() => subjectSource.value?.stage || '')
-const frameworkSubjects = computed(() => subjectSource.value?.frameworkSubjects || [])
-const unmatchedSubjects = computed(() => subjectSource.value?.unmatchedSubjects || [])
 
 const hasRemarks = computed(() =>
   Object.values(remarksByStudent.value).some(rows => rows.length))
 
-// How many students actually have a rating, scoped to the selected subjects
-// (or any subject, if none chosen) — the thing a "1 of 41" table full of
-// "No AAP survey ratings found" rows makes you scroll to notice otherwise.
-const ratedStudentCount = computed(() => {
-  const scope = selectedSubjects.value.length ? new Set(selectedSubjects.value) : null
-  return students.value.filter(s => {
-    const rows = remarksByStudent.value[s.id] || []
-    return rows.some(r => !scope || scope.has(r.id))
-  }).length
+/** Same normalisation as the function's _norm_topic, so a key built here
+ *  names the same topic the server filters on. */
+const topicKey = (name) => String(name || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+
+/**
+ * Every selected class's scan folded into one subject list: a subject counts
+ * as matched only if it matched in every class that has it, and its topics are
+ * the union, in the order the scans list them (teaching order).
+ */
+const mergedSubjects = computed(() => {
+  const bySubject = new Map()
+  for (const scan of Object.values(scans.value)) {
+    for (const row of scan?.subjects || []) {
+      const entry = bySubject.get(row.subject) || { subject: row.subject, matched: true, students: 0, topics: new Map() }
+      entry.matched = entry.matched && !!row.matched
+      entry.students += row.students || 0
+      for (const t of row.topics || []) {
+        const key = topicKey(t.topic)
+        const topic = entry.topics.get(key) || { topic: t.topic, students: 0 }
+        topic.students += t.students || 0
+        entry.topics.set(key, topic)
+      }
+      bySubject.set(row.subject, entry)
+    }
+  }
+  return [...bySubject.values()].sort((a, b) => a.subject.localeCompare(b.subject))
 })
 
 /**
- * Options for the subject picker: what the scan found, falling back to the
+ * Options for the subject picker: what the scans found, falling back to the
  * subjects already written when no scan has run. Unmatched subjects are
  * listed rather than hidden — being able to see that "Robotics" exists and
  * resolves to nothing is the point.
  */
 const subjectOptions = computed(() => {
-  const scanned = subjectSource.value?.subjects || []
-  if (scanned.length) {
-    return scanned.map(s => ({ label: s.subject, value: s.subject, matched: !!s.matched }))
+  if (mergedSubjects.value.length) {
+    return mergedSubjects.value.map(s => ({ label: s.subject, value: s.subject, matched: s.matched }))
   }
   const written = new Set()
   for (const rows of Object.values(remarksByStudent.value)) {
@@ -363,13 +446,99 @@ const subjectOptions = computed(() => {
   return [...written].sort().map(subject => ({ label: subject, value: subject, matched: true }))
 })
 
+/** Topics grouped by subject — only the selected subjects' when any are. */
+const topicOptions = computed(() => {
+  const only = selectedSubjects.value.length ? new Set(selectedSubjects.value) : null
+  return mergedSubjects.value
+    .filter(s => s.topics.size && (!only || only.has(s.subject)))
+    .map(s => ({
+      label: s.subject,
+      items: [...s.topics.entries()].map(([key, t]) => ({
+        label: t.topic, value: `${s.subject}::${key}`,
+        subject: s.subject, topic: t.topic, students: t.students,
+      })),
+    }))
+})
+
+// Narrowing the subjects drops topics of subjects no longer picked, so the
+// topic chips never scope a run to something the subject picker excludes.
+watch(selectedSubjects, (subjects) => {
+  if (!subjects.length) return
+  const keep = new Set(subjects)
+  selectedTopics.value = selectedTopics.value.filter(v => keep.has(v.split('::')[0]))
+})
+
+const selectedTopicPairs = computed(() => {
+  const byValue = new Map(topicOptions.value.flatMap(g => g.items).map(o => [o.value, o]))
+  return selectedTopics.value
+    .map(v => byValue.get(v))
+    .filter(Boolean)
+    .map(o => ({ subject: o.subject, topic: o.topic }))
+})
+
+/** { subject, topics[] } per subject the topic pick covers. */
+const topicPlan = computed(() => {
+  const bySubject = new Map()
+  for (const { subject, topic } of selectedTopicPairs.value) {
+    if (!bySubject.has(subject)) bySubject.set(subject, [])
+    bySubject.get(subject).push(topic)
+  }
+  return [...bySubject.entries()].map(([subject, topics]) => ({ subject, topics }))
+})
+
+/** The subjects a run will touch, or null for every subject. */
+const scopeSubjects = computed(() => {
+  if (selectedTopicPairs.value.length) return new Set(topicPlan.value.map(g => g.subject))
+  return selectedSubjects.value.length ? new Set(selectedSubjects.value) : null
+})
+
+// How many students actually have a rating, scoped to the selected subjects
+// (or any subject, if none chosen) — the thing a "1 of 41" table full of
+// "No AAP survey ratings found" rows makes you scroll to notice otherwise.
+const ratedStudentCount = computed(() => {
+  const scope = scopeSubjects.value
+  return students.value.filter(s => {
+    const rows = remarksByStudent.value[s.id] || []
+    return rows.some(r => !scope || scope.has(r.id))
+  }).length
+})
+
+/**
+ * Unmatched subjects grouped by Stage — a mapping is saved per Stage, so a
+ * pick spanning Middle and Preparatory classes needs one dialog for each.
+ */
+const unmatchedByStage = computed(() => {
+  const groups = new Map()
+  for (const [classId, scan] of Object.entries(scans.value)) {
+    if (!scan?.unmatchedSubjects?.length) continue
+    const stage = scan.stage || ''
+    const group = groups.get(stage) || { stage, classIds: [], bySubject: new Map(), frameworkSubjects: scan.frameworkSubjects || [] }
+    group.classIds.push(classId)
+    for (const row of scan.unmatchedSubjects) {
+      const entry = group.bySubject.get(row.subject) || { subject: row.subject, students: 0 }
+      entry.students += row.students || 0
+      group.bySubject.set(row.subject, entry)
+    }
+    groups.set(stage, group)
+  }
+  return [...groups.values()].map(g => ({
+    stage: g.stage, classIds: g.classIds, frameworkSubjects: g.frameworkSubjects,
+    subjects: [...g.bySubject.values()].sort((a, b) => a.subject.localeCompare(b.subject)),
+  }))
+})
+const mapGroup = computed(() => unmatchedByStage.value.find(g => g.stage === mapStage.value) || null)
+
+function openMapDialog(stage) {
+  mapStage.value = stage
+  mapDialogVisible.value = true
+}
+
 async function runScan() {
   try {
-    lastRunSummary.value = null
-    await scanSubjects(schoolId.value, classId.value)
+    await scanSubjects(schoolId.value, classIds.value)
   } catch (e) {
     console.error('Could not scan subjects', e)
-    toast.add({ severity: 'error', summary: 'Could not read this class\'s subjects', detail: e.message, life: 4000 })
+    toast.add({ severity: 'error', summary: 'Could not read the classes\' subjects', detail: e.message, life: 4000 })
   }
 }
 
@@ -377,11 +546,12 @@ async function runScan() {
  *  it rather than silently spending a run's worth of model calls. */
 async function onMappingsSaved(mappedTokens) {
   await runScan()
+  selectedTopics.value = []
   selectedSubjects.value = mappedTokens
   confirm.require({
     header: 'Generate for the newly related subjects?',
     message: `${mappedTokens.join(', ')} can be written now. Generate remarks for `
-      + `${mappedTokens.length === 1 ? 'it' : 'them'} in ${classId.value}?`,
+      + `${mappedTokens.length === 1 ? 'it' : 'them'} in ${classesLabel(classIds.value)}?`,
     icon: 'pi pi-sparkles',
     rejectLabel: 'Not now',
     acceptLabel: 'Generate',
@@ -390,13 +560,16 @@ async function onMappingsSaved(mappedTokens) {
 }
 
 // ── Export ────────────────────────────────────────────────────────────────
+const exportClassLabel = computed(() =>
+  classIds.value.length <= 3 ? classIds.value.join('+') : `${classIds.value.length}_classes`)
+
 function exportCsv() {
-  const count = downloadAapCsv(schoolId.value, classId.value, students.value, remarksByStudent.value)
+  const count = downloadAapCsv(schoolId.value, exportClassLabel.value, students.value, remarksByStudent.value)
   toast.add({ severity: 'success', summary: `Exported ${count} rows`, life: 2500 })
 }
 
 function exportXlsx() {
-  const count = downloadAapXlsx(schoolId.value, classId.value, students.value, remarksByStudent.value)
+  const count = downloadAapXlsx(schoolId.value, exportClassLabel.value, students.value, remarksByStudent.value)
   toast.add({ severity: 'success', summary: `Exported ${count} rows`, life: 2500 })
 }
 
@@ -423,10 +596,12 @@ async function downloadAllPdfs() {
 const running = ref(false)
 const runError = ref('')
 const job = ref(null)
+const runQueue = ref([])
+const runIndex = ref(0)
 const regeneratingStudentId = ref(null)
 let unsubJob = null
 
-const runningLabel = computed(() => job.value?.classId || classId.value || '')
+const runningLabel = computed(() => classLabel(runQueue.value[runIndex.value] || ''))
 const progressPct = computed(() => {
   const total = job.value?.totalStudents || 0
   if (!total) return 0
@@ -437,82 +612,122 @@ function stopWatching() {
   if (unsubJob) { unsubJob(); unsubJob = null }
 }
 
-const scopeLabel = computed(() =>
-  selectedSubjects.value.length ? selectedSubjects.value.join(', ') : 'every subject')
+const scopeLabel = computed(() => {
+  if (topicPlan.value.length) {
+    return topicPlan.value.map(g => `${g.subject} (${g.topics.join(' + ')})`).join(', ')
+  }
+  return selectedSubjects.value.length ? selectedSubjects.value.join(', ') : 'every subject'
+})
 
 function confirmGenerate() {
-  if (!hasRemarks.value) { runGenerate(); return }
+  const multi = classIds.value.length > 1
+  if (!hasRemarks.value && !multi) { runGenerate(); return }
+  const parts = []
+  if (multi) parts.push(`This runs ${classIds.value.length} classes one after another (${classesLabel(classIds.value)}).`)
+  if (hasRemarks.value) {
+    parts.push(`Running again for ${scopeLabel.value} rewrites every comment in that scope that isn't approved yet.`)
+  } else {
+    parts.push(`Scope: ${scopeLabel.value}.`)
+  }
   confirm.require({
     header: 'Generate remarks',
-    message: `${classId.value} already has remarks. Running again for ${scopeLabel.value} `
-      + `rewrites every comment in that scope that isn't approved yet. Continue?`,
-    icon: 'pi pi-exclamation-triangle',
+    message: `${parts.join(' ')} Continue?`,
+    icon: hasRemarks.value ? 'pi pi-exclamation-triangle' : 'pi pi-sparkles',
     rejectLabel: 'Cancel',
     acceptLabel: 'Generate',
     accept: runGenerate,
   })
 }
 
+/**
+ * Class by class, one callable each — the function's unit of work and its
+ * 540s budget are per class, so a multi-class run is a queue of ordinary
+ * runs. A class that fails is reported and the queue moves on: one class's
+ * gender-data gate should not cost the other classes their remarks.
+ */
 async function runGenerate() {
   running.value = true
   runError.value = ''
   job.value = null
+  runQueue.value = [...classIds.value]
+  const totals = { written: 0, skippedApproved: 0, skippedNoFramework: 0 }
+  const failures = []
+  const results = {}
   try {
-    // Started BEFORE the call: the callable only returns its jobId when the
-    // whole run is finished, so the progress doc has to be found rather than
-    // addressed. See watchNewJob for how a run is identified.
-    const known = await recentJobIds(schoolId.value)
-    unsubJob = watchNewJob(schoolId.value, classId.value, known, (j) => { job.value = j })
+    for (let i = 0; i < runQueue.value.length; i++) {
+      const classId = runQueue.value[i]
+      runIndex.value = i
+      job.value = null
+      try {
+        // Started BEFORE the call: the callable only returns its jobId when
+        // the whole run is finished, so the progress doc has to be found
+        // rather than addressed. See watchNewJob for how a run is identified.
+        const known = await recentJobIds(schoolId.value)
+        unsubJob = watchNewJob(schoolId.value, classId, known, (j) => { job.value = j })
+        const result = await generate({
+          schoolId: schoolId.value,
+          classId,
+          subjects: selectedSubjects.value,
+          topics: selectedTopicPairs.value,
+        })
+        results[classId] = result
+        totals.written += result.written || 0
+        totals.skippedApproved += result.skippedApproved || 0
+        totals.skippedNoFramework += result.skippedNoFramework || 0
+      } catch (e) {
+        console.error(`AAP generation failed for ${classId}`, e)
+        failures.push(`${classLabel(classId)}: ${e.message || 'generation failed'}`)
+      } finally {
+        stopWatching()
+      }
+    }
+    // A run reports the same subject fields a scan does, so it is the
+    // current truth about those classes' subjects.
+    scans.value = { ...scans.value, ...results }
+    if (failures.length) runError.value = failures.join('\n')
 
-    const result = await generate({
-      schoolId: schoolId.value,
-      classId: classId.value,
-      subjects: selectedSubjects.value,
-    })
-    lastRunSummary.value = result
     // Report what was WRITTEN, and account for the rest. The earlier version
     // announced "126 remarks processed" for a run that wrote nothing, because
     // a skipped record and a written one counted the same.
     const skipped = []
-    if (result.skippedApproved) skipped.push(`${result.skippedApproved} already approved`)
-    if (result.skippedNoFramework) skipped.push(`${result.skippedNoFramework} with no rubric row`)
+    if (totals.skippedApproved) skipped.push(`${totals.skippedApproved} already approved`)
+    if (totals.skippedNoFramework) skipped.push(`${totals.skippedNoFramework} with no rubric row`)
+    if (failures.length) skipped.push(`${failures.length} class${failures.length === 1 ? '' : 'es'} failed`)
     toast.add({
-      severity: result.written ? 'success' : 'warn',
-      summary: result.written
-        ? `${result.written} remark${result.written === 1 ? '' : 's'} written`
+      severity: totals.written && !failures.length ? 'success' : 'warn',
+      summary: totals.written
+        ? `${totals.written} remark${totals.written === 1 ? '' : 's'} written`
         : 'No remarks written',
       detail: skipped.length ? `Skipped: ${skipped.join(', ')}` : undefined,
       life: 6000,
     })
-    await loadClass(schoolId.value, classId.value)
-  } catch (e) {
-    console.error('AAP generation failed', e)
-    runError.value = e.message || 'Generation failed'
-    // Whatever was written before the failure is real and worth showing.
-    // loadClass, not reload(): reload resets the subject scope and rescans,
-    // which would throw away the scope the failed run was using.
-    await loadClass(schoolId.value, classId.value)
   } finally {
-    stopWatching()
     running.value = false
     job.value = null
+    // Whatever was written — including before a failure — is real and worth
+    // showing. loadClass, not the class watcher: that resets the subject and
+    // topic scope the run was using.
+    await reload()
   }
 }
 
 /**
- * One student — every subject, or just the selected ones. This is the only
- * path that overwrites remarks already marked approved: the function treats an
- * explicit student_ids list as "the dashboard asked for this one on purpose".
+ * One student — every subject, or just the selected subjects/topics. This is
+ * the only path that overwrites remarks already marked approved: the function
+ * treats an explicit student_ids list as "the dashboard asked for this one on
+ * purpose".
  */
 async function regenerateStudent(studentId) {
+  const student = students.value.find(s => s.id === studentId)
   regeneratingStudentId.value = studentId
   runError.value = ''
   try {
     const result = await generate({
       schoolId: schoolId.value,
-      classId: classId.value,
+      classId: student?.classId || classIds.value[0],
       studentIds: [studentId],
       subjects: selectedSubjects.value,
+      topics: selectedTopicPairs.value,
     })
     await reloadStudent(schoolId.value, studentId)
     toast.add({
@@ -528,11 +743,11 @@ async function regenerateStudent(studentId) {
   }
 }
 
-// A bulk action passes null: it touched many students, so the whole class is
-// re-read rather than guessing which rows moved.
+// A bulk action passes null: it touched many students, so every selected
+// class is re-read rather than guessing which rows moved.
 const onSaved = (studentId) => studentId
   ? reloadStudent(schoolId.value, studentId)
-  : loadClass(schoolId.value, classId.value)
+  : reload()
 
 onMounted(async () => {
   try {
@@ -542,7 +757,7 @@ onMounted(async () => {
     toast.add({ severity: 'error', summary: 'Could not load schools', detail: e.message, life: 4000 })
   }
 })
-onUnmounted(stopWatching)
+onUnmounted(() => { stopWatching(); clearTimeout(selectionTimer) })
 </script>
 
 <style scoped>

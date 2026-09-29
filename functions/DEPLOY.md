@@ -87,6 +87,7 @@ run announced "126 remarks processed" having written none. Show `written`.
 ### Files needed in the folder:
 - main.py ✅
 - subject_match.py ✅ (pure matching logic, 29+ unit tests)
+- topic_combine.py ✅ (per-topic levels combined into one subject rubric, unit-tested)
 - requirements.txt ✅
 
 ### Subject matching — why subject_match.py exists

@@ -8,13 +8,14 @@ directly from Firestore survey responses -- no Google Sheets / Drive hop.
 
 generate_aap_remarks is callable from the ops dashboard (httpsCallable,
 region asia-south1): { school_id, class_id, student_ids?, subjects?,
-scan_only?, confirm_gender_issue? }
+topics?, scan_only?, confirm_gender_issue? }
 
   1. Reads AAP survey responses for that class from Firestore (survey ids
      prefixed "zzz")
   2. Resolves each student's Beginner/Proficient/Advanced rating per
-     subject/trait -- same aggregation as extract_firestore.py's
-     resolve_level
+     subject/trait -- per topic first, then combined across the topics in
+     scope (every topic, or the ones picked in `topics`); see
+     topic_combine.py
   3. Looks up name/gender straight from schools/{school}/students -- no
      separate Master Sheet
   4. Looks up descriptor text from the shared aap_framework collection
@@ -80,7 +81,6 @@ used for process_import.
 import base64
 import datetime
 import io
-import math
 import random
 import re
 import time
@@ -104,6 +104,7 @@ from ops_admins import require_ops_admin as _require_ops_admin_base
 from subject_match import (
     build_subject_index, normalize_subject, opening_signature, resolve_subject,
 )
+from topic_combine import TRAITS, combine_topics, resolve_topic, trait_observation
 
 try:
     initialize_app()
@@ -118,9 +119,6 @@ OPENAI_API_KEY = SecretParam("OPENAI_API_KEY")
 # self-learning shape as import_aliases and kb_entries: one confirmation, and
 # every school spelling a subject that way resolves from then on.
 SUBJECT_MAP_COLLECTION = "aap_subject_map"
-
-LEVEL_ORDER = {"Beginner": 1, "Proficient": 2, "Advanced": 3}
-LEVEL_NAME = {1: "Beginner", 2: "Proficient", 3: "Advanced"}
 
 # Prompt variation. A class of 18 comments drawn from one style instruction
 # reads as 18 copies of the same sentence -- the first live run produced nine
@@ -190,29 +188,6 @@ def get_first_name(full_name):
     return parts[0]
 
 
-def resolve_level(raw_levels):
-    """Same aggregation as extract_firestore.py's resolve_level, adapted to
-    plain 'Beginner'/'Proficient'/'Advanced' prefixes instead of the
-    '(LOW)'/'(MEDIUM)'/'(HIGH)' suffixed survey values."""
-    normalised = []
-    for lvl in raw_levels:
-        for key in LEVEL_ORDER:
-            if lvl.startswith(key):
-                normalised.append(LEVEL_ORDER[key])
-                break
-    if not normalised:
-        return "Proficient"
-    if len(normalised) == 1:
-        score = normalised[0]
-    elif len(normalised) == 2:
-        a, b = normalised
-        diff = abs(a - b)
-        score = a if diff == 0 else max(a, b) if diff == 1 else 2
-    else:
-        score = max(1, min(3, math.ceil(sum(normalised) / len(normalised))))
-    return LEVEL_NAME[score]
-
-
 def _parse_aap_response_id(doc_id):
     """doc id: teacherID_grade_section..._grade_subject_topic -> a dict of the
     parts, or None if the id doesn't fit the convention at all.
@@ -258,11 +233,35 @@ def _parse_aap_response_id(doc_id):
             "topic_id": "_".join(parts[second_idx:])}
 
 
-def fetch_survey_ratings(school_id, class_id):
-    """Returns (ratings, unparsed_response_count).
+def _topic_names(school_ref):
+    """{topic_id: (display name, position)} from every class's
+    subjects[].topics[] — the list the teacher app surveys from, so a
+    response's topic id finds its real name ("Term 1", not "Term1") and its
+    place in teaching order, which is what a trend across topics is read in.
+    Topic ids are "{Grade}_{Subject}_{Topic}", so they are the same for every
+    section of a grade and the first class listing one is as good as any."""
+    out = {}
+    for doc in school_ref.collection("classes").stream():
+        for subj in (doc.to_dict() or {}).get("subjects") or []:
+            if not isinstance(subj, dict):
+                continue
+            for pos, t in enumerate(subj.get("topics") or []):
+                if not isinstance(t, dict) or not t.get("id"):
+                    continue
+                name = str(t.get("topic") or t.get("name") or "").strip()
+                out.setdefault(str(t["id"]), (name, pos))
+    return out
 
-    ratings is {student_id: {subject: {awareness, sensitivity, creativity}}}
-    for one class, resolved from raw survey responses.
+
+def fetch_survey_ratings(school_id, class_id):
+    """Returns (topic_ratings, unparsed_response_count).
+
+    topic_ratings is {student_id: {subject: {topic_key: {"topic", "order",
+    "traits": {trait: [raw answers]}}}}} for one class — kept per TOPIC,
+    because a remark can be scoped to some topics and is then combined across
+    them (see topic_combine.py and subject_ratings below). topic_key is the
+    normalised topic name, so the same topic lines up across the sections
+    and grades of a multi-class run.
 
     unparsed_response_count is how many response docs across the WHOLE
     SCHOOL scan had an id this function's doc-id convention could not
@@ -274,7 +273,7 @@ def fetch_survey_ratings(school_id, class_id):
     without anyone noticing.
     """
     school_ref = db.collection("schools").document(school_id)
-    raw = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
+    raw = defaultdict(lambda: defaultdict(dict))
     target_grade_raw, _, target_section_raw = class_id.partition("_")
     target = canonical_grade_section(target_grade_raw, target_section_raw)
     unparsed = 0
@@ -285,6 +284,7 @@ def fetch_survey_ratings(school_id, class_id):
     for sdoc in school_ref.collection("subjects").stream():
         sdata = sdoc.to_dict() or {}
         subject_names[sdoc.id] = str(sdata.get("name") or "").strip()
+    topic_names = _topic_names(school_ref)
 
     for survey_doc in school_ref.collection("surveys").stream():
         if not survey_doc.id.lower().startswith("zzz"):
@@ -297,42 +297,71 @@ def fetch_survey_ratings(school_id, class_id):
                 unparsed += 1
                 continue
             grade, section, subject = parsed["grade"], parsed["section"], parsed["subject"]
-            subject_doc_id, token, _topic = _split_topic_id(parsed["topic_id"], subject_names)
-            if subject_doc_id in subject_names:
-                subject = subject_names[subject_doc_id] or token.replace("_", " ")
             # Canonical comparison, not raw string equality: a response
             # spelling its grade "1" and the class doc spelling it "I" are
             # the same class once both go through the shared grade index.
             if canonical_grade_section(grade, section) != target:
                 continue
+            subject_doc_id, token, topic_token = _split_topic_id(parsed["topic_id"], subject_names)
+            if subject_doc_id in subject_names:
+                subject = subject_names[subject_doc_id] or token.replace("_", " ")
+            name, order = topic_names.get(parsed["topic_id"], ("", None))
+            topic = name or (topic_token or "").replace("_", " ").strip() or "General"
+            topic_key = _norm_topic(topic)
 
             answers = resp.to_dict().get("answers", [])
-            for q_index, trait in enumerate(["awareness", "sensitivity", "creativity"]):
+            for q_index, trait in enumerate(TRAITS):
                 if q_index >= len(answers):
                     break
                 for student_id, level_str in answers[q_index].items():
                     if student_id == "questionText" or not level_str or level_str == "Not Applicable":
                         continue
-                    raw[student_id][subject][trait].append(level_str)
+                    entry = raw[student_id][subject].setdefault(topic_key, {
+                        "topic": topic, "order": order,
+                        "traits": {t: [] for t in TRAITS},
+                    })
+                    entry["traits"][trait].append(level_str)
 
     # A subject only reaches `raw` once at least one of its three questions was
     # answered (blank / "Not Applicable" answers are never appended above) --
     # that is what makes a student who never appeared for an optional subject
     # (Hindi/Marathi/Sanskrit split) resolve to no subject entry at all, with
-    # no remark generated for it. But a subject that DID get at least one
-    # answer may still be missing one or two of its three traits, and those
-    # must not be treated as "never appeared" -- the school's convention is
-    # that a trait nobody rated defaults to the most favourable level rather
-    # than blocking or silently dropping the whole subject.
-    ratings = {}
-    for student_id, subjects in raw.items():
-        ratings[student_id] = {}
-        for subject, traits in subjects.items():
-            resolved = {trait: resolve_level(levels) for trait, levels in traits.items()}
-            for trait in ("awareness", "sensitivity", "creativity"):
-                resolved.setdefault(trait, "Advanced")
-            ratings[student_id][subject] = resolved
-    return ratings, unparsed
+    # no remark generated for it. A subject that DID get an answer but is
+    # missing a trait is handled when combining (topic_combine.DEFAULT_LEVEL).
+    return {sid: dict(subjects) for sid, subjects in raw.items()}, unparsed
+
+
+def _topic_sort_key(entry):
+    """Teaching order: class-setup position first, name for topics setup
+    doesn't list (and to break ties)."""
+    return (entry["order"] is None, entry["order"] or 0, entry["topic"].lower())
+
+
+def subject_ratings(topic_ratings, only_topics=None):
+    """topic_ratings (fetch_survey_ratings) -> {student_id: {subject:
+    combined}}, where combined is topic_combine.combine_topics' result.
+
+    only_topics, when given, is {normalized subject: {topic_key, ...}}: a
+    subject named there is built from those topics alone, and a subject not
+    named there is left out — picking topics narrows the run to them. A
+    student who was rated in none of the chosen topics gets no entry for
+    that subject, the same "never appeared" rule as an unrated subject.
+    """
+    out = {}
+    for student_id, subjects in topic_ratings.items():
+        for subject, topics in subjects.items():
+            entries = list(topics.items())
+            if only_topics is not None:
+                keep = only_topics.get(normalize_subject(subject))
+                if not keep:
+                    continue
+                entries = [(k, e) for k, e in entries if k in keep]
+            if not entries:
+                continue
+            rows = [{"topic": e["topic"], "levels": resolve_topic(e["traits"])}
+                    for _, e in sorted(entries, key=lambda kv: _topic_sort_key(kv[1]))]
+            out.setdefault(student_id, {})[subject] = combine_topics(rows)
+    return out
 
 
 def fetch_students(school_id, student_ids):
@@ -378,10 +407,17 @@ def fetch_subject_overrides(stage):
     return out
 
 
-def generate_comment(ai, first_name, gender, subject, aw, sen, cre, used_openings=None):
+def generate_comment(ai, first_name, gender, subject, aw, sen, cre, used_openings=None,
+                     topics=None, varied=False):
     """One comment. `used_openings` is the set of opening phrasings already
     written in THIS run — a repeat is retried rather than accepted, which is
-    what stops a class reading as one sentence with the names swapped."""
+    what stops a class reading as one sentence with the names swapped.
+
+    `topics` names the topics the ratings were combined from, and `varied`
+    says the topics disagreed for at least one trait — the observations then
+    carry the movement across topics (topic_combine.trait_observation), and
+    the prompt asks for it to be described as progress rather than averaged
+    away."""
     used_openings = used_openings if used_openings is not None else set()
     pronoun = "He" if gender.strip().lower().startswith(("m", "boy")) else "She"
     his_her = "his" if pronoun == "He" else "her"
@@ -392,11 +428,16 @@ def generate_comment(ai, first_name, gender, subject, aw, sen, cre, used_opening
     avoid_line = ("\n- Do NOT open with any of these phrasings, already used for "
                   f"other students in this class: {'; '.join(avoid)}" if avoid else "")
 
+    topics_line = (f"\nTopics covered: {', '.join(topics)}" if topics and len(topics) > 1 else "")
+    varied_line = ("\n- The observations describe how the student changed across topics: reflect "
+                   "that journey naturally (growth, or a gentle nudge to regain earlier form) "
+                   "without naming levels or listing every topic" if varied else "")
+
     prompt = f"""You are a warm, caring schoolteacher writing a report card comment for a young student.
 
 Student first name: {first_name}
 Pronoun: {pronoun}/{his_her}
-Subject: {subject}
+Subject: {subject}{topics_line}
 
 Awareness observation: {aw}
 Sensitivity observation: {sen}
@@ -413,7 +454,7 @@ Style instructions:
 - Use correct pronoun ({pronoun}/{his_her})
 - Avoid formal/robotic phrases like "learning community", "valued member", "demonstrates proficiency"
 - MUST be between 40 and 55 words
-- Return only the comment, nothing else{avoid_line}"""
+- Return only the comment, nothing else{varied_line}{avoid_line}"""
 
     comment = ""
     for _ in range(3):
@@ -443,6 +484,20 @@ def generate_aap_remarks(req: https_fn.CallableRequest) -> dict:
     # Subject scope. Empty means every subject the survey rated, which is the
     # whole-class default; a list narrows the run without touching the rest.
     only_subjects = {normalize_subject(s) for s in (data.get("subjects") or []) if str(s).strip()}
+    # Topic scope: [{subject, topic}] by NAME, so one selection means the same
+    # topic in every section and grade of a multi-class run. Empty means every
+    # topic. Picking topics narrows the run to the subjects they belong to,
+    # each built from its picked topics only; several topics of one subject
+    # are combined into one rubric (topic_combine.py).
+    only_topics = None
+    for t in (data.get("topics") or []):
+        if not isinstance(t, dict):
+            continue
+        subject_key = normalize_subject(t.get("subject"))
+        topic_key = _norm_topic(t.get("topic"))
+        if subject_key and topic_key:
+            only_topics = only_topics or {}
+            only_topics.setdefault(subject_key, set()).add(topic_key)
     # Reads and resolves, writes nothing, calls no model. Backs the subject
     # picker and the "relate this subject" dialog, which both need to know
     # what the survey actually says BEFORE a run is worth starting.
@@ -480,14 +535,15 @@ def generate_aap_remarks(req: https_fn.CallableRequest) -> dict:
             "for this class.",
         )
 
-    ratings, unresolved_responses = fetch_survey_ratings(school_id, class_id)
+    topic_ratings, unresolved_responses = fetch_survey_ratings(school_id, class_id)
     if only_student_ids:
-        ratings = {sid: s for sid, s in ratings.items() if sid in only_student_ids}
+        topic_ratings = {sid: s for sid, s in topic_ratings.items() if sid in only_student_ids}
+    ratings = subject_ratings(topic_ratings, only_topics)
 
     # Needed for both the gender scan below and generation itself, so fetched
     # once, before the scan_only early return.
-    students = fetch_students(school_id, list(ratings.keys()))
-    gender_issue = _compute_gender_issue(ratings, students)
+    students = fetch_students(school_id, list(topic_ratings.keys()))
+    gender_issue = _compute_gender_issue(topic_ratings, students)
 
     by_label, alias_index, alias_conflicts = fetch_framework(stage)
     overrides = fetch_subject_overrides(stage)
@@ -495,21 +551,31 @@ def generate_aap_remarks(req: https_fn.CallableRequest) -> dict:
     # Resolve every subject ONCE per run rather than per student: the answer
     # cannot differ between two students in the same class, and the inventory
     # is what both the scan and the unmatched report are built from.
+    # Built from every topic, not just the picked ones, so the pickers always
+    # offer the whole class's subjects and topics.
     inventory = {}
-    for subjects in ratings.values():
-        for subject in subjects:
+    topic_rows = defaultdict(dict)
+    for subjects in topic_ratings.values():
+        for subject, topics in subjects.items():
             row = inventory.setdefault(subject, {
                 "subject": subject, "students": 0, "matched": None, "how": None,
             })
             row["students"] += 1
+            for key, entry in topics.items():
+                t = topic_rows[subject].setdefault(key, {
+                    "topic": entry["topic"], "order": entry["order"], "students": 0})
+                t["students"] += 1
     for subject, row in inventory.items():
+        row["topics"] = [{"topic": t["topic"], "students": t["students"]}
+                         for t in sorted(topic_rows[subject].values(), key=_topic_sort_key)]
         fw, how = resolve_subject(subject, by_label, alias_index, overrides)
         row["matched"] = fw.get("subject") if fw else None
         row["how"] = how
         row["_fw"] = fw
 
     in_scope = [s for s in inventory
-                if not only_subjects or normalize_subject(s) in only_subjects]
+                if (not only_subjects or normalize_subject(s) in only_subjects)
+                and (only_topics is None or normalize_subject(s) in only_topics)]
     unmatched = sorted(
         ({"subject": s, "students": inventory[s]["students"]}
          for s in in_scope if not inventory[s]["matched"]),
@@ -518,7 +584,7 @@ def generate_aap_remarks(req: https_fn.CallableRequest) -> dict:
     scan_payload = {
         "stage": stage,
         "classId": class_id,
-        "students": len(ratings),
+        "students": len(topic_ratings),
         "subjects": sorted(
             ({k: v for k, v in row.items() if k != "_fw"} for row in inventory.values()),
             key=lambda r: r["subject"],
@@ -551,6 +617,8 @@ def generate_aap_remarks(req: https_fn.CallableRequest) -> dict:
         "startedAt": firestore.SERVER_TIMESTAMP, "startedBy": caller,
         "totalStudents": total, "processedStudents": 0,
         "subjects": sorted(in_scope),
+        "topics": sorted(f"{t.get('subject')} / {t.get('topic')}" for t in (data.get("topics") or [])
+                         if isinstance(t, dict)),
         "unmatchedSubjects": [r["subject"] for r in unmatched],
     })
 
@@ -565,9 +633,10 @@ def generate_aap_remarks(req: https_fn.CallableRequest) -> dict:
             info = students.get(student_id, {"name": student_id, "gender": ""})
             first_name = get_first_name(info["name"])
 
-            for subject, levels in subjects.items():
+            for subject, combined in subjects.items():
                 if only_subjects and normalize_subject(subject) not in only_subjects:
                     continue
+                levels = combined["levels"]
 
                 doc_ref = (db.collection("schools").document(school_id)
                            .collection("students").document(student_id)
@@ -585,18 +654,26 @@ def generate_aap_remarks(req: https_fn.CallableRequest) -> dict:
                     skipped_no_framework += 1
                     continue
 
-                aw_text = fw.get("awareness", {}).get(levels["awareness"].lower(), "")
-                sen_text = fw.get("sensitivity", {}).get(levels["sensitivity"].lower(), "")
-                cre_text = fw.get("creativity", {}).get(levels["creativity"].lower(), "")
+                # The combined rubric: each trait's descriptor at its combined
+                # level, plus how the student moved when the topics disagreed.
+                aw_text, sen_text, cre_text = (
+                    trait_observation(fw.get(trait) or {}, trait, combined) for trait in TRAITS)
+                varied = any(combined["trends"][t] in ("improving", "declining", "mixed")
+                             for t in TRAITS)
 
                 comment = generate_comment(ai, first_name, info["gender"], subject,
                                            aw_text, sen_text, cre_text,
-                                           used_openings=used_openings[subject])
+                                           used_openings=used_openings[subject],
+                                           topics=combined["topics"], varied=varied)
 
                 doc_ref.set({
                     "awareness": levels["awareness"], "sensitivity": levels["sensitivity"],
                     "creativity": levels["creativity"], "comment": comment,
                     "frameworkSubject": fw.get("subject", ""), "matchedBy": inventory[subject]["how"],
+                    # Which topics this remark stands on and how each rated,
+                    # so a reviewer can see why a level came out as it did.
+                    "topics": combined["topics"], "topicLevels": combined["topicLevels"],
+                    "trends": combined["trends"],
                     "status": "needs_review", "updatedAt": firestore.SERVER_TIMESTAMP,
                 })
                 processed += 1
