@@ -161,7 +161,7 @@ import { schoolCollection, schoolDoc } from '../../firebase/schoolCollections.js
 import { guardedSetDoc, guardedUpdateDoc, guardedBatchSet, SchemaViolation, MODE_CREATE, MODE_UPDATE } from '../../schemas/guardedWrite.js'
 import { db, auth } from '../../firebase/config'
 import { toCsv, downloadCsv } from '../../utils/csv.js'
-import { splitName } from '../../schemas/studentMapping.js'
+import { splitName, toPhoneNo } from '../../schemas/studentMapping.js'
 
 const props = defineProps({ schoolId: { type: String, default: null } })
 const toast = useToast()
@@ -265,7 +265,7 @@ function openEditTeacher(staff) {
   editingStaff.value = staff
   Object.assign(form, {
     name: staff.name || '', id: staff.id, email: staff.email || '',
-    phoneNo: staff.phoneNo ?? null, sex: staff.sex || '', type: staff.type || 'teacher',
+    phoneNo: toPhoneNo(staff.phoneNo), sex: staff.sex || '', type: staff.type || 'teacher',
     admin: !!staff.admin,
   })
   Object.keys(assignmentsState).forEach(k => delete assignmentsState[k])
@@ -306,7 +306,7 @@ async function saveTeacher() {
     const { firstName, lastName } = splitName(form.name)
     const payload = {
       name: form.name.trim(), firstName, lastName,
-      email: form.email.trim(), phoneNo: form.phoneNo,
+      email: form.email.trim(), phoneNo: toPhoneNo(form.phoneNo),
       sex: form.sex || '', type: (form.type || 'teacher').trim(),
       admin: !!form.admin,
       classIds: [...selectedClassIds.value],
@@ -424,7 +424,7 @@ async function classifyImportRow(raw) {
   const payload = {
     name, firstName, lastName,
     email: (raw.email || '').trim(),
-    phoneNo: phoneRaw ? Number(phoneRaw) : null,
+    phoneNo: toPhoneNo(phoneRaw),
     sex: (raw.sex || '').trim(),
     type: (raw.type || '').trim() || 'teacher',
     admin,
