@@ -119,7 +119,8 @@ def test_observation_carries_growth_when_improving():
     text = trait_observation(DESCRIPTORS, "awareness", out)
     assert text.startswith("Notices well.")          # combined level: Proficient
     assert "Improved" in text and "Notices deeply." in text
-    assert "Term 1: Beginner" in text and "Term 2: Advanced" in text
+    assert "Beginner -> Advanced" in text
+    assert "Term" not in text          # topic names never reach the prompt
 
 
 def test_observation_for_declining_and_mixed():

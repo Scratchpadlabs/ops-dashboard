@@ -133,20 +133,35 @@ export function useAapRemarks() {
     if (!schoolId || !ids.length) { loadingRoster.value = false; return true }
     loadingRoster.value = true
     try {
-      const rosters = await mapLimit(ids, 4, async (classId) => {
-        const detail = await classDetailRemote({ schoolId, classId })
-        const roster = (detail.students || []).map(s => ({ ...s, classId }))
-        const byStudent = roster.length
-          ? await listAapRemarksRemote({ schoolId, studentIds: roster.map(s => s.id) })
-          : {}
-        return { roster, byStudent }
-      })
+      const result = await fetchClassesRemarks(schoolId, ids)
       if (token !== rosterToken) return false
-      students.value = rosters.flatMap(r => r.roster)
-      remarksByStudent.value = Object.assign({}, ...rosters.map(r => r.byStudent))
+      students.value = result.students
+      remarksByStudent.value = result.remarksByStudent
       return true
     } finally {
       if (token === rosterToken) loadingRoster.value = false
+    }
+  }
+
+  /**
+   * Rosters and remarks for several classes, WITHOUT touching the page's
+   * table state — the multi-class download reads classes that need not be
+   * the ones on screen. Students carry their classId, in class order.
+   */
+  async function fetchClassesRemarks(schoolId, classIds, onProgress) {
+    let done = 0
+    const perClass = await mapLimit(classIds, 4, async (classId) => {
+      const detail = await classDetailRemote({ schoolId, classId })
+      const roster = (detail.students || []).map(s => ({ ...s, classId }))
+      const byStudent = roster.length
+        ? await listAapRemarksRemote({ schoolId, studentIds: roster.map(s => s.id) })
+        : {}
+      onProgress?.(++done, classIds.length)
+      return { roster, byStudent }
+    })
+    return {
+      students: perClass.flatMap(r => r.roster),
+      remarksByStudent: Object.assign({}, ...perClass.map(r => r.byStudent)),
     }
   }
 
@@ -283,11 +298,19 @@ export function useAapRemarks() {
     downloadReport(report)
   }
 
+  /** classes: [{ classId, label, studentIds }] — a zip with a folder per class. */
+  async function downloadClassPdfs(schoolId, classes, { approvedOnly = false } = {}) {
+    const report = await generateAapSummaryPdfsRemote({ schoolId, classes, approvedOnly })
+    downloadReport(report)
+    return report
+  }
+
   return {
     schools, classes, students, remarksByStudent, scans, scanning,
     loadingSchools, loadingClasses, loadingRoster,
     loadSchools, loadClasses, loadClass, loadRemarks, reloadStudent,
     recentJobIds, watchNewJob, generate, saveComment, setStatus, setStatusBulk,
     scanSubjects, saveSubjectMapping, downloadSummaryPdf, downloadSummaryPdfs,
+    fetchClassesRemarks, downloadClassPdfs,
   }
 }

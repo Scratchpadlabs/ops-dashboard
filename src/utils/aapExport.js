@@ -44,7 +44,7 @@ export const SUBJECT_FIELDS = ['Awareness', 'Sensitivity', 'Creativity', 'Commen
 export const DETAIL_COLUMNS = [
   'Student', 'Roll No', 'Student ID', 'Subject', 'Awareness', 'Sensitivity',
   'Creativity', 'Comment', 'Words', 'Status', 'Matched via', 'Rubric row',
-  'Topics', 'Last updated', 'Updated by',
+  'Topics', 'Curricular goals', 'Competencies', 'Last updated', 'Updated by',
 ]
 
 export function detailColumns(students) {
@@ -131,7 +131,8 @@ export function buildDetailRows(students, remarksByStudent) {
         Student: name, 'Roll No': student.rollNo || '', 'Student ID': student.id,
         Subject: '', Awareness: '', Sensitivity: '', Creativity: '',
         Comment: 'No remarks generated', Words: 0, Status: '',
-        'Matched via': '', 'Rubric row': '', Topics: '', 'Last updated': '', 'Updated by': '',
+        'Matched via': '', 'Rubric row': '', Topics: '', 'Curricular goals': '', Competencies: '',
+        'Last updated': '', 'Updated by': '',
       })
       continue
     }
@@ -155,6 +156,9 @@ export function buildDetailRows(students, remarksByStudent) {
         'Rubric row': remark.frameworkSubject || '',
         // Several topics = the levels were combined across them.
         Topics: (remark.topics || []).join(' + '),
+        // What the class worked on, as the generator saw it.
+        'Curricular goals': (remark.curricularGoals || []).join('; '),
+        Competencies: (remark.competencies || []).join('; '),
         'Last updated': formatTimestamp(remark.updatedAt),
         'Updated by': remark.updatedBy || '',
       })
@@ -174,8 +178,72 @@ export function exportFilename(schoolId, classId, extension) {
 /** Comment columns get the width; a level or status column never needs it. */
 function columnWidths(columns) {
   return columns.map(column => ({
-    wch: column.endsWith('Comment') ? 80 : Math.max(12, column.length + 2),
+    wch: column.endsWith('Comment') ? 80
+      : (column === 'Competencies' || column === 'Curricular goals') ? 50
+        : Math.max(12, column.length + 2),
   }))
+}
+
+/** Only approved remarks — what a school should see when the rest are
+ *  still being reviewed. Students keep their row either way. */
+export function approvedOnly(remarksByStudent) {
+  return Object.fromEntries(Object.entries(remarksByStudent || {}).map(
+    ([id, rows]) => [id, (rows || []).filter(r => r.status === 'approved')]))
+}
+
+/** Excel sheet names: at most 31 characters, none of []:*?/\\, unique. */
+export function sheetName(label, used) {
+  const base = String(label || 'Class').replace(/[\[\]:*?/\\]/g, ' ').trim().slice(0, 31) || 'Class'
+  let name = base
+  for (let i = 2; used.has(name.toLowerCase()); i++) {
+    const suffix = ` (${i})`
+    name = base.slice(0, 31 - suffix.length) + suffix
+  }
+  used.add(name.toLowerCase())
+  return name
+}
+
+function wideSheet(students, remarksByStudent) {
+  const { columns, rows } = buildWideRows(students, remarksByStudent)
+  const sheet = XLSX.utils.json_to_sheet(rows, { header: columns })
+  sheet['!cols'] = columnWidths(columns)
+  sheet['!freeze'] = { xSplit: identityColumns(students).length, ySplit: 1 }
+  sheet['!autofilter'] = { ref: XLSX.utils.encode_range({
+    s: { r: 0, c: 0 }, e: { r: rows.length, c: Math.max(0, columns.length - 1) },
+  }) }
+  return sheet
+}
+
+/**
+ * Several classes in one workbook: an "All classes" sheet (a Class column
+ * first), one sheet per class holding only that class's children and
+ * subjects, and the Detail sheet across all of them.
+ *
+ * @param classes           [{ id, label }] in the order the sheets should run
+ * @param students          roster rows, each with its classId
+ * @returns the number of student rows written
+ */
+export function buildMultiClassWorkbook(classes, students, remarksByStudent) {
+  const book = XLSX.utils.book_new()
+  const used = new Set()
+  XLSX.utils.book_append_sheet(book, wideSheet(students, remarksByStudent), sheetName('All classes', used))
+  for (const cls of classes) {
+    const inClass = students.filter(s => s.classId === cls.id)
+    if (!inClass.length) continue
+    XLSX.utils.book_append_sheet(book, wideSheet(inClass, remarksByStudent), sheetName(cls.label || cls.id, used))
+  }
+  const detailHeader = detailColumns(students)
+  const detail = XLSX.utils.json_to_sheet(buildDetailRows(students, remarksByStudent), { header: detailHeader })
+  detail['!cols'] = columnWidths(detailHeader)
+  XLSX.utils.book_append_sheet(book, detail, sheetName('Detail', used))
+  return book
+}
+
+export function downloadAapXlsxMulti(schoolId, classes, students, remarksByStudent) {
+  const book = buildMultiClassWorkbook(classes, students, remarksByStudent)
+  const label = classes.length <= 3 ? classes.map(c => c.id).join('+') : `${classes.length}_classes`
+  XLSX.writeFile(book, exportFilename(schoolId, label, 'xlsx'))
+  return students.length
 }
 
 export function downloadAapCsv(schoolId, classId, students, remarksByStudent) {

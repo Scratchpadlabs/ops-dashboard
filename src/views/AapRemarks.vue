@@ -144,10 +144,10 @@
                 :disabled="!hasRemarks" @click="exportCsv" />
         <Button label="Export XLSX" icon="pi pi-file-excel" size="small" outlined
                 :disabled="!hasRemarks" @click="exportXlsx" />
-        <Button label="Download all PDFs" icon="pi pi-file-pdf" size="small" outlined
-                :loading="downloadingPdfs" :disabled="!hasRemarks" @click="downloadAllPdfs" />
+        <Button label="Download classes (Excel / PDF)…" icon="pi pi-download" size="small"
+                @click="openDownload" />
         <span class="text-xs text-slate-400">
-          Exports one row per student-subject, exactly as listed below.
+          CSV/XLSX export what is listed below; the download dialog takes any classes.
         </span>
       </div>
 
@@ -222,6 +222,51 @@
       </div>
     </template>
 
+    <!-- ── Multi-class download ──────────────────────────────────────────── -->
+    <!-- Reads its own classes, so a whole grade can be downloaded without
+         loading it into the review table first. -->
+    <Dialog v-model:visible="downloadVisible" header="Download AAP remarks for classes" modal
+            :style="{ width: '560px' }" :closable="!downloading">
+      <div class="space-y-4 pt-1">
+        <div>
+          <label class="form-label">Classes</label>
+          <MultiSelect
+            v-model="downloadClassIds" :options="classes" optionLabel="label" optionValue="id"
+            placeholder="Pick classes" class="w-full" filter display="chip" :maxSelectedLabels="8"
+            :disabled="downloading"
+          />
+          <div class="flex gap-3 mt-1.5 text-xs">
+            <button type="button" class="text-blue-600 hover:underline" :disabled="downloading"
+                    @click="downloadClassIds = classes.map(c => c.id)">Select all {{ classes.length }}</button>
+            <button type="button" class="text-slate-500 hover:underline" :disabled="downloading"
+                    @click="downloadClassIds = []">Clear</button>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <Checkbox v-model="downloadApprovedOnly" binary inputId="aapDownloadApproved" :disabled="downloading" />
+          <label for="aapDownloadApproved" class="text-sm text-slate-700">Approved remarks only</label>
+        </div>
+        <ul class="text-xs text-slate-500 list-disc pl-4 space-y-1">
+          <li><b>Excel</b> — an <b>All classes</b> sheet, one sheet per class, and a <b>Detail</b> sheet
+            (word counts, rubric row, curricular goals, competencies).</li>
+          <li><b>PDF</b> — a zip with a folder per class: each student's summary page, plus one
+            <b>&lt;class&gt;_all_students.pdf</b> with the whole class, ready to print.</li>
+        </ul>
+        <div v-if="downloading" class="text-sm text-slate-600 flex items-center gap-2">
+          <i class="pi pi-spin pi-spinner text-sm"></i>{{ downloadStatus }}
+        </div>
+      </div>
+      <template #footer>
+        <Button label="Cancel" text :disabled="downloading" @click="downloadVisible = false" />
+        <Button label="Download Excel" icon="pi pi-file-excel" outlined
+                :loading="downloading && downloadFormat === 'xlsx'"
+                :disabled="downloading || !downloadClassIds.length" @click="runDownload('xlsx')" />
+        <Button label="Download PDFs" icon="pi pi-file-pdf"
+                :loading="downloading && downloadFormat === 'pdf'"
+                :disabled="downloading || !downloadClassIds.length" @click="runDownload('pdf')" />
+      </template>
+    </Dialog>
+
     <AapSubjectMapDialog
       v-model:visible="mapDialogVisible"
       :school-id="schoolId"
@@ -267,6 +312,8 @@ import { useToast } from 'primevue/usetoast'
 import { useConfirm } from 'primevue/useconfirm'
 import Select from 'primevue/select'
 import MultiSelect from 'primevue/multiselect'
+import Dialog from 'primevue/dialog'
+import Checkbox from 'primevue/checkbox'
 import Password from 'primevue/password'
 import Button from 'primevue/button'
 import ProgressBar from 'primevue/progressbar'
@@ -280,7 +327,7 @@ import TabPanel from 'primevue/tabpanel'
 
 import { useStepUpAuth } from '../composables/useStepUpAuth.js'
 import { useAapRemarks } from '../composables/useAapRemarks.js'
-import { downloadAapCsv, downloadAapXlsx } from '../utils/aapExport.js'
+import { downloadAapCsv, downloadAapXlsx, downloadAapXlsxMulti, approvedOnly } from '../utils/aapExport.js'
 import AapRemarksTable from '../components/aap-remarks/AapRemarksTable.vue'
 import AapSubjectMapDialog from '../components/aap-remarks/AapSubjectMapDialog.vue'
 import AapSurveyCompletionTab from '../components/aap-remarks/AapSurveyCompletionTab.vue'
@@ -305,7 +352,8 @@ const {
   schools, classes, students, remarksByStudent, scans, scanning,
   loadingSchools, loadingClasses, loadingRoster,
   loadSchools, loadClasses, loadClass, reloadStudent,
-  recentJobIds, watchNewJob, generate, scanSubjects, downloadSummaryPdfs,
+  recentJobIds, watchNewJob, generate, scanSubjects,
+  fetchClassesRemarks, downloadClassPdfs,
 } = useAapRemarks()
 
 // ── Step-up gate ──────────────────────────────────────────────────────────
@@ -573,22 +621,66 @@ function exportXlsx() {
   toast.add({ severity: 'success', summary: `Exported ${count} rows`, life: 2500 })
 }
 
-// Only students that actually have at least one remark — a student with no
-// AAP ratings has nothing to put on a summary page.
-const downloadingPdfs = ref(false)
-async function downloadAllPdfs() {
-  const studentIds = students.value
-    .filter(s => (remarksByStudent.value[s.id] || []).length)
-    .map(s => s.id)
-  if (!studentIds.length) return
-  downloadingPdfs.value = true
+// ── Multi-class download ──────────────────────────────────────────────────
+const downloadVisible = ref(false)
+const downloadClassIds = ref([])
+const downloadApprovedOnly = ref(false)
+const downloading = ref(false)
+const downloadFormat = ref('')
+const downloadStatus = ref('')
+
+function openDownload() {
+  // Starts from the classes on screen — the common case is "download what I
+  // just generated" — and any others can be added in the dialog.
+  downloadClassIds.value = [...classIds.value]
+  downloadVisible.value = true
+}
+
+async function runDownload(format) {
+  const ids = classes.value.map(c => c.id).filter(id => downloadClassIds.value.includes(id))
+  downloading.value = true
+  downloadFormat.value = format
+  downloadStatus.value = `Collecting remarks — 0 of ${ids.length} classes…`
   try {
-    await downloadSummaryPdfs(schoolId.value, studentIds)
+    const data = await fetchClassesRemarks(schoolId.value, ids, (done, total) => {
+      downloadStatus.value = `Collecting remarks — ${done} of ${total} classes…`
+    })
+    const remarks = downloadApprovedOnly.value ? approvedOnly(data.remarksByStudent) : data.remarksByStudent
+    const picked = ids.map(id => ({ id, label: classLabel(id) }))
+
+    if (format === 'xlsx') {
+      const count = downloadAapXlsxMulti(schoolId.value, picked, data.students, remarks)
+      toast.add({ severity: 'success', life: 4000, summary: `Excel downloaded — ${count} student${count === 1 ? '' : 's'} `
+        + `in ${picked.length} class${picked.length === 1 ? '' : 'es'}` })
+    } else {
+      // Only students with something to print: a child with no (approved)
+      // remark would be a blank summary page.
+      const groups = picked
+        .map(c => ({
+          classId: c.id, label: c.label,
+          studentIds: data.students
+            .filter(s => s.classId === c.id && (remarks[s.id] || []).length)
+            .map(s => s.id),
+        }))
+        .filter(g => g.studentIds.length)
+      const total = groups.reduce((n, g) => n + g.studentIds.length, 0)
+      if (!total) {
+        toast.add({ severity: 'warn', summary: 'Nothing to download',
+          detail: downloadApprovedOnly.value ? 'No approved remarks in these classes yet.' : 'No remarks in these classes yet.', life: 5000 })
+        return
+      }
+      downloadStatus.value = `Building ${total} PDF page${total === 1 ? '' : 's'} across ${groups.length} class${groups.length === 1 ? '' : 'es'}…`
+      await downloadClassPdfs(schoolId.value, groups, { approvedOnly: downloadApprovedOnly.value })
+      toast.add({ severity: 'success', life: 4000, summary: `PDFs downloaded — ${total} student${total === 1 ? '' : 's'} `
+        + `in ${groups.length} class${groups.length === 1 ? '' : 'es'}` })
+    }
+    downloadVisible.value = false
   } catch (e) {
-    console.error('Could not generate the class PDFs', e)
-    toast.add({ severity: 'error', summary: 'Could not generate PDFs', detail: e.message, life: 4000 })
+    console.error('AAP download failed', e)
+    toast.add({ severity: 'error', summary: 'Could not download', detail: e.message, life: 5000 })
   } finally {
-    downloadingPdfs.value = false
+    downloading.value = false
+    downloadFormat.value = ''
   }
 }
 

@@ -5,7 +5,9 @@
 import {
   buildWideRows, buildDetailRows, subjectsInClass, wideColumns, countWords,
   IDENTITY_COLUMNS, SUBJECT_FIELDS, exportFilename,
+  buildMultiClassWorkbook, approvedOnly, sheetName,
 } from '../src/utils/aapExport.js'
+import * as XLSX from 'xlsx'
 
 let pass = 0, fail = 0
 const ok = (name, cond, extra = '') => {
@@ -103,6 +105,30 @@ ok('the detail sheet names the class and the combined topics',
   JSON.stringify(multiDetail.at(-1)))
 ok('a single-class roster without classId keeps the old columns',
   !columns.includes('Class') && !('Class' in detail[0]))
+
+console.log('=== multi-class workbook ===')
+const book = buildMultiClassWorkbook(
+  [{ id: 'IV_A', label: 'IV A' }, { id: 'IV_B', label: 'IV B' }, { id: 'IV_C', label: 'IV C' }],
+  multiStudents, multiRemarks)
+ok('All classes, one sheet per class with students, then Detail',
+  JSON.stringify(book.SheetNames) === JSON.stringify(['All classes', 'IV A', 'IV B', 'Detail']),
+  JSON.stringify(book.SheetNames))
+const ivB = XLSX.utils.sheet_to_json(book.Sheets['IV B'])
+ok("a class sheet holds only that class's children",
+  ivB.length === 1 && ivB[0]['Student ID'] === 'sakc0031', JSON.stringify(ivB))
+ok("a class sheet has only that class's subjects",
+  !('English Comment' in ivB[0]) && 'Maths Comment' in ivB[0], JSON.stringify(Object.keys(ivB[0])))
+const onlyApproved = approvedOnly(multiRemarks)
+ok('approved-only keeps approved remarks and every student',
+  onlyApproved.sakc0024.length === 1 && onlyApproved.sakc0031.length === 0, JSON.stringify(onlyApproved))
+const detailWithCg = buildDetailRows(multiStudents, { sakc0031: [{ ...remark('Maths', 'Proficient', 'x'),
+  curricularGoals: ['CG-1 Number sense'], competencies: ['C-1.1 Estimates', 'C-1.2 Compares'] }] })
+ok('detail sheet carries goals and competencies',
+  detailWithCg.some(r => r.Competencies === 'C-1.1 Estimates; C-1.2 Compares' && r['Curricular goals'] === 'CG-1 Number sense'))
+const used = new Set()
+ok('sheet names are unique, <= 31 chars, no forbidden characters',
+  sheetName('VII A', used) === 'VII A' && sheetName('vii a', used) === 'vii a (2)'
+    && sheetName('X/Y:'.repeat(20), used).length <= 31 && !/[[\]:*?/\\]/.test(sheetName('A:B', used)))
 
 console.log(`\n${pass} passed, ${fail} failed`)
 process.exit(fail ? 1 : 0)

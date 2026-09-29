@@ -384,8 +384,20 @@ export async function generateAapSummaryPdfRemote({ schoolId, studentId }) {
 // Same, for a whole class at once — one PDF per student, zipped, each named
 // "<student_id>.pdf" so the file can be matched back to a child for whatever
 // merge/print step happens outside this dashboard.
-export async function generateAapSummaryPdfsRemote({ schoolId, studentIds }) {
-  const res = await generateAapSummaryPdfsCallable({ school_id: schoolId, student_ids: studentIds })
+//
+// `classes` ([{ classId, label, studentIds }]) is the multi-class form: one
+// folder per class in the zip, each with the per-student PDFs plus one
+// combined "<class>_all_students.pdf" for printing. `approvedOnly` leaves
+// out remarks not yet approved (and students left with none).
+export async function generateAapSummaryPdfsRemote({ schoolId, studentIds, classes, approvedOnly }) {
+  const payload = { school_id: schoolId }
+  if (classes?.length) {
+    payload.classes = classes.map(c => ({ class_id: c.classId, label: c.label, student_ids: c.studentIds }))
+  } else {
+    payload.student_ids = studentIds
+  }
+  if (approvedOnly) payload.approved_only = true
+  const res = await generateAapSummaryPdfsCallable(payload)
   return res.data
 }
 
