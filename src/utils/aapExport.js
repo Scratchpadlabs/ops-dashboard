@@ -1,15 +1,15 @@
 /**
- * AAP remarks export — CSV and XLSX, ONE ROW PER STUDENT.
+ * AAP remarks export — the CSV (ONE ROW PER STUDENT) and the entry point for
+ * the teacher-facing Excel file (aapTeacherWorkbook.js).
  *
- * Each subject contributes its own block of columns (levels, comment, status),
- * so a class of 25 students across 5 subjects is 25 rows, not 125. That is the
- * shape a report card is filled from and the shape a school reads: a person
- * scanning the file is looking for a child, not for a student-subject pair.
+ * In the CSV each subject contributes its own block of columns (levels,
+ * comment, status), so a class of 25 students across 5 subjects is 25 rows,
+ * not 125 — the shape a report card is mail-merged from. It is a data file,
+ * not a reading one: the Excel file is what goes to teachers, laid out a child
+ * at a time with the remarks wrapped and the levels explained.
  *
- * The per-student-subject detail is not thrown away — the XLSX carries it on a
- * second sheet, with the word counts and the provenance (which rubric row
- * matched, and how) that the pivot has no room for. CSV, having no second
- * sheet, is the pivoted layout only.
+ * buildDetailRows (one row per student-subject, with provenance) is kept for
+ * anything that needs the flat form.
  *
  * Students with no remarks still get a row with empty subject cells, because
  * "who is missing" is one of the questions this file gets opened to answer.
@@ -18,8 +18,6 @@
  * tens of rows of text already sitting in the browser, so shipping it to a
  * function and back would add a deploy and a round trip to save nothing.
  */
-import * as XLSX from 'xlsx'
-
 import { toCsv, downloadCsv } from './csv.js'
 
 /** Word count, here rather than in the composable so this module stays free of
@@ -175,75 +173,11 @@ export function exportFilename(schoolId, classId, extension) {
   return `AAP_remarks_${safe(schoolId)}_${safe(classId)}_${today}.${extension}`
 }
 
-/** Comment columns get the width; a level or status column never needs it. */
-function columnWidths(columns) {
-  return columns.map(column => ({
-    wch: column.endsWith('Comment') ? 80
-      : (column === 'Competencies' || column === 'Curricular goals') ? 50
-        : Math.max(12, column.length + 2),
-  }))
-}
-
 /** Only approved remarks — what a school should see when the rest are
  *  still being reviewed. Students keep their row either way. */
 export function approvedOnly(remarksByStudent) {
   return Object.fromEntries(Object.entries(remarksByStudent || {}).map(
     ([id, rows]) => [id, (rows || []).filter(r => r.status === 'approved')]))
-}
-
-/** Excel sheet names: at most 31 characters, none of []:*?/\\, unique. */
-export function sheetName(label, used) {
-  const base = String(label || 'Class').replace(/[\[\]:*?/\\]/g, ' ').trim().slice(0, 31) || 'Class'
-  let name = base
-  for (let i = 2; used.has(name.toLowerCase()); i++) {
-    const suffix = ` (${i})`
-    name = base.slice(0, 31 - suffix.length) + suffix
-  }
-  used.add(name.toLowerCase())
-  return name
-}
-
-function wideSheet(students, remarksByStudent) {
-  const { columns, rows } = buildWideRows(students, remarksByStudent)
-  const sheet = XLSX.utils.json_to_sheet(rows, { header: columns })
-  sheet['!cols'] = columnWidths(columns)
-  sheet['!freeze'] = { xSplit: identityColumns(students).length, ySplit: 1 }
-  sheet['!autofilter'] = { ref: XLSX.utils.encode_range({
-    s: { r: 0, c: 0 }, e: { r: rows.length, c: Math.max(0, columns.length - 1) },
-  }) }
-  return sheet
-}
-
-/**
- * Several classes in one workbook: an "All classes" sheet (a Class column
- * first), one sheet per class holding only that class's children and
- * subjects, and the Detail sheet across all of them.
- *
- * @param classes           [{ id, label }] in the order the sheets should run
- * @param students          roster rows, each with its classId
- * @returns the number of student rows written
- */
-export function buildMultiClassWorkbook(classes, students, remarksByStudent) {
-  const book = XLSX.utils.book_new()
-  const used = new Set()
-  XLSX.utils.book_append_sheet(book, wideSheet(students, remarksByStudent), sheetName('All classes', used))
-  for (const cls of classes) {
-    const inClass = students.filter(s => s.classId === cls.id)
-    if (!inClass.length) continue
-    XLSX.utils.book_append_sheet(book, wideSheet(inClass, remarksByStudent), sheetName(cls.label || cls.id, used))
-  }
-  const detailHeader = detailColumns(students)
-  const detail = XLSX.utils.json_to_sheet(buildDetailRows(students, remarksByStudent), { header: detailHeader })
-  detail['!cols'] = columnWidths(detailHeader)
-  XLSX.utils.book_append_sheet(book, detail, sheetName('Detail', used))
-  return book
-}
-
-export function downloadAapXlsxMulti(schoolId, classes, students, remarksByStudent) {
-  const book = buildMultiClassWorkbook(classes, students, remarksByStudent)
-  const label = classes.length <= 3 ? classes.map(c => c.id).join('+') : `${classes.length}_classes`
-  XLSX.writeFile(book, exportFilename(schoolId, label, 'xlsx'))
-  return students.length
 }
 
 export function downloadAapCsv(schoolId, classId, students, remarksByStudent) {
@@ -252,28 +186,27 @@ export function downloadAapCsv(schoolId, classId, students, remarksByStudent) {
   return rows.length
 }
 
-export function downloadAapXlsx(schoolId, classId, students, remarksByStudent) {
-  const { columns, rows } = buildWideRows(students, remarksByStudent)
-  const sheet = XLSX.utils.json_to_sheet(rows, { header: columns })
-  sheet['!cols'] = columnWidths(columns)
-  // Identity columns frozen: at five subjects the sheet is 28 columns wide,
-  // and scrolling right without the name pinned makes it unreadable.
-  sheet['!freeze'] = { xSplit: identityColumns(students).length, ySplit: 1 }
-  sheet['!autofilter'] = { ref: XLSX.utils.encode_range({
-    s: { r: 0, c: 0 }, e: { r: rows.length, c: Math.max(0, columns.length - 1) },
-  }) }
-
-  const book = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(book, sheet, 'By student')
-
-  // Sheet 2 keeps what the pivot has no room for — word counts, which rubric
-  // row matched and how, who last touched each remark.
-  const detailRows = buildDetailRows(students, remarksByStudent)
-  const detailHeader = detailColumns(students)
-  const detail = XLSX.utils.json_to_sheet(detailRows, { header: detailHeader })
-  detail['!cols'] = columnWidths(detailHeader)
-  XLSX.utils.book_append_sheet(book, detail, 'Detail')
-
-  XLSX.writeFile(book, exportFilename(schoolId, classId, 'xlsx'))
-  return rows.length
+/**
+ * The Excel file teachers get — see aapTeacherWorkbook.js for its layout.
+ * exceljs is imported here, on demand, so its weight lands only on someone
+ * who actually downloads.
+ *
+ * @param classes  [{ id, label }] in sheet order
+ * @returns the number of students in the file
+ */
+export async function downloadAapWorkbook({ schoolId, schoolName, classes, students, remarksByStudent, approvedOnly = false }) {
+  const [{ default: ExcelJS }, { buildTeacherWorkbook }] = await Promise.all([
+    import('exceljs'), import('./aapTeacherWorkbook.js'),
+  ])
+  const wb = buildTeacherWorkbook(ExcelJS, { schoolName, classes, students, remarksByStudent, approvedOnly })
+  const buffer = await wb.xlsx.writeBuffer()
+  const label = classes.length <= 3 ? classes.map(c => c.id).join('+') : `${classes.length}_classes`
+  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = exportFilename(schoolName || schoolId, label, 'xlsx')
+  a.click()
+  setTimeout(() => URL.revokeObjectURL(url), 0)
+  return students.length
 }

@@ -142,12 +142,12 @@
                 :loading="scanning" :disabled="running" @click="runScan" />
         <Button label="Export CSV" icon="pi pi-download" size="small" outlined
                 :disabled="!hasRemarks" @click="exportCsv" />
-        <Button label="Export XLSX" icon="pi pi-file-excel" size="small" outlined
-                :disabled="!hasRemarks" @click="exportXlsx" />
+        <Button label="Export Excel" icon="pi pi-file-excel" size="small" outlined
+                :loading="exportingXlsx" :disabled="!hasRemarks" @click="exportXlsx" />
         <Button label="Download classes (Excel / PDF)…" icon="pi pi-download" size="small"
                 @click="openDownload" />
         <span class="text-xs text-slate-400">
-          CSV/XLSX export what is listed below; the download dialog takes any classes.
+          CSV/Excel export what is listed below; the download dialog takes any classes.
         </span>
       </div>
 
@@ -247,8 +247,9 @@
           <label for="aapDownloadApproved" class="text-sm text-slate-700">Approved remarks only</label>
         </div>
         <ul class="text-xs text-slate-500 list-disc pl-4 space-y-1">
-          <li><b>Excel</b> — an <b>All classes</b> sheet, one sheet per class, and a <b>Detail</b> sheet
-            (word counts, rubric row, curricular goals, competencies).</li>
+          <li><b>Excel</b> — laid out for teachers: a <b>Read me</b> explaining the abilities and levels,
+            a <b>Summary</b> by class, one easy-to-read sheet per class (a block per student, remarks in
+            full, levels colour-coded, print-ready), and an <b>All remarks</b> list with filters.</li>
           <li><b>PDF</b> — a zip with a folder per class: each student's summary page, plus one
             <b>&lt;class&gt;_all_students.pdf</b> with the whole class, ready to print.</li>
         </ul>
@@ -327,7 +328,7 @@ import TabPanel from 'primevue/tabpanel'
 
 import { useStepUpAuth } from '../composables/useStepUpAuth.js'
 import { useAapRemarks } from '../composables/useAapRemarks.js'
-import { downloadAapCsv, downloadAapXlsx, downloadAapXlsxMulti, approvedOnly } from '../utils/aapExport.js'
+import { downloadAapCsv, downloadAapWorkbook, approvedOnly } from '../utils/aapExport.js'
 import AapRemarksTable from '../components/aap-remarks/AapRemarksTable.vue'
 import AapSubjectMapDialog from '../components/aap-remarks/AapSubjectMapDialog.vue'
 import AapSurveyCompletionTab from '../components/aap-remarks/AapSurveyCompletionTab.vue'
@@ -616,9 +617,26 @@ function exportCsv() {
   toast.add({ severity: 'success', summary: `Exported ${count} rows`, life: 2500 })
 }
 
-function exportXlsx() {
-  const count = downloadAapXlsx(schoolId.value, exportClassLabel.value, students.value, remarksByStudent.value)
-  toast.add({ severity: 'success', summary: `Exported ${count} rows`, life: 2500 })
+const schoolName = computed(() => schools.value.find(s => s.id === schoolId.value)?.name || schoolId.value)
+
+// The same teacher-facing workbook the download dialog builds, for exactly
+// what is on screen.
+const exportingXlsx = ref(false)
+async function exportXlsx() {
+  exportingXlsx.value = true
+  try {
+    const count = await downloadAapWorkbook({
+      schoolId: schoolId.value, schoolName: schoolName.value,
+      classes: classIds.value.map(id => ({ id, label: classLabel(id) })),
+      students: students.value, remarksByStudent: remarksByStudent.value,
+    })
+    toast.add({ severity: 'success', summary: `Excel downloaded — ${count} student${count === 1 ? '' : 's'}`, life: 2500 })
+  } catch (e) {
+    console.error('Could not build the Excel file', e)
+    toast.add({ severity: 'error', summary: 'Could not build the Excel file', detail: e.message, life: 5000 })
+  } finally {
+    exportingXlsx.value = false
+  }
 }
 
 // ── Multi-class download ──────────────────────────────────────────────────
@@ -649,7 +667,10 @@ async function runDownload(format) {
     const picked = ids.map(id => ({ id, label: classLabel(id) }))
 
     if (format === 'xlsx') {
-      const count = downloadAapXlsxMulti(schoolId.value, picked, data.students, remarks)
+      const count = await downloadAapWorkbook({
+        schoolId: schoolId.value, schoolName: schoolName.value, classes: picked,
+        students: data.students, remarksByStudent: remarks, approvedOnly: downloadApprovedOnly.value,
+      })
       toast.add({ severity: 'success', life: 4000, summary: `Excel downloaded — ${count} student${count === 1 ? '' : 's'} `
         + `in ${picked.length} class${picked.length === 1 ? '' : 'es'}` })
     } else {

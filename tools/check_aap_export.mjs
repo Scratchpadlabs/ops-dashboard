@@ -5,9 +5,12 @@
 import {
   buildWideRows, buildDetailRows, subjectsInClass, wideColumns, countWords,
   IDENTITY_COLUMNS, SUBJECT_FIELDS, exportFilename,
-  buildMultiClassWorkbook, approvedOnly, sheetName,
+  approvedOnly,
 } from '../src/utils/aapExport.js'
-import * as XLSX from 'xlsx'
+import {
+  buildTeacherWorkbook, classSummaryRows, estimateLines, sheetName, statusLabel,
+} from '../src/utils/aapTeacherWorkbook.js'
+import ExcelJS from 'exceljs'
 
 let pass = 0, fail = 0
 const ok = (name, cond, extra = '') => {
@@ -106,29 +109,59 @@ ok('the detail sheet names the class and the combined topics',
 ok('a single-class roster without classId keeps the old columns',
   !columns.includes('Class') && !('Class' in detail[0]))
 
-console.log('=== multi-class workbook ===')
-const book = buildMultiClassWorkbook(
-  [{ id: 'IV_A', label: 'IV A' }, { id: 'IV_B', label: 'IV B' }, { id: 'IV_C', label: 'IV C' }],
-  multiStudents, multiRemarks)
-ok('All classes, one sheet per class with students, then Detail',
-  JSON.stringify(book.SheetNames) === JSON.stringify(['All classes', 'IV A', 'IV B', 'Detail']),
-  JSON.stringify(book.SheetNames))
-const ivB = XLSX.utils.sheet_to_json(book.Sheets['IV B'])
-ok("a class sheet holds only that class's children",
-  ivB.length === 1 && ivB[0]['Student ID'] === 'sakc0031', JSON.stringify(ivB))
-ok("a class sheet has only that class's subjects",
-  !('English Comment' in ivB[0]) && 'Maths Comment' in ivB[0], JSON.stringify(Object.keys(ivB[0])))
-const onlyApproved = approvedOnly(multiRemarks)
-ok('approved-only keeps approved remarks and every student',
-  onlyApproved.sakc0024.length === 1 && onlyApproved.sakc0031.length === 0, JSON.stringify(onlyApproved))
-const detailWithCg = buildDetailRows(multiStudents, { sakc0031: [{ ...remark('Maths', 'Proficient', 'x'),
-  curricularGoals: ['CG-1 Number sense'], competencies: ['C-1.1 Estimates', 'C-1.2 Compares'] }] })
-ok('detail sheet carries goals and competencies',
-  detailWithCg.some(r => r.Competencies === 'C-1.1 Estimates; C-1.2 Compares' && r['Curricular goals'] === 'CG-1 Number sense'))
+console.log('=== teacher workbook ===')
+const classesPicked = [{ id: 'IV_A', label: 'IV A' }, { id: 'IV_B', label: 'IV B' }, { id: 'IV_C', label: 'IV C' }]
+const wb = buildTeacherWorkbook(ExcelJS, {
+  schoolName: 'A K C School', classes: classesPicked, students: multiStudents, remarksByStudent: multiRemarks,
+  date: new Date('2026-09-29'),
+})
+ok('Read me, Summary, a sheet per class with students, then All remarks',
+  JSON.stringify(wb.worksheets.map(w => w.name)) === JSON.stringify(['Read me', 'Summary', 'IV A', 'IV B', 'All remarks']),
+  JSON.stringify(wb.worksheets.map(w => w.name)))
+// Round-trip through a real .xlsx so merges/styles are what Excel will see.
+const back = new ExcelJS.Workbook()
+await back.xlsx.load(await wb.xlsx.writeBuffer())
+const ivA = back.getWorksheet('IV A')
+ok('class sheet header is plain words',
+  JSON.stringify(ivA.getRow(3).values.slice(1)) === JSON.stringify(
+    ['Roll No', 'Student', 'Subject', 'Awareness', 'Sensitivity', 'Creativity', 'Remark', 'Status']),
+  JSON.stringify(ivA.getRow(3).values))
+ok('one row per subject for a child, name merged down the block',
+  ivA.getCell('C4').value === 'English' && ivA.getCell('C6').value === 'Maths'
+    && ivA.getCell('B6').isMerged && ivA.getCell('B6').master.address === 'B4',
+  `${ivA.getCell('C4').value} ${ivA.getCell('C6').value} ${ivA.getCell('B6').master?.address}`)
+ok('status reads as words, not codes',
+  ivA.getCell('H4').value === 'Approved' && ivA.getCell('H5').value === 'To review',
+  `${ivA.getCell('H4').value} / ${ivA.getCell('H5').value}`)
+ok('levels are colour-coded',
+  ivA.getCell('D4').fill?.fgColor?.argb === 'FFDCFCE7', JSON.stringify(ivA.getCell('D4').fill))
+ok('remarks wrap and rows are tall enough for them',
+  ivA.getCell('G4').alignment?.wrapText === true && ivA.getRow(4).height >= 20, String(ivA.getRow(4).height))
+ok('class sheet prints landscape, one page wide, header repeated',
+  ivA.pageSetup.orientation === 'landscape' && ivA.pageSetup.fitToWidth === 1 && ivA.pageSetup.printTitlesRow === '3:3',
+  JSON.stringify(ivA.pageSetup))
+const noRemarkWb = buildTeacherWorkbook(ExcelJS, { schoolName: 'S', classes: [{ id: 'IV_A', label: 'IV A' }],
+  students: students.map(s => ({ ...s, classId: 'IV_A' })), remarksByStudent })
+const unrated = noRemarkWb.getWorksheet('IV A').getColumn(7).values.find(v => String(v).startsWith('No AAP ratings'))
+ok('a child with no remarks keeps a row saying so', !!unrated)
+const summary = classSummaryRows(classesPicked, multiStudents, multiRemarks)
+ok('summary counts per class, classes without students left out',
+  summary.length === 2 && summary[0].Remarks === 3 && summary[0].Approved === 1 && summary[0]['To review'] === 2,
+  JSON.stringify(summary))
+const data = back.getWorksheet('All remarks')
+ok('All remarks has a filter and one row per remark',
+  !!data.autoFilter && data.rowCount === 1 + 4, `${data.rowCount} rows`)
+ok('no technical columns in the teacher file',
+  !data.getRow(1).values.some(v => v === 'Matched via' || v === 'Rubric row'), JSON.stringify(data.getRow(1).values))
+ok('status labels', statusLabel('approved') === 'Approved' && statusLabel('needs_review') === 'To review')
+ok('line estimate grows with text', estimateLines('x'.repeat(300), 78) > estimateLines('short', 78))
 const used = new Set()
 ok('sheet names are unique, <= 31 chars, no forbidden characters',
   sheetName('VII A', used) === 'VII A' && sheetName('vii a', used) === 'vii a (2)'
     && sheetName('X/Y:'.repeat(20), used).length <= 31 && !/[[\]:*?/\\]/.test(sheetName('A:B', used)))
+const onlyApproved = approvedOnly(multiRemarks)
+ok('approved-only keeps approved remarks and every student',
+  onlyApproved.sakc0024.length === 1 && onlyApproved.sakc0031.length === 0, JSON.stringify(onlyApproved))
 
 console.log(`\n${pass} passed, ${fail} failed`)
 process.exit(fail ? 1 : 0)
