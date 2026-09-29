@@ -297,7 +297,7 @@ function openEditStudent(student) {
   editingStudent.value = student
   Object.assign(form, {
     name: student.name || '', id: student.id, currentClassId: student.currentClassId || null,
-    gender: student.gender || '', dateOfBirth: student.dateOfBirth || null, phoneNo: student.phoneNo ?? null,
+    gender: student.gender || '', dateOfBirth: student.dateOfBirth || null, phoneNo: toPhoneNo(student.phoneNo),
     rollNo: student.rollNo || '', admNo: student.admNo || '', grEmisSts: student.grEmisSts || '',
     aadhaarNumber: student.aadhaarNumber || '', address: student.address || '',
   })
@@ -325,7 +325,7 @@ async function saveStudent() {
       currentClassId: form.currentClassId,
       gender: form.gender || '',
       dateOfBirth: form.dateOfBirth || null,
-      phoneNo: form.phoneNo,
+      phoneNo: toPhoneNo(form.phoneNo),
       rollNo: form.rollNo.trim(), admNo: form.admNo.trim(), grEmisSts: form.grEmisSts.trim(),
       aadhaarNumber: form.aadhaarNumber.trim(), address: form.address.trim(),
       updated_at: serverTimestamp(), updated_by: auth.currentUser?.email || 'unknown',
