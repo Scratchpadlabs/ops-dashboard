@@ -52,6 +52,23 @@ export const MAX_WORDS = 55
 // be checked by tools/check_aap_export.mjs.
 export { countWords } from '../utils/aapExport.js'
 
+// ── PDF title ────────────────────────────────────────────────────────────────
+// The heading on every summary PDF. Module-level so the download dialog and
+// the per-student PDF icon in the table use the same choice, and remembered
+// in this browser (a per-viewer convenience — the server falls back to the
+// academic-year title whenever none is sent).
+export const PDF_TITLE_PRESETS = ['Summary For The Academic Year', 'Summary For The Term']
+export const MAX_PDF_TITLE = 80
+const PDF_TITLE_KEY = 'aap.pdfTitle'
+function readPdfTitle() {
+  try { return localStorage.getItem(PDF_TITLE_KEY) || PDF_TITLE_PRESETS[0] } catch { return PDF_TITLE_PRESETS[0] }
+}
+export const pdfTitle = ref(readPdfTitle())
+export function setPdfTitle(title) {
+  pdfTitle.value = String(title || '').replace(/\s+/g, ' ').trim().slice(0, MAX_PDF_TITLE) || PDF_TITLE_PRESETS[0]
+  try { localStorage.setItem(PDF_TITLE_KEY, pdfTitle.value) } catch { /* storage unavailable */ }
+}
+
 /** `fn` over `items`, at most `limit` at a time, results in input order. */
 async function mapLimit(items, limit, fn) {
   const out = new Array(items.length)
@@ -289,18 +306,18 @@ export function useAapRemarks() {
 
   // ── Per-student summary PDF ────────────────────────────────────────────────
   async function downloadSummaryPdf(schoolId, studentId) {
-    const report = await generateAapSummaryPdfRemote({ schoolId, studentId })
+    const report = await generateAapSummaryPdfRemote({ schoolId, studentId, title: pdfTitle.value })
     downloadReport(report)
   }
 
   async function downloadSummaryPdfs(schoolId, studentIds) {
-    const report = await generateAapSummaryPdfsRemote({ schoolId, studentIds })
+    const report = await generateAapSummaryPdfsRemote({ schoolId, studentIds, title: pdfTitle.value })
     downloadReport(report)
   }
 
   /** classes: [{ classId, label, studentIds }] — a zip with a folder per class. */
   async function downloadClassPdfs(schoolId, classes, { approvedOnly = false } = {}) {
-    const report = await generateAapSummaryPdfsRemote({ schoolId, classes, approvedOnly })
+    const report = await generateAapSummaryPdfsRemote({ schoolId, classes, approvedOnly, title: pdfTitle.value })
     downloadReport(report)
     return report
   }

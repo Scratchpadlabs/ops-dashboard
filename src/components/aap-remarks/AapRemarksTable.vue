@@ -70,7 +70,7 @@
                 icon="pi pi-file-pdf" text rounded size="small" class="ml-auto flex-shrink-0"
                 :loading="downloadingStudentId === data.studentId"
                 :disabled="!!busyStudentId || !!downloadingStudentId || data.empty"
-                v-tooltip.top="'Download this student\'s summary PDF'"
+                v-tooltip.top="`Download this student's summary PDF — “${pdfTitle}”`"
                 @click="downloadPdf(data.studentId)"
               />
               <Button
@@ -220,7 +220,7 @@ import InputText from 'primevue/inputtext'
 import Checkbox from 'primevue/checkbox'
 
 import {
-  useAapRemarks, countWords, TRAITS, MIN_WORDS, MAX_WORDS,
+  useAapRemarks, countWords, TRAITS, MIN_WORDS, MAX_WORDS, pdfTitle,
   STATUS_APPROVED, STATUS_NEEDS_REVIEW,
 } from '../../composables/useAapRemarks.js'
 

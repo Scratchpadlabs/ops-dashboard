@@ -242,6 +242,22 @@
                     @click="downloadClassIds = []">Clear</button>
           </div>
         </div>
+        <div>
+          <label class="form-label">PDF title</label>
+          <div class="flex flex-col gap-1.5">
+            <div v-for="opt in titleOptions" :key="opt.value" class="flex items-center gap-2">
+              <RadioButton v-model="titleChoice" :value="opt.value" :inputId="`aapTitle-${opt.value}`" :disabled="downloading" />
+              <label :for="`aapTitle-${opt.value}`" class="text-sm text-slate-700">{{ opt.label }}</label>
+            </div>
+            <InputText
+              v-if="titleChoice === 'custom'" v-model="customTitle" :maxlength="MAX_PDF_TITLE"
+              placeholder="e.g. Summary For Term 1 (2026–27)" class="w-full" size="small" :disabled="downloading"
+            />
+          </div>
+          <p class="text-[11px] text-slate-400 mt-1">
+            The heading at the top of every PDF page. Also used by the PDF icon next to each student.
+          </p>
+        </div>
         <div class="flex items-center gap-2">
           <Checkbox v-model="downloadApprovedOnly" binary inputId="aapDownloadApproved" :disabled="downloading" />
           <label for="aapDownloadApproved" class="text-sm text-slate-700">Approved remarks only</label>
@@ -264,7 +280,8 @@
                 :disabled="downloading || !downloadClassIds.length" @click="runDownload('xlsx')" />
         <Button label="Download PDFs" icon="pi pi-file-pdf"
                 :loading="downloading && downloadFormat === 'pdf'"
-                :disabled="downloading || !downloadClassIds.length" @click="runDownload('pdf')" />
+                :disabled="downloading || !downloadClassIds.length || (titleChoice === 'custom' && !customTitle.trim())"
+                @click="runDownload('pdf')" />
       </template>
     </Dialog>
 
@@ -315,6 +332,8 @@ import Select from 'primevue/select'
 import MultiSelect from 'primevue/multiselect'
 import Dialog from 'primevue/dialog'
 import Checkbox from 'primevue/checkbox'
+import RadioButton from 'primevue/radiobutton'
+import InputText from 'primevue/inputtext'
 import Password from 'primevue/password'
 import Button from 'primevue/button'
 import ProgressBar from 'primevue/progressbar'
@@ -327,7 +346,9 @@ import TabPanels from 'primevue/tabpanels'
 import TabPanel from 'primevue/tabpanel'
 
 import { useStepUpAuth } from '../composables/useStepUpAuth.js'
-import { useAapRemarks } from '../composables/useAapRemarks.js'
+import {
+  useAapRemarks, pdfTitle, setPdfTitle, PDF_TITLE_PRESETS, MAX_PDF_TITLE,
+} from '../composables/useAapRemarks.js'
 import { downloadAapCsv, downloadAapWorkbook, approvedOnly } from '../utils/aapExport.js'
 import AapRemarksTable from '../components/aap-remarks/AapRemarksTable.vue'
 import AapSubjectMapDialog from '../components/aap-remarks/AapSubjectMapDialog.vue'
@@ -647,10 +668,32 @@ const downloading = ref(false)
 const downloadFormat = ref('')
 const downloadStatus = ref('')
 
+// PDF heading: the two presets, or the admin's own text.
+const titleOptions = [
+  { value: 'year', label: PDF_TITLE_PRESETS[0] },
+  { value: 'term', label: PDF_TITLE_PRESETS[1] },
+  { value: 'custom', label: 'Custom…' },
+]
+const titleChoice = ref('year')
+const customTitle = ref('')
+function syncTitleFromStore() {
+  const i = PDF_TITLE_PRESETS.indexOf(pdfTitle.value)
+  titleChoice.value = i === 0 ? 'year' : i === 1 ? 'term' : 'custom'
+  customTitle.value = i === -1 ? pdfTitle.value : ''
+}
+syncTitleFromStore()
+watch([titleChoice, customTitle], ([choice, custom]) => {
+  if (choice === 'year') setPdfTitle(PDF_TITLE_PRESETS[0])
+  else if (choice === 'term') setPdfTitle(PDF_TITLE_PRESETS[1])
+  // An empty custom box keeps the last title rather than snapping back.
+  else if (custom.trim()) setPdfTitle(custom)
+})
+
 function openDownload() {
   // Starts from the classes on screen — the common case is "download what I
   // just generated" — and any others can be added in the dialog.
   downloadClassIds.value = [...classIds.value]
+  syncTitleFromStore()
   downloadVisible.value = true
 }
 

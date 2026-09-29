@@ -86,6 +86,7 @@ import random
 import re
 import time
 import zipfile
+from xml.sax.saxutils import escape as xml_escape
 from collections import Counter, defaultdict
 
 from firebase_admin import initialize_app, firestore
@@ -952,7 +953,8 @@ def save_aap_subject_mapping(req: https_fn.CallableRequest) -> dict:
 
 
 # ── Per-student summary PDF ─────────────────────────────────────────────────
-# One page per child: "Summary For The Academic Year" — a table of every
+# One page per child: "Summary For The Academic Year" (or the title the caller
+# picks: "Summary For The Term", or custom text) — a table of every
 # subject the student has an aap_remarks doc for, its three trait levels and
 # the written comment. A subject the student never appeared for (an optional
 # language stream, say) has no aap_remarks doc at all (see fetch_survey_ratings
@@ -1002,14 +1004,26 @@ _PDF_MARGIN = 12 * mm
 _PDF_BOTTOM = 18 * mm
 
 
-def _build_student_summary_pdf(student_id, remarks):
+DEFAULT_PDF_TITLE = "Summary For The Academic Year"
+MAX_PDF_TITLE = 80
+
+
+def _pdf_title(data):
+    """The page heading the caller chose ("Summary For The Term", or any
+    custom text), falling back to the academic-year one. Capped so a pasted
+    paragraph can't push the table off the page."""
+    title = " ".join(str(data.get("title") or "").split())[:MAX_PDF_TITLE]
+    return title or DEFAULT_PDF_TITLE
+
+
+def _build_student_summary_pdf(student_id, remarks, title=DEFAULT_PDF_TITLE):
     """remarks: [{ id (subject), awareness, sensitivity, creativity, comment }],
     already limited to subjects this student actually has a remark doc for.
     Returns the PDF as bytes."""
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=_PDF_MARGIN, rightMargin=_PDF_MARGIN,
                              topMargin=0, bottomMargin=_PDF_BOTTOM)
-    doc.build(_student_story(remarks),
+    doc.build(_student_story(remarks, title),
               onFirstPage=_watermark(student_id), onLaterPages=_watermark(student_id))
     return buf.getvalue()
 
@@ -1029,7 +1043,7 @@ class _StudentMark(Flowable):
         self.canv._aap_student_id = self.student_id
 
 
-def _build_combined_summary_pdf(students):
+def _build_combined_summary_pdf(students, title=DEFAULT_PDF_TITLE):
     """One PDF holding every student's summary page(s), each starting on a new
     page — the file a school prints for a whole class. `students` is
     [(student_id, remarks)]. Each page carries its own student's id, stamped
@@ -1050,20 +1064,24 @@ def _build_combined_summary_pdf(students):
         if i:
             story.append(PageBreak())
         story.append(_StudentMark(student_id))
-        story.extend(_student_story(remarks))
+        story.extend(_student_story(remarks, title))
     doc.build(story)
     return buf.getvalue()
 
 
-def _student_story(remarks):
+def _student_story(remarks, title=DEFAULT_PDF_TITLE):
     """The flowables of one student's summary page(s)."""
+    # The heading band is a fixed 16 mm: a longer custom title steps down in
+    # size so it still fits (two lines at the smallest) instead of spilling.
+    title_size = 18 if len(title) <= 45 else 15 if len(title) <= 56 else 12
     W, H = A4
     M = _PDF_MARGIN
     story = []
 
     header = Table(
-        [[Paragraph("Summary For The Academic Year",
-                     _pdf_style("hdr", fontName="Helvetica-Bold", fontSize=18,
+        [[Paragraph(xml_escape(title),
+                     _pdf_style("hdr", fontName="Helvetica-Bold", fontSize=title_size,
+                                leading=title_size * 1.15,
                                 textColor=colors.white, alignment=TA_CENTER))]],
         colWidths=[W - 2 * M], rowHeights=[16 * mm],
     )
@@ -1162,7 +1180,7 @@ def _fetch_student_name(school_ref, student_id):
 
 @https_fn.on_call(region="asia-south1", memory=options.MemoryOption.MB_256, timeout_sec=60)
 def generate_aap_summary_pdf(req: https_fn.CallableRequest) -> dict:
-    """{school_id, student_id} -> {filename, mime, content_base64}.
+    """{school_id, student_id, title?} -> {filename, mime, content_base64}.
 
     One "Summary For The Academic Year" page for one child, built from
     whatever aap_remarks docs already exist for them — nothing here calls the
@@ -1180,7 +1198,7 @@ def generate_aap_summary_pdf(req: https_fn.CallableRequest) -> dict:
 
     school_ref = db.collection("schools").document(school_id)
     remarks = _fetch_student_remarks(school_ref, student_id)
-    pdf_bytes = _build_student_summary_pdf(student_id, remarks)
+    pdf_bytes = _build_student_summary_pdf(student_id, remarks, _pdf_title(data))
 
     return {
         "filename": f"{student_id}.pdf",
@@ -1191,7 +1209,7 @@ def generate_aap_summary_pdf(req: https_fn.CallableRequest) -> dict:
 
 @https_fn.on_call(region="asia-south1", memory=options.MemoryOption.MB_512, timeout_sec=300)
 def generate_aap_summary_pdfs(req: https_fn.CallableRequest) -> dict:
-    """{school_id, student_ids | classes, approved_only?} ->
+    """{school_id, student_ids | classes, approved_only?, title?} ->
     {filename, mime, content_base64, students, skipped} (a zip).
 
     Bulk form of generate_aap_summary_pdf — one PDF per student inside a zip,
@@ -1208,6 +1226,7 @@ def generate_aap_summary_pdfs(req: https_fn.CallableRequest) -> dict:
     data = req.data or {}
     school_id = data.get("school_id")
     approved_only = bool(data.get("approved_only"))
+    title = _pdf_title(data)
     groups = []
     for c in data.get("classes") or []:
         if not isinstance(c, dict):
@@ -1238,11 +1257,11 @@ def generate_aap_summary_pdfs(req: https_fn.CallableRequest) -> dict:
                     if not remarks:
                         skipped += 1
                         continue
-                zf.writestr(f"{prefix}{student_id}.pdf", _build_student_summary_pdf(student_id, remarks))
+                zf.writestr(f"{prefix}{student_id}.pdf", _build_student_summary_pdf(student_id, remarks, title))
                 pages.append((student_id, remarks))
                 written += 1
             if folder and pages:
-                zf.writestr(f"{prefix}{folder}_all_students.pdf", _build_combined_summary_pdf(pages))
+                zf.writestr(f"{prefix}{folder}_all_students.pdf", _build_combined_summary_pdf(pages, title))
 
     date_str = datetime.date.today().isoformat()
     scope = "classes" if groups[0][0] else "pdfs"
