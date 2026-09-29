@@ -142,12 +142,12 @@
                 :loading="scanning" :disabled="running" @click="runScan" />
         <Button label="Export CSV" icon="pi pi-download" size="small" outlined
                 :disabled="!hasRemarks" @click="exportCsv" />
-        <Button label="Export XLSX" icon="pi pi-file-excel" size="small" outlined
-                :disabled="!hasRemarks" @click="exportXlsx" />
+        <Button label="Export Excel" icon="pi pi-file-excel" size="small" outlined
+                :loading="exportingXlsx" :disabled="!hasRemarks" @click="exportXlsx" />
         <Button label="Download classes (Excel / PDF)…" icon="pi pi-download" size="small"
                 @click="openDownload" />
         <span class="text-xs text-slate-400">
-          CSV/XLSX export what is listed below; the download dialog takes any classes.
+          CSV/Excel export what is listed below; the download dialog takes any classes.
         </span>
       </div>
 
@@ -242,13 +242,30 @@
                     @click="downloadClassIds = []">Clear</button>
           </div>
         </div>
+        <div>
+          <label class="form-label">PDF title</label>
+          <div class="flex flex-col gap-1.5">
+            <div v-for="opt in titleOptions" :key="opt.value" class="flex items-center gap-2">
+              <RadioButton v-model="titleChoice" :value="opt.value" :inputId="`aapTitle-${opt.value}`" :disabled="downloading" />
+              <label :for="`aapTitle-${opt.value}`" class="text-sm text-slate-700">{{ opt.label }}</label>
+            </div>
+            <InputText
+              v-if="titleChoice === 'custom'" v-model="customTitle" :maxlength="MAX_PDF_TITLE"
+              placeholder="e.g. Summary For Term 1 (2026–27)" class="w-full" size="small" :disabled="downloading"
+            />
+          </div>
+          <p class="text-[11px] text-slate-400 mt-1">
+            The heading at the top of every PDF page. Also used by the PDF icon next to each student.
+          </p>
+        </div>
         <div class="flex items-center gap-2">
           <Checkbox v-model="downloadApprovedOnly" binary inputId="aapDownloadApproved" :disabled="downloading" />
           <label for="aapDownloadApproved" class="text-sm text-slate-700">Approved remarks only</label>
         </div>
         <ul class="text-xs text-slate-500 list-disc pl-4 space-y-1">
-          <li><b>Excel</b> — an <b>All classes</b> sheet, one sheet per class, and a <b>Detail</b> sheet
-            (word counts, rubric row, curricular goals, competencies).</li>
+          <li><b>Excel</b> — laid out for teachers: a <b>Read me</b> explaining the abilities and levels,
+            a <b>Summary</b> by class, one easy-to-read sheet per class (a block per student, remarks in
+            full, levels colour-coded, print-ready), and an <b>All remarks</b> list with filters.</li>
           <li><b>PDF</b> — a zip with a folder per class: each student's summary page, plus one
             <b>&lt;class&gt;_all_students.pdf</b> with the whole class, ready to print.</li>
         </ul>
@@ -263,7 +280,8 @@
                 :disabled="downloading || !downloadClassIds.length" @click="runDownload('xlsx')" />
         <Button label="Download PDFs" icon="pi pi-file-pdf"
                 :loading="downloading && downloadFormat === 'pdf'"
-                :disabled="downloading || !downloadClassIds.length" @click="runDownload('pdf')" />
+                :disabled="downloading || !downloadClassIds.length || (titleChoice === 'custom' && !customTitle.trim())"
+                @click="runDownload('pdf')" />
       </template>
     </Dialog>
 
@@ -314,6 +332,8 @@ import Select from 'primevue/select'
 import MultiSelect from 'primevue/multiselect'
 import Dialog from 'primevue/dialog'
 import Checkbox from 'primevue/checkbox'
+import RadioButton from 'primevue/radiobutton'
+import InputText from 'primevue/inputtext'
 import Password from 'primevue/password'
 import Button from 'primevue/button'
 import ProgressBar from 'primevue/progressbar'
@@ -326,8 +346,10 @@ import TabPanels from 'primevue/tabpanels'
 import TabPanel from 'primevue/tabpanel'
 
 import { useStepUpAuth } from '../composables/useStepUpAuth.js'
-import { useAapRemarks } from '../composables/useAapRemarks.js'
-import { downloadAapCsv, downloadAapXlsx, downloadAapXlsxMulti, approvedOnly } from '../utils/aapExport.js'
+import {
+  useAapRemarks, pdfTitle, setPdfTitle, PDF_TITLE_PRESETS, MAX_PDF_TITLE,
+} from '../composables/useAapRemarks.js'
+import { downloadAapCsv, downloadAapWorkbook, approvedOnly } from '../utils/aapExport.js'
 import AapRemarksTable from '../components/aap-remarks/AapRemarksTable.vue'
 import AapSubjectMapDialog from '../components/aap-remarks/AapSubjectMapDialog.vue'
 import AapSurveyCompletionTab from '../components/aap-remarks/AapSurveyCompletionTab.vue'
@@ -616,9 +638,26 @@ function exportCsv() {
   toast.add({ severity: 'success', summary: `Exported ${count} rows`, life: 2500 })
 }
 
-function exportXlsx() {
-  const count = downloadAapXlsx(schoolId.value, exportClassLabel.value, students.value, remarksByStudent.value)
-  toast.add({ severity: 'success', summary: `Exported ${count} rows`, life: 2500 })
+const schoolName = computed(() => schools.value.find(s => s.id === schoolId.value)?.name || schoolId.value)
+
+// The same teacher-facing workbook the download dialog builds, for exactly
+// what is on screen.
+const exportingXlsx = ref(false)
+async function exportXlsx() {
+  exportingXlsx.value = true
+  try {
+    const count = await downloadAapWorkbook({
+      schoolId: schoolId.value, schoolName: schoolName.value,
+      classes: classIds.value.map(id => ({ id, label: classLabel(id) })),
+      students: students.value, remarksByStudent: remarksByStudent.value,
+    })
+    toast.add({ severity: 'success', summary: `Excel downloaded — ${count} student${count === 1 ? '' : 's'}`, life: 2500 })
+  } catch (e) {
+    console.error('Could not build the Excel file', e)
+    toast.add({ severity: 'error', summary: 'Could not build the Excel file', detail: e.message, life: 5000 })
+  } finally {
+    exportingXlsx.value = false
+  }
 }
 
 // ── Multi-class download ──────────────────────────────────────────────────
@@ -629,10 +668,32 @@ const downloading = ref(false)
 const downloadFormat = ref('')
 const downloadStatus = ref('')
 
+// PDF heading: the two presets, or the admin's own text.
+const titleOptions = [
+  { value: 'year', label: PDF_TITLE_PRESETS[0] },
+  { value: 'term', label: PDF_TITLE_PRESETS[1] },
+  { value: 'custom', label: 'Custom…' },
+]
+const titleChoice = ref('year')
+const customTitle = ref('')
+function syncTitleFromStore() {
+  const i = PDF_TITLE_PRESETS.indexOf(pdfTitle.value)
+  titleChoice.value = i === 0 ? 'year' : i === 1 ? 'term' : 'custom'
+  customTitle.value = i === -1 ? pdfTitle.value : ''
+}
+syncTitleFromStore()
+watch([titleChoice, customTitle], ([choice, custom]) => {
+  if (choice === 'year') setPdfTitle(PDF_TITLE_PRESETS[0])
+  else if (choice === 'term') setPdfTitle(PDF_TITLE_PRESETS[1])
+  // An empty custom box keeps the last title rather than snapping back.
+  else if (custom.trim()) setPdfTitle(custom)
+})
+
 function openDownload() {
   // Starts from the classes on screen — the common case is "download what I
   // just generated" — and any others can be added in the dialog.
   downloadClassIds.value = [...classIds.value]
+  syncTitleFromStore()
   downloadVisible.value = true
 }
 
@@ -649,7 +710,10 @@ async function runDownload(format) {
     const picked = ids.map(id => ({ id, label: classLabel(id) }))
 
     if (format === 'xlsx') {
-      const count = downloadAapXlsxMulti(schoolId.value, picked, data.students, remarks)
+      const count = await downloadAapWorkbook({
+        schoolId: schoolId.value, schoolName: schoolName.value, classes: picked,
+        students: data.students, remarksByStudent: remarks, approvedOnly: downloadApprovedOnly.value,
+      })
       toast.add({ severity: 'success', life: 4000, summary: `Excel downloaded — ${count} student${count === 1 ? '' : 's'} `
         + `in ${picked.length} class${picked.length === 1 ? '' : 'es'}` })
     } else {

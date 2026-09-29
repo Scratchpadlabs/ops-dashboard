@@ -376,8 +376,12 @@ export async function saveAapSubjectMappingRemote({ stage, token, frameworkSubje
 // One "Summary For The Academic Year" page for one child, built from whatever
 // aap_remarks docs already exist for them. Returns { filename, mime,
 // content_base64 } — pass straight to downloadReport().
-export async function generateAapSummaryPdfRemote({ schoolId, studentId }) {
-  const res = await generateAapSummaryPdfCallable({ school_id: schoolId, student_id: studentId })
+// `title` replaces the page heading ("Summary For The Academic Year" when
+// omitted) — the same option on the bulk form below.
+export async function generateAapSummaryPdfRemote({ schoolId, studentId, title }) {
+  const payload = { school_id: schoolId, student_id: studentId }
+  if (title) payload.title = title
+  const res = await generateAapSummaryPdfCallable(payload)
   return res.data
 }
 
@@ -389,7 +393,7 @@ export async function generateAapSummaryPdfRemote({ schoolId, studentId }) {
 // folder per class in the zip, each with the per-student PDFs plus one
 // combined "<class>_all_students.pdf" for printing. `approvedOnly` leaves
 // out remarks not yet approved (and students left with none).
-export async function generateAapSummaryPdfsRemote({ schoolId, studentIds, classes, approvedOnly }) {
+export async function generateAapSummaryPdfsRemote({ schoolId, studentIds, classes, approvedOnly, title }) {
   const payload = { school_id: schoolId }
   if (classes?.length) {
     payload.classes = classes.map(c => ({ class_id: c.classId, label: c.label, student_ids: c.studentIds }))
@@ -397,6 +401,7 @@ export async function generateAapSummaryPdfsRemote({ schoolId, studentIds, class
     payload.student_ids = studentIds
   }
   if (approvedOnly) payload.approved_only = true
+  if (title) payload.title = title
   const res = await generateAapSummaryPdfsCallable(payload)
   return res.data
 }
