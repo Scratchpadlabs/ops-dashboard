@@ -156,7 +156,7 @@ import {
   REMARK_CSV_COLUMNS, makeRemarkRowClassifier, groupRemarkRows, bandOfId, sampleRemarkRows,
   classIdsForCategory, keyNumber,
 } from '../../utils/remarksImport.js'
-import { guardedSetDoc, guardedUpdateDoc, guardedBatchSet, SchemaViolation } from '../../schemas/guardedWrite.js'
+import { guardedSetDoc, guardedUpdateDoc, guardedBatchSet, saveErrorMessage } from '../../schemas/guardedWrite.js'
 import { db } from '../../firebase/config'
 import { auth } from '../../firebase/config'
 
@@ -240,7 +240,7 @@ async function saveCategory() {
     toast.add({ severity: 'success', summary: 'Saved', life: 2000 })
     await loadCategories()
   } catch (e) {
-    categoryFormError.value = e instanceof SchemaViolation ? e.userMessage : 'Something went wrong. Try again.'
+    categoryFormError.value = saveErrorMessage(e)
   } finally {
     savingCategory.value = false
   }
@@ -336,7 +336,7 @@ async function saveRemarks() {
     toast.add({ severity: 'success', summary: 'Saved', life: 2000 })
     await loadCategories()
   } catch (e) {
-    remarksFormError.value = e instanceof SchemaViolation ? e.userMessage : 'Something went wrong. Try again.'
+    remarksFormError.value = saveErrorMessage(e)
   } finally {
     savingRemarks.value = false
   }

@@ -165,7 +165,7 @@ import CsvImportDialog from './CsvImportDialog.vue'
 import ConfigEmptyState from './ConfigEmptyState.vue'
 
 import { schoolCollection, schoolDoc } from '../../firebase/schoolCollections.js'
-import { guardedSetDoc, guardedUpdateDoc, guardedBatchSet, SchemaViolation, MODE_CREATE, MODE_UPDATE } from '../../schemas/guardedWrite.js'
+import { guardedSetDoc, guardedUpdateDoc, guardedBatchSet, MODE_CREATE, MODE_UPDATE, saveErrorMessage } from '../../schemas/guardedWrite.js'
 import { db, auth } from '../../firebase/config'
 import { toCsv, downloadCsv } from '../../utils/csv.js'
 import { splitName, toDateOfBirth, toPhoneNo, toAadhaar } from '../../schemas/studentMapping.js'
@@ -344,7 +344,7 @@ async function saveStudent() {
     toast.add({ severity: 'success', summary: 'Saved', life: 2000 })
     await loadAll()
   } catch (e) {
-    formError.value = e instanceof SchemaViolation ? e.userMessage : 'Something went wrong. Try again.'
+    formError.value = saveErrorMessage(e)
   } finally {
     saving.value = false
   }

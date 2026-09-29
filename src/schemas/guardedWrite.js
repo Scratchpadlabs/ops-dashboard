@@ -86,3 +86,17 @@ export function partitionValid(collection, rows, { payloadOf = r => r.payload, m
   }
   return { valid, invalid }
 }
+
+/**
+ * What a tab should put in its red box when a save throws. A schema problem
+ * already has a readable message; anything else (Firestore rejecting the
+ * write, the browser blocking firestore.googleapis.com, a network drop) used
+ * to collapse into "Something went wrong", which left nothing to act on.
+ */
+export function saveErrorMessage(e) {
+  if (e instanceof SchemaViolation) return e.userMessage
+  console.error('[save failed]', e)
+  if (e?.code === 'permission-denied') return 'You do not have permission to save this. Sign out and back in, then try again.'
+  if (e?.code === 'unavailable') return 'Could not reach the database. Check your connection, or turn off ad-blockers / browser shields for this site, then try again.'
+  return `Save failed — ${e?.code || e?.name || 'error'}: ${e?.message || 'unknown error'}`
+}
