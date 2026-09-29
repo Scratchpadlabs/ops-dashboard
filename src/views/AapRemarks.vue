@@ -222,6 +222,30 @@
       </div>
     </template>
 
+    <!-- ── File ready ────────────────────────────────────────────────────── -->
+    <!-- A file that took longer to build than the browser's download window
+         after the click lands here instead of being blocked; this button's
+         own click is what lets the browser save it. -->
+    <Dialog :visible="!!pendingFile" header="Your file is ready" modal :style="{ width: '460px' }"
+            @update:visible="v => { if (!v) discardPending() }">
+      <div v-if="pendingFile" class="flex items-center gap-3">
+        <i :class="pendingFile.name.endsWith('.xlsx') ? 'pi pi-file-excel text-green-600'
+          : pendingFile.name.endsWith('.zip') ? 'pi pi-folder text-amber-500' : 'pi pi-file-pdf text-red-500'"
+           style="font-size:1.75rem"></i>
+        <div class="min-w-0">
+          <div class="text-sm font-semibold text-slate-900 break-all">{{ pendingFile.name }}</div>
+          <div class="text-xs text-slate-400">{{ fileSize(pendingFile.size) }}</div>
+        </div>
+      </div>
+      <p class="text-xs text-slate-500 mt-3">
+        It took a moment to prepare, so your browser needs one more click to save it.
+      </p>
+      <template #footer>
+        <Button label="Cancel" text @click="discardPending" />
+        <Button label="Save file" icon="pi pi-download" autofocus @click="savePending" />
+      </template>
+    </Dialog>
+
     <!-- ── Multi-class download ──────────────────────────────────────────── -->
     <!-- Reads its own classes, so a whole grade can be downloaded without
          loading it into the review table first. -->
@@ -350,6 +374,7 @@ import {
   useAapRemarks, pdfTitle, setPdfTitle, PDF_TITLE_PRESETS, MAX_PDF_TITLE,
 } from '../composables/useAapRemarks.js'
 import { downloadAapCsv, downloadAapWorkbook, approvedOnly } from '../utils/aapExport.js'
+import { pendingFile, savePending, discardPending } from '../utils/deliverFile.js'
 import AapRemarksTable from '../components/aap-remarks/AapRemarksTable.vue'
 import AapSubjectMapDialog from '../components/aap-remarks/AapSubjectMapDialog.vue'
 import AapSurveyCompletionTab from '../components/aap-remarks/AapSurveyCompletionTab.vue'
@@ -646,12 +671,14 @@ const exportingXlsx = ref(false)
 async function exportXlsx() {
   exportingXlsx.value = true
   try {
-    const count = await downloadAapWorkbook({
+    const { count, status } = await downloadAapWorkbook({
       schoolId: schoolId.value, schoolName: schoolName.value,
       classes: classIds.value.map(id => ({ id, label: classLabel(id) })),
       students: students.value, remarksByStudent: remarksByStudent.value,
     })
-    toast.add({ severity: 'success', summary: `Excel downloaded — ${count} student${count === 1 ? '' : 's'}`, life: 2500 })
+    if (status === 'downloaded') {
+      toast.add({ severity: 'success', summary: `Excel downloaded — ${count} student${count === 1 ? '' : 's'}`, life: 2500 })
+    }
   } catch (e) {
     console.error('Could not build the Excel file', e)
     toast.add({ severity: 'error', summary: 'Could not build the Excel file', detail: e.message, life: 5000 })
@@ -661,6 +688,7 @@ async function exportXlsx() {
 }
 
 // ── Multi-class download ──────────────────────────────────────────────────
+const fileSize = (bytes) => bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`
 const downloadVisible = ref(false)
 const downloadClassIds = ref([])
 const downloadApprovedOnly = ref(false)
@@ -710,11 +738,11 @@ async function runDownload(format) {
     const picked = ids.map(id => ({ id, label: classLabel(id) }))
 
     if (format === 'xlsx') {
-      const count = await downloadAapWorkbook({
+      const { count, status } = await downloadAapWorkbook({
         schoolId: schoolId.value, schoolName: schoolName.value, classes: picked,
         students: data.students, remarksByStudent: remarks, approvedOnly: downloadApprovedOnly.value,
       })
-      toast.add({ severity: 'success', life: 4000, summary: `Excel downloaded — ${count} student${count === 1 ? '' : 's'} `
+      if (status === 'downloaded') toast.add({ severity: 'success', life: 4000, summary: `Excel downloaded — ${count} student${count === 1 ? '' : 's'} `
         + `in ${picked.length} class${picked.length === 1 ? '' : 'es'}` })
     } else {
       // Only students with something to print: a child with no (approved)
@@ -734,8 +762,8 @@ async function runDownload(format) {
         return
       }
       downloadStatus.value = `Building ${total} PDF page${total === 1 ? '' : 's'} across ${groups.length} class${groups.length === 1 ? '' : 'es'}…`
-      await downloadClassPdfs(schoolId.value, groups, { approvedOnly: downloadApprovedOnly.value })
-      toast.add({ severity: 'success', life: 4000, summary: `PDFs downloaded — ${total} student${total === 1 ? '' : 's'} `
+      const status = await downloadClassPdfs(schoolId.value, groups, { approvedOnly: downloadApprovedOnly.value })
+      if (status === 'downloaded') toast.add({ severity: 'success', life: 4000, summary: `PDFs downloaded — ${total} student${total === 1 ? '' : 's'} `
         + `in ${groups.length} class${groups.length === 1 ? '' : 'es'}` })
     }
     downloadVisible.value = false
@@ -913,7 +941,7 @@ onMounted(async () => {
     toast.add({ severity: 'error', summary: 'Could not load schools', detail: e.message, life: 4000 })
   }
 })
-onUnmounted(() => { stopWatching(); clearTimeout(selectionTimer) })
+onUnmounted(() => { stopWatching(); clearTimeout(selectionTimer); discardPending() })
 </script>
 
 <style scoped>

@@ -33,8 +33,8 @@ import {
   classDetailRemote, generateAapRemarksRemote, scanAapSubjectsRemote,
   listAapRemarksRemote, updateAapRemarkRemote, bulkUpdateAapRemarksRemote,
   saveAapSubjectMappingRemote, generateAapSummaryPdfRemote, generateAapSummaryPdfsRemote,
-  downloadReport,
 } from '../utils/api.js'
+import { deliverReport } from '../utils/deliverFile.js'
 
 export const STATUS_APPROVED = 'approved'
 export const STATUS_NEEDS_REVIEW = 'needs_review'
@@ -307,19 +307,18 @@ export function useAapRemarks() {
   // ── Per-student summary PDF ────────────────────────────────────────────────
   async function downloadSummaryPdf(schoolId, studentId) {
     const report = await generateAapSummaryPdfRemote({ schoolId, studentId, title: pdfTitle.value })
-    downloadReport(report)
+    return deliverReport(report)
   }
 
   async function downloadSummaryPdfs(schoolId, studentIds) {
     const report = await generateAapSummaryPdfsRemote({ schoolId, studentIds, title: pdfTitle.value })
-    downloadReport(report)
+    return deliverReport(report)
   }
 
   /** classes: [{ classId, label, studentIds }] — a zip with a folder per class. */
   async function downloadClassPdfs(schoolId, classes, { approvedOnly = false } = {}) {
     const report = await generateAapSummaryPdfsRemote({ schoolId, classes, approvedOnly, title: pdfTitle.value })
-    downloadReport(report)
-    return report
+    return deliverReport(report)
   }
 
   return {

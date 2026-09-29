@@ -19,6 +19,7 @@
  * function and back would add a deploy and a round trip to save nothing.
  */
 import { toCsv, downloadCsv } from './csv.js'
+import { deliverFile } from './deliverFile.js'
 
 /** Word count, here rather than in the composable so this module stays free of
  *  Firebase imports and can be exercised by tools/check_aap_export.mjs. */
@@ -192,7 +193,7 @@ export function downloadAapCsv(schoolId, classId, students, remarksByStudent) {
  * who actually downloads.
  *
  * @param classes  [{ id, label }] in sheet order
- * @returns the number of students in the file
+ * @returns { count: students in the file, status: 'downloaded' | 'pending' }
  */
 export async function downloadAapWorkbook({ schoolId, schoolName, classes, students, remarksByStudent, approvedOnly = false }) {
   const [{ default: ExcelJS }, { buildTeacherWorkbook }] = await Promise.all([
@@ -202,11 +203,8 @@ export async function downloadAapWorkbook({ schoolId, schoolName, classes, stude
   const buffer = await wb.xlsx.writeBuffer()
   const label = classes.length <= 3 ? classes.map(c => c.id).join('+') : `${classes.length}_classes`
   const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = exportFilename(schoolName || schoolId, label, 'xlsx')
-  a.click()
-  setTimeout(() => URL.revokeObjectURL(url), 0)
-  return students.length
+  // Building this can outlast the click's download window — deliverFile
+  // falls back to a Save button rather than a blocked download.
+  const status = deliverFile(blob, exportFilename(schoolName || schoolId, label, 'xlsx'))
+  return { count: students.length, status }
 }
