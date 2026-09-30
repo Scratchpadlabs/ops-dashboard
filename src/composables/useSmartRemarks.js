@@ -6,13 +6,15 @@
  * data-shape writeup — this composable is the thin client wrapper, same
  * shape as useAapRemarks.js.
  *
- * The roster comes from `class_detail` (functions/assign_survey), same as
- * AAP Remarks — that callable already resolves a class the way the rest of
- * the dashboard does, including schools whose students key their class off
- * a different field entirely.
+ * The roster comes from the generator's own scan (generate_smart_remarks,
+ * scan_only), so the students listed here are exactly the ones it reads
+ * ticks for and writes remarks to — students on `currentClassId` (what the
+ * teacher app ticks by) plus anyone with ticks in the class's sheets.
+ * `class_detail` is only a fallback for a deployed function that predates
+ * the `roster` field.
  */
 import { ref } from 'vue'
-import { getDocs, query, orderBy, limit, onSnapshot } from 'firebase/firestore'
+import { getDocs, query, orderBy, limit, onSnapshot, doc } from 'firebase/firestore'
 
 import { rootSchoolsCollection, schoolCollection, smartRemarksJobsCollection } from '../firebase/schoolCollections.js'
 import { compareClassIds } from './useSurveys.js'
@@ -28,7 +30,9 @@ export function useSmartRemarks() {
   const schools = ref([])
   const classes = ref([])
   const students = ref([])
-  // { studentId: remark | null }
+  // { studentId: [remark, ...] } — one entry per remark category (General
+  // Remarks, Physical Development, ...), never blended into one. [] means
+  // nothing has been generated yet for that student.
   const remarksByStudent = ref({})
 
   const loadingSchools = ref(false)
@@ -65,15 +69,23 @@ export function useSmartRemarks() {
     }
   }
 
+  // Returns the scan result (band, sheetFound, tick counts, ...) so the
+  // view can show its findings without a second call.
   async function loadClass(schoolId, classId) {
     students.value = []
     remarksByStudent.value = {}
-    if (!schoolId || !classId) return
+    if (!schoolId || !classId) return null
     loadingRoster.value = true
     try {
-      const detail = await classDetailRemote({ schoolId, classId })
-      students.value = detail.students || []
+      const scanResult = await scanSmartRemarksRemote({ schoolId, classId })
+      if (Array.isArray(scanResult?.roster)) {
+        students.value = scanResult.roster
+      } else {
+        const detail = await classDetailRemote({ schoolId, classId })
+        students.value = detail.students || []
+      }
       await loadRemarks(schoolId, students.value.map(s => s.id))
+      return scanResult
     } finally {
       loadingRoster.value = false
     }
@@ -85,6 +97,19 @@ export function useSmartRemarks() {
     remarksByStudent.value = { ...remarksByStudent.value, ...byStudent }
   }
 
+  // Roster + remarks for one class without touching the on-screen state —
+  // used by the multi-class export, which walks many classes in turn.
+  async function fetchClassForExport(schoolId, classId) {
+    const scanResult = await scanSmartRemarksRemote({ schoolId, classId })
+    let roster = scanResult?.roster
+    if (!Array.isArray(roster)) {
+      roster = (await classDetailRemote({ schoolId, classId })).students || []
+    }
+    const ids = roster.map(s => s.id)
+    const byStudent = ids.length ? await listSmartRemarksRemote({ schoolId, studentIds: ids }) : {}
+    return { students: roster, remarksByStudent: byStudent || {} }
+  }
+
   async function reloadStudent(schoolId, studentId) {
     await loadRemarks(schoolId, [studentId])
   }
@@ -92,23 +117,42 @@ export function useSmartRemarks() {
   const generate = generateSmartRemarksRemote
   const scan = scanSmartRemarksRemote
 
-  async function saveComment(schoolId, studentId, comment) {
-    await updateSmartRemarkRemote({ schoolId, studentId, comment, status: STATUS_APPROVED })
+  async function saveComment(schoolId, studentId, categorySlug, comment) {
+    await updateSmartRemarkRemote({ schoolId, studentId, categorySlug, comment, status: STATUS_APPROVED })
   }
 
-  async function setStatus(schoolId, studentId, status) {
-    await updateSmartRemarkRemote({ schoolId, studentId, status })
+  async function setStatus(schoolId, studentId, categorySlug, status) {
+    await updateSmartRemarkRemote({ schoolId, studentId, categorySlug, status })
   }
 
-  async function setStatusBulk(schoolId, studentIds, status) {
-    await bulkUpdateSmartRemarksRemote({ schoolId, studentIds, status })
-    return studentIds.length
+  // `items` is [{ studentId, categorySlug }, ...]
+  async function setStatusBulk(schoolId, items, status) {
+    await bulkUpdateSmartRemarksRemote({ schoolId, items, status })
+    return items.length
   }
 
   // ── Generation job progress ─────────────────────────────────────────────
-  // Same "job doc written before the model calls start" pattern as AAP —
-  // the callable only returns jobId once the whole run finishes, so a
-  // still-running job is found rather than addressed.
+  // The page mints the job id (newJobId) and passes it to the callable, then
+  // watches for that doc. A function deployed before job_id existed ignores
+  // it and makes its own id, so the watcher also accepts "the newest job for
+  // this class that wasn't there before" — the original AAP-style lookup.
+  function newJobId(schoolId) {
+    return doc(smartRemarksJobsCollection(schoolId)).id
+  }
+
+  function watchJob(schoolId, classId, jobId, knownJobIds, cb) {
+    return onSnapshot(
+      query(smartRemarksJobsCollection(schoolId), orderBy('startedAt', 'desc'), limit(20)),
+      (snap) => {
+        const jobs = snap.docs.map(d => ({ ...d.data(), id: d.id }))
+        const job = jobs.find(j => j.id === jobId)
+          || jobs.find(j => j.classId === classId && !knownJobIds.has(j.id))
+        if (job) cb(job)
+      },
+      (e) => { console.error('Smart remarks job listener failed', e) },
+    )
+  }
+
   async function recentJobIds(schoolId) {
     const snap = await getDocs(query(smartRemarksJobsCollection(schoolId), orderBy('startedAt', 'desc'), limit(20)))
     return new Set(snap.docs.map(d => d.id))
@@ -130,8 +174,8 @@ export function useSmartRemarks() {
   return {
     schools, classes, students, remarksByStudent,
     loadingSchools, loadingClasses, loadingRoster,
-    loadSchools, loadClasses, loadClass, loadRemarks, reloadStudent,
+    loadSchools, loadClasses, loadClass, loadRemarks, reloadStudent, fetchClassForExport,
     generate, scan, saveComment, setStatus, setStatusBulk,
-    recentJobIds, watchNewJob,
+    recentJobIds, watchNewJob, newJobId, watchJob,
   }
 }

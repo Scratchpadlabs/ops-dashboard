@@ -1,4 +1,5 @@
 <template>
+  <StepUpGate reason="Surveys assign and unassign work to real teachers and students — re-enter your password to proceed.">
   <div>
     <!-- Surveys live in the teacher-app tree (schools/<id>/surveys), the same
          tree School Setup works in — NOT the ops CRM's operations/ops/schools,
@@ -194,6 +195,7 @@
       :visible-survey-ids="visibleSurveyIds"
     />
   </div>
+  </StepUpGate>
 </template>
 
 <script setup>
@@ -208,6 +210,7 @@ import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import ProgressSpinner from 'primevue/progressspinner'
 
+import StepUpGate from '../components/shared/StepUpGate.vue'
 import SurveyMatrix from '../components/surveys/SurveyMatrix.vue'
 import SelectionActionDialog from '../components/surveys/SelectionActionDialog.vue'
 import ClassDrilldown from '../components/surveys/ClassDrilldown.vue'

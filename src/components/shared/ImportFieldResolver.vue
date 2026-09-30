@@ -30,7 +30,7 @@
           v-if="!options.includes(kbHint.canonical)"
           type="button"
           class="ml-1 text-violet-600 underline"
-          v-tooltip="'Not configured for this grade — add it in School Setup, or use Propose Structure'"
+          v-tooltip="'Not configured for this grade — add it in School Setup (Classes &amp; Teachers)'"
         >not in this school's setup</button>
       </div>
       <button v-if="matchCount > 0 && picked" type="button"

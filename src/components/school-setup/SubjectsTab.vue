@@ -268,7 +268,7 @@ import ConfigEmptyState from './ConfigEmptyState.vue'
 import KbClassifiedInput from '../shared/KbClassifiedInput.vue'
 
 import { schoolCollection, schoolDoc, rootSchoolsCollection } from '../../firebase/schoolCollections.js'
-import { guardedSetDoc, guardedUpdateDoc, SchemaViolation } from '../../schemas/guardedWrite.js'
+import { guardedSetDoc, guardedUpdateDoc, saveErrorMessage } from '../../schemas/guardedWrite.js'
 import { db, auth } from '../../firebase/config'
 import { toCsv, downloadCsv } from '../../utils/csv.js'
 import { useEducationKB } from '../../composables/useEducationKB.js'
@@ -454,7 +454,7 @@ function addGoal() {
 
 // ── Topics + quiz ────────────────────────────────────────────────────────
 // Same fixed Term 1 / Term 2 / Optional template classes.subjects[].topics
-// seeds (see defaultTopicsForSubject in ClassesTeachersTab.vue/StructureTab.vue)
+// seeds (see defaultTopicsForSubject in ClassesTeachersTab.vue)
 // so a subject created here and one linked to a class via those tabs start
 // from the same three topics, just in each collection's own shape.
 function defaultTopics() {
@@ -581,7 +581,7 @@ async function saveSubject() {
     toast.add({ severity: 'success', summary: 'Saved', life: 2000 })
     await loadSubjects()
   } catch (e) {
-    formError.value = e instanceof SchemaViolation ? e.userMessage : 'Something went wrong. Try again.'
+    formError.value = saveErrorMessage(e)
   } finally {
     saving.value = false
   }

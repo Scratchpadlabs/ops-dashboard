@@ -9,7 +9,8 @@
  *
  * Two hard rules:
  *   - NEVER WRITES. This module returns a PROPOSAL. Applying it is a separate,
- *     explicit step after a human has reviewed every item (StructureTab.vue).
+ *     explicit step after a human has reviewed every item (formerly the Propose
+ *     Structure tab, since removed from School Setup; nothing imports this now).
  *   - INCREMENTAL BY CONSTRUCTION. Everything is diffed against the school's
  *     existing setup, so re-running after a new import proposes only what
  *     actually changed instead of restating the whole structure. That is why

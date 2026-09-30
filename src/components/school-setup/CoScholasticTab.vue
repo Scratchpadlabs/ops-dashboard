@@ -229,7 +229,7 @@ import ConfigEmptyState from './ConfigEmptyState.vue'
 import KbClassifiedInput from '../shared/KbClassifiedInput.vue'
 
 import { schoolCollection, schoolDoc } from '../../firebase/schoolCollections.js'
-import { guardedSetDoc, guardedUpdateDoc, MODE_UPDATE, SchemaViolation } from '../../schemas/guardedWrite.js'
+import { guardedSetDoc, guardedUpdateDoc, MODE_UPDATE, saveErrorMessage } from '../../schemas/guardedWrite.js'
 import { db, auth } from '../../firebase/config'
 import { checkEnteredMarksCoScholastic, slugify } from '../../utils/assessmentHelpers.js'
 import { toCsv, downloadCsv } from '../../utils/csv.js'
@@ -433,7 +433,7 @@ async function saveActivity() {
     await loadActivities()
   } catch (e) {
     console.error(e)
-    formError.value = e instanceof SchemaViolation ? e.userMessage : 'Something went wrong. Try again.'
+    formError.value = saveErrorMessage(e)
   } finally {
     saving.value = false
   }

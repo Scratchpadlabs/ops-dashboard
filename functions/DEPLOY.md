@@ -87,6 +87,7 @@ run announced "126 remarks processed" having written none. Show `written`.
 ### Files needed in the folder:
 - main.py ✅
 - subject_match.py ✅ (pure matching logic, 29+ unit tests)
+- topic_combine.py ✅ (per-topic levels combined into one subject rubric, unit-tested)
 - requirements.txt ✅
 
 ### Subject matching — why subject_match.py exists
@@ -141,7 +142,7 @@ gcloud functions deploy generate_aap_remarks \
   --set-secrets OPENAI_API_KEY=OPENAI_API_KEY:latest
 
 # Same source dir, one deploy per entry point:
-for fn in list_aap_remarks update_aap_remark bulk_update_aap_remarks save_aap_subject_mapping; do
+for fn in list_aap_remarks update_aap_remark bulk_update_aap_remarks save_aap_subject_mapping update_aap_survey_response; do
   gcloud functions deploy "$fn" \
     --gen2 --runtime python312 --region asia-south1 \
     --source . --entry-point "$fn" \
@@ -149,6 +150,22 @@ for fn in list_aap_remarks update_aap_remark bulk_update_aap_remarks save_aap_su
     --memory 256MB --timeout 60s --max-instances 3
 done
 ```
+
+`aap_survey_completion` (the Survey Completion tab's whole-school scan) is a
+heavier read and is deployed on its own:
+```
+gcloud functions deploy aap_survey_completion \
+  --gen2 --runtime python312 --region asia-south1 \
+  --source . --entry-point aap_survey_completion \
+  --trigger-http --allow-unauthenticated --project clarified-1501 \
+  --memory 1GB --timeout 300s --max-instances 3
+```
+`update_aap_survey_response` is that tab's editor for a response's activity
+and curricular goals/competencies. Changing the activity moves the response
+doc to the new activity's survey (the teacher app files responses under
+`surveys/{activityId}/responses`), so it must be deployed together with
+`aap_survey_completion` — the editor relies on the scan's new
+`responses`/`goalOptions`/`activities`/`classStages` fields.
 Same `OPENAI_API_KEY` Secret Manager secret as process_import — see that
 section for how to create it (only `generate_aap_remarks` needs it; the other
 four entry points never call the model). As with the other callables here,
@@ -178,6 +195,50 @@ what actually size the Cloud Run resource, since this repo deploys with plain
    timeout. Not yet chunked/parallelized — only one class has been run for
    real so far. If a class run approaches the timeout, that's the trigger to
    revisit this, not something to build ahead of evidence for.
+
+---
+
+## generate_smart_remarks (Smart / general conduct remarks)
+
+Generates one conduct remark per (student, remark category) from the ticks
+teachers make on the Smart Sheets Remarks tab (`remarks_sheets/*/entries`
+against `remark_categories`), and writes them to
+`schools/{id}/students/{sid}/smart_remarks/{categorySlug}` as
+`needs_review`. One class per call; the dashboard's multi-class run simply
+calls it once per class, in sequence.
+
+### Deploy:
+```
+cd functions/generate_smart_remarks
+
+gcloud functions deploy generate_smart_remarks \
+  --gen2 --runtime python312 --region asia-south1 \
+  --source . --entry-point generate_smart_remarks \
+  --trigger-http --allow-unauthenticated --project clarified-1501 \
+  --memory 512MB --timeout 540s --max-instances 3 \
+  --set-secrets OPENAI_API_KEY=OPENAI_API_KEY:latest
+
+for fn in list_smart_remarks update_smart_remark bulk_update_smart_remarks; do
+  gcloud functions deploy "$fn" \
+    --gen2 --runtime python312 --region asia-south1 \
+    --source . --entry-point "$fn" \
+    --trigger-http --allow-unauthenticated --project clarified-1501 \
+    --memory 256MB --timeout 120s --max-instances 3
+done
+```
+
+### Progress
+- The dashboard passes a `job_id` it minted itself and watches
+  `smart_remarks_jobs/{job_id}` directly. Without `job_id` (an older page)
+  the function generates one, and the page falls back to watching for the
+  newest job on that class.
+- The job doc carries `totalRemarks` / `processedRemarks` (one per ticked
+  student x category), `writtenRemarks`, `skippedApproved`,
+  `totalStudents` / `processedStudents` and `currentStudent`, updated at most
+  about once a second.
+- A run killed by the 540s timeout never reaches its `except`, so its job
+  doc stays `running`; the page treats the callable's error as the class
+  having failed regardless.
 
 ---
 
@@ -448,6 +509,33 @@ gcloud functions deploy class_health \
   school with the same odd value resolves without anyone confirming it again.
 - `class_health` — read-only resolution report across every active school;
   the in-app twin of `tools/class_inventory.py`.
+
+### class_months (per-class attendance months)
+
+Also in `functions/school_reset`. The teacher app reads attendance months and
+their working days from `schools/{id}/classes/{classId}/months` (one doc per
+month, id = `YYYY-MM`), not from the school-wide `schools/{id}/months`. The
+School Setup **Months** tab reads and writes that path through this callable
+(Admin SDK) because firestore.rules grants the dashboard nothing that deep.
+
+```
+cd ~/ops-dashboard/functions/school_reset
+
+gcloud functions deploy class_months \
+  --gen2 --runtime python312 --region asia-south1 \
+  --source . --entry-point class_months \
+  --trigger-http --allow-unauthenticated --project clarified-1501 \
+  --memory 512MB --timeout 120s --max-instances 3
+```
+
+- `action: "list"` — every class with its months, plus the legacy
+  school-wide months (the Months tab offers to copy those into classes that
+  have none).
+- `action: "save"` — rows `{classId, key, label, month, year, order,
+  workingDays}`, validated against the `months` schema; any bad row rejects
+  the whole save. Stamps `updatedAt`/`updatedBy`.
+- `action: "delete"` — rows `{classId, key}`.
+- Ops-admin only (`ops_admins.py`).
 
 **IMPORTANT — `functions/shared` is mirrored, not imported.** `gcloud
 functions deploy --source .` uploads one folder, so `class_resolver.py`,

@@ -94,12 +94,7 @@
         <Tab value="remarks">Remarks</Tab>
         <Tab value="months">Months</Tab>
         <Tab value="class-map">Class Map</Tab>
-        <Tab value="class-health">Class Health</Tab>
-        <Tab value="structure">Propose Structure</Tab>
-        <Tab value="knowledge-base">Knowledge Base</Tab>
         <Tab value="sheets-status">Sheets Status</Tab>
-        <Tab value="sheets-overview">Sheets Overview</Tab>
-        <Tab value="clone-school">Clone School</Tab>
         <Tab value="templates">Templates</Tab>
         <Tab value="publish"><i class="pi pi-cloud-upload text-xs mr-1.5"></i>Publish</Tab>
       </TabList>
@@ -126,12 +121,7 @@
         <TabPanel value="remarks"><RemarksTab :school-id="selectedSchoolId" /></TabPanel>
         <TabPanel value="months"><MonthsTab :school-id="selectedSchoolId" /></TabPanel>
         <TabPanel value="class-map"><ClassMapTab :school-id="selectedSchoolId" /></TabPanel>
-        <TabPanel value="class-health"><ClassHealthTab /></TabPanel>
-        <TabPanel value="structure"><StructureTab :school-id="selectedSchoolId" /></TabPanel>
-        <TabPanel value="knowledge-base"><KnowledgeBaseTab /></TabPanel>
         <TabPanel value="sheets-status"><SheetsStatusTab :school-id="selectedSchoolId" /></TabPanel>
-        <TabPanel value="sheets-overview"><SheetsOverviewTab :school-id="selectedSchoolId" /></TabPanel>
-        <TabPanel value="clone-school"><CloneSchoolTab :school-id="selectedSchoolId" :school="selectedSchoolObject" /></TabPanel>
         <TabPanel value="templates"><TemplatesTab :school-id="selectedSchoolId" /></TabPanel>
         <TabPanel value="publish"><PublishTab :school-id="selectedSchoolId" /></TabPanel>
       </TabPanels>
@@ -147,6 +137,7 @@
 
 <script setup>
 import { ref, computed, onMounted, provide, watch } from 'vue'
+import { useAutoRefresh } from '../composables/useAutoRefresh.js'
 import { useRouter } from 'vue-router'
 import { getDocs, query, orderBy, limit, setDoc, serverTimestamp } from 'firebase/firestore'
 import Select from 'primevue/select'
@@ -174,14 +165,9 @@ import AssessmentsTab from '../components/school-setup/AssessmentsTab.vue'
 import CoScholasticTab from '../components/school-setup/CoScholasticTab.vue'
 import OverviewTab from '../components/school-setup/OverviewTab.vue'
 import SheetsStatusTab from '../components/school-setup/SheetsStatusTab.vue'
-import SheetsOverviewTab from '../components/school-setup/SheetsOverviewTab.vue'
-import CloneSchoolTab from '../components/school-setup/CloneSchoolTab.vue'
 import TemplatesTab from '../components/school-setup/TemplatesTab.vue'
 import PublishTab from '../components/school-setup/PublishTab.vue'
-import StructureTab from '../components/school-setup/StructureTab.vue'
-import KnowledgeBaseTab from '../components/school-setup/KnowledgeBaseTab.vue'
 import ClassMapTab from '../components/school-setup/ClassMapTab.vue'
-import ClassHealthTab from '../components/school-setup/ClassHealthTab.vue'
 import NewSchoolWizard from '../components/school-setup/NewSchoolWizard.vue'
 import ResetSchoolWizard from '../components/school-setup/ResetSchoolWizard.vue'
 import ResetTopicTab from '../components/school-setup/ResetTopicTab.vue'
@@ -258,10 +244,16 @@ function onResetTarget(schoolId) {
  * state, so leaving for another tab or route and coming back resumes at the
  * same step. That's why this can navigate away freely.
  */
+// Every tab id the strip actually has — a link to a tab that has since been
+// removed lands on Overview instead of a blank panel.
+const TAB_IDS = new Set(['new-school', 'reset-school', 'reset-topic', 'overview', 'terms-scales', 'subjects',
+  'classes-teachers', 'teachers', 'students', 'assessments', 'co-scholastic', 'remarks', 'months',
+  'class-map', 'sheets-status', 'templates', 'publish'])
+
 function handleOpenTab(to) {
   if (!to) return
   if (String(to).startsWith('/')) router.push(to)
-  else activeTab.value = to
+  else activeTab.value = TAB_IDS.has(to) ? to : 'overview'
 }
 
 /** New School wizard created a school: refresh the selector and point it at
@@ -306,7 +298,7 @@ const schools = ref([])
 const loadingSchools = ref(false)
 // Lets a config tab's empty state send the user somewhere useful without
 // threading an emit through every tab component.
-provide('goToSetupTab', (tab) => { activeTab.value = tab })
+provide('goToSetupTab', (tab) => handleOpenTab(tab))
 
 const selectedSchoolId = ref(null)
 const creatingTestSchool = ref(false)
@@ -318,6 +310,10 @@ const selectedSchoolObject = computed(() => schools.value.find(s => s.id === sel
 // eagerly, so declaring this any earlier reads the const in its temporal dead
 // zone and throws during setup — which renders the whole page blank.
 watch(selectedSchoolObject, refreshOutstanding, { immediate: true })
+
+// The school list (and each school's name/active flag) refreshes in place;
+// the tabs keep their own data, since they hold edits in progress.
+useAutoRefresh(() => loadSchools())
 
 async function loadSchools() {
   loadingSchools.value = true

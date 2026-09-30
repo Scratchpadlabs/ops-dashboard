@@ -158,10 +158,10 @@ import CsvImportDialog from './CsvImportDialog.vue'
 import ConfigEmptyState from './ConfigEmptyState.vue'
 
 import { schoolCollection, schoolDoc } from '../../firebase/schoolCollections.js'
-import { guardedSetDoc, guardedUpdateDoc, guardedBatchSet, SchemaViolation, MODE_CREATE, MODE_UPDATE } from '../../schemas/guardedWrite.js'
+import { guardedSetDoc, guardedUpdateDoc, guardedBatchSet, MODE_CREATE, MODE_UPDATE, saveErrorMessage } from '../../schemas/guardedWrite.js'
 import { db, auth } from '../../firebase/config'
 import { toCsv, downloadCsv } from '../../utils/csv.js'
-import { splitName } from '../../schemas/studentMapping.js'
+import { splitName, toPhoneNo } from '../../schemas/studentMapping.js'
 
 const props = defineProps({ schoolId: { type: String, default: null } })
 const toast = useToast()
@@ -265,7 +265,7 @@ function openEditTeacher(staff) {
   editingStaff.value = staff
   Object.assign(form, {
     name: staff.name || '', id: staff.id, email: staff.email || '',
-    phoneNo: staff.phoneNo ?? null, sex: staff.sex || '', type: staff.type || 'teacher',
+    phoneNo: toPhoneNo(staff.phoneNo), sex: staff.sex || '', type: staff.type || 'teacher',
     admin: !!staff.admin,
   })
   Object.keys(assignmentsState).forEach(k => delete assignmentsState[k])
@@ -306,7 +306,7 @@ async function saveTeacher() {
     const { firstName, lastName } = splitName(form.name)
     const payload = {
       name: form.name.trim(), firstName, lastName,
-      email: form.email.trim(), phoneNo: form.phoneNo,
+      email: form.email.trim(), phoneNo: toPhoneNo(form.phoneNo),
       sex: form.sex || '', type: (form.type || 'teacher').trim(),
       admin: !!form.admin,
       classIds: [...selectedClassIds.value],
@@ -329,7 +329,7 @@ async function saveTeacher() {
     toast.add({ severity: 'success', summary: 'Saved', life: 2000 })
     await loadAll()
   } catch (e) {
-    formError.value = e instanceof SchemaViolation ? e.userMessage : 'Something went wrong. Try again.'
+    formError.value = saveErrorMessage(e)
   } finally {
     saving.value = false
   }
@@ -407,7 +407,12 @@ async function classifyImportRow(raw) {
   // whatever classIds/assignments/coScholasticClassIds the row carries and
   // gets every class and subject instead, so a CSV import can't produce a
   // half-access "admin".
-  const admin = TRUTHY.has((raw.admin || '').trim().toLowerCase())
+  // A blank admin cell keeps an existing teacher's current setting, like every
+  // other column here is additive. Only an explicit "false"/"no"/"0" removes
+  // admin; otherwise re-importing an older CSV (from before the admin column)
+  // would silently strip admin from the school's admins.
+  const adminCell = (raw.admin || '').trim().toLowerCase()
+  const admin = adminCell ? TRUTHY.has(adminCell) : !!existing?.admin
   let finalCoScholasticClassIds = coScholasticClassIds
   let finalAssignments = assignments
   if (admin) {
@@ -419,7 +424,7 @@ async function classifyImportRow(raw) {
   const payload = {
     name, firstName, lastName,
     email: (raw.email || '').trim(),
-    phoneNo: phoneRaw ? Number(phoneRaw) : null,
+    phoneNo: toPhoneNo(phoneRaw),
     sex: (raw.sex || '').trim(),
     type: (raw.type || '').trim() || 'teacher',
     admin,

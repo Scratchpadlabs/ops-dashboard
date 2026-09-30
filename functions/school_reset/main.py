@@ -55,6 +55,7 @@ from class_resolver import (
 from promotion import (
     ACTION_PROMOTE, ACTION_GRADUATE, plan_fingerprint, plan_to_csv,
 )
+from class_months import MONTH_FIELDS, plan_save, plan_delete, sort_months
 
 firebase_admin.initialize_app()
 
@@ -744,6 +745,94 @@ def save_class_map(req: https_fn.CallableRequest):
             print(f"alias sharing failed (class map saved regardless): {e}")
 
     return {"written": written, "aliases_shared": shared}
+
+
+# ───────────────────────────── class_months ────────────────────────────────
+def _month_out(d):
+    row = d.to_dict() or {}
+    out = {f: row.get(f) for f in MONTH_FIELDS if f in row}
+    out["id"] = d.id
+    out.setdefault("key", d.id)
+    return out
+
+
+@https_fn.on_call(region="asia-south1", memory=options.MemoryOption.MB_512,
+                   timeout_sec=120, max_instances=3)
+def class_months(req: https_fn.CallableRequest):
+    """Per-class attendance months: schools/{id}/classes/{classId}/months.
+
+    The teacher app reads working days per class from there, not from the
+    school-wide months collection. It lives behind a callable (Admin SDK)
+    rather than a client write because that path is two levels below
+    anything firestore.rules grants the dashboard.
+
+    action "list"   -> {classes: [{id, name, clazz, section, isActive, months: [...]}],
+                        legacy: [school-wide months]}
+    action "save"   rows [{classId, key, label, month, year, order, workingDays}]
+                    -> {written}. All rows are validated first; any error
+                    rejects the whole save.
+    action "delete" rows [{classId, key}] -> {deleted}
+    """
+    email = _require_ops_admin(req)
+    data = req.data or {}
+    school_id = (data.get("schoolId") or "").strip()
+    action = data.get("action") or "list"
+    if not school_id or "/" in school_id:
+        raise https_fn.HttpsError(
+            https_fn.FunctionsErrorCode.INVALID_ARGUMENT, "Missing schoolId")
+
+    db = firestore.client()
+    ref = _school_ref(db, school_id)
+    classes_ref = ref.collection("classes")
+
+    if action == "list":
+        classes = []
+        for c in classes_ref.stream():
+            row = c.to_dict() or {}
+            months = [_month_out(m) for m in classes_ref.document(c.id).collection("months").stream()]
+            classes.append({
+                "id": c.id,
+                "name": row.get("name") or c.id,
+                "clazz": row.get("clazz") or "",
+                "section": row.get("section") or "",
+                "isActive": row.get("isActive", True) is not False,
+                "months": sort_months(months),
+            })
+        legacy = sort_months([_month_out(m) for m in ref.collection("months").stream()])
+        return {"classes": classes, "legacy": legacy}
+
+    if action == "save":
+        class_ids = [c.id for c in classes_ref.select([]).stream()]
+        writes, errors = plan_save(data.get("rows"), class_ids)
+        if errors:
+            first = errors[0]
+            raise https_fn.HttpsError(
+                https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
+                f"{len(errors)} row(s) rejected — first: "
+                f"{first['classId'] or '?'} {first['key'] or ''}: {first['reason']}",
+                {"errors": errors[:50]})
+        for i in range(0, len(writes), WRITE_CHUNK):
+            batch = db.batch()
+            for class_id, key, payload in writes[i:i + WRITE_CHUNK]:
+                batch.set(classes_ref.document(class_id).collection("months").document(key), {
+                    **payload,
+                    "updatedAt": firestore.SERVER_TIMESTAMP,
+                    "updatedBy": email,
+                }, merge=True)
+            batch.commit()
+        return {"written": len(writes)}
+
+    if action == "delete":
+        targets = plan_delete(data.get("rows"))
+        for i in range(0, len(targets), WRITE_CHUNK):
+            batch = db.batch()
+            for class_id, key in targets[i:i + WRITE_CHUNK]:
+                batch.delete(classes_ref.document(class_id).collection("months").document(key))
+            batch.commit()
+        return {"deleted": len(targets)}
+
+    raise https_fn.HttpsError(
+        https_fn.FunctionsErrorCode.INVALID_ARGUMENT, f"Unknown action: {action}")
 
 
 # ───────────────────────────── class_health ────────────────────────────────

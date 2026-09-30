@@ -33,8 +33,8 @@ import {
   classDetailRemote, generateAapRemarksRemote, scanAapSubjectsRemote,
   listAapRemarksRemote, updateAapRemarkRemote, bulkUpdateAapRemarksRemote,
   saveAapSubjectMappingRemote, generateAapSummaryPdfRemote, generateAapSummaryPdfsRemote,
-  downloadReport,
 } from '../utils/api.js'
+import { deliverReport } from '../utils/deliverFile.js'
 
 export const STATUS_APPROVED = 'approved'
 export const STATUS_NEEDS_REVIEW = 'needs_review'
@@ -51,6 +51,37 @@ export const MAX_WORDS = 55
 // counter. It lives there so the export module has no Firebase import and can
 // be checked by tools/check_aap_export.mjs.
 export { countWords } from '../utils/aapExport.js'
+
+// ── PDF title ────────────────────────────────────────────────────────────────
+// The heading on every summary PDF. Module-level so the download dialog and
+// the per-student PDF icon in the table use the same choice, and remembered
+// in this browser (a per-viewer convenience — the server falls back to the
+// academic-year title whenever none is sent).
+export const PDF_TITLE_PRESETS = ['Summary For The Academic Year', 'Summary For The Term']
+export const MAX_PDF_TITLE = 80
+const PDF_TITLE_KEY = 'aap.pdfTitle'
+function readPdfTitle() {
+  try { return localStorage.getItem(PDF_TITLE_KEY) || PDF_TITLE_PRESETS[0] } catch { return PDF_TITLE_PRESETS[0] }
+}
+export const pdfTitle = ref(readPdfTitle())
+export function setPdfTitle(title) {
+  pdfTitle.value = String(title || '').replace(/\s+/g, ' ').trim().slice(0, MAX_PDF_TITLE) || PDF_TITLE_PRESETS[0]
+  try { localStorage.setItem(PDF_TITLE_KEY, pdfTitle.value) } catch { /* storage unavailable */ }
+}
+
+/** `fn` over `items`, at most `limit` at a time, results in input order. */
+async function mapLimit(items, limit, fn) {
+  const out = new Array(items.length)
+  let next = 0
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++
+      out[i] = await fn(items[i], i)
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker))
+  return out
+}
 
 export function useAapRemarks() {
   const schools = ref([])
@@ -102,18 +133,52 @@ export function useAapRemarks() {
     }
   }
 
-  /** The class roster plus whatever remarks already exist for it. */
-  async function loadClass(schoolId, classId) {
+  /**
+   * The rosters of one or more classes, plus whatever remarks already exist
+   * for them. Each student carries its `classId`, which is what a
+   * regenerate-one-student run and the exports' Class column go by.
+   *
+   * Returns false when a newer load started while this one was in flight —
+   * its results are dropped rather than painted over the newer selection.
+   */
+  let rosterToken = 0
+  async function loadClass(schoolId, classIds) {
+    const ids = [].concat(classIds || []).filter(Boolean)
+    const token = ++rosterToken
     students.value = []
     remarksByStudent.value = {}
-    if (!schoolId || !classId) return
+    if (!schoolId || !ids.length) { loadingRoster.value = false; return true }
     loadingRoster.value = true
     try {
-      const detail = await classDetailRemote({ schoolId, classId })
-      students.value = detail.students || []
-      await loadRemarks(schoolId, students.value.map(s => s.id))
+      const result = await fetchClassesRemarks(schoolId, ids)
+      if (token !== rosterToken) return false
+      students.value = result.students
+      remarksByStudent.value = result.remarksByStudent
+      return true
     } finally {
-      loadingRoster.value = false
+      if (token === rosterToken) loadingRoster.value = false
+    }
+  }
+
+  /**
+   * Rosters and remarks for several classes, WITHOUT touching the page's
+   * table state — the multi-class download reads classes that need not be
+   * the ones on screen. Students carry their classId, in class order.
+   */
+  async function fetchClassesRemarks(schoolId, classIds, onProgress) {
+    let done = 0
+    const perClass = await mapLimit(classIds, 4, async (classId) => {
+      const detail = await classDetailRemote({ schoolId, classId })
+      const roster = (detail.students || []).map(s => ({ ...s, classId }))
+      const byStudent = roster.length
+        ? await listAapRemarksRemote({ schoolId, studentIds: roster.map(s => s.id) })
+        : {}
+      onProgress?.(++done, classIds.length)
+      return { roster, byStudent }
+    })
+    return {
+      students: perClass.flatMap(r => r.roster),
+      remarksByStudent: Object.assign({}, ...perClass.map(r => r.byStudent)),
     }
   }
 
@@ -198,23 +263,31 @@ export function useAapRemarks() {
     return targets.length
   }
 
-  // ── Subjects ────────────────────────────────────────────────────────────
-  const scan = ref(null)          // last scan_only result for the loaded class
+  // ── Subjects & topics ───────────────────────────────────────────────────
+  // Last scan_only result per selected class: { classId: payload }.
+  const scans = ref({})
   const scanning = ref(false)
 
   /**
-   * What the survey actually says for this class, and which rubric row each
-   * subject resolves to. Reads only — no model calls, no writes — so it is
-   * safe to run before deciding whether a generation run is worth starting.
+   * What the survey actually says for each class — its subjects, the topics
+   * rated under each, and which rubric row each subject resolves to. Reads
+   * only — no model calls, no writes — so it is safe to run before deciding
+   * whether a generation run is worth starting. One call per class, a few at
+   * a time: the function scans one class per call.
    */
-  async function scanSubjects(schoolId, classId) {
-    if (!schoolId || !classId) { scan.value = null; return null }
+  let scanToken = 0
+  async function scanSubjects(schoolId, classIds) {
+    const ids = [].concat(classIds || []).filter(Boolean)
+    const token = ++scanToken
+    if (!schoolId || !ids.length) { scans.value = {}; scanning.value = false; return scans.value }
     scanning.value = true
     try {
-      scan.value = await scanAapSubjectsRemote({ schoolId, classId })
-      return scan.value
+      const results = await mapLimit(ids, 3, classId => scanAapSubjectsRemote({ schoolId, classId }))
+      if (token !== scanToken) return scans.value
+      scans.value = Object.fromEntries(ids.map((id, i) => [id, results[i]]))
+      return scans.value
     } finally {
-      scanning.value = false
+      if (token === scanToken) scanning.value = false
     }
   }
 
@@ -233,20 +306,27 @@ export function useAapRemarks() {
 
   // ── Per-student summary PDF ────────────────────────────────────────────────
   async function downloadSummaryPdf(schoolId, studentId) {
-    const report = await generateAapSummaryPdfRemote({ schoolId, studentId })
-    downloadReport(report)
+    const report = await generateAapSummaryPdfRemote({ schoolId, studentId, title: pdfTitle.value })
+    return deliverReport(report)
   }
 
   async function downloadSummaryPdfs(schoolId, studentIds) {
-    const report = await generateAapSummaryPdfsRemote({ schoolId, studentIds })
-    downloadReport(report)
+    const report = await generateAapSummaryPdfsRemote({ schoolId, studentIds, title: pdfTitle.value })
+    return deliverReport(report)
+  }
+
+  /** classes: [{ classId, label, studentIds }] — a zip with a folder per class. */
+  async function downloadClassPdfs(schoolId, classes, { approvedOnly = false } = {}) {
+    const report = await generateAapSummaryPdfsRemote({ schoolId, classes, approvedOnly, title: pdfTitle.value })
+    return deliverReport(report)
   }
 
   return {
-    schools, classes, students, remarksByStudent, scan, scanning,
+    schools, classes, students, remarksByStudent, scans, scanning,
     loadingSchools, loadingClasses, loadingRoster,
     loadSchools, loadClasses, loadClass, loadRemarks, reloadStudent,
     recentJobIds, watchNewJob, generate, saveComment, setStatus, setStatusBulk,
     scanSubjects, saveSubjectMapping, downloadSummaryPdf, downloadSummaryPdfs,
+    fetchClassesRemarks, downloadClassPdfs,
   }
 }

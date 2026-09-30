@@ -263,6 +263,7 @@
 
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, defineComponent, h } from 'vue'
+import { useAutoRefresh } from '../composables/useAutoRefresh.js'
 import { useRouter } from 'vue-router'
 import { auth } from '../firebase/config'
 import { opsCollection, opsDoc } from '../firebase/collections.js'
@@ -414,8 +415,8 @@ function formatTaskDue(dateStr) {
 }
 
 // ── Load ────────────────────────────────────────────────────────────────────
-async function loadAll() {
-  loading.value = true
+async function loadAll({ silent = false } = {}) {
+  if (!silent) loading.value = true
   try {
     const [sSnap, iSnap, aSnap] = await Promise.all([
       getDocs(query(opsCollection('schools'),    orderBy('created_at', 'desc'), limit(500))),
@@ -496,8 +497,8 @@ function pipelineColor(pct) {
   return { bg: '#fef2f2', text: '#dc2626' }
 }
 
-async function loadLinks() {
-  linksLoading.value = true
+async function loadLinks({ silent = false } = {}) {
+  if (!silent) linksLoading.value = true
   try {
     const snap = await getDocs(query(opsCollection('links'), orderBy('created_at', 'asc'), limit(500)))
     links.value = snap.docs.map(d => ({ id: d.id, ...d.data() }))
@@ -642,6 +643,9 @@ function timeAgo(date) {
   if (diff < 604800) return Math.floor(diff / 86400) + 'd ago'
   return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
 }
+
+// Refresh in place every few minutes / on returning to the tab.
+useAutoRefresh(opts => Promise.all([loadAll(opts), loadLinks(opts), loadOperationsData(), loadDataReceivableData(), loadMyTasks(opts)]))
 
 onMounted(() => {
   Promise.all([loadAll(), loadLinks(), loadOperationsData(), loadDataReceivableData(), loadMyTasks()])

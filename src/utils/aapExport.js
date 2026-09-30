@@ -1,15 +1,15 @@
 /**
- * AAP remarks export — CSV and XLSX, ONE ROW PER STUDENT.
+ * AAP remarks export — the CSV (ONE ROW PER STUDENT) and the entry point for
+ * the teacher-facing Excel file (aapTeacherWorkbook.js).
  *
- * Each subject contributes its own block of columns (levels, comment, status),
- * so a class of 25 students across 5 subjects is 25 rows, not 125. That is the
- * shape a report card is filled from and the shape a school reads: a person
- * scanning the file is looking for a child, not for a student-subject pair.
+ * In the CSV each subject contributes its own block of columns (levels,
+ * comment, status), so a class of 25 students across 5 subjects is 25 rows,
+ * not 125 — the shape a report card is mail-merged from. It is a data file,
+ * not a reading one: the Excel file is what goes to teachers, laid out a child
+ * at a time with the remarks wrapped and the levels explained.
  *
- * The per-student-subject detail is not thrown away — the XLSX carries it on a
- * second sheet, with the word counts and the provenance (which rubric row
- * matched, and how) that the pivot has no room for. CSV, having no second
- * sheet, is the pivoted layout only.
+ * buildDetailRows (one row per student-subject, with provenance) is kept for
+ * anything that needs the flat form.
  *
  * Students with no remarks still get a row with empty subject cells, because
  * "who is missing" is one of the questions this file gets opened to answer.
@@ -18,9 +18,8 @@
  * tens of rows of text already sitting in the browser, so shipping it to a
  * function and back would add a deploy and a round trip to save nothing.
  */
-import * as XLSX from 'xlsx'
-
 import { toCsv, downloadCsv } from './csv.js'
+import { deliverFile } from './deliverFile.js'
 
 /** Word count, here rather than in the composable so this module stays free of
  *  Firebase imports and can be exercised by tools/check_aap_export.mjs. */
@@ -31,6 +30,12 @@ export function countWords(text) {
 /** Columns every row starts with, before the per-subject blocks. */
 export const IDENTITY_COLUMNS = ['Student', 'Roll No', 'Student ID']
 
+/** A multi-class export also needs to say which class each child is in —
+ *  added whenever the roster rows carry a classId (the AAP page's always do). */
+export function identityColumns(students) {
+  return (students || []).some(s => s.classId) ? ['Class', ...IDENTITY_COLUMNS] : IDENTITY_COLUMNS
+}
+
 /** Per-subject block, in this order, prefixed with the subject name. */
 export const SUBJECT_FIELDS = ['Awareness', 'Sensitivity', 'Creativity', 'Comment', 'Status']
 
@@ -38,8 +43,12 @@ export const SUBJECT_FIELDS = ['Awareness', 'Sensitivity', 'Creativity', 'Commen
 export const DETAIL_COLUMNS = [
   'Student', 'Roll No', 'Student ID', 'Subject', 'Awareness', 'Sensitivity',
   'Creativity', 'Comment', 'Words', 'Status', 'Matched via', 'Rubric row',
-  'Last updated', 'Updated by',
+  'Topics', 'Curricular goals', 'Competencies', 'Last updated', 'Updated by',
 ]
+
+export function detailColumns(students) {
+  return (students || []).some(s => s.classId) ? ['Class', ...DETAIL_COLUMNS] : DETAIL_COLUMNS
+}
 
 function formatTimestamp(value) {
   const date = value?.toDate ? value.toDate() : (value instanceof Date ? value : null)
@@ -64,17 +73,11 @@ export function subjectsInClass(students, remarksByStudent) {
   return [...subjects].sort()
 }
 
-export function wideColumns(subjects, identityColumns = IDENTITY_COLUMNS) {
+export function wideColumns(subjects, identity = IDENTITY_COLUMNS) {
   return [
-    ...identityColumns,
+    ...identity,
     ...subjects.flatMap(subject => SUBJECT_FIELDS.map(field => `${subject} ${field}`)),
   ]
-}
-
-const IDENTITY_FIELD_BY_COLUMN = {
-  'Student': (student) => student.name || student.id,
-  'Roll No': (student) => student.rollNo || '',
-  'Student ID': (student) => student.id,
 }
 
 /**
@@ -82,17 +85,17 @@ const IDENTITY_FIELD_BY_COLUMN = {
  *
  * @param students          roster rows ({ id, name, rollNo })
  * @param remarksByStudent  { studentId: [remark docs] }
- * @param options.subjects        limit to these subjects, in this order
- *                                 (default: every subject in the class, sorted)
- * @param options.identityColumns which of IDENTITY_COLUMNS to include, and in
- *                                 what order (default: all of them)
  */
-export function buildWideRows(students, remarksByStudent, options = {}) {
-  const subjects = options.subjects?.length ? options.subjects : subjectsInClass(students, remarksByStudent)
-  const identityColumns = options.identityColumns?.length ? options.identityColumns : IDENTITY_COLUMNS
+export function buildWideRows(students, remarksByStudent) {
+  const subjects = subjectsInClass(students, remarksByStudent)
+  const identity = identityColumns(students)
   const rows = (students || []).map(student => {
-    const row = {}
-    for (const column of identityColumns) row[column] = IDENTITY_FIELD_BY_COLUMN[column](student)
+    const row = {
+      ...(identity.includes('Class') ? { Class: student.classId || '' } : {}),
+      Student: student.name || student.id,
+      'Roll No': student.rollNo || '',
+      'Student ID': student.id,
+    }
     const bySubject = new Map(
       (remarksByStudent?.[student.id] || []).map(remark => [remark.id, remark]))
     for (const subject of subjects) {
@@ -105,7 +108,7 @@ export function buildWideRows(students, remarksByStudent, options = {}) {
     }
     return row
   })
-  return { columns: wideColumns(subjects, identityColumns), rows, subjects }
+  return { columns: wideColumns(subjects, identity), rows, subjects }
 }
 
 /**
@@ -113,27 +116,28 @@ export function buildWideRows(students, remarksByStudent, options = {}) {
  *
  * @param students          roster rows ({ id, name, rollNo })
  * @param remarksByStudent  { studentId: [remark docs] }
- * @param subjectFilter     limit to these subjects (default: every subject)
  */
-export function buildDetailRows(students, remarksByStudent, subjectFilter = null) {
-  const scope = subjectFilter?.length ? new Set(subjectFilter) : null
+export function buildDetailRows(students, remarksByStudent) {
   const rows = []
+  const withClass = detailColumns(students).includes('Class')
   for (const student of students || []) {
     const name = student.name || student.id
-    const allRemarks = remarksByStudent?.[student.id] || []
-    const remarks = allRemarks.filter(r => !scope || scope.has(r.id))
+    const remarks = remarksByStudent?.[student.id] || []
+    const cls = withClass ? { Class: student.classId || '' } : {}
     if (!remarks.length) {
       rows.push({
+        ...cls,
         Student: name, 'Roll No': student.rollNo || '', 'Student ID': student.id,
         Subject: '', Awareness: '', Sensitivity: '', Creativity: '',
-        Comment: scope && allRemarks.length ? 'No remarks for the selected subjects' : 'No remarks generated',
-        Words: 0, Status: '',
-        'Matched via': '', 'Rubric row': '', 'Last updated': '', 'Updated by': '',
+        Comment: 'No remarks generated', Words: 0, Status: '',
+        'Matched via': '', 'Rubric row': '', Topics: '', 'Curricular goals': '', Competencies: '',
+        'Last updated': '', 'Updated by': '',
       })
       continue
     }
     for (const remark of remarks) {
       rows.push({
+        ...cls,
         Student: name,
         'Roll No': student.rollNo || '',
         'Student ID': student.id,
@@ -149,6 +153,11 @@ export function buildDetailRows(students, remarksByStudent, subjectFilter = null
         // matched exactly, and the export should not flatten the two.
         'Matched via': remark.matchedBy || '',
         'Rubric row': remark.frameworkSubject || '',
+        // Several topics = the levels were combined across them.
+        Topics: (remark.topics || []).join(' + '),
+        // What the class worked on, as the generator saw it.
+        'Curricular goals': (remark.curricularGoals || []).join('; '),
+        Competencies: (remark.competencies || []).join('; '),
         'Last updated': formatTimestamp(remark.updatedAt),
         'Updated by': remark.updatedBy || '',
       })
@@ -165,41 +174,37 @@ export function exportFilename(schoolId, classId, extension) {
   return `AAP_remarks_${safe(schoolId)}_${safe(classId)}_${today}.${extension}`
 }
 
-/** Comment columns get the width; a level or status column never needs it. */
-function columnWidths(columns) {
-  return columns.map(column => ({
-    wch: column.endsWith('Comment') ? 80 : Math.max(12, column.length + 2),
-  }))
+/** Only approved remarks — what a school should see when the rest are
+ *  still being reviewed. Students keep their row either way. */
+export function approvedOnly(remarksByStudent) {
+  return Object.fromEntries(Object.entries(remarksByStudent || {}).map(
+    ([id, rows]) => [id, (rows || []).filter(r => r.status === 'approved')]))
 }
 
-export function downloadAapCsv(schoolId, classId, students, remarksByStudent, options = {}) {
-  const { columns, rows } = buildWideRows(students, remarksByStudent, options)
+export function downloadAapCsv(schoolId, classId, students, remarksByStudent) {
+  const { columns, rows } = buildWideRows(students, remarksByStudent)
   downloadCsv(exportFilename(schoolId, classId, 'csv'), toCsv(rows, columns))
   return rows.length
 }
 
-export function downloadAapXlsx(schoolId, classId, students, remarksByStudent, options = {}) {
-  const { columns, rows } = buildWideRows(students, remarksByStudent, options)
-  const identityCount = (options.identityColumns?.length ? options.identityColumns : IDENTITY_COLUMNS).length
-  const sheet = XLSX.utils.json_to_sheet(rows, { header: columns })
-  sheet['!cols'] = columnWidths(columns)
-  // Identity columns frozen: at five subjects the sheet is 28 columns wide,
-  // and scrolling right without the name pinned makes it unreadable.
-  sheet['!freeze'] = { xSplit: identityCount, ySplit: 1 }
-  sheet['!autofilter'] = { ref: XLSX.utils.encode_range({
-    s: { r: 0, c: 0 }, e: { r: rows.length, c: Math.max(0, columns.length - 1) },
-  }) }
-
-  const book = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(book, sheet, 'By student')
-
-  // Sheet 2 keeps what the pivot has no room for — word counts, which rubric
-  // row matched and how, who last touched each remark.
-  const detailRows = buildDetailRows(students, remarksByStudent, options.subjects)
-  const detail = XLSX.utils.json_to_sheet(detailRows, { header: DETAIL_COLUMNS })
-  detail['!cols'] = columnWidths(DETAIL_COLUMNS)
-  XLSX.utils.book_append_sheet(book, detail, 'Detail')
-
-  XLSX.writeFile(book, exportFilename(schoolId, classId, 'xlsx'))
-  return rows.length
+/**
+ * The Excel file teachers get — see aapTeacherWorkbook.js for its layout.
+ * exceljs is imported here, on demand, so its weight lands only on someone
+ * who actually downloads.
+ *
+ * @param classes  [{ id, label }] in sheet order
+ * @returns { count: students in the file, status: 'downloaded' | 'pending' }
+ */
+export async function downloadAapWorkbook({ schoolId, schoolName, classes, students, remarksByStudent, approvedOnly = false }) {
+  const [{ default: ExcelJS }, { buildTeacherWorkbook }] = await Promise.all([
+    import('exceljs'), import('./aapTeacherWorkbook.js'),
+  ])
+  const wb = buildTeacherWorkbook(ExcelJS, { schoolName, classes, students, remarksByStudent, approvedOnly })
+  const buffer = await wb.xlsx.writeBuffer()
+  const label = classes.length <= 3 ? classes.map(c => c.id).join('+') : `${classes.length}_classes`
+  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+  // Building this can outlast the click's download window — deliverFile
+  // falls back to a Save button rather than a blocked download.
+  const status = deliverFile(blob, exportFilename(schoolName || schoolId, label, 'xlsx'))
+  return { count: students.length, status }
 }

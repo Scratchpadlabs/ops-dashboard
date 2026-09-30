@@ -61,6 +61,7 @@
                   {{ data.studentName }}
                 </div>
                 <div class="text-[11px] text-slate-400">
+                  <span v-if="showClass" class="font-semibold text-slate-500">{{ data.classId }} · </span>
                   Roll {{ data.rollNo || '—' }}
                   <span v-if="data.subjectCount">· {{ data.subjectCount }} subject{{ data.subjectCount === 1 ? '' : 's' }}</span>
                 </div>
@@ -69,7 +70,7 @@
                 icon="pi pi-file-pdf" text rounded size="small" class="ml-auto flex-shrink-0"
                 :loading="downloadingStudentId === data.studentId"
                 :disabled="!!busyStudentId || !!downloadingStudentId || data.empty"
-                v-tooltip.top="'Download this student\'s summary PDF'"
+                v-tooltip.top="`Download this student's summary PDF — “${pdfTitle}”`"
                 @click="downloadPdf(data.studentId)"
               />
               <Button
@@ -86,7 +87,16 @@
         <Column header="Subject" style="min-width:130px">
           <template #body="{ data }">
             <span v-if="data.empty" class="text-xs text-slate-400 italic">No remarks generated</span>
-            <span v-else class="text-sm text-slate-700 cell-truncate" :title="data.subject">{{ data.subject }}</span>
+            <template v-else>
+              <span class="text-sm text-slate-700 cell-truncate block" :title="data.subject">{{ data.subject }}</span>
+              <!-- The topics this remark's rubric stands on; several means
+                   the levels were combined across them. -->
+              <span v-if="data.topics.length" class="text-[11px] text-slate-400 cell-truncate block"
+                    v-tooltip.top="topicTooltip(data)">
+                <i v-if="data.topics.length > 1" class="pi pi-sitemap mr-0.5" style="font-size:9px"></i>
+                {{ data.topics.join(' + ') }}
+              </span>
+            </template>
           </template>
         </Column>
 
@@ -162,6 +172,18 @@
             {{ traitLabel(trait) }}: {{ editing[trait] || '—' }}
           </span>
         </div>
+        <div v-if="editing.topicLevels.length > 1" class="text-xs text-slate-500 mb-3 whitespace-pre-line">{{ topicTooltip(editing) }}</div>
+        <!-- What the class worked on, as the generator saw it: the comment
+             should paraphrase one of these, never claim more. -->
+        <div v-if="editing.curricularGoals.length || editing.competencies.length"
+             class="text-xs text-slate-600 bg-slate-50 rounded-lg px-3 py-2 mb-3 space-y-1">
+          <div v-if="editing.curricularGoals.length">
+            <span class="font-semibold text-slate-500">Curricular goals:</span> {{ editing.curricularGoals.join('; ') }}
+          </div>
+          <div v-if="editing.competencies.length">
+            <span class="font-semibold text-slate-500">Competencies:</span> {{ editing.competencies.join('; ') }}
+          </div>
+        </div>
 
         <Textarea v-model="draft" rows="6" class="w-full" autoResize />
 
@@ -198,7 +220,7 @@ import InputText from 'primevue/inputtext'
 import Checkbox from 'primevue/checkbox'
 
 import {
-  useAapRemarks, countWords, TRAITS, MIN_WORDS, MAX_WORDS,
+  useAapRemarks, countWords, TRAITS, MIN_WORDS, MAX_WORDS, pdfTitle,
   STATUS_APPROVED, STATUS_NEEDS_REVIEW,
 } from '../../composables/useAapRemarks.js'
 
@@ -216,6 +238,8 @@ const props = defineProps({
   students: { type: Array, default: () => [] },
   remarksByStudent: { type: Object, default: () => ({}) },
   busyStudentId: { type: String, default: null },
+  // Several classes on screen: each student's class is shown under the name.
+  showClass: { type: Boolean, default: false },
 })
 const emit = defineEmits(['regenerate', 'saved'])
 
@@ -236,6 +260,16 @@ const LEVEL_CLASSES = {
 }
 const levelClass = (level) => LEVEL_CLASSES[level] || 'bg-slate-100 text-slate-500'
 
+const initial = (level) => (level ? level[0] : '–')
+/** "Term 1 — A: P · S: A · C: A" per topic, so a combined level can be
+ *  traced back to what each topic actually said. */
+function topicTooltip(row) {
+  if (!row.topicLevels.length) return row.topics.join(', ')
+  const lines = row.topicLevels.map(t =>
+    `${t.topic} — A: ${initial(t.awareness)} · S: ${initial(t.sensitivity)} · C: ${initial(t.creativity)}`)
+  return row.topicLevels.length > 1 ? `Combined from:\n${lines.join('\n')}` : lines[0]
+}
+
 /**
  * Flattened student x subject rows, kept in roster order. A student with no
  * remark docs still gets a row — a missing student is the single most useful
@@ -249,15 +283,20 @@ const allRows = computed(() => {
     if (!remarks.length) {
       out.push({
         key: student.id, studentId: student.id, studentName: name, rollNo: student.rollNo,
-        firstOfStudent: true, subjectCount: 0, empty: true,
+        classId: student.classId, firstOfStudent: true, subjectCount: 0, empty: true,
       })
       continue
     }
     remarks.forEach((remark, i) => out.push({
       key: `${student.id}__${remark.id}`,
       studentId: student.id, studentName: name, rollNo: student.rollNo,
+      classId: student.classId,
       firstOfStudent: i === 0, subjectCount: remarks.length, empty: false,
       subject: remark.id,
+      topics: remark.topics || [],
+      topicLevels: remark.topicLevels || [],
+      curricularGoals: remark.curricularGoals || [],
+      competencies: remark.competencies || [],
       awareness: remark.awareness, sensitivity: remark.sensitivity, creativity: remark.creativity,
       comment: remark.comment || '',
       status: remark.status || STATUS_NEEDS_REVIEW,
@@ -276,7 +315,9 @@ const rows = computed(() => {
   const kept = allRows.value.filter(r => {
     if (needsReviewOnly.value && (r.empty || r.status === STATUS_APPROVED)) return false
     if (!term) return true
-    return r.studentName.toLowerCase().includes(term) || String(r.subject || '').toLowerCase().includes(term)
+    return r.studentName.toLowerCase().includes(term)
+      || String(r.subject || '').toLowerCase().includes(term)
+      || String(r.classId || '').toLowerCase().includes(term)
   })
   // Filtering can strip a student's first row, which is the one carrying the
   // name — so the flag is recomputed over what actually renders.

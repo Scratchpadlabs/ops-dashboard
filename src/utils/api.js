@@ -252,6 +252,27 @@ export async function saveClassMapRemote({ schoolId, rows, shareAliases = true }
   return res.data
 }
 
+// Per-class attendance months (schools/{id}/classes/{classId}/months) — what
+// the teacher app reads working days from. Behind a callable because that
+// path is deeper than anything firestore.rules grants the dashboard. See
+// class_months in functions/school_reset/main.py.
+const classMonthsCallable = httpsCallable(functions, 'class_months', { timeout: 120_000 })
+
+export async function listClassMonthsRemote({ schoolId }) {
+  const res = await classMonthsCallable({ schoolId, action: 'list' })
+  return res.data
+}
+
+export async function saveClassMonthsRemote({ schoolId, rows }) {
+  const res = await classMonthsCallable({ schoolId, action: 'save', rows })
+  return res.data
+}
+
+export async function deleteClassMonthsRemote({ schoolId, rows }) {
+  const res = await classMonthsCallable({ schoolId, action: 'delete', rows })
+  return res.data
+}
+
 export async function classHealthRemote() {
   const res = await classHealthCallable({})
   return res.data
@@ -296,17 +317,21 @@ const saveAapSubjectMappingCallable = httpsCallable(functions, 'save_aap_subject
 const generateAapSummaryPdfCallable = httpsCallable(functions, 'generate_aap_summary_pdf', { timeout: 60_000 })
 const generateAapSummaryPdfsCallable = httpsCallable(functions, 'generate_aap_summary_pdfs', { timeout: 300_000 })
 const aapSurveyCompletionCallable = httpsCallable(functions, 'aap_survey_completion', { timeout: 300_000 })
+const updateAapSurveyResponseCallable = httpsCallable(functions, 'update_aap_survey_response', { timeout: 60_000 })
 
 // `subjects` narrows a run to the chosen subjects; omitted means every subject
-// the survey rated. `confirmGenderIssue` must be set once the dashboard has
+// the survey rated. `topics` ([{ subject, topic }], by name) narrows it further
+// to those topics — several topics of one subject are combined into a single
+// rubric server-side (functions/generate_aap_remarks/topic_combine.py). `confirmGenderIssue` must be set once the dashboard has
 // shown the gender-quality warning and the user chose to proceed anyway.
 // Returns { written, processed, skippedApproved, skippedNoFramework,
 // unmatchedSubjects, ... } — `written` is the count that actually got a
 // comment, `processed` counts everything it looked at.
-export async function generateAapRemarksRemote({ schoolId, classId, studentIds, subjects, confirmGenderIssue }) {
+export async function generateAapRemarksRemote({ schoolId, classId, studentIds, subjects, topics, confirmGenderIssue }) {
   const payload = { school_id: schoolId, class_id: classId }
   if (studentIds?.length) payload.student_ids = studentIds
   if (subjects?.length) payload.subjects = subjects
+  if (topics?.length) payload.topics = topics.map(t => ({ subject: t.subject, topic: t.topic }))
   if (confirmGenderIssue) payload.confirm_gender_issue = true
   const res = await generateAapRemarksCallable(payload)
   return res.data
@@ -351,16 +376,33 @@ export async function saveAapSubjectMappingRemote({ stage, token, frameworkSubje
 // One "Summary For The Academic Year" page for one child, built from whatever
 // aap_remarks docs already exist for them. Returns { filename, mime,
 // content_base64 } — pass straight to downloadReport().
-export async function generateAapSummaryPdfRemote({ schoolId, studentId }) {
-  const res = await generateAapSummaryPdfCallable({ school_id: schoolId, student_id: studentId })
+// `title` replaces the page heading ("Summary For The Academic Year" when
+// omitted) — the same option on the bulk form below.
+export async function generateAapSummaryPdfRemote({ schoolId, studentId, title }) {
+  const payload = { school_id: schoolId, student_id: studentId }
+  if (title) payload.title = title
+  const res = await generateAapSummaryPdfCallable(payload)
   return res.data
 }
 
 // Same, for a whole class at once — one PDF per student, zipped, each named
 // "<student_id>.pdf" so the file can be matched back to a child for whatever
 // merge/print step happens outside this dashboard.
-export async function generateAapSummaryPdfsRemote({ schoolId, studentIds }) {
-  const res = await generateAapSummaryPdfsCallable({ school_id: schoolId, student_ids: studentIds })
+//
+// `classes` ([{ classId, label, studentIds }]) is the multi-class form: one
+// folder per class in the zip, each with the per-student PDFs plus one
+// combined "<class>_all_students.pdf" for printing. `approvedOnly` leaves
+// out remarks not yet approved (and students left with none).
+export async function generateAapSummaryPdfsRemote({ schoolId, studentIds, classes, approvedOnly, title }) {
+  const payload = { school_id: schoolId }
+  if (classes?.length) {
+    payload.classes = classes.map(c => ({ class_id: c.classId, label: c.label, student_ids: c.studentIds }))
+  } else {
+    payload.student_ids = studentIds
+  }
+  if (approvedOnly) payload.approved_only = true
+  if (title) payload.title = title
+  const res = await generateAapSummaryPdfsCallable(payload)
   return res.data
 }
 
@@ -369,6 +411,19 @@ export async function generateAapSummaryPdfsRemote({ schoolId, studentIds }) {
 // anything short of complete. Read-only, no model calls.
 export async function aapSurveyCompletionRemote({ schoolId }) {
   const res = await aapSurveyCompletionCallable({ school_id: schoolId })
+  return res.data
+}
+
+// Edits what a teacher picked before answering an AAP survey: the activity
+// and the curricular goals/competencies. Only the fields passed change.
+// Changing the activity MOVES the response to that activity's survey, so the
+// returned { surveyId, responseId, ... } is where it lives afterwards.
+export async function updateAapSurveyResponseRemote({ schoolId, surveyId, responseId, activityId, selectedGoals, selectedCompetencies }) {
+  const payload = { school_id: schoolId, survey_id: surveyId, response_id: responseId }
+  if (activityId) payload.activity_id = activityId
+  if (selectedGoals) payload.selected_goals = selectedGoals
+  if (selectedCompetencies) payload.selected_competencies = selectedCompetencies
+  const res = await updateAapSurveyResponseCallable(payload)
   return res.data
 }
 
@@ -383,10 +438,13 @@ const listSmartRemarksCallable = httpsCallable(functions, 'list_smart_remarks', 
 const updateSmartRemarkCallable = httpsCallable(functions, 'update_smart_remark', { timeout: 30_000 })
 const bulkUpdateSmartRemarksCallable = httpsCallable(functions, 'bulk_update_smart_remarks', { timeout: 120_000 })
 
-export async function generateSmartRemarksRemote({ schoolId, classId, studentIds, confirmGenderIssue }) {
+// jobId: a smart_remarks_jobs doc id minted by the caller, so the page can
+// watch that exact job while the call is still running.
+export async function generateSmartRemarksRemote({ schoolId, classId, studentIds, confirmGenderIssue, jobId }) {
   const payload = { school_id: schoolId, class_id: classId }
   if (studentIds?.length) payload.student_ids = studentIds
   if (confirmGenderIssue) payload.confirm_gender_issue = true
+  if (jobId) payload.job_id = jobId
   const res = await generateSmartRemarksCallable(payload)
   return res.data
 }
@@ -404,16 +462,23 @@ export async function listSmartRemarksRemote({ schoolId, studentIds }) {
   return res.data
 }
 
-export async function updateSmartRemarkRemote({ schoolId, studentId, comment, status }) {
-  const payload = { school_id: schoolId, student_id: studentId }
+export async function updateSmartRemarkRemote({ schoolId, studentId, categorySlug, comment, status }) {
+  const payload = { school_id: schoolId, student_id: studentId, category_slug: categorySlug }
   if (comment != null) payload.comment = comment
   if (status != null) payload.status = status
   const res = await updateSmartRemarkCallable(payload)
   return res.data
 }
 
-export async function bulkUpdateSmartRemarksRemote({ schoolId, studentIds, status }) {
-  const res = await bulkUpdateSmartRemarksCallable({ school_id: schoolId, student_ids: studentIds, status })
+// `items` is [{ studentId, categorySlug }, ...] — bulk actions apply to one
+// specific (student, category) remark each, not every category a student has.
+export async function bulkUpdateSmartRemarksRemote({ schoolId, items, status }) {
+  const payload = {
+    school_id: schoolId,
+    items: items.map(i => ({ student_id: i.studentId, category_slug: i.categorySlug })),
+    status,
+  }
+  const res = await bulkUpdateSmartRemarksCallable(payload)
   return res.data
 }
 

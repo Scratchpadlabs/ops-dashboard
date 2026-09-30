@@ -137,6 +137,10 @@
       </header>
 
       <main class="flex-1 p-6 min-w-0 overflow-x-hidden">
+        <div v-if="updateAvailable" class="mb-4 flex items-center justify-between gap-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm text-blue-900">
+          <span><i class="pi pi-sparkles mr-2 text-blue-500"></i>A new version of the dashboard is available.</span>
+          <button class="rounded-md bg-blue-600 px-3 py-1 text-xs font-semibold text-white hover:bg-blue-700" @click="reloadApp">Reload now</button>
+        </div>
         <RouterView />
       </main>
     </div>
@@ -157,6 +161,8 @@ import { isOpsAdmin } from './config/opsAdmins.js'
 import { getDocs } from 'firebase/firestore'
 import { activeYear, availableYears, computeCurrentAcademicYear } from './composables/useAcademicYear.js'
 import { isSearchOpen } from './composables/useGlobalSearch.js'
+import { clearStepUp } from './composables/useStepUpAuth.js'
+import { useAppVersion } from './composables/useAppVersion.js'
 import {
   notificationsSupported, notificationPermission, notificationsEnabled,
   requestTaskNotificationPermission, disableTaskNotifications,
@@ -213,7 +219,11 @@ function onGlobalSearchKeydown(e) {
 onMounted(() => window.addEventListener('keydown', onGlobalSearchKeydown))
 onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalSearchKeydown))
 
+// ── New deploy available ─────────────────────────────────────────────────
+const { updateAvailable, reload: reloadApp } = useAppVersion()
+
 async function handleLogout() {
+  clearStepUp()
   await signOut(auth)
   router.push('/login')
 }
@@ -289,8 +299,13 @@ const baseNavItems = [
 ]
 
 const ADMIN_ONLY_NAV_PATHS = ['/school-setup', '/import', '/surveys', '/aap-remarks', '/smart-remarks']
+const HIDDEN_NAV_PATHS_BY_EMAIL = {
+  'ruchika@ops.clarified.in': ['/expenses'],
+}
 const navItems = computed(() =>
-  baseNavItems.filter(item => !ADMIN_ONLY_NAV_PATHS.includes(item.to) || isOpsAdmin(currentUserEmail.value))
+  baseNavItems
+    .filter(item => !ADMIN_ONLY_NAV_PATHS.includes(item.to) || isOpsAdmin(currentUserEmail.value))
+    .filter(item => !(HIDDEN_NAV_PATHS_BY_EMAIL[currentUserEmail.value] || []).includes(item.to))
 )
 
 const pageTitles = {

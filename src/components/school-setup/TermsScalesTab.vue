@@ -210,7 +210,7 @@ import CsvImportDialog from './CsvImportDialog.vue'
 import ConfigEmptyState from './ConfigEmptyState.vue'
 
 import { schoolCollection, schoolDoc } from '../../firebase/schoolCollections.js'
-import { guardedSetDoc, guardedUpdateDoc, SchemaViolation } from '../../schemas/guardedWrite.js'
+import { guardedSetDoc, guardedUpdateDoc, saveErrorMessage } from '../../schemas/guardedWrite.js'
 import { db, auth } from '../../firebase/config'
 import { slugify } from '../../utils/assessmentHelpers.js'
 import { parseCsv, toCsv, downloadCsv, readFileAsText } from '../../utils/csv.js'
@@ -301,7 +301,7 @@ async function saveTerm() {
     toast.add({ severity: 'success', summary: 'Saved', life: 2000 })
     await loadTerms()
   } catch (e) {
-    termFormError.value = e instanceof SchemaViolation ? e.userMessage : 'Something went wrong. Try again.'
+    termFormError.value = saveErrorMessage(e)
   } finally {
     savingTerm.value = false
   }
@@ -443,7 +443,7 @@ async function saveScale() {
     toast.add({ severity: 'success', summary: 'Saved', life: 2000 })
     await loadScales()
   } catch (e) {
-    scaleFormError.value = e instanceof SchemaViolation ? e.userMessage : 'Something went wrong. Try again.'
+    scaleFormError.value = saveErrorMessage(e)
   } finally {
     savingScale.value = false
   }
