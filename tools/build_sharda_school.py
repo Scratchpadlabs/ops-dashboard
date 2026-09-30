@@ -79,7 +79,7 @@ REMARK_STAGE_PREFIX = {"Foundational": "foundation", "Preparatory": "prepratory"
 
 # Section names the schools spell a dozen ways ("II-Winners", "I Champions",
 # "LKG-champion") → one canonical, singular section per class id.
-SECTIONS = ["Winner", "Champion", "Victor", "Star", "Scholar", "Yellow"]
+SECTIONS = ["Winner", "Champion", "Victor", "Star", "Scholar", "Yellow", "Lotus"]
 
 # Scholastic subjects per grade: the source school's subject ids
 # (Kalamb puts Numbers / Rhymes / Art and Craft / Sound for pre-primary under
@@ -157,12 +157,15 @@ def id_text(v):
 
 
 def parse_grade(text):
-    """'II-Winners' / 'IV -victors' / '9th Victors' / 'LKG-champion' / 'I '
-    → 'II' / 'IV' / 'IX' / 'LKG' / 'I', or None."""
-    t = norm(text).upper()
-    for g in ["NURSERY", "LKG", "UKG"]:
+    """'II-Winners' / 'IV -victors' / '9th Victors' / 'LKG-champion' / 'I ' /
+    'Grade 3rd (LOTUS)' / 'Nursary' / 'Grade NS'
+    → 'II' / 'IV' / 'IX' / 'LKG' / 'I' / 'III' / 'Nursery' / 'Nursery', or None."""
+    t = re.sub(r"^(GRADE|GARDE|GRDAE|CLASS|STD)\b\s*", "", norm(text).upper())
+    if t.startswith("NURS") or re.match(r"^NS\b", t):
+        return "Nursery"
+    for g in ["LKG", "UKG"]:
         if t.startswith(g):
-            return g.title() if g == "NURSERY" else g
+            return g
     m = re.match(r"^(\d{1,2})\s*(ST|ND|RD|TH)?\b", t)
     if m:
         return NUM_TO_ROMAN.get(int(m.group(1)))
@@ -255,7 +258,9 @@ def parse_dob(value, swapped, issues, where):
             except ValueError:
                 issues.append(f"{where}: cannot un-swap date {value.date()} — left as is")
     else:
-        m = re.match(r"^\s*(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})\s*$", str(value))
+        # dd/mm/yyyy, tolerating stray typing: "20/12/2018`", "30/092018",
+        # "17/11//2020". A truncated year ("04/10/201") stays unreadable.
+        m = re.match(r"^\D*(\d{1,2})\D+(\d{1,2})\D*(\d{4})\D*$", str(value))
         if not m:
             issues.append(f"{where}: unreadable DOB {value!r} — left blank")
             return None
@@ -289,7 +294,13 @@ def parse_students(material, issues):
             data = [r for r in data if r[idx["name"]] not in (None, "")]
             title = ws.title if ws.title.lower() not in ("sheet1",) else os.path.splitext(os.path.basename(path))[0]
             grade = parse_grade(title)
-            section = parse_section(title) or ("A" if grade == "Nursery" else None)
+            # Sheets named after the grade alone ("Grade 3", "Nursary") carry
+            # the section in each row's Class cell ("Grade 3rd (LOTUS)").
+            cell_sections = Counter(parse_section(r[idx["class"]]) for r in data if "class" in idx)
+            cell_sections.pop(None, None)
+            section = (parse_section(title)
+                       or (cell_sections.most_common(1)[0][0] if cell_sections else None)
+                       or ("A" if grade == "Nursery" else None))
             if not grade or not section:
                 issues.append(f"{os.path.basename(path)} [{ws.title}]: cannot tell grade/section — sheet skipped")
                 continue
@@ -340,9 +351,10 @@ def parse_students(material, issues):
     return students, sheets
 
 
-def parse_teacher_class(text):
-    """'8th Victor' / 'IV -Victor' / 'II-Scholars' / 'Nursery ' → class id;
-    'Principal' → 'PRINCIPAL'; blank → None."""
+def parse_teacher_class(text, classes_by_grade):
+    """'8th Victor' / 'IV -Victor' / 'II-Scholars' / 'Nursery ' / 'Grade 5'
+    → class id; 'Principal' → 'PRINCIPAL'; blank → None. A grade with no
+    section named resolves to that grade's class when it has only one."""
     t = norm(text)
     if not t:
         return None
@@ -351,8 +363,12 @@ def parse_teacher_class(text):
     g = parse_grade(t)
     if not g:
         return "?" + t
-    s = parse_section(t) or ("A" if g == "Nursery" else None)
-    return class_id(g, s) if s else "?" + t
+    s = parse_section(t)
+    if s:
+        return class_id(g, s)
+    if len(classes_by_grade.get(g, [])) == 1:
+        return classes_by_grade[g][0]
+    return class_id(g, "A") if g == "Nursery" else "?" + t
 
 
 def parse_grade_list(text):
@@ -372,7 +388,7 @@ def clean_email(raw):
 
 def parse_teachers(material, class_ids, issues):
     import openpyxl
-    path = next(iter(glob.glob(os.path.join(material, "Teacher*.xlsx"))), None)
+    path = next(iter(glob.glob(os.path.join(material, "*Teacher*.xlsx"))), None)
     if not path:
         issues.append("No Teacher Information.xlsx found — no staff built")
         return []
@@ -397,17 +413,18 @@ def parse_teachers(material, class_ids, issues):
         pre_primary = False
         for r in rows[header_row + 1:]:
             r = r + [None] * (len(header) - len(r))
-            if any("nursery to ukg" in str(c or "").lower() for c in r):
-                # The pre-primary block under the 1–2 sheet: column E lists the
+            if any("ukg" in str(c or "").lower() and "teacher" in str(c or "").lower() for c in r):
+                # The pre-primary block ("Nursery To UKG Teachers Information",
+                # "NS LKG UKG Teacher Information"): column E lists the
                 # subjects of the teacher's own class ("Eng, math, GA").
                 pre_primary = True
                 continue
             name = norm(r[c_name])
-            if not name:
-                continue
+            if not name or re.fullmatch(r"column\d+", name.lower()):
+                continue  # blank, or an Excel table's "Column1…" header row
             uid = r[c_id]
             where = f"Teacher {uid} {name}"
-            ct = parse_teacher_class(r[c_ct])
+            ct = parse_teacher_class(r[c_ct], classes_by_grade)
             classTeacherOf = ""
             admin = False
             if ct == "PRINCIPAL":
@@ -428,21 +445,27 @@ def parse_teachers(material, class_ids, issues):
                 for i, subj in subj_cols.items():
                     grades = parse_grade_list(r[i])
                     for g in grades:
-                        if subj not in SUBJECTS_BY_GRADE.get(g, []):
+                        subj_g = subj
+                        if subj == "Science" and g in ("I", "II"):
+                            subj_g = "EVS"  # grades I–II study science as EVS
+                        if subj_g not in SUBJECTS_BY_GRADE.get(g, []):
                             issues.append(f"{where}: {subj} for grade {g} — not a {g} subject, ignored")
                             continue
                         if g not in classes_by_grade:
                             issues.append(f"{where}: {subj} for grade {g} — no {g} classes (no student sheets), ignored")
                             continue
                         # Grades I–II are taught by their class teacher: a class
-                        # teacher's "Grade N" there means their own section.
-                        if own_grade in ("I", "II") and g in ("I", "II"):
+                        # teacher whose cell names a single grade there ("Grade 1")
+                        # means their own section. Several grades ("Grade 1,2")
+                        # means a subject teacher across those grades.
+                        if own_grade in ("I", "II") and g in ("I", "II") and len(grades) == 1:
                             if g != own_grade:
                                 issues.append(f"{where}: class teacher of {classTeacherOf} but listed {subj} for grade {g} — assigned to {classTeacherOf}")
-                            assignments[classTeacherOf].add(f"{own_grade}_{subj}")
+                            own_subj = "EVS" if subj == "Science" else subj
+                            assignments[classTeacherOf].add(f"{own_grade}_{own_subj}")
                         else:
                             for cid in classes_by_grade[g]:
-                                assignments[cid].add(f"{g}_{subj}")
+                                assignments[cid].add(f"{g}_{subj_g}")
             email, ok = clean_email(r[c_mail])
             if r[c_mail] and not ok:
                 issues.append(f"{where}: e-mail {norm(r[c_mail])!r} is invalid — stored as contactEmail anyway, please correct")
@@ -458,6 +481,20 @@ def parse_teachers(material, class_ids, issues):
                 "classTeacherOf": classTeacherOf,
                 "assignments": {k: sorted(v) for k, v in sorted(assignments.items())},
             })
+    # Subjects nobody was assigned to (admins aside) — someone has to enter marks.
+    taught = defaultdict(set)
+    for t in teachers:
+        if not t["admin"]:
+            for cid, sids in t["assignments"].items():
+                taught[cid].update(sids)
+    missing = defaultdict(list)
+    for cid in class_ids:
+        g = cid.split("_")[0]
+        for sub in SUBJECTS_BY_GRADE[g]:
+            if f"{g}_{sub}" not in taught[cid]:
+                missing[sub].append(cid)
+    for sub, cids in sorted(missing.items()):
+        issues.append(f"No teacher for {SUBJECT_DISPLAY.get(sub, sub)} in {', '.join(cids)} — only admins can enter its marks")
     names = Counter(re.sub(r"[^a-z]", "", t["name"].lower()) for t in teachers)
     for t in teachers:
         if names[re.sub(r"[^a-z]", "", t["name"].lower())] > 1:
