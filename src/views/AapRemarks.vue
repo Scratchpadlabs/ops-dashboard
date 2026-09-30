@@ -90,10 +90,8 @@
       <div v-if="classId" class="flex items-center gap-2 flex-wrap mt-3">
         <Button label="Scan subjects" icon="pi pi-search" size="small" text
                 :loading="scanning" :disabled="running" @click="runScan" />
-        <Button label="Export CSV" icon="pi pi-download" size="small" outlined
-                :disabled="!hasRemarks" @click="exportCsv" />
-        <Button label="Export XLSX" icon="pi pi-file-excel" size="small" outlined
-                :disabled="!hasRemarks" @click="exportXlsx" />
+        <Button label="Export…" icon="pi pi-download" size="small" outlined
+                :disabled="!hasRemarks" @click="exportDialogVisible = true" />
         <Button label="Download all PDFs" icon="pi pi-file-pdf" size="small" outlined
                 :loading="downloadingPdfs" :disabled="!hasRemarks" @click="downloadAllPdfs" />
         <span class="text-xs text-slate-400">
@@ -180,6 +178,12 @@
       @saved="onMappingsSaved"
     />
 
+    <AapExportOptionsDialog
+      v-model:visible="exportDialogVisible"
+      :subjects="classSubjects"
+      @export="onExport"
+    />
+
     <AapBulkPdfDialog
       v-model:visible="bulkPdfDialogVisible"
       :school-id="schoolId"
@@ -234,11 +238,12 @@ import TabPanel from 'primevue/tabpanel'
 
 import { useStepUpAuth } from '../composables/useStepUpAuth.js'
 import { useAapRemarks } from '../composables/useAapRemarks.js'
-import { downloadAapCsv, downloadAapXlsx } from '../utils/aapExport.js'
+import { downloadAapCsv, downloadAapXlsx, subjectsInClass } from '../utils/aapExport.js'
 import AapRemarksTable from '../components/aap-remarks/AapRemarksTable.vue'
 import AapSubjectMapDialog from '../components/aap-remarks/AapSubjectMapDialog.vue'
 import AapSurveyCompletionTab from '../components/aap-remarks/AapSurveyCompletionTab.vue'
 import AapBulkPdfDialog from '../components/aap-remarks/AapBulkPdfDialog.vue'
+import AapExportOptionsDialog from '../components/aap-remarks/AapExportOptionsDialog.vue'
 
 /**
  * AAP remarks — Awareness / Sensitivity / Creativity report-card comments.
@@ -313,6 +318,7 @@ watch(schoolId, async (id) => {
 const selectedSubjects = ref([])
 const mapDialogVisible = ref(false)
 const bulkPdfDialogVisible = ref(false)
+const exportDialogVisible = ref(false)
 // A run reports the same subject fields a scan does, so whichever happened
 // last is the current truth about this class's subjects.
 const lastRunSummary = ref(null)
@@ -406,13 +412,13 @@ async function onMappingsSaved(mappedTokens) {
 }
 
 // ── Export ────────────────────────────────────────────────────────────────
-function exportCsv() {
-  const count = downloadAapCsv(schoolId.value, classId.value, students.value, remarksByStudent.value)
-  toast.add({ severity: 'success', summary: `Exported ${count} rows`, life: 2500 })
-}
+const classSubjects = computed(() => subjectsInClass(students.value, remarksByStudent.value))
 
-function exportXlsx() {
-  const count = downloadAapXlsx(schoolId.value, classId.value, students.value, remarksByStudent.value)
+function onExport({ format, identityColumns, subjects }) {
+  const options = { identityColumns, subjects }
+  const count = format === 'xlsx'
+    ? downloadAapXlsx(schoolId.value, classId.value, students.value, remarksByStudent.value, options)
+    : downloadAapCsv(schoolId.value, classId.value, students.value, remarksByStudent.value, options)
   toast.add({ severity: 'success', summary: `Exported ${count} rows`, life: 2500 })
 }
 
