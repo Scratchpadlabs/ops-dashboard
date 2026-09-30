@@ -101,6 +101,14 @@
         </span>
       </div>
 
+      <div v-if="schoolId" class="flex items-center gap-2 flex-wrap mt-3">
+        <Button label="Download multiple classes" icon="pi pi-copy" size="small" outlined
+                @click="bulkPdfDialogVisible = true" />
+        <span class="text-xs text-slate-400">
+          One zip of summary PDFs across every class you pick, for every student who already has a remark.
+        </span>
+      </div>
+
       <!-- Generation skips anything already approved, which is the difference
            between "run it again" and "lose an afternoon of review". Said here
            rather than in a tooltip because it is the answer to the question
@@ -172,6 +180,12 @@
       @saved="onMappingsSaved"
     />
 
+    <AapBulkPdfDialog
+      v-model:visible="bulkPdfDialogVisible"
+      :school-id="schoolId"
+      :classes="classes"
+    />
+
     <!-- ── Review table ──────────────────────────────────────────────────── -->
     <div v-if="!classId" class="text-center py-20 bg-white rounded-xl border border-slate-200">
       <i class="pi pi-comments text-4xl text-slate-300 mb-3 block"></i>
@@ -224,6 +238,7 @@ import { downloadAapCsv, downloadAapXlsx } from '../utils/aapExport.js'
 import AapRemarksTable from '../components/aap-remarks/AapRemarksTable.vue'
 import AapSubjectMapDialog from '../components/aap-remarks/AapSubjectMapDialog.vue'
 import AapSurveyCompletionTab from '../components/aap-remarks/AapSurveyCompletionTab.vue'
+import AapBulkPdfDialog from '../components/aap-remarks/AapBulkPdfDialog.vue'
 
 /**
  * AAP remarks — Awareness / Sensitivity / Creativity report-card comments.
@@ -297,6 +312,7 @@ watch(schoolId, async (id) => {
 // ── Subjects ──────────────────────────────────────────────────────────────
 const selectedSubjects = ref([])
 const mapDialogVisible = ref(false)
+const bulkPdfDialogVisible = ref(false)
 // A run reports the same subject fields a scan does, so whichever happened
 // last is the current truth about this class's subjects.
 const lastRunSummary = ref(null)
