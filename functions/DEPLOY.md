@@ -354,7 +354,7 @@ gcloud functions deploy class_detail \
   --gen2 --runtime python312 --region asia-south1 \
   --source . --entry-point class_detail \
   --trigger-http --allow-unauthenticated --project clarified-1501 \
-  --memory 512MB --timeout 120s --max-instances 5 --concurrency 10
+  --memory 512MB --cpu 1 --timeout 120s --max-instances 5 --concurrency 10
 ```
 
 `class_detail` is called once per class, and the AAP Remarks "several classes
@@ -363,6 +363,9 @@ concurrently. It's read-only Firestore I/O, so `--concurrency 10` lets one
 instance serve that burst without new instances spinning up; the default of
 1 request/instance at `--max-instances 3` aborted queued requests with "no
 available instance" the first time a caller picked more than 3 classes.
+`--cpu 1` is required alongside `--concurrency 10` -- Cloud Run refuses
+concurrency > 1 on less than a full vCPU, which is what 512MB allocates by
+default.
 
 No secrets and no new IAM: these are plain Firestore readers/writers, covered
 by the runtime service account's existing `roles/editor`. No firestore.rules
