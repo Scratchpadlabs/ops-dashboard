@@ -211,6 +211,23 @@ def _is_aap_survey_id(survey_id):
     return str(survey_id).lower().startswith(_AAP_SURVEY_ID_PREFIXES)
 
 
+def _merge_additional_subject(name):
+    """"Maths Additional" -> "Maths": grade 11/12 commonly split a subject
+    into a core and an "Additional" paper for board-exam purposes, but AAP
+    has no separate rubric for the Additional half and a report card reader
+    has no use for the distinction either. Stripped before the subject name
+    is used anywhere in this file, so a response filed under "Maths
+    Additional" combines into the same remark as "Maths" -- same mechanism
+    topic_combine.py already uses to merge several topics of one subject,
+    just one level up. Case-insensitive match, exact suffix only (so e.g.
+    "Additional Maths" is untouched -- it is a different convention this
+    school does not use, not the same subject split the other way round)."""
+    name = str(name or "").strip()
+    if name.lower().endswith(" additional"):
+        return name[: -len(" additional")].strip()
+    return name
+
+
 def _parse_aap_response_id(doc_id):
     """doc id: teacherID_grade_section..._grade_subject_topic -> a dict of the
     parts, or None if the id doesn't fit the convention at all.
@@ -365,6 +382,7 @@ def fetch_survey_ratings(school_id, class_id):
             subject_doc_id, token, topic_token = _split_topic_id(parsed["topic_id"], subject_names)
             if subject_doc_id in subject_names:
                 subject = subject_names[subject_doc_id] or token.replace("_", " ")
+            subject = _merge_additional_subject(subject)
             name, order = topic_names.get(parsed["topic_id"], ("", None))
             topic = name or (topic_token or "").replace("_", " ").strip() or "General"
             topic_key = _norm_topic(topic)
