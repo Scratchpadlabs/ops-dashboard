@@ -138,8 +138,19 @@ gcloud functions deploy generate_aap_remarks \
   --gen2 --runtime python312 --region asia-south1 \
   --source . --entry-point generate_aap_remarks \
   --trigger-http --allow-unauthenticated --project clarified-1501 \
-  --memory 512MB --timeout 540s --max-instances 3 \
+  --memory 512MB --timeout 540s --max-instances 8 \
   --set-secrets OPENAI_API_KEY=OPENAI_API_KEY:latest
+```
+`scan_aap_subjects` (the AAP Remarks page's subject scan) is NOT a separate
+function -- it's this same `generate_aap_remarks` entry point called with
+`scan_only: true`. Picking several classes at once fires up to 4 of those
+scans concurrently (`useAapRemarks.js`'s `mapLimit`), so `--max-instances 3`
+left no room for an overlapping real generate call and Cloud Run started
+returning 429s. Concurrency per instance is left at the default of 1 rather
+than raised, unlike `class_detail`: an actual generate request does OpenAI
+calls and Firestore writes, and letting two of those share an instance risks
+contention mid-run.
+```
 
 # Same source dir, one deploy per entry point:
 for fn in list_aap_remarks update_aap_remark bulk_update_aap_remarks save_aap_subject_mapping update_aap_survey_response; do
@@ -354,8 +365,18 @@ gcloud functions deploy class_detail \
   --gen2 --runtime python312 --region asia-south1 \
   --source . --entry-point class_detail \
   --trigger-http --allow-unauthenticated --project clarified-1501 \
-  --memory 512MB --timeout 120s --max-instances 3
+  --memory 512MB --cpu 1 --timeout 120s --max-instances 5 --concurrency 10
 ```
+
+`class_detail` is called once per class, and the AAP Remarks "several classes
+at once" flow (`useAapRemarks.js`'s `mapLimit`) fires up to 4 of those calls
+concurrently. It's read-only Firestore I/O, so `--concurrency 10` lets one
+instance serve that burst without new instances spinning up; the default of
+1 request/instance at `--max-instances 3` aborted queued requests with "no
+available instance" the first time a caller picked more than 3 classes.
+`--cpu 1` is required alongside `--concurrency 10` -- Cloud Run refuses
+concurrency > 1 on less than a full vCPU, which is what 512MB allocates by
+default.
 
 No secrets and no new IAM: these are plain Firestore readers/writers, covered
 by the runtime service account's existing `roles/editor`. No firestore.rules
