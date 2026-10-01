@@ -193,6 +193,24 @@ def get_first_name(full_name):
     return parts[0]
 
 
+# A survey doc is an AAP survey if its id starts with one of these --
+# confirmed against real data (Hillgreen Highschool): the original "zzz"
+# convention covers its Foundation/Preparatory-stage surveys, but its
+# Middle/Secondary-stage ones (grade 6+, activity-based: "compare and
+# evaluate", "mind mapping", ...) are filed under "secondary_NN_<activity>"
+# instead, with no "zzz" prefix at all. Every response under those was
+# silently skipped by every caller below (generate_aap_remarks's own scan,
+# fetch_survey_ratings, and aap_survey_completion's _scan_school_aap_completion
+# all shared the bare "zzz"-only check) -- indistinguishable in the dashboard
+# from "no survey submitted yet". Add prefixes here, never a second hardcoded
+# check elsewhere, if another stage turns out to use its own scheme too.
+_AAP_SURVEY_ID_PREFIXES = ("zzz", "secondary_")
+
+
+def _is_aap_survey_id(survey_id):
+    return str(survey_id).lower().startswith(_AAP_SURVEY_ID_PREFIXES)
+
+
 def _parse_aap_response_id(doc_id):
     """doc id: teacherID_grade_section..._grade_subject_topic -> a dict of the
     parts, or None if the id doesn't fit the convention at all.
@@ -205,8 +223,21 @@ def _parse_aap_response_id(doc_id):
     that, so EVERY response using this — apparently normal — convention was
     silently discarded as unparseable, for every consumer of this function
     including the already-deployed fetch_survey_ratings. Matched instead by
-    canonical grade equivalence, the same comparison canonical_grade_section
-    already does everywhere else grades are compared in this file.
+    canonical grade equivalence.
+
+    That match is done with parse_class_value, not a bare canonical_grade_section
+    call — also confirmed against real data: a stream-qualified second
+    occurrence like "XI Science" (Hillgreen's grade-11 Science-stream survey
+    ids) has the grade and stream folded into one token with a SPACE, not an
+    underscore, so it survives the split("_") above as a single part. Plain
+    canonical_grade_section has no multi-word fallback and cannot resolve
+    "XI Science" to grade 11 at all -- it falls back to comparing the raw
+    uppercased string, which never equals "11"/"XI", so every response under
+    a streamed grade was silently discarded the same way the Arabic/Roman
+    case was. parse_class_value DOES shrink from the full token down to
+    grade "XI" + section "Science" (same fallback _expected_subjects_by_grade
+    already relies on for this), so it resolves both occurrences to the same
+    canonical grade.
 
     Shared by fetch_survey_ratings (which only needs grade/section/subject —
     it discards topic, since a remark is written per subject, not per topic)
@@ -217,10 +248,12 @@ def _parse_aap_response_id(doc_id):
         return None
     teacher_id = parts[0]
     grade = parts[1]
-    grade_canonical, _ = canonical_grade_section(grade, "")
+    grade_canonical = parse_class_value(grade)["grade_canonical"]
+    if grade_canonical is None:
+        return None
     second_idx = next(
         (i for i in range(2, len(parts))
-         if canonical_grade_section(parts[i], "")[0] == grade_canonical),
+         if parse_class_value(parts[i])["grade_canonical"] == grade_canonical),
         None)
     if second_idx is None:
         return None
@@ -314,7 +347,7 @@ def fetch_survey_ratings(school_id, class_id):
     topic_names = _topic_names(school_ref)
 
     for survey_doc in school_ref.collection("surveys").stream():
-        if not survey_doc.id.lower().startswith("zzz"):
+        if not _is_aap_survey_id(survey_doc.id):
             continue
         responses = (school_ref.collection("surveys").document(survey_doc.id)
                      .collection("responses").stream())
@@ -1475,7 +1508,7 @@ def _scan_school_aap_completion(school_id, class_doc_ids=(), subject_doc_ids=())
     subject_doc_ids = list(subject_doc_ids)
 
     for survey_doc in school_ref.collection("surveys").stream():
-        if not survey_doc.id.lower().startswith("zzz"):
+        if not _is_aap_survey_id(survey_doc.id):
             continue
         responses = (school_ref.collection("surveys").document(survey_doc.id)
                      .collection("responses").stream())
@@ -1576,12 +1609,13 @@ def _whole_school_roster(school_id):
 
 
 def _aap_survey_ids_by_activity(school_ref):
-    """{activity_id: survey_doc_id} for every zzz-prefixed (AAP) survey. The
-    teacher app finds an activity's survey by its `id` field, which is
-    normally also the doc id — both are indexed so either spelling resolves."""
+    """{activity_id: survey_doc_id} for every AAP survey (see
+    _AAP_SURVEY_ID_PREFIXES). The teacher app finds an activity's survey by
+    its `id` field, which is normally also the doc id — both are indexed so
+    either spelling resolves."""
     out = {}
     for survey_doc in school_ref.collection("surveys").stream():
-        if not survey_doc.id.lower().startswith("zzz"):
+        if not _is_aap_survey_id(survey_doc.id):
             continue
         out.setdefault(survey_doc.id, survey_doc.id)
         field_id = (survey_doc.to_dict() or {}).get("id")
@@ -1962,7 +1996,7 @@ def update_aap_survey_response(req: https_fn.CallableRequest) -> dict:
         raise https_fn.HttpsError(
             https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
             "school_id, survey_id and response_id are required")
-    if not str(survey_id).lower().startswith("zzz"):
+    if not _is_aap_survey_id(survey_id):
         raise https_fn.HttpsError(
             https_fn.FunctionsErrorCode.INVALID_ARGUMENT, "Not an AAP survey")
 
