@@ -4,10 +4,10 @@
  * from the school's own student export (SCHOOL_STUDENT_DATA dataport CSV).
  *
  * The export has TWO "Gender" columns: the first holds Male/Female, the
- * second holds G/B. Per the school, G = girl and B = boy, and the G/B column
- * is the source of truth. When G/B is blank the Male/Female column is used
- * instead. Rows where the two columns disagree still follow G/B, but are
- * flagged in the report (note starts with "CONFLICT") for a human to check.
+ * second holds G/B (per the school, G = girl and B = boy). Either column is
+ * used when the other is blank. Where the two disagree, the Male/Female
+ * column wins — the G/B letter was found to be wrong on those rows — and the
+ * row is flagged in the report (note starts with "CONFLICT").
  *
  * Values are written in the canonical form the rest of the app uses
  * (StudentsTab.vue's GENDER_OPTIONS, generate_import's clean_gender):
@@ -116,10 +116,11 @@ function readSource(path) {
     if (!name) return // blank spacer rows in the export
     const letter = LETTER_TO_GENDER[(r[letterCol] || '').trim().toLowerCase()] || ''
     const word = WORD_TO_GENDER[(r[wordCol] || '').trim().toLowerCase()] || ''
-    const gender = letter || word
+    const gender = word || letter
     let note = ''
-    if (letter && word && letter !== word) note = `CONFLICT: G/B column says ${letter}, Male/Female column says ${word} — used G/B`
+    if (letter && word && letter !== word) note = `CONFLICT: G/B column says ${letter}, Male/Female column says ${word} — used Male/Female`
     else if (!letter && word) note = 'G/B blank — used Male/Female column'
+    else if (letter && !word) note = 'Male/Female blank — used G/B column'
     out.push({
       line: i + 2, name, admNo: (r[admCol] || '').trim(), className: (r[classCol] || '').trim(),
       gender, note,
