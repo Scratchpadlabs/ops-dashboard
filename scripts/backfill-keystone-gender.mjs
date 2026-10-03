@@ -7,7 +7,9 @@
  * second holds G/B (per the school, G = girl and B = boy). Either column is
  * used when the other is blank. Where the two disagree, the Male/Female
  * column wins — the G/B letter was found to be wrong on those rows — and the
- * row is flagged in the report (note starts with "CONFLICT").
+ * row is flagged in the report (note starts with "CONFLICT"). A few of
+ * those rows had the Male/Female column wrong instead; the school confirmed
+ * them as girls, so GENDER_OVERRIDES pins them by name.
  *
  * Values are written in the canonical form the rest of the app uses
  * (StudentsTab.vue's GENDER_OPTIONS, generate_import's clean_gender):
@@ -100,6 +102,17 @@ const WORD_TO_GENDER = { female: 'Female', male: 'Male' }
 const normAdmNo = (s) => String(s ?? '').replace(/\s+/g, '').toUpperCase()
 const normName = (s) => String(s ?? '').trim().replace(/\s+/g, ' ').toLowerCase()
 
+// Confirmed by the school: the export's Male/Female column is wrong for these.
+const GENDER_OVERRIDES = new Map([
+  'Tanirika Rohit Nandanwar',
+  'Swara Sandeep Shewale',
+  'Dnyanada Sudhir Bhadle',
+  'Shubhra Vitthal Raut',
+  'Anuradha Hanumant Mane',
+  'Aaradhya Rama Shewale',
+  'Adhishtha Purushottam Waghmare',
+].map(name => [normName(name), 'Female']))
+
 function readSource(path) {
   const [header, ...body] = parseCsv(readFileSync(path, 'utf8'))
   const genderCols = header.map((h, i) => (h.trim().toLowerCase() === 'gender' ? i : -1)).filter(i => i >= 0)
@@ -116,9 +129,11 @@ function readSource(path) {
     if (!name) return // blank spacer rows in the export
     const letter = LETTER_TO_GENDER[(r[letterCol] || '').trim().toLowerCase()] || ''
     const word = WORD_TO_GENDER[(r[wordCol] || '').trim().toLowerCase()] || ''
-    const gender = word || letter
+    const override = GENDER_OVERRIDES.get(normName(name))
+    const gender = override || word || letter
     let note = ''
-    if (letter && word && letter !== word) note = `CONFLICT: G/B column says ${letter}, Male/Female column says ${word} — used Male/Female`
+    if (override) note = `OVERRIDE: confirmed ${override} by the school (G/B says ${letter || 'blank'}, Male/Female says ${word || 'blank'})`
+    else if (letter && word && letter !== word) note = `CONFLICT: G/B column says ${letter}, Male/Female column says ${word} — used Male/Female`
     else if (!letter && word) note = 'G/B blank — used Male/Female column'
     else if (letter && !word) note = 'Male/Female blank — used G/B column'
     out.push({
