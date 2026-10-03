@@ -393,7 +393,7 @@ export async function generateAapSummaryPdfRemote({ schoolId, studentId, title }
 // folder per class in the zip, each with the per-student PDFs plus one
 // combined "<class>_all_students.pdf" for printing. `approvedOnly` leaves
 // out remarks not yet approved (and students left with none).
-export async function generateAapSummaryPdfsRemote({ schoolId, studentIds, classes, approvedOnly, title }) {
+export async function generateAapSummaryPdfsRemote({ schoolId, studentIds, classes, approvedOnly, title, layout }) {
   const payload = { school_id: schoolId }
   if (classes?.length) {
     payload.classes = classes.map(c => ({ class_id: c.classId, label: c.label, student_ids: c.studentIds }))
@@ -402,6 +402,7 @@ export async function generateAapSummaryPdfsRemote({ schoolId, studentIds, class
   }
   if (approvedOnly) payload.approved_only = true
   if (title) payload.title = title
+  if (layout) payload.layout = layout
   const res = await generateAapSummaryPdfsCallable(payload)
   return res.data
 }

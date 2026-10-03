@@ -267,6 +267,18 @@
           </div>
         </div>
         <div>
+          <label class="form-label">PDF report</label>
+          <div class="flex flex-col gap-1.5">
+            <div v-for="opt in PDF_LAYOUTS" :key="opt.value" class="flex items-start gap-2">
+              <RadioButton v-model="pdfLayout" :value="opt.value" :inputId="`aapLayout-${opt.value}`" :disabled="downloading" />
+              <label :for="`aapLayout-${opt.value}`" class="text-sm text-slate-700 cursor-pointer">
+                {{ opt.label }}
+                <span class="block text-xs text-slate-400">{{ opt.hint }}</span>
+              </label>
+            </div>
+          </div>
+        </div>
+        <div>
           <label class="form-label">PDF title</label>
           <div class="flex flex-col gap-1.5">
             <div v-for="opt in titleOptions" :key="opt.value" class="flex items-center gap-2">
@@ -290,8 +302,8 @@
           <li><b>Excel</b> — laid out for teachers: a <b>Read me</b> explaining the abilities and levels,
             a <b>Summary</b> by class, one easy-to-read sheet per class (a block per student, remarks in
             full, levels colour-coded, print-ready), and an <b>All remarks</b> list with filters.</li>
-          <li><b>PDF</b> — a zip with a folder per class: each student's summary page, plus one
-            <b>&lt;class&gt;_all_students.pdf</b> with the whole class, ready to print.</li>
+          <li><b>PDF</b> — packaged as chosen under <b>PDF report</b>: one consolidated file, one file
+            per class, or every student's page separately. Students with no remark get no page.</li>
         </ul>
         <div v-if="downloading" class="text-sm text-slate-600 flex items-center gap-2">
           <i class="pi pi-spin pi-spinner text-sm"></i>{{ downloadStatus }}
@@ -302,7 +314,7 @@
         <Button label="Download Excel" icon="pi pi-file-excel" outlined
                 :loading="downloading && downloadFormat === 'xlsx'"
                 :disabled="downloading || !downloadClassIds.length" @click="runDownload('xlsx')" />
-        <Button label="Download PDFs" icon="pi pi-file-pdf"
+        <Button :label="pdfLayout === 'school' ? 'Download PDF' : 'Download PDFs'" icon="pi pi-file-pdf"
                 :loading="downloading && downloadFormat === 'pdf'"
                 :disabled="downloading || !downloadClassIds.length || (titleChoice === 'custom' && !customTitle.trim())"
                 @click="runDownload('pdf')" />
@@ -371,7 +383,7 @@ import TabPanel from 'primevue/tabpanel'
 
 import { useStepUpAuth } from '../composables/useStepUpAuth.js'
 import {
-  useAapRemarks, pdfTitle, setPdfTitle, PDF_TITLE_PRESETS, MAX_PDF_TITLE,
+  useAapRemarks, pdfTitle, setPdfTitle, PDF_TITLE_PRESETS, MAX_PDF_TITLE, PDF_LAYOUTS,
 } from '../composables/useAapRemarks.js'
 import { downloadAapCsv, downloadAapWorkbook, approvedOnly } from '../utils/aapExport.js'
 import { pendingFile, savePending, discardPending } from '../utils/deliverFile.js'
@@ -695,6 +707,7 @@ const downloadApprovedOnly = ref(false)
 const downloading = ref(false)
 const downloadFormat = ref('')
 const downloadStatus = ref('')
+const pdfLayout = ref('class')
 
 // PDF heading: the two presets, or the admin's own text.
 const titleOptions = [
@@ -762,7 +775,9 @@ async function runDownload(format) {
         return
       }
       downloadStatus.value = `Building ${total} PDF page${total === 1 ? '' : 's'} across ${groups.length} class${groups.length === 1 ? '' : 'es'}…`
-      const status = await downloadClassPdfs(schoolId.value, groups, { approvedOnly: downloadApprovedOnly.value })
+      const status = await downloadClassPdfs(schoolId.value, groups, {
+        approvedOnly: downloadApprovedOnly.value, layout: pdfLayout.value,
+      })
       if (status === 'downloaded') toast.add({ severity: 'success', life: 4000, summary: `PDFs downloaded — ${total} student${total === 1 ? '' : 's'} `
         + `in ${groups.length} class${groups.length === 1 ? '' : 'es'}` })
     }

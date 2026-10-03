@@ -37,6 +37,17 @@ import {
 import { deliverReport } from '../utils/deliverFile.js'
 
 export const STATUS_APPROVED = 'approved'
+
+/** How the multi-class PDF download is packaged — mirrors PDF_LAYOUTS in
+ *  functions/generate_aap_remarks/main.py. */
+export const PDF_LAYOUTS = [
+  { value: 'school', label: 'Consolidated report',
+    hint: 'One PDF with every selected class, class by class — pick all classes for the whole school.' },
+  { value: 'class', label: 'One report per class',
+    hint: 'A single PDF for each class (a zip when more than one class is picked).' },
+  { value: 'students', label: 'Individual student PDFs',
+    hint: 'A zip with a folder per class: each student\'s page plus <class>_all_students.pdf.' },
+]
 export const STATUS_NEEDS_REVIEW = 'needs_review'
 
 /** The three traits, in the order the function prompts with them. */
@@ -315,9 +326,13 @@ export function useAapRemarks() {
     return deliverReport(report)
   }
 
-  /** classes: [{ classId, label, studentIds }] — a zip with a folder per class. */
-  async function downloadClassPdfs(schoolId, classes, { approvedOnly = false } = {}) {
-    const report = await generateAapSummaryPdfsRemote({ schoolId, classes, approvedOnly, title: pdfTitle.value })
+  /**
+   * classes: [{ classId, label, studentIds }]. layout (see PDF_LAYOUTS):
+   * 'students' — a zip with a folder per class; 'class' — one PDF per class;
+   * 'school' — one consolidated PDF for every class given.
+   */
+  async function downloadClassPdfs(schoolId, classes, { approvedOnly = false, layout = 'students' } = {}) {
+    const report = await generateAapSummaryPdfsRemote({ schoolId, classes, approvedOnly, layout, title: pdfTitle.value })
     return deliverReport(report)
   }
 

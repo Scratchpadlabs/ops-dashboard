@@ -1258,26 +1258,46 @@ def generate_aap_summary_pdf(req: https_fn.CallableRequest) -> dict:
     }
 
 
+# How generate_aap_summary_pdfs packages its pages:
+#   students — a zip of per-student PDFs (a folder per class, each with its
+#              own <class>_all_students.pdf too)
+#   class    — one printable PDF per class (a zip of them when there is more
+#              than one class, the bare PDF when there is just one)
+#   school   — one consolidated PDF with every selected class, class by class
+PDF_LAYOUTS = ("students", "class", "school")
+
+
 @https_fn.on_call(region="asia-south1", memory=options.MemoryOption.MB_512, timeout_sec=300)
 def generate_aap_summary_pdfs(req: https_fn.CallableRequest) -> dict:
-    """{school_id, student_ids | classes, approved_only?, title?} ->
-    {filename, mime, content_base64, students, skipped} (a zip).
+    """{school_id, student_ids | classes, approved_only?, title?, layout?} ->
+    {filename, mime, content_base64, students, skipped} (a zip, or one PDF).
 
-    Bulk form of generate_aap_summary_pdf — one PDF per student inside a zip,
-    each named "<student_id>.pdf" so the caller can match files back to
-    children for whatever merge/print step they run next.
+    Bulk form of generate_aap_summary_pdf. With the default `layout`
+    ("students") it is one PDF per student inside a zip, each named
+    "<student_id>.pdf" so the caller can match files back to children for
+    whatever merge/print step they run next.
 
     `classes` ([{class_id, label?, student_ids}]) is the multi-class form:
     one folder per class, each holding the per-student PDFs AND one combined
     "<class>_all_students.pdf" with every child's page in roster order —
     the file a school actually prints. `approved_only` leaves out remarks
     not yet approved, and a student left with none gets no page at all.
+
+    `layout` "class" skips the per-student files and returns one PDF per
+    class; "school" returns a single consolidated PDF of every class given,
+    in the order given — see PDF_LAYOUTS.
     """
     _require_ops_admin(req)
     data = req.data or {}
     school_id = data.get("school_id")
     approved_only = bool(data.get("approved_only"))
     title = _pdf_title(data)
+    layout = data.get("layout") or "students"
+    if layout not in PDF_LAYOUTS:
+        raise https_fn.HttpsError(
+            https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
+            f"layout must be one of {', '.join(PDF_LAYOUTS)}",
+        )
     groups = []
     for c in data.get("classes") or []:
         if not isinstance(c, dict):
@@ -1295,26 +1315,60 @@ def generate_aap_summary_pdfs(req: https_fn.CallableRequest) -> dict:
         )
 
     school_ref = db.collection("schools").document(school_id)
+    # [(folder, [(student_id, remarks)])] — read once, packaged below.
+    paged = []
+    skipped = 0
+    for folder, student_ids in groups:
+        pages = []
+        for student_id in student_ids:
+            remarks = _fetch_student_remarks(school_ref, student_id)
+            if approved_only:
+                remarks = [r for r in remarks if r.get("status") == "approved"]
+                if not remarks:
+                    skipped += 1
+                    continue
+            pages.append((student_id, remarks))
+        paged.append((folder, pages))
+    written = sum(len(pages) for _, pages in paged)
+    date_str = datetime.date.today().isoformat()
+
+    def pdf_result(filename, pdf_bytes):
+        return {
+            "filename": filename,
+            "mime": "application/pdf",
+            "content_base64": base64.b64encode(pdf_bytes).decode("ascii"),
+            "students": written,
+            "skipped": skipped,
+        }
+
+    if layout != "students":
+        paged = [(folder, pages) for folder, pages in paged if pages]
+        if not paged:
+            raise https_fn.HttpsError(
+                https_fn.FunctionsErrorCode.FAILED_PRECONDITION,
+                "No student in these classes has a remark to print",
+            )
+        if layout == "school":
+            every_page = [page for _, pages in paged for page in pages]
+            return pdf_result(f"AAP_summary_school_{school_id}_{date_str}.pdf",
+                              _build_combined_summary_pdf(every_page, title))
+        if len(paged) == 1:
+            folder, pages = paged[0]
+            return pdf_result(f"AAP_summary_{folder or 'class'}_{school_id}_{date_str}.pdf",
+                              _build_combined_summary_pdf(pages, title))
+
     zip_buf = io.BytesIO()
-    written = skipped = 0
     with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        for folder, student_ids in groups:
+        for folder, pages in paged:
+            if layout == "class":
+                zf.writestr(f"{folder or 'class'}.pdf", _build_combined_summary_pdf(pages, title))
+                continue
             prefix = f"{folder}/" if folder else ""
-            pages = []
-            for student_id in student_ids:
-                remarks = _fetch_student_remarks(school_ref, student_id)
-                if approved_only:
-                    remarks = [r for r in remarks if r.get("status") == "approved"]
-                    if not remarks:
-                        skipped += 1
-                        continue
+            for student_id, remarks in pages:
                 zf.writestr(f"{prefix}{student_id}.pdf", _build_student_summary_pdf(student_id, remarks, title))
-                pages.append((student_id, remarks))
-                written += 1
             if folder and pages:
                 zf.writestr(f"{prefix}{folder}_all_students.pdf", _build_combined_summary_pdf(pages, title))
 
-    date_str = datetime.date.today().isoformat()
     scope = "classes" if groups[0][0] else "pdfs"
     return {
         "filename": f"AAP_summary_{scope}_{school_id}_{date_str}.zip",
