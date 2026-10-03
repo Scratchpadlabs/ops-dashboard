@@ -192,19 +192,51 @@ export function downloadAapCsv(schoolId, classId, students, remarksByStudent) {
  * exceljs is imported here, on demand, so its weight lands only on someone
  * who actually downloads.
  *
+ * perClass: false — one consolidated workbook, a sheet per class (pick every
+ * class for the whole school). true — a separate workbook per class, each
+ * with its own Read me/Summary; zipped when there is more than one class.
+ *
  * @param classes  [{ id, label }] in sheet order
- * @returns { count: students in the file, status: 'downloaded' | 'pending' }
+ * @returns { count: students in the file, files: workbooks built,
+ *            status: 'downloaded' | 'pending' }
  */
-export async function downloadAapWorkbook({ schoolId, schoolName, classes, students, remarksByStudent, approvedOnly = false }) {
+export async function downloadAapWorkbook({
+  schoolId, schoolName, classes, students, remarksByStudent, approvedOnly = false, perClass = false,
+}) {
   const [{ default: ExcelJS }, { buildTeacherWorkbook }] = await Promise.all([
     import('exceljs'), import('./aapTeacherWorkbook.js'),
   ])
-  const wb = buildTeacherWorkbook(ExcelJS, { schoolName, classes, students, remarksByStudent, approvedOnly })
-  const buffer = await wb.xlsx.writeBuffer()
-  const label = classes.length <= 3 ? classes.map(c => c.id).join('+') : `${classes.length}_classes`
-  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+  const school = schoolName || schoolId
+  const build = async (cls, roster) => {
+    const wb = buildTeacherWorkbook(ExcelJS, { schoolName, classes: cls, students: roster, remarksByStudent, approvedOnly })
+    return wb.xlsx.writeBuffer()
+  }
   // Building this can outlast the click's download window — deliverFile
   // falls back to a Save button rather than a blocked download.
-  const status = deliverFile(blob, exportFilename(schoolName || schoolId, label, 'xlsx'))
-  return { count: students.length, status }
+  if (!perClass) {
+    const label = classes.length <= 3 ? classes.map(c => c.id).join('+') : `${classes.length}_classes`
+    const blob = new Blob([await build(classes, students)], { type: XLSX_MIME })
+    return { count: students.length, files: 1, status: deliverFile(blob, exportFilename(school, label, 'xlsx')) }
+  }
+
+  // A class with nobody on its roster would be an empty workbook.
+  const withStudents = classes.filter(c => students.some(s => s.classId === c.id))
+  if (!withStudents.length) return { count: 0, files: 0, status: 'empty' }
+  const files = []
+  for (const c of withStudents) {
+    const roster = students.filter(s => s.classId === c.id)
+    files.push({ name: exportFilename(school, c.label || c.id, 'xlsx'), buffer: await build([c], roster) })
+  }
+  if (files.length === 1) {
+    const status = deliverFile(new Blob([files[0].buffer], { type: XLSX_MIME }), files[0].name)
+    return { count: students.length, files: 1, status }
+  }
+  const { default: JSZip } = await import('jszip')
+  const zip = new JSZip()
+  for (const f of files) zip.file(f.name, f.buffer)
+  const blob = await zip.generateAsync({ type: 'blob', mimeType: 'application/zip' })
+  const status = deliverFile(blob, exportFilename(school, `${files.length}_classes`, 'zip'))
+  return { count: students.length, files: files.length, status }
 }
+
+const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'

@@ -38,15 +38,15 @@ import { deliverReport } from '../utils/deliverFile.js'
 
 export const STATUS_APPROVED = 'approved'
 
-/** How the multi-class PDF download is packaged — mirrors PDF_LAYOUTS in
- *  functions/generate_aap_remarks/main.py. */
-export const PDF_LAYOUTS = [
+/** How the multi-class download is packaged, for Excel and PDF alike. The
+ *  values are the PDF function's layouts (PDF_LAYOUTS in
+ *  functions/generate_aap_remarks/main.py); 'students' is the PDF-only
+ *  per-student zip, offered as a checkbox rather than here. */
+export const REPORT_SCOPES = [
   { value: 'school', label: 'Consolidated report',
-    hint: 'One PDF with every selected class, class by class — pick all classes for the whole school.' },
+    hint: 'One file for every selected class — Select all for the whole school.' },
   { value: 'class', label: 'One report per class',
-    hint: 'A single PDF for each class (a zip when more than one class is picked).' },
-  { value: 'students', label: 'Individual student PDFs',
-    hint: 'A zip with a folder per class: each student\'s page plus <class>_all_students.pdf.' },
+    hint: 'A separate file for each class (zipped when more than one class is picked).' },
 ]
 export const STATUS_NEEDS_REVIEW = 'needs_review'
 

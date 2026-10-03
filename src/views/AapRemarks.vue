@@ -267,11 +267,11 @@
           </div>
         </div>
         <div>
-          <label class="form-label">PDF report</label>
+          <label class="form-label">Report</label>
           <div class="flex flex-col gap-1.5">
-            <div v-for="opt in PDF_LAYOUTS" :key="opt.value" class="flex items-start gap-2">
-              <RadioButton v-model="pdfLayout" :value="opt.value" :inputId="`aapLayout-${opt.value}`" :disabled="downloading" />
-              <label :for="`aapLayout-${opt.value}`" class="text-sm text-slate-700 cursor-pointer">
+            <div v-for="opt in REPORT_SCOPES" :key="opt.value" class="flex items-start gap-2">
+              <RadioButton v-model="reportScope" :value="opt.value" :inputId="`aapScope-${opt.value}`" :disabled="downloading" />
+              <label :for="`aapScope-${opt.value}`" class="text-sm text-slate-700 cursor-pointer">
                 {{ opt.label }}
                 <span class="block text-xs text-slate-400">{{ opt.hint }}</span>
               </label>
@@ -298,12 +298,17 @@
           <Checkbox v-model="downloadApprovedOnly" binary inputId="aapDownloadApproved" :disabled="downloading" />
           <label for="aapDownloadApproved" class="text-sm text-slate-700">Approved remarks only</label>
         </div>
+        <div class="flex items-center gap-2">
+          <Checkbox v-model="pdfPerStudent" binary inputId="aapPdfPerStudent" :disabled="downloading" />
+          <label for="aapPdfPerStudent" class="text-sm text-slate-700">PDF only: a separate file for every student</label>
+        </div>
         <ul class="text-xs text-slate-500 list-disc pl-4 space-y-1">
           <li><b>Excel</b> — laid out for teachers: a <b>Read me</b> explaining the abilities and levels,
             a <b>Summary</b> by class, one easy-to-read sheet per class (a block per student, remarks in
-            full, levels colour-coded, print-ready), and an <b>All remarks</b> list with filters.</li>
-          <li><b>PDF</b> — packaged as chosen under <b>PDF report</b>: one consolidated file, one file
-            per class, or every student's page separately. Students with no remark get no page.</li>
+            full, levels colour-coded, print-ready), and an <b>All remarks</b> list with filters.
+            The consolidated report holds every class in one workbook; per class, each class gets its own.</li>
+          <li><b>PDF</b> — one consolidated PDF or one per class, as chosen above; or, with the
+            per-student box ticked, a zip with every student's page. Students with no remark get no page.</li>
         </ul>
         <div v-if="downloading" class="text-sm text-slate-600 flex items-center gap-2">
           <i class="pi pi-spin pi-spinner text-sm"></i>{{ downloadStatus }}
@@ -314,7 +319,7 @@
         <Button label="Download Excel" icon="pi pi-file-excel" outlined
                 :loading="downloading && downloadFormat === 'xlsx'"
                 :disabled="downloading || !downloadClassIds.length" @click="runDownload('xlsx')" />
-        <Button :label="pdfLayout === 'school' ? 'Download PDF' : 'Download PDFs'" icon="pi pi-file-pdf"
+        <Button label="Download PDF" icon="pi pi-file-pdf"
                 :loading="downloading && downloadFormat === 'pdf'"
                 :disabled="downloading || !downloadClassIds.length || (titleChoice === 'custom' && !customTitle.trim())"
                 @click="runDownload('pdf')" />
@@ -383,7 +388,7 @@ import TabPanel from 'primevue/tabpanel'
 
 import { useStepUpAuth } from '../composables/useStepUpAuth.js'
 import {
-  useAapRemarks, pdfTitle, setPdfTitle, PDF_TITLE_PRESETS, MAX_PDF_TITLE, PDF_LAYOUTS,
+  useAapRemarks, pdfTitle, setPdfTitle, PDF_TITLE_PRESETS, MAX_PDF_TITLE, REPORT_SCOPES,
 } from '../composables/useAapRemarks.js'
 import { downloadAapCsv, downloadAapWorkbook, approvedOnly } from '../utils/aapExport.js'
 import { pendingFile, savePending, discardPending } from '../utils/deliverFile.js'
@@ -707,7 +712,8 @@ const downloadApprovedOnly = ref(false)
 const downloading = ref(false)
 const downloadFormat = ref('')
 const downloadStatus = ref('')
-const pdfLayout = ref('class')
+const reportScope = ref('school')
+const pdfPerStudent = ref(false)
 
 // PDF heading: the two presets, or the admin's own text.
 const titleOptions = [
@@ -751,12 +757,17 @@ async function runDownload(format) {
     const picked = ids.map(id => ({ id, label: classLabel(id) }))
 
     if (format === 'xlsx') {
-      const { count, status } = await downloadAapWorkbook({
+      const { count, files, status } = await downloadAapWorkbook({
         schoolId: schoolId.value, schoolName: schoolName.value, classes: picked,
         students: data.students, remarksByStudent: remarks, approvedOnly: downloadApprovedOnly.value,
+        perClass: reportScope.value === 'class',
       })
+      if (status === 'empty') {
+        toast.add({ severity: 'warn', summary: 'Nothing to download', detail: 'These classes have no students.', life: 5000 })
+        return
+      }
       if (status === 'downloaded') toast.add({ severity: 'success', life: 4000, summary: `Excel downloaded — ${count} student${count === 1 ? '' : 's'} `
-        + `in ${picked.length} class${picked.length === 1 ? '' : 'es'}` })
+        + `in ${picked.length} class${picked.length === 1 ? '' : 'es'}${files > 1 ? ` (${files} workbooks)` : ''}` })
     } else {
       // Only students with something to print: a child with no (approved)
       // remark would be a blank summary page.
@@ -776,7 +787,7 @@ async function runDownload(format) {
       }
       downloadStatus.value = `Building ${total} PDF page${total === 1 ? '' : 's'} across ${groups.length} class${groups.length === 1 ? '' : 'es'}…`
       const status = await downloadClassPdfs(schoolId.value, groups, {
-        approvedOnly: downloadApprovedOnly.value, layout: pdfLayout.value,
+        approvedOnly: downloadApprovedOnly.value, layout: pdfPerStudent.value ? 'students' : reportScope.value,
       })
       if (status === 'downloaded') toast.add({ severity: 'success', life: 4000, summary: `PDFs downloaded — ${total} student${total === 1 ? '' : 's'} `
         + `in ${groups.length} class${groups.length === 1 ? '' : 'es'}` })
