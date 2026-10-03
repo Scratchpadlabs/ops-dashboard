@@ -27,6 +27,7 @@
         </div>
         <ParcelCoverTool v-else-if="currentTab.key === 'parcel-cover'" />
         <AuthAccountsTool v-else-if="currentTab.key === 'authentication'" />
+        <SchoolWebsitesTool v-else-if="currentTab.key === 'websites'" />
       </div>
     </div>
   </div>
@@ -36,14 +37,19 @@
 import { ref, computed, onErrorCaptured } from 'vue'
 import ParcelCoverTool from '../components/tools/ParcelCoverTool.vue'
 import AuthAccountsTool from '../components/tools/AuthAccountsTool.vue'
+import SchoolWebsitesTool from '../components/tools/SchoolWebsitesTool.vue'
+import { useRoute } from 'vue-router'
 
 const TABS = [
   { key: 'register', label: 'Register', icon: 'pi pi-user-plus', url: 'https://clarified-register.web.app/' },
   { key: 'authentication', label: 'Authentication', icon: 'pi pi-key' },
   { key: 'parcel-cover', label: 'Parcel Cover', icon: 'pi pi-send' },
+  { key: 'websites', label: 'School Websites', icon: 'pi pi-globe' },
 ]
 
-const activeTab = ref(TABS[0].key)
+// ?tab=websites opens a tab directly (School Setup's "No website" chip links here).
+const route = useRoute()
+const activeTab = ref(TABS.some(t => t.key === route.query.tab) ? route.query.tab : TABS[0].key)
 const currentTab = computed(() => TABS.find(t => t.key === activeTab.value))
 
 function selectTab(key) {

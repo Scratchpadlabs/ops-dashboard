@@ -54,6 +54,22 @@
           Awaiting {{ outstandingForSelected.join(', ') }}
         </span>
 
+        <!-- The website(s) this school's teacher app is published at. -->
+        <a v-for="site in selectedSites" :key="site.siteId" :href="primaryUrl(site)" target="_blank" rel="noopener"
+           class="px-2.5 py-1 rounded-full text-xs font-medium flex items-center gap-1 hover:underline"
+           :class="site.domains[0] && !site.domains[0].live ? 'bg-amber-50 text-amber-700' : 'bg-blue-50 text-blue-700'"
+           :title="site.domains[0] && !site.domains[0].live
+             ? `Domain still being set up (${site.domains[0].state}) — ${site.defaultUrl} works now`
+             : `Hosting site: ${site.siteId}`">
+          <i class="pi pi-globe" style="font-size:10px"></i>{{ primaryUrl(site).replace('https://', '') }}
+        </a>
+        <router-link v-if="selectedSchoolId && websitesLoaded && !selectedSites.length"
+                     to="/tools?tab=websites"
+                     class="px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-400 hover:text-slate-600 flex items-center gap-1"
+                     title="No website is linked to this school — link one on Tools → School Websites">
+          <i class="pi pi-globe" style="font-size:10px"></i>No website
+        </router-link>
+
         <!-- While a reset run is active the page selector follows it and is
              frozen. A destructive flow must never be able to show one school
              at the top of the page and act on another. -->
@@ -171,6 +187,7 @@ import ClassMapTab from '../components/school-setup/ClassMapTab.vue'
 import NewSchoolWizard from '../components/school-setup/NewSchoolWizard.vue'
 import ResetSchoolWizard from '../components/school-setup/ResetSchoolWizard.vue'
 import ResetTopicTab from '../components/school-setup/ResetTopicTab.vue'
+import { useSchoolWebsites, primaryUrl } from '../composables/useSchoolWebsites.js'
 
 // Dedicated sandbox school — every Phase 2+ CRUD tab should default here so
 // trial writes never touch a real school's config.
@@ -358,4 +375,9 @@ async function createTestSchool() {
 }
 
 onMounted(loadSchools)
+
+// ── Website ─────────────────────────────────────────────────────────────
+const { sitesFor, load: loadWebsites, loaded: websitesLoaded } = useSchoolWebsites()
+const selectedSites = computed(() => sitesFor(selectedSchoolId.value))
+onMounted(() => loadWebsites())
 </script>

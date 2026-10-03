@@ -2,10 +2,12 @@
 """
 School hosting provisioning — server side.
 
-Three callables, same source directory:
+Four callables, same source directory:
   hosting_preview     what provisioning WOULD do. Reads only, never writes.
   hosting_provision   create the site, attach the domain, write DNS, start the build
   hosting_status      poll a run: cert state, build state, live URL
+  hosting_sites       every Hosting site, its domains and its school; and
+                      (action "assign") correcting which school a site is
 
 THE CONSTRAINT: the teacher repo (Scratchpad-Labs/scratchpad_teacher) is
 READ-ONLY. Not one byte is committed to it — not schools.json, not .firebaserc,
@@ -45,12 +47,18 @@ Deploy (see README.md in this directory):
     --source . --entry-point hosting_status --trigger-http --no-allow-unauthenticated \
     --memory 256MB --timeout 60s --max-instances 5 --project clarified-1501 \
     --set-secrets GITHUB_DISPATCH_PAT=GITHUB_DISPATCH_PAT:latest
+
+  gcloud functions deploy hosting_sites     --gen2 --runtime python312 --region asia-south1 \
+    --source . --entry-point hosting_sites --trigger-http --no-allow-unauthenticated \
+    --memory 256MB --timeout 120s --max-instances 3 --project clarified-1501
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 
 import firebase_admin
@@ -68,6 +76,7 @@ from namecheap_dns import (
     records_from_firebase_dns_updates,
 )
 from ops_admins import OPS_ADMIN_EMAILS
+from site_registry import custom_domains, newest_run_per_site, resolve_school, site_id_from_name
 
 firebase_admin.initialize_app()
 
@@ -118,8 +127,15 @@ def _require_ops_admin(req: https_fn.Request) -> str:
     return email
 
 
+def _json(body: dict, status: int = 200) -> https_fn.Response:
+    # Serialised here: https_fn.Response is a plain Werkzeug response, and
+    # handed a dict it iterates it — the body would be the keys run together,
+    # not JSON.
+    return https_fn.Response(json.dumps(body, default=str), status=status, mimetype="application/json")
+
+
 def _json_error(message: str, status: int) -> https_fn.Response:
-    return https_fn.Response({"error": message}, status=status, mimetype="application/json")
+    return _json({"error": message}, status)
 
 
 def _hosting_session() -> requests.Session:
@@ -333,7 +349,7 @@ def hosting_preview(req: https_fn.Request) -> https_fn.Response:
         except NamecheapError as exc:
             plan["dns"] = {"error": str(exc)}
 
-    return https_fn.Response(plan, status=200, mimetype="application/json")
+    return _json(plan)
 
 
 @https_fn.on_request(cors=CORS, region="asia-south1")
@@ -370,6 +386,13 @@ def hosting_provision(req: https_fn.Request) -> https_fn.Response:
         "steps": {},
     }
     run_ref.set(run)
+    # The site's school, for the School Websites page — recorded up front, since
+    # the site is this school's from the moment the run starts.
+    db.collection("hosting_sites").document(plan["site_id"]).set({
+        "school_id": plan["school_id"],
+        "updated_by": actor,
+        "updated_at": _now(),
+    }, merge=True)
 
     def step(name: str, **data) -> None:
         run["steps"][name] = {"at": _now(), **data}
@@ -423,11 +446,7 @@ def hosting_provision(req: https_fn.Request) -> https_fn.Response:
         step("build_dispatched", ok=True)
 
         run_ref.set({"status": "awaiting_build", "updated_at": _now()}, merge=True)
-        return https_fn.Response(
-            {"runId": run_id, "status": "awaiting_build", **plan},
-            status=200,
-            mimetype="application/json",
-        )
+        return _json({"runId": run_id, "status": "awaiting_build", **plan})
 
     except (NamecheapError, RuntimeError, requests.HTTPError) as exc:
         run_ref.set({"status": "failed", "error": str(exc), "updated_at": _now()}, merge=True)
@@ -478,4 +497,99 @@ def hosting_status(req: https_fn.Request) -> https_fn.Response:
             )
             out["status"] = "live"
 
-    return https_fn.Response(out, status=200, mimetype="application/json")
+    return _json(out)
+
+
+# ── site registry ────────────────────────────────────────────────────────────
+
+def _paged(session: requests.Session, url: str, key: str) -> list[dict]:
+    items, token = [], None
+    while True:
+        params = {"pageSize": 100}
+        if token:
+            params["pageToken"] = token
+        resp = session.get(url, params=params, timeout=30)
+        resp.raise_for_status()
+        body = resp.json()
+        items.extend(body.get(key, []))
+        token = body.get("nextPageToken")
+        if not token:
+            return items
+
+
+def _site_domains(session: requests.Session, site_id: str) -> list[dict]:
+    """Both domain APIs for one site. A failure reads as "no domains" rather
+    than failing the whole list — one odd site must not blank the page."""
+    try:
+        custom = _paged(session, f"{HOSTING_API}/projects/{PROJECT_ID}/sites/{site_id}/customDomains", "customDomains")
+    except requests.RequestException:
+        custom = []
+    try:
+        legacy = _paged(session, f"{HOSTING_API}/sites/{site_id}/domains", "domains")
+    except requests.RequestException:
+        legacy = []
+    return custom_domains(custom, legacy)
+
+
+@https_fn.on_request(cors=CORS, region="asia-south1")
+def hosting_sites(req: https_fn.Request) -> https_fn.Response:
+    """
+    {action?: "list"} -> {sites: [{siteId, defaultUrl, domains: [{domain, live, state}],
+                                   schoolId, schoolName, source}]}
+    {action: "assign", siteId, schoolId} -> {ok: true}   ("" = no school)
+
+    Reads the live Hosting API, so a domain connected by hand in the Firebase
+    console shows up too. `source` says where the school match came from — see
+    site_registry.py.
+    """
+    try:
+        actor = _require_ops_admin(req)
+    except PermissionError as exc:
+        return _json_error(str(exc), 401)
+
+    body = req.get_json(silent=True) or {}
+    db = firestore.client()
+
+    if body.get("action") == "assign":
+        site_id = str(body.get("siteId") or "").strip()
+        school_id = str(body.get("schoolId") or "").strip()
+        if not site_id or "/" in site_id:
+            return _json_error("siteId is required", 400)
+        if school_id and ("/" in school_id or not db.collection("schools").document(school_id).get().exists):
+            return _json_error(f"School {school_id!r} does not exist", 400)
+        db.collection("hosting_sites").document(site_id).set({
+            "school_id": school_id, "updated_by": actor, "updated_at": _now(),
+        }, merge=True)
+        return _json({"ok": True})
+
+    session = _hosting_session()
+    try:
+        sites = _paged(session, f"{HOSTING_API}/projects/{PROJECT_ID}/sites", "sites")
+    except requests.RequestException as exc:
+        return _json_error(f"Could not list Hosting sites: {exc}", 502)
+
+    assigned = {d.id: (d.to_dict() or {}).get("school_id", "") for d in db.collection("hosting_sites").stream()}
+    runs = newest_run_per_site([d.to_dict() or {} for d in db.collection("hosting_runs").stream()])
+    names = {d.id: (d.to_dict() or {}).get("name") or d.id
+             for d in db.collection("schools").select(["name"]).stream()}
+
+    site_ids = [site_id_from_name(s.get("name", "")) for s in sites]
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        domains = list(pool.map(lambda sid: _site_domains(session, sid), site_ids))
+
+    out = []
+    for site, site_id, site_domains in zip(sites, site_ids, domains):
+        school_id, source = resolve_school(site_id, assigned, runs)
+        out.append({
+            "siteId": site_id,
+            "defaultUrl": site.get("defaultUrl") or f"https://{site_id}.web.app",
+            "domains": site_domains,
+            "schoolId": school_id,
+            # Blank when the id no longer matches a school doc — the page
+            # flags that rather than hiding the site.
+            "schoolName": names.get(school_id, "") if school_id else "",
+            "source": source,
+        })
+    out.sort(key=lambda s: s["siteId"])
+    return _json({"sites": out})
+

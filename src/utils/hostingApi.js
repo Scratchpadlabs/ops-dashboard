@@ -3,7 +3,7 @@
  *
  * Kept out of utils/api.js on purpose. Those endpoints are
  * --allow-unauthenticated with a shared X-Api-Key, which is fine for rendering a
- * PDF from data the caller already has. These three create Hosting sites, edit
+ * PDF from data the caller already has. These create Hosting sites, edit
  * the DNS of a live domain and trigger deploys, so they are deployed
  * authenticated and send the signed-in user's Firebase ID token instead. Mixing
  * the two auth models in one module invites copying the wrong one.
@@ -16,6 +16,7 @@ const URLS = {
   preview: `${BASE}/hosting_preview`,
   provision: `${BASE}/hosting_provision`,
   status: `${BASE}/hosting_status`,
+  sites: `${BASE}/hosting_sites`,
 }
 
 async function call(url, payload) {
@@ -51,6 +52,12 @@ export const provisionHosting = (payload) => call(URLS.provision, payload)
 
 /** Poll a run. Safe on an interval. */
 export const hostingStatus = (runId) => call(URLS.status, { runId })
+
+/** Every Hosting site with its domains and the school it belongs to. */
+export const listHostingSites = () => call(URLS.sites, {}).then(r => r.sites || [])
+
+/** Set which school a site belongs to; '' marks it as no school's. */
+export const assignHostingSite = (siteId, schoolId) => call(URLS.sites, { action: 'assign', siteId, schoolId })
 
 /**
  * Mirror of slugify_site_id() in functions/provision_hosting/main.py, so the UI
