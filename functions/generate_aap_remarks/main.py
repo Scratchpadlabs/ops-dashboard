@@ -1618,10 +1618,19 @@ def _scan_school_aap_completion(school_id, class_doc_ids=(), subject_doc_ids=())
                 "teacher_id": teacher_id, "class_id": class_id, "class_doc_id": class_doc,
                 "topic_id": topic_id, "subject_doc_id": subject_doc_id,
                 "subject_token": subject_token, "topic": topic,
-                "students": {}, "responses": [],
+                "students": {}, "responses": [], "surveyTakenAt": None,
             })
 
             resp_data = resp.to_dict() or {}
+            # When the teacher took this survey (its response doc was created;
+            # teachers fill one in a single sitting). A student added to the
+            # class after it can't have been rated in it (see make_gaps).
+            # Not update_time: an ops edit bumps that without the teacher
+            # touching it. A response moved to another activity/topic is a new
+            # doc, so the move keeps the original date in originallyCreatedAt.
+            taken = resp_data.get("originallyCreatedAt") or getattr(resp, "create_time", None)
+            if taken is not None and (entry["surveyTakenAt"] is None or taken > entry["surveyTakenAt"]):
+                entry["surveyTakenAt"] = taken
             entry["responses"].append({
                 "surveyId": survey_doc.id,
                 "responseId": resp.id,
@@ -1689,7 +1698,8 @@ def _whole_school_roster(school_id):
             continue
         grade, section = canonical_grade_section(parsed["grade_token"], parsed["section"])
         class_id = compose_class_id(grade, section)
-        roster[class_id].append({"id": doc.id, "name": name})
+        roster[class_id].append({"id": doc.id, "name": name,
+                                 "addedAt": getattr(doc, "create_time", None)})
     return roster, unresolved
 
 
@@ -1909,7 +1919,10 @@ def aap_survey_completion(req: https_fn.CallableRequest) -> dict:
         such a child from the remaining questions, so nothing is pending."""
         return sid in absent or bool((responded_students.get(sid) or {}).get("notApplicable"))
 
-    def make_gaps(roster, responded_students, absent):
+    def make_gaps(roster, responded_students, absent, taken_at=None):
+        """addedAfterSurvey marks a student with no answers whose record was
+        created after the teacher took the survey — they joined the class
+        later, so the survey never included them (the export says so plainly)."""
         gaps = []
         for student in roster:
             sid = student["id"]
@@ -1917,12 +1930,15 @@ def aap_survey_completion(req: https_fn.CallableRequest) -> dict:
                 continue
             traits = responded_students.get(sid)
             if not traits:
-                gaps.append({"studentId": sid, "studentName": student["name"],
-                             "missing": ["awareness", "sensitivity", "creativity"]})
+                missing = ["awareness", "sensitivity", "creativity"]
+            else:
+                missing = [t for t in ("awareness", "sensitivity", "creativity") if not traits.get(t)]
+            if not missing:
                 continue
-            missing = [t for t in ("awareness", "sensitivity", "creativity") if not traits.get(t)]
-            if missing:
-                gaps.append({"studentId": sid, "studentName": student["name"], "missing": missing})
+            added = student.get("addedAt")
+            gaps.append({"studentId": sid, "studentName": student["name"], "missing": missing,
+                         "addedAt": _iso(added),
+                         "addedAfterSurvey": bool(not traits and added and taken_at and added > taken_at)})
         return gaps
 
     def build_row(class_id, subject, topic, entries, *, topic_id=None, subject_doc_id=None,
@@ -1933,7 +1949,10 @@ def aap_survey_completion(req: https_fn.CallableRequest) -> dict:
         students = {}
         responses = []
         teacher_ids = []
+        taken_at = None
         for e in entries:
+            if e.get("surveyTakenAt") and (taken_at is None or e["surveyTakenAt"] > taken_at):
+                taken_at = e["surveyTakenAt"]
             for sid, traits in e["students"].items():
                 merged = students.setdefault(sid, {})
                 for t, v in traits.items():
@@ -1941,7 +1960,7 @@ def aap_survey_completion(req: https_fn.CallableRequest) -> dict:
             responses.extend(e["responses"])
             if e["teacher_id"] not in teacher_ids:
                 teacher_ids.append(e["teacher_id"])
-        gaps = make_gaps(roster, students, absent)
+        gaps = make_gaps(roster, students, absent, taken_at)
         # Roster students marked absent or given any "Not Applicable" answer —
         # counted once per child, not once per answer.
         not_applicable = sum(
@@ -1963,7 +1982,7 @@ def aap_survey_completion(req: https_fn.CallableRequest) -> dict:
             "expectedStudents": len(roster), "respondedStudents": len(roster) - len(gaps),
             "status": status, "gaps": gaps, "responses": responses,
             "taught": taught, "completedAt": completed_at, "source": source,
-            "notApplicable": not_applicable,
+            "notApplicable": not_applicable, "surveyTakenAt": _iso(taken_at),
         }
 
     rows = []
@@ -2161,6 +2180,9 @@ def update_aap_survey_response(req: https_fn.CallableRequest) -> dict:
 
         merged = {**current, **update}
         if moving:
+            # The moved doc is created now; keep when the teacher actually took
+            # the survey (aap_survey_completion compares new students to it).
+            merged.setdefault("originallyCreatedAt", source_snap.create_time)
             transaction.set(target_ref, merged)
             transaction.delete(source_ref)
             if subject_snap is not None and subject_snap.exists and parsed:
