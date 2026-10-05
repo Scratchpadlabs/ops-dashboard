@@ -1562,7 +1562,10 @@ def _scan_school_aap_completion(school_id, class_doc_ids=(), subject_doc_ids=())
     and each value is
     {"teacher_id", "class_doc_id", "topic_id", "subject_doc_id",
      "subject_token", "topic", "students": {student_id: {trait: answered}},
-     "notApplicable": int, "responses": [...]}.
+     "responses": [...]}.
+    A student with any "Not Applicable" answer carries "answeredNA": True in
+    their students entry; one whose FIRST question was answered "Not
+    Applicable" also carries "notApplicable": True (see below).
 
     "responses" is a list, not one doc, because the activity IS the survey
     doc a response lives under: a teacher who picked activity A and later B
@@ -1572,6 +1575,14 @@ def _scan_school_aap_completion(school_id, class_doc_ids=(), subject_doc_ids=())
     "Not Applicable" counts as answered: it is a choice the teacher made for
     that child (absent, not relevant), not a blank. Counting it as missing
     meant a class with one N/A child could never show Complete.
+
+    "Not Applicable" on the FIRST question (awareness) means more than that:
+    the teacher app (AcadSurvey.vue) puts the child on the topic's absentList
+    and hides them from every later question, so their sensitivity and
+    creativity can never be answered. Those are flagged "notApplicable" and
+    treated as done for every question — otherwise every N/A child showed up
+    as "Sensitivity/Creativity pending" and kept the class from ever reaching
+    Complete.
     """
     school_ref = db.collection("schools").document(school_id)
     by_key = {}
@@ -1607,7 +1618,7 @@ def _scan_school_aap_completion(school_id, class_doc_ids=(), subject_doc_ids=())
                 "teacher_id": teacher_id, "class_id": class_id, "class_doc_id": class_doc,
                 "topic_id": topic_id, "subject_doc_id": subject_doc_id,
                 "subject_token": subject_token, "topic": topic,
-                "students": {}, "notApplicable": 0, "responses": [],
+                "students": {}, "responses": [],
             })
 
             resp_data = resp.to_dict() or {}
@@ -1635,7 +1646,9 @@ def _scan_school_aap_completion(school_id, class_doc_ids=(), subject_doc_ids=())
                     # case the newer submission IS the current truth.
                     row[trait] = bool(level_str)
                     if level_str == "Not Applicable":
-                        entry["notApplicable"] += 1
+                        row["answeredNA"] = True
+                        if trait == "awareness":
+                            row["notApplicable"] = True
     return by_key, unparsed
 
 
@@ -1746,7 +1759,7 @@ def _class_topic_setup(school_id, subject_docs):
 
     Returns (by_class, class_doc_ids, classes_without_subjects):
       by_class: {class_id: {"classDocId", "topics": [{subjectDocId, subject,
-                 topicId, topic, taught, completedAt}]}} — only subjects whose
+                 topicId, topic, taught, completedAt, absentList}]}} — only subjects whose
                  school-setup doc has a curricular competency (the teacher app
                  only surveys those).
       class_doc_ids: every class doc id, for matching response ids.
@@ -1785,6 +1798,10 @@ def _class_topic_setup(school_id, subject_docs):
                     "topic": str(t.get("topic") or t.get("name") or t["id"]).strip(),
                     "taught": bool(t.get("isCompleted")),
                     "completedAt": _iso(t.get("completedAt")),
+                    # Students the teacher marked absent/N.A. for this topic in
+                    # this class — the teacher app hides them from questions
+                    # 2 and 3, so they are never a gap (see make_gaps).
+                    "absentList": [str(s) for s in (t.get("absentList") or []) if s],
                 })
         by_class[class_id] = {"classDocId": doc.id, "topics": topics}
     return by_class, class_doc_ids, without
@@ -1886,10 +1903,18 @@ def aap_survey_completion(req: https_fn.CallableRequest) -> dict:
         for grade, subjects in expected_by_grade.items()
     }
 
-    def make_gaps(roster, responded_students):
+    def is_not_applicable(sid, responded_students, absent):
+        """Marked absent/N.A. for this topic: "Not Applicable" on the first
+        question, or on the class topic's absentList. The teacher app hides
+        such a child from the remaining questions, so nothing is pending."""
+        return sid in absent or bool((responded_students.get(sid) or {}).get("notApplicable"))
+
+    def make_gaps(roster, responded_students, absent):
         gaps = []
         for student in roster:
             sid = student["id"]
+            if is_not_applicable(sid, responded_students, absent):
+                continue
             traits = responded_students.get(sid)
             if not traits:
                 gaps.append({"studentId": sid, "studentName": student["name"],
@@ -1901,27 +1926,36 @@ def aap_survey_completion(req: https_fn.CallableRequest) -> dict:
         return gaps
 
     def build_row(class_id, subject, topic, entries, *, topic_id=None, subject_doc_id=None,
-                  taught=None, completed_at=None, source="class", subject_token=None):
+                  taught=None, completed_at=None, source="class", subject_token=None,
+                  absent_list=()):
         roster = roster_by_class.get(class_id, [])
+        absent = set(absent_list)
         students = {}
         responses = []
         teacher_ids = []
-        not_applicable = 0
         for e in entries:
             for sid, traits in e["students"].items():
                 merged = students.setdefault(sid, {})
                 for t, v in traits.items():
                     merged[t] = merged.get(t, False) or v
             responses.extend(e["responses"])
-            not_applicable += e["notApplicable"]
             if e["teacher_id"] not in teacher_ids:
                 teacher_ids.append(e["teacher_id"])
-        gaps = make_gaps(roster, students)
+        gaps = make_gaps(roster, students, absent)
+        # Roster students marked absent or given any "Not Applicable" answer —
+        # counted once per child, not once per answer.
+        not_applicable = sum(
+            1 for s in roster
+            if is_not_applicable(s["id"], students, absent)
+            or (students.get(s["id"]) or {}).get("answeredNA"))
         # NOT len(students) — that counts every distinct student id appearing
         # anywhere in the response payload, which can equal the roster size
         # by coincidence while naming a different set of students. Counted
         # against the roster, so this number can never contradict the gaps.
-        status = "complete" if roster and not gaps else ("partial" if students else "not_started")
+        if not students:
+            status = "not_started"
+        else:
+            status = "complete" if roster and not gaps else "partial"
         return {
             "classId": class_id, "subject": subject, "subjectToken": subject_token,
             "topic": topic, "topicId": topic_id, "subjectDocId": subject_doc_id,
@@ -1959,7 +1993,8 @@ def aap_survey_completion(req: https_fn.CallableRequest) -> dict:
             rows.append(build_row(
                 class_id, t["subject"], t["topic"], [responses_by_key[k] for k in keys],
                 topic_id=t["topicId"], subject_doc_id=t["subjectDocId"],
-                taught=t["taught"], completed_at=t["completedAt"], source="class"))
+                taught=t["taught"], completed_at=t["completedAt"], source="class",
+                absent_list=t["absentList"]))
 
     # 2. Classes with no subjects array: the grade-wide school-setup list, as
     #    before, matched on subject name + normalized topic.
