@@ -20,7 +20,7 @@ const TRAIT_LABEL = { awareness: 'Awareness', sensitivity: 'Sensitivity', creati
 const STATUS_LABEL = { not_started: 'Not started', partial: 'Partial', complete: 'Complete' }
 
 export const SUMMARY_COLUMNS = [
-  'Class', 'Subject', 'Topic', 'Status', 'Why pending', 'Taught in class', 'Taught on', 'Teacher',
+  'Class', 'Subject', 'Topic', 'Status', 'Why pending', 'Taught on', 'Teacher',
   'Expected Students', 'Responded Students', 'Gaps', 'Not Applicable / absent students',
   'Activity', 'Curricular Goals', 'Competencies', 'Note',
 ]
@@ -43,7 +43,6 @@ function formatDate(iso) {
   return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
-const taughtLabel = (r) => (r.taught === true ? 'Yes' : r.taught === false ? 'No' : '')
 
 export const rowNote = (r) => (r.source === 'response_only'
   ? 'Survey filed for a topic not in this class\'s subjects'
@@ -85,9 +84,9 @@ export function rowReason(r) {
   if (r.status === 'not_started') {
     if (r.taught === true) {
       const on = r.completedAt ? ` on ${shortDate(r.completedAt)}` : ''
-      return `The lesson was marked as taught${on}, but the teacher has not started the survey yet.`
+      return `The activity was marked as taught${on}, but the teacher has not started the survey yet.`
     }
-    if (r.taught === false) return 'The lesson is not marked as taught yet, so the survey has not started.'
+    if (r.taught === false) return 'The activity is not marked as taught yet, so the survey has not started.'
     return 'The teacher has not started this survey yet.'
   }
   const gaps = r.gaps || []
@@ -128,7 +127,6 @@ export function buildSummaryRows(rows) {
     Topic: r.topic || '—',
     Status: STATUS_LABEL[r.status] || r.status,
     'Why pending': rowReason(r),
-    'Taught in class': taughtLabel(r),
     'Taught on': formatDate(r.completedAt),
     Teacher: r.teacherId || '',
     'Expected Students': r.expectedStudents,

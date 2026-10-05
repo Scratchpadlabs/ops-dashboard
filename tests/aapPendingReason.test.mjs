@@ -10,7 +10,7 @@ test('complete rows have no reason', () => {
 
 test('taught but not started names the date', () => {
   assert.match(rowReason({ status: 'not_started', taught: true, completedAt: '2026-09-29T05:11:48Z' }),
-    /marked as taught on 29 Sept, but the teacher has not started the survey/)
+    /activity was marked as taught on 29 Sept, but the teacher has not started the survey/)
 })
 
 test('teacher stopped after question 1', () => {
