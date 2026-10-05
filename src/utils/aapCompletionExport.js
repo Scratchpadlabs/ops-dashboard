@@ -20,13 +20,13 @@ const TRAIT_LABEL = { awareness: 'Awareness', sensitivity: 'Sensitivity', creati
 const STATUS_LABEL = { not_started: 'Not started', partial: 'Partial', complete: 'Complete' }
 
 export const SUMMARY_COLUMNS = [
-  'Class', 'Subject', 'Topic', 'Status', 'Taught in class', 'Taught on', 'Teacher',
+  'Class', 'Subject', 'Topic', 'Status', 'Why pending', 'Taught in class', 'Taught on', 'Teacher',
   'Expected Students', 'Responded Students', 'Gaps', 'Not Applicable / absent students',
   'Activity', 'Curricular Goals', 'Competencies', 'Note',
 ]
 
 export const DETAIL_COLUMNS = [
-  'Class', 'Subject', 'Topic', 'Student', 'Student ID', 'Question', 'Status',
+  'Class', 'Subject', 'Topic', 'Student', 'Student ID', 'Question', 'Status', 'Why pending',
 ]
 
 export const GROUP_COLUMNS = (label) => [
@@ -49,12 +49,85 @@ export const rowNote = (r) => (r.source === 'response_only'
   ? 'Survey filed for a topic not in this class\'s subjects'
   : '')
 
+// ── "Why pending": one plain sentence a school coordinator can act on ──
+
+const QUESTION = {
+  awareness: 'Question 1 (Awareness)',
+  sensitivity: 'Question 2 (Sensitivity)',
+  creativity: 'Question 3 (Creativity)',
+}
+const TRAITS = ['awareness', 'sensitivity', 'creativity']
+
+const andList = (items) => (items.length <= 1 ? items.join('')
+  : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`)
+const students = (n) => `${n} student${n === 1 ? '' : 's'}`
+const shortDate = (iso) => formatDate(iso).replace(/ \d{4}$/, '')
+
+/** Why one student is still pending on this row, in plain words. */
+export function studentReason(row, gap) {
+  if (row.status === 'not_started') return 'The teacher has not started this survey yet.'
+  if (gap.addedAfterSurvey) {
+    const on = gap.addedAt ? ` on ${shortDate(gap.addedAt)}` : ''
+    return `New student: joined the class${on}, after the teacher took the survey. The teacher needs to rate this child.`
+  }
+  const missing = gap.missing || []
+  if (missing.length === TRAITS.length) return 'The teacher did not rate this student in the survey.'
+  const done = TRAITS.filter(t => !missing.includes(t)).map(t => QUESTION[t])
+  return `The teacher filled ${andList(done)} but has not filled ${andList(missing.map(t => QUESTION[t]))} yet.`
+}
+
+/** Why a class/subject/topic is not Complete, in plain words ('' when it is). */
+export function rowReason(r) {
+  if (r.source === 'response_only') {
+    return 'A survey was saved under a topic this class does not have. Check which topic it belongs to.'
+  }
+  if (r.status === 'complete') return ''
+  if (r.status === 'not_started') {
+    if (r.taught === true) {
+      const on = r.completedAt ? ` on ${shortDate(r.completedAt)}` : ''
+      return `The lesson was marked as taught${on}, but the teacher has not started the survey yet.`
+    }
+    if (r.taught === false) return 'The lesson is not marked as taught yet, so the survey has not started.'
+    return 'The teacher has not started this survey yet.'
+  }
+  const gaps = r.gaps || []
+  const parts = []
+  const newKids = gaps.filter(g => g.addedAfterSurvey)
+  const others = gaps.filter(g => !g.addedAfterSurvey)
+  // Students missing the same questions are described together.
+  const groups = new Map()
+  for (const g of others) {
+    const key = (g.missing || []).join(',')
+    groups.set(key, [...(groups.get(key) || []), g])
+  }
+  for (const [key, list] of groups) {
+    const missing = key.split(',').filter(Boolean)
+    if (missing.length === TRAITS.length) {
+      parts.push(`${students(list.length)} not rated at all.`)
+    } else if (missing.join(',') === 'sensitivity,creativity' && list.length === others.length
+        && r.respondedStudents <= (r.notApplicable || 0)) {
+      // Nobody (apart from absent / N.A. children) got past question 1.
+      parts.push('The teacher filled only Question 1 (Awareness) and stopped. '
+        + 'Question 2 (Sensitivity) and Question 3 (Creativity) are blank for every student.')
+    } else {
+      parts.push(`${students(list.length)}: ${andList(missing.map(t => QUESTION[t]))} not filled.`)
+    }
+  }
+  if (newKids.length) {
+    const dates = [...new Set(newKids.map(g => g.addedAt && shortDate(g.addedAt)).filter(Boolean))]
+    const on = dates.length ? ` on ${andList(dates)}` : ''
+    parts.push(`${students(newKids.length)} joined the class${on}, after the survey was done. The teacher needs to rate ${newKids.length === 1 ? 'this child' : 'them'}.`)
+  }
+  return parts.join(' ')
+}
+
 export function buildSummaryRows(rows) {
   return (rows || []).map(r => ({
     Class: r.classId,
     Subject: r.subject,
     Topic: r.topic || '—',
     Status: STATUS_LABEL[r.status] || r.status,
+    'Why pending': rowReason(r),
     'Taught in class': taughtLabel(r),
     'Taught on': formatDate(r.completedAt),
     Teacher: r.teacherId || '',
@@ -84,6 +157,7 @@ export function buildDetailRows(rows) {
           'Student ID': gap.studentId,
           Question: TRAIT_LABEL[trait] || trait,
           Status: 'Pending',
+          'Why pending': studentReason(r, gap),
         })
       }
     }
@@ -116,7 +190,7 @@ export function buildGroupRows(rows, keyOf, label) {
 }
 
 function columnWidths(columns) {
-  return columns.map(column => ({ wch: Math.max(12, column.length + 4) }))
+  return columns.map(column => ({ wch: column === 'Why pending' ? 90 : Math.max(12, column.length + 4) }))
 }
 
 function sheetFor(rows, columns, freezeCols = 1) {
