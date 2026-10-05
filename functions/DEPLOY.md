@@ -895,3 +895,26 @@ def generate_quotation(request: Request):
 ```
 
 Redeploy after adding CORS.
+
+## smart_sheets_export (consolidated Smart Sheets reports)
+
+School Setup → Sheets Status → **Download report**: the teacher app's
+"Download Consolidated Report" for Academics, Co-Scholastic and month-wise
+Attendance, for any school and any classes, as one consolidated workbook (a
+sheet per class) or one workbook per class. Read-only. Lives in the
+`sheets_overview` source directory; the table layout and marks conversion are
+a port of the teacher app's `exportSheet.ts` / `marksConversion.ts`
+(`sheet_tables.py`, tested in `tests/test_sheet_tables.py`) — change one,
+change both.
+
+```
+cd functions/sheets_overview && python3 -m pytest tests/ -q
+
+gcloud functions deploy smart_sheets_export \
+  --gen2 --runtime python312 --region asia-south1 \
+  --source . --entry-point smart_sheets_export \
+  --trigger-http --allow-unauthenticated --project clarified-1501 \
+  --memory 1GB --timeout 300s --max-instances 3
+```
+Like the other callables, it checks the caller is an ops admin itself
+(`ops_admins.py`).

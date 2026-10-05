@@ -581,3 +581,14 @@ function downloadBlob(blob, filename) {
 function formatDate(d) {
   return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })
 }
+
+// Consolidated Smart Sheets report — the teacher app's "Download Consolidated
+// Report" for Academics / Co-Scholastic / Attendance, built server-side for
+// any classes. Returns per-class tables; utils/smartSheetsWorkbook.js writes
+// them to Excel. See smart_sheets_export in functions/sheets_overview.
+const smartSheetsExportCallable = httpsCallable(functions, 'smart_sheets_export', { timeout: 300_000 })
+
+export async function smartSheetsExportRemote({ schoolId, kind, classIds, termId }) {
+  const res = await smartSheetsExportCallable({ school_id: schoolId, kind, class_ids: classIds, term_id: termId || undefined })
+  return res.data
+}

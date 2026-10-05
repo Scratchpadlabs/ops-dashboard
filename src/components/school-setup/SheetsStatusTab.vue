@@ -7,6 +7,7 @@
         <Select v-model="selectedTermId" :options="terms" optionLabel="name" optionValue="id" placeholder="Select a term" class="w-56" />
       </div>
       <div class="flex flex-wrap items-center gap-2">
+        <Button label="Download report" icon="pi pi-file-excel" size="small" outlined :disabled="!schoolId || !classes.length" @click="reportVisible = true" />
         <Button label="Freeze Everything" icon="pi pi-lock" size="small" severity="secondary" outlined :disabled="!selectedTermId || busy" @click="confirmAllTypes(true)" />
         <Button label="Unfreeze Everything" icon="pi pi-lock-open" size="small" severity="secondary" outlined :disabled="!selectedTermId || busy" @click="confirmAllTypes(false)" />
       </div>
@@ -107,6 +108,11 @@
         </div>
       </div>
     </div>
+
+    <SmartSheetsReportDialog
+      v-model:visible="reportVisible" :school-id="schoolId" :school-name="schoolName"
+      :terms="terms" :classes="classes" :initial-kind="sheetTypeKey" :initial-term-id="selectedTermId"
+    />
   </div>
 </template>
 
@@ -125,9 +131,10 @@ import ProgressSpinner from 'primevue/progressspinner'
 
 import { schoolCollection, schoolDoc } from '../../firebase/schoolCollections.js'
 import { db } from '../../firebase/config'
+import SmartSheetsReportDialog from './SmartSheetsReportDialog.vue'
 import { SHEET_TYPES, sheetType, buildRows, idsToWrite, chunk, applyFrozen, sortRows } from '../../utils/sheetFreeze.js'
 
-const props = defineProps({ schoolId: { type: String, default: null } })
+const props = defineProps({ schoolId: { type: String, default: null }, schoolName: { type: String, default: '' } })
 const confirm = useConfirm()
 const toast = useToast()
 
@@ -141,6 +148,7 @@ const rows = ref([])
 const loading = ref(false)
 const busy = ref(false)
 const selectedKeys = ref([])
+const reportVisible = ref(false)
 
 const currentType = computed(() => sheetType(sheetTypeKey.value))
 const needsTerm = computed(() => currentType.value.termScoped && !selectedTermId.value)

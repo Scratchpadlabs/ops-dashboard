@@ -38,11 +38,15 @@ into one number.
 """
 
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 
 from firebase_admin import initialize_app, firestore
 from firebase_functions import https_fn, options
 
 from ops_admins import require_ops_admin as _require_ops_admin_base
+from sheet_tables import (
+    attendance_table, col_group, flat_table, pick_sheet, sort_students, student_row, subject_table,
+)
 
 try:
     initialize_app()
@@ -154,3 +158,164 @@ def sheets_overview(req: https_fn.CallableRequest) -> dict:
         "rows": sorted(rows.values(), key=lambda r: r["classId"]),
         "diagnostics": {"unknownClassSheets": {k: v for k, v in unknown.items() if v}},
     }
+
+
+# ── consolidated Smart Sheets report ─────────────────────────────────────────
+# The teacher app's "Download Consolidated Report" (SmartSheets.vue), server
+# side, so ops can pull it for any school and any classes. Same reads, same
+# sheet choice, same columns — see sheet_tables.py.
+
+EXPORT_KINDS = ("academics", "co-scholastic", "attendance")
+MAX_EXPORT_CLASSES = 200
+
+
+def _pick_sheet_doc(school_ref, collection_name, docs, preferred_id):
+    if len(docs) <= 1:
+        return docs[0].id if docs else None
+    counts = [(d.id, sum(1 for _ in d.reference.collection("entries").select([]).stream())) for d in docs]
+    return pick_sheet(counts, preferred_id)
+
+
+def _entries(school_ref, collection_name, sheet_id):
+    return {d.id: d.to_dict() or {}
+            for d in school_ref.collection(collection_name).document(sheet_id).collection("entries").stream()}
+
+
+def _students(school_ref, class_id):
+    docs = school_ref.collection("students").where("currentClassId", "==", class_id).stream()
+    return sort_students([student_row(d.id, d.to_dict() or {}) for d in docs])
+
+
+class _Scales:
+    """grading_scales docs, read once per call."""
+    def __init__(self, school_ref):
+        self.ref, self.cache = school_ref, {}
+
+    def levels(self, scale_id):
+        if not scale_id:
+            return []
+        if scale_id not in self.cache:
+            doc = self.ref.collection("grading_scales").document(scale_id).get()
+            self.cache[scale_id] = ((doc.to_dict() or {}).get("levels") or []) if doc.exists else []
+        return self.cache[scale_id]
+
+
+def _groups(items, scales):
+    items = sorted(items, key=lambda a: a.get("order") or 0)
+    return [col_group(a, scales.levels(a.get("gradingScaleId"))) for a in items]
+
+
+def _academics_class(school_ref, class_id, class_data, term_id, all_subjects, scales):
+    wanted = [s.get("subjectId") for s in (class_data.get("subjects") or []) if isinstance(s, dict)]
+    allowed = set(wanted) if wanted else {sid for sid, _ in all_subjects}
+    sheets = school_ref.collection("smart_sheet_entries")
+    subjects = []
+    for subject_id, subject_name in all_subjects:
+        if subject_id not in allowed:
+            continue
+        docs = list(sheets.where("classId", "==", class_id).where("termId", "==", term_id)
+                    .where("subjectId", "==", subject_id).stream())
+        sheet_id = _pick_sheet_doc(school_ref, "smart_sheet_entries", docs, f"{class_id}__{term_id}__{subject_id}")
+        if not sheet_id:
+            continue
+        assessments = [{"id": d.id, **(d.to_dict() or {})} for d in school_ref.collection("assessments")
+                       .where("termId", "==", term_id).where("subjectId", "==", subject_id).stream()]
+        if not assessments:
+            continue
+        subjects.append({"name": subject_name, "groups": _groups(assessments, scales),
+                         "entries": _entries(school_ref, "smart_sheet_entries", sheet_id)})
+    if not subjects:
+        return None
+    return subject_table(subjects, _students(school_ref, class_id))
+
+
+def _co_scholastic_class(school_ref, class_id, term_id, activities_all, scales):
+    docs = list(school_ref.collection("smart_sheet_entries").where("type", "==", "co-scholastic")
+                .where("classId", "==", class_id).where("termId", "==", term_id).stream())
+    sheet_id = _pick_sheet_doc(school_ref, "smart_sheet_entries", docs, f"co-scholastic__{class_id}__{term_id}")
+    if not sheet_id:
+        return None
+    activities = [a for a in activities_all if not a.get("classIds") or class_id in a["classIds"]]
+    if not activities:
+        return None
+    return flat_table(_groups(activities, scales), _students(school_ref, class_id),
+                      _entries(school_ref, "smart_sheet_entries", sheet_id))
+
+
+def _attendance_class(school_ref, class_id):
+    month_docs = sorted((d.to_dict() or {} for d in school_ref.collection("classes").document(class_id)
+                         .collection("months").stream()), key=lambda m: m.get("order") or 0)
+    months = [{"key": m.get("key"), "label": m.get("label") or m.get("key"),
+               "workingDays": m.get("workingDays") or 0} for m in month_docs]
+    if not months:
+        return None
+    docs = list(school_ref.collection("attendance_sheets").where("classId", "==", class_id)
+                .where("type", "==", "month-wise").stream())
+    sheet_id = _pick_sheet_doc(school_ref, "attendance_sheets", docs, f"{class_id}__month-wise")
+    if not sheet_id:
+        return None
+    return attendance_table(months, _students(school_ref, class_id),
+                            _entries(school_ref, "attendance_sheets", sheet_id))
+
+
+@https_fn.on_call(region="asia-south1", memory=options.MemoryOption.GB_1, timeout_sec=300)
+def smart_sheets_export(req: https_fn.CallableRequest) -> dict:
+    """{school_id, kind, class_ids, term_id?} -> the consolidated report's tables.
+
+    kind: "academics" | "co-scholastic" (both need term_id) | "attendance"
+    (month-wise, the whole year). Read-only: a class with no sheet yet is
+    listed under `skipped`, never created.
+
+    Returns {classes: [{classId, className, header, merges, rows}],
+             skipped: [{classId, className, reason}], termName}
+    """
+    _require_ops_admin(req)
+    data = req.data or {}
+    school_id = data.get("school_id")
+    kind = data.get("kind")
+    # Attendance is month-wise for the whole year — a term means nothing to it.
+    term_id = (data.get("term_id") or "") if kind != "attendance" else ""
+    class_ids = [str(c) for c in (data.get("class_ids") or []) if c and "/" not in str(c)]
+    if not school_id or kind not in EXPORT_KINDS or not class_ids:
+        raise https_fn.HttpsError(https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
+                                  f"school_id, class_ids and kind ({', '.join(EXPORT_KINDS)}) are required")
+    if kind != "attendance" and not term_id:
+        raise https_fn.HttpsError(https_fn.FunctionsErrorCode.INVALID_ARGUMENT, "term_id is required")
+    if len(class_ids) > MAX_EXPORT_CLASSES:
+        raise https_fn.HttpsError(https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
+                                  f"At most {MAX_EXPORT_CLASSES} classes at a time")
+
+    school_ref = db.collection("schools").document(school_id)
+    class_docs = {d.id: d.to_dict() or {} for d in school_ref.collection("classes").stream()}
+    scales = _Scales(school_ref)
+    term_name = ""
+    if term_id:
+        term = school_ref.collection("terms").document(term_id).get()
+        term_name = (term.to_dict() or {}).get("name", term_id) if term.exists else term_id
+
+    if kind == "academics":
+        subjects = [(d.id, (d.to_dict() or {}).get("name") or d.id)
+                    for d in school_ref.collection("subjects").stream()]
+        build = lambda cid: _academics_class(school_ref, cid, class_docs.get(cid, {}), term_id, subjects, scales)
+    elif kind == "co-scholastic":
+        activities = [{"id": d.id, **(d.to_dict() or {})} for d in school_ref.collection("co_scholastic_activities")
+                      .where("termId", "==", term_id).stream()]
+        build = lambda cid: _co_scholastic_class(school_ref, cid, term_id, activities, scales)
+    else:
+        build = lambda cid: _attendance_class(school_ref, cid)
+
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        tables = list(pool.map(build, class_ids))
+
+    out, skipped = [], []
+    for class_id, table in zip(class_ids, tables):
+        name = class_docs.get(class_id, {}).get("name") or class_id
+        if table is None:
+            reason = {"academics": "no academics sheet for this term",
+                      "co-scholastic": "no co-scholastic sheet or activities for this term",
+                      "attendance": "no attendance months or month-wise sheet"}[kind]
+            skipped.append({"classId": class_id, "className": name, "reason": reason})
+        else:
+            out.append({"classId": class_id, "className": name, **table})
+    return {"classes": out, "skipped": skipped, "termName": term_name}
+

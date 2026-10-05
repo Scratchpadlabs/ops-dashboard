@@ -137,7 +137,7 @@
         <TabPanel value="remarks"><RemarksTab :school-id="selectedSchoolId" /></TabPanel>
         <TabPanel value="months"><MonthsTab :school-id="selectedSchoolId" /></TabPanel>
         <TabPanel value="class-map"><ClassMapTab :school-id="selectedSchoolId" /></TabPanel>
-        <TabPanel value="sheets-status"><SheetsStatusTab :school-id="selectedSchoolId" /></TabPanel>
+        <TabPanel value="sheets-status"><SheetsStatusTab :school-id="selectedSchoolId" :school-name="selectedSchoolObject?.name || ''" /></TabPanel>
         <TabPanel value="templates"><TemplatesTab :school-id="selectedSchoolId" /></TabPanel>
         <TabPanel value="publish"><PublishTab :school-id="selectedSchoolId" /></TabPanel>
       </TabPanels>
