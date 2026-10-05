@@ -21,7 +21,7 @@ const STATUS_LABEL = { not_started: 'Not started', partial: 'Partial', complete:
 
 export const SUMMARY_COLUMNS = [
   'Class', 'Subject', 'Topic', 'Status', 'Taught in class', 'Taught on', 'Teacher',
-  'Expected Students', 'Responded Students', 'Gaps', 'Not Applicable answers',
+  'Expected Students', 'Responded Students', 'Gaps', 'Not Applicable / absent students',
   'Activity', 'Curricular Goals', 'Competencies', 'Note',
 ]
 
@@ -61,7 +61,7 @@ export function buildSummaryRows(rows) {
     'Expected Students': r.expectedStudents,
     'Responded Students': r.respondedStudents,
     Gaps: r.gaps?.length || 0,
-    'Not Applicable answers': r.notApplicable || 0,
+    'Not Applicable / absent students': r.notApplicable || 0,
     Activity: joinResponses(r, x => x.activityName || x.activityId),
     'Curricular Goals': joinResponses(r, x => (x.selectedGoals || []).join('; ')),
     Competencies: joinResponses(r, x => (x.selectedCompetencies || []).join('; ')),

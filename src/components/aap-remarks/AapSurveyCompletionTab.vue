@@ -32,7 +32,9 @@
         Whole-school scan: each class's own subjects and topics (as set up for that class — what the
         teacher app surveys from), every AAP survey response, and each class's roster. A topic with no
         response yet is "Not started"; one with a response but gaps for some students/questions is
-        "Partial". "Not Applicable" counts as answered. Downloads contain the rows currently filtered.
+        "Partial". "Not Applicable" counts as answered; a student marked "Not Applicable" on the first
+        question (absent) is never asked the other two, so nothing is pending for them. Downloads
+        contain the rows currently filtered.
       </p>
     </div>
 
