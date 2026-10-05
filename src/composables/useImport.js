@@ -356,6 +356,10 @@ export const STUDENT_UPDATE_FIELD_GROUPS = [
     payloadKeys: ['admNo', 'grEmisSts'], sourceKeys: ['adm_no', 'gr_emis_sts'] },
   { key: 'aadhaar', label: 'Aadhaar', payloadKeys: ['aadhaarNumber'], sourceKeys: ['aadhaar'] },
   { key: 'rollNo', label: 'Roll No', payloadKeys: ['rollNo'], sourceKeys: ['roll_no'] },
+  { key: 'parents', label: 'Father / Mother name',
+    payloadKeys: ['fatherName', 'motherName'], sourceKeys: ['father_name', 'mother_name'] },
+  { key: 'govIds', label: 'APAAR ID / PEN No',
+    payloadKeys: ['apaarId', 'penNo'], sourceKeys: ['apaar_id', 'pen_no'] },
 ]
 
 function isBlankValue(v) {

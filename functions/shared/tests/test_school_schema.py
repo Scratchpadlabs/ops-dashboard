@@ -234,17 +234,26 @@ def test_student_valid():
 def test_student_rejects_the_old_import_fields():
     """The exact payload the import used to write (AUDIT.md §3.2).
 
-    `admNo` is NOT in this list any more — it became a real field on
-    2026-08-04. The rest still have no home and are reported as unknown.
+    Fields that later became real are NOT in the flagged set any more:
+    admNo (2026-08-04), rollNo (2026-09-06), motherName/fatherName
+    (2026-10-05). The rest still have no home and are reported as unknown.
     """
     old = {**BASE_STUDENT, "srNo": "1", "motherName": "M",
            "fatherName": "F", "contactNumber": "999", "rollNo": "7", "city": "Pune"}
     result = validate_doc("students", old)
     # Unknown fields are warnings, not errors — but every one is reported.
     flagged = {f for f, _ in result["warnings"]}
-    assert {"srNo", "motherName", "fatherName", "contactNumber",
-            "rollNo", "city"} <= flagged
+    assert {"srNo", "contactNumber", "city"} <= flagged
+    assert not {"motherName", "fatherName", "rollNo"} & flagged
     assert "admNo" not in flagged or ok("students", {**BASE_STUDENT, "admNo": "22"})
+
+
+def test_student_accepts_parent_names_and_government_ids():
+    doc = {**BASE_STUDENT, "fatherName": "F", "motherName": "M",
+           "apaarId": "153539457331", "penNo": "23199737539"}
+    assert ok("students", doc)
+    assert not {f for f, _ in validate_doc("students", doc)["warnings"]}
+    assert ok("students", {**BASE_STUDENT, "apaarId": "", "penNo": ""})
 
 
 def test_student_rejects_string_date_of_birth():

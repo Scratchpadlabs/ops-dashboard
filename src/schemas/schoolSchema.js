@@ -274,6 +274,13 @@ export const SCHOOL_SCHEMAS = {
       // Added for the Students tab's "Additional Details" section, alongside
       // aadhaarNumber/admNo/grEmisSts/rollNo above.
       address: opt(STRING, { allowEmpty: true }),
+      // Added 2026-10-05 by explicit decision (Sid: "add all the fields") —
+      // previously parsed and shown in review but dropped. apaarId and penNo
+      // are government student registers, kept separate from admNo/grEmisSts.
+      fatherName: opt(STRING, { allowEmpty: true }),
+      motherName: opt(STRING, { allowEmpty: true }),
+      apaarId: opt(STRING, { allowEmpty: true }),
+      penNo: opt(STRING, { allowEmpty: true }),
     },
   },
 

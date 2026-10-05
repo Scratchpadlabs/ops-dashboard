@@ -1,7 +1,8 @@
 /**
  * Import row → student document, in the shape the teacher app actually reads.
  *
- * PERSISTED (2026-08-04 decision): admNo, grEmisSts and aadhaarNumber. Every
+ * PERSISTED (2026-08-04 decision): admNo, grEmisSts and aadhaarNumber.
+ * PERSISTED (2026-10-05 decision): fatherName, motherName, apaarId, penNo. Every
  * other extra source column is review-only — listed in UNMAPPED_SOURCE_FIELDS
  * and reported per row.
  *
@@ -79,7 +80,7 @@ export function toPhoneNo(raw) {
  * app has nowhere to put.
  */
 export const UNMAPPED_SOURCE_FIELDS = [
-  'sr_no', 'mother_name', 'father_name', 'city', 'address',
+  'sr_no', 'city', 'address',
   // Decision (Sid, 2026-08-04): parsed and shown in Review, deliberately NOT
   // persisted — the student document has one phoneNo/email and no parent
   // contact fields. Surfaced per row rather than dropped in silence.
@@ -92,6 +93,16 @@ export const UNMAPPED_SOURCE_FIELDS = [
   // as externalId — see mapImportRowToStudent below.
   'combined_class',
 ]
+
+/**
+ * Register cells (APAAR, PEN) often say "Not Available", "NA" or "-" instead of
+ * being blank. Those are placeholders, not IDs — written as empty.
+ */
+const PLACEHOLDERS = new Set(['na', 'n/a', 'not available', 'nil', 'none', '-', '--'])
+export function toRegisterId(raw) {
+  const s = String(raw ?? '').trim()
+  return PLACEHOLDERS.has(s.toLowerCase()) ? '' : s
+}
 
 /** Digits only — an Aadhaar cell arrives as "1234 5678 9012" or "1234-5678-9012". */
 export function toAadhaar(raw) {
@@ -150,6 +161,10 @@ export function mapImportRowToStudent(row, { classId, includeClassId = true } = 
     grEmisSts: String(d.gr_emis_sts ?? '').trim(),
     aadhaarNumber,
     rollNo: String(d.roll_no ?? '').trim(),
+    fatherName: String(d.father_name ?? '').trim(),
+    motherName: String(d.mother_name ?? '').trim(),
+    apaarId: toRegisterId(d.apaar_id),
+    penNo: toRegisterId(d.pen_no),
   }
 
   if (includeClassId) payload.currentClassId = classId || ''
