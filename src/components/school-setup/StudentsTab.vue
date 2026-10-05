@@ -56,6 +56,8 @@
           </Column>
           <Column field="rollNo" header="Roll No" style="width:90px" />
           <Column field="admNo" header="Adm No" style="width:100px" />
+          <Column field="fatherName" header="Father" />
+          <Column field="motherName" header="Mother" />
           <Column header="" style="width:70px">
             <template #body="{ data }">
               <Button icon="pi pi-pencil" text rounded size="small" @click="openEditStudent(data)" />
@@ -126,6 +128,22 @@
               <label class="form-label">Aadhaar Number</label>
               <InputText v-model="form.aadhaarNumber" class="w-full font-mono" placeholder="12 digits" maxlength="12" />
             </div>
+            <div>
+              <label class="form-label">APAAR ID</label>
+              <InputText v-model="form.apaarId" class="w-full font-mono" />
+            </div>
+            <div>
+              <label class="form-label">PEN No</label>
+              <InputText v-model="form.penNo" class="w-full font-mono" />
+            </div>
+            <div>
+              <label class="form-label">Father Name</label>
+              <InputText v-model="form.fatherName" class="w-full" />
+            </div>
+            <div>
+              <label class="form-label">Mother Name</label>
+              <InputText v-model="form.motherName" class="w-full" />
+            </div>
             <div class="col-span-2">
               <label class="form-label">Address</label>
               <Textarea v-model="form.address" class="w-full" rows="2" autoResize />
@@ -168,7 +186,7 @@ import { schoolCollection, schoolDoc } from '../../firebase/schoolCollections.js
 import { guardedSetDoc, guardedUpdateDoc, guardedBatchSet, MODE_CREATE, MODE_UPDATE, saveErrorMessage } from '../../schemas/guardedWrite.js'
 import { db, auth } from '../../firebase/config'
 import { toCsv, downloadCsv } from '../../utils/csv.js'
-import { splitName, toDateOfBirth, toPhoneNo, toAadhaar } from '../../schemas/studentMapping.js'
+import { splitName, toDateOfBirth, toPhoneNo, toAadhaar, toRegisterId } from '../../schemas/studentMapping.js'
 
 const props = defineProps({ schoolId: { type: String, default: null } })
 const toast = useToast()
@@ -281,6 +299,7 @@ const formError = ref('')
 const form = reactive({
   name: '', id: '', currentClassId: null, gender: '', dateOfBirth: null, phoneNo: null,
   rollNo: '', admNo: '', grEmisSts: '', aadhaarNumber: '', address: '',
+  apaarId: '', penNo: '', fatherName: '', motherName: '',
 })
 
 function openAddStudent() {
@@ -288,6 +307,7 @@ function openAddStudent() {
   Object.assign(form, {
     name: '', id: nextStudentId(), currentClassId: null, gender: '', dateOfBirth: null, phoneNo: null,
     rollNo: '', admNo: '', grEmisSts: '', aadhaarNumber: '', address: '',
+    apaarId: '', penNo: '', fatherName: '', motherName: '',
   })
   formError.value = ''
   dialogVisible.value = true
@@ -300,6 +320,8 @@ function openEditStudent(student) {
     gender: student.gender || '', dateOfBirth: student.dateOfBirth || null, phoneNo: toPhoneNo(student.phoneNo),
     rollNo: student.rollNo || '', admNo: student.admNo || '', grEmisSts: student.grEmisSts || '',
     aadhaarNumber: student.aadhaarNumber || '', address: student.address || '',
+    apaarId: student.apaarId || '', penNo: student.penNo || '',
+    fatherName: student.fatherName || '', motherName: student.motherName || '',
   })
   formError.value = ''
   dialogVisible.value = true
@@ -328,6 +350,8 @@ async function saveStudent() {
       phoneNo: toPhoneNo(form.phoneNo),
       rollNo: form.rollNo.trim(), admNo: form.admNo.trim(), grEmisSts: form.grEmisSts.trim(),
       aadhaarNumber: form.aadhaarNumber.trim(), address: form.address.trim(),
+      apaarId: form.apaarId.trim(), penNo: form.penNo.trim(),
+      fatherName: form.fatherName.trim(), motherName: form.motherName.trim(),
       updated_at: serverTimestamp(), updated_by: auth.currentUser?.email || 'unknown',
     }
     if (editingStudent.value) {
@@ -354,6 +378,7 @@ async function saveStudent() {
 const STUDENT_CSV_COLUMNS = [
   'name', 'id', 'currentClassId', 'gender', 'dateOfBirth', 'phoneNo',
   'rollNo', 'admNo', 'grEmisSts', 'aadhaarNumber', 'address',
+  'apaarId', 'penNo', 'fatherName', 'motherName',
 ]
 const importVisible = ref(false)
 
@@ -406,6 +431,10 @@ async function classifyImportRow(raw, rowIndex) {
     grEmisSts: (raw.grEmisSts || '').trim(),
     aadhaarNumber,
     address: (raw.address || '').trim(),
+    apaarId: toRegisterId(raw.apaarId),
+    penNo: toRegisterId(raw.penNo),
+    fatherName: (raw.fatherName || '').trim(),
+    motherName: (raw.motherName || '').trim(),
   }
   return { raw, id, _status: existing ? 'UPDATE' : 'CREATE', payload }
 }
@@ -433,8 +462,8 @@ async function runImport(validRows) {
 
 function downloadSample() {
   const sample = [
-    { name: 'Ananya Sharma', id: '', currentClassId: '6_NEWTON', gender: 'Female', dateOfBirth: '2014-05-12', phoneNo: '9876543210', rollNo: '12', admNo: 'ADM1023', grEmisSts: '', aadhaarNumber: '', address: '' },
-    { name: 'Rohan Verma', id: '', currentClassId: '7_KALAM', gender: 'Male', dateOfBirth: '2013-11-03', phoneNo: '', rollNo: '5', admNo: 'ADM1044', grEmisSts: '', aadhaarNumber: '', address: '' },
+    { name: 'Ananya Sharma', id: '', currentClassId: '6_NEWTON', gender: 'Female', dateOfBirth: '2014-05-12', phoneNo: '9876543210', rollNo: '12', admNo: 'ADM1023', grEmisSts: '', aadhaarNumber: '', address: '', apaarId: '', penNo: '', fatherName: '', motherName: '' },
+    { name: 'Rohan Verma', id: '', currentClassId: '7_KALAM', gender: 'Male', dateOfBirth: '2013-11-03', phoneNo: '', rollNo: '5', admNo: 'ADM1044', grEmisSts: '', aadhaarNumber: '', address: '', apaarId: '', penNo: '', fatherName: '', motherName: '' },
   ]
   downloadCsv('students_sample.csv', toCsv(sample, STUDENT_CSV_COLUMNS))
 }
@@ -446,6 +475,8 @@ function exportCsv() {
     phoneNo: s.phoneNo ?? '',
     rollNo: s.rollNo || '', admNo: s.admNo || '', grEmisSts: s.grEmisSts || '',
     aadhaarNumber: s.aadhaarNumber || '', address: s.address || '',
+    apaarId: s.apaarId || '', penNo: s.penNo || '',
+    fatherName: s.fatherName || '', motherName: s.motherName || '',
   }))
   downloadCsv(`students_${props.schoolId}.csv`, toCsv(rows, STUDENT_CSV_COLUMNS))
 }

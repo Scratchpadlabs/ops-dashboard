@@ -415,7 +415,7 @@ function throttledActivity() {
 
 const COLUMNS = {
   students: ['grade', 'section', 'roll_no', 'student_name', 'gender', 'dob', 'sr_no', 'adm_no',
-             'gr_emis_sts', 'aadhaar', 'mother_name', 'father_name', 'contact', 'email', 'city',
+             'gr_emis_sts', 'aadhaar', 'apaar_id', 'pen_no', 'mother_name', 'father_name', 'contact', 'email', 'city',
              'father_mobile', 'father_email', 'mother_mobile', 'mother_email', 'branch_name',
              'board', 'enrollment_code', 'date_of_admission', 'status', 'using_transport'],
   teachers: ['teacher_name', 'email', 'class_teacher_of', 'subject', 'grade', 'section'],
@@ -440,7 +440,7 @@ const LABELS = { roll_no: 'Roll No', student_name: 'Name', dob: 'DOB', sr_no: 'S
   gr_emis_sts: 'GR/EMIS/STS', aadhaar: 'Aadhaar', father_mobile: 'Father Mobile', father_email: 'Father Email',
   mother_mobile: 'Mother Mobile', mother_email: 'Mother Email', branch_name: 'Branch', board: 'Board',
   enrollment_code: 'Enrollment Code', date_of_admission: 'Date of Admission', using_transport: 'Transport',
-  mother_name: 'Mother', father_name: 'Father', teacher_name: 'Teacher', class_teacher_of: 'Class Teacher Of', grade_band: 'Grade Band', date_start: 'Start', date_end: 'End', instructional_days: 'Inst. Days', syllabus_covered: 'Syllabus Covered', exam_syllabus: 'Exam Syllabus', max_written: 'Max Written', activity_weight: 'Activity Wt', total: 'Total', duration: 'Duration' }
+  mother_name: 'Mother', father_name: 'Father', apaar_id: 'APAAR ID', pen_no: 'PEN No', teacher_name: 'Teacher', class_teacher_of: 'Class Teacher Of', grade_band: 'Grade Band', date_start: 'Start', date_end: 'End', instructional_days: 'Inst. Days', syllabus_covered: 'Syllabus Covered', exam_syllabus: 'Exam Syllabus', max_written: 'Max Written', activity_weight: 'Activity Wt', total: 'Total', duration: 'Duration' }
 function colLabel(c) { return LABELS[c] || c.charAt(0).toUpperCase() + c.slice(1) }
 
 // Only section (students, teachers) and subject (teachers) go through

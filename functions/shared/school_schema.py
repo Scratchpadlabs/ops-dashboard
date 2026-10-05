@@ -331,6 +331,14 @@ SCHOOL_SCHEMAS = {
             # Added for the Students tab's "Additional Details" section,
             # alongside aadhaarNumber/admNo/grEmisSts/rollNo above.
             "address": _opt(STRING, allowEmpty=True),
+            # Added 2026-10-05 by explicit decision (Sid: "add all the
+            # fields") — previously parsed and shown in review but dropped.
+            # apaarId and penNo are government student registers, kept as
+            # strings and separate from admNo/grEmisSts for the same reason.
+            "fatherName": _opt(STRING, allowEmpty=True),
+            "motherName": _opt(STRING, allowEmpty=True),
+            "apaarId": _opt(STRING, allowEmpty=True),
+            "penNo": _opt(STRING, allowEmpty=True),
         },
     },
     "staffs": {

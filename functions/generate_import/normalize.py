@@ -399,6 +399,11 @@ STUDENT_HEADER_ALIASES = {
     "aadhaar": ["aadhaar", "aadhar", "aadhaar no", "aadhar no", "aadhaar number",
                 "aadhar number", "student aadhaar number", "student aadhar number",
                 "uid", "uid no"],
+    # Persisted 2026-10-05 (Sid: "add all the fields"). Government registers,
+    # kept separate from adm_no / gr_emis_sts.
+    "apaar_id": ["apaar", "apaar no", "apaar id", "apaar number", "apar id",
+                 "apar no"],
+    "pen_no": ["pen", "pen no", "pen number", "permanent education number"],
     # Review-only: parsed and shown so nothing vanishes silently, but NOT
     # written to the student document (no field for them in the real schema).
     "father_mobile": ["father mobile", "father mobile no", "father mobile number",
@@ -461,7 +466,7 @@ STUDENT_HEADER_ALIASES = {
 # most of these are deliberately review-only (see REVIEW_ONLY_STUDENT_KEYS).
 STUDENT_SCHEMA_KEYS = ["grade", "section", "combined_class", "external_id", "roll_no",
                         "student_name", "gender", "dob", "sr_no", "adm_no", "gr_emis_sts", "aadhaar",
-                        "mother_name", "father_name", "contact", "email", "city",
+                        "apaar_id", "pen_no", "mother_name", "father_name", "contact", "email", "city",
                         "father_mobile", "father_email", "mother_mobile",
                         "mother_email", "branch_name", "board", "enrollment_code",
                         "date_of_admission", "status", "using_transport"]
@@ -476,7 +481,7 @@ REVIEW_ONLY_STUDENT_KEYS = ["father_mobile", "father_email", "mother_mobile",
                              "mother_email", "branch_name", "board",
                              "enrollment_code", "date_of_admission", "status",
                              "using_transport", "sr_no",
-                             "mother_name", "father_name", "city", "address",
+                             "city", "address",
                              "combined_class"]
 STUDENT_REQUIRED_FIELD = "student_name"
 

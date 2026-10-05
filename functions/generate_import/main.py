@@ -132,6 +132,9 @@ SCHEMAS = {
             "external_id is this school's own unique student code if a column for one "
             "exists (often literally headed 'ID', distinct from adm_no/sr_no/gr_emis_sts) "
             "— leave empty if there is no such column, never invent one. "
+            "apaar_id is the student's APAAR ID and pen_no the PEN (Permanent Education "
+            "Number), both government registers distinct from adm_no; leave empty when "
+            "absent or written as NA/Not Available/-. "
             "DO NOT extract Aadhaar numbers, SSSM ids, caste/category, religion, or "
             "addresses even if present — omit them entirely."
         ),
