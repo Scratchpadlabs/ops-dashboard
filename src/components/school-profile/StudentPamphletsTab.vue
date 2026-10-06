@@ -31,6 +31,55 @@
           <InputText v-model="printedSchoolName" class="w-full" />
         </div>
       </div>
+
+      <!-- Logo -->
+      <div class="mt-4 pt-4 border-t border-slate-100">
+        <label class="form-label">School logo (printed at the top)</label>
+        <div class="flex items-start gap-3 flex-wrap">
+          <div class="w-28 h-20 rounded-lg border border-slate-200 bg-white flex items-center justify-center overflow-hidden p-1.5 shrink-0">
+            <ProgressSpinner v-if="logoBusy" style="width:22px;height:22px" />
+            <img v-else-if="logoPreview" :src="logoPreview" alt="School logo" class="max-w-full max-h-full object-contain" />
+            <span v-else class="text-[11px] text-slate-400">No logo</span>
+          </div>
+          <div class="min-w-0 flex-1 space-y-1.5">
+            <div class="text-xs text-slate-600">{{ logoSourceText }}</div>
+            <div class="flex gap-1 flex-wrap items-center">
+              <Button :label="savedLogo ? 'Upload a different logo' : 'Upload logo'" icon="pi pi-upload" size="small" outlined
+                      :disabled="!!logoBusy" @click="logoInput?.click()" />
+              <Button v-if="appLogo && logoChoice !== 'app'" label="Use teacher-app logo" size="small" text @click="logoChoice = 'app'" />
+              <Button v-if="savedLogo && logoChoice !== 'saved'" label="Use uploaded logo" size="small" text @click="logoChoice = 'saved'" />
+              <Button v-if="(appLogo || savedLogo) && logoChoice !== 'none'" label="Print without logo" size="small" text severity="secondary"
+                      @click="logoChoice = 'none'" />
+              <Button v-if="savedLogo" label="Delete uploaded logo" size="small" text severity="danger" :disabled="!!logoBusy" @click="removeSavedLogo" />
+            </div>
+            <input ref="logoInput" type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp" class="hidden" @change="onLogoFile" />
+            <p v-for="w in logoWarnings" :key="w" class="text-xs text-amber-600">{{ w }}</p>
+            <p class="text-[11px] text-slate-400">PNG with a transparent background works best, at least 300 px across. Blank margins are trimmed automatically.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Live preview ─────────────────────────────────────────────────── -->
+    <div class="bg-white rounded-xl border border-slate-200 p-4">
+      <div class="flex items-center gap-2 flex-wrap mb-3">
+        <div class="text-sm font-bold text-slate-900 mr-auto">
+          Live preview <span v-if="previewLabel" class="text-slate-400 font-normal">· {{ previewLabel }}</span>
+        </div>
+        <span v-if="previewBusy" class="text-xs text-slate-400"><i class="pi pi-spin pi-spinner mr-1"></i>Updating…</span>
+        <Button label="Open full size" icon="pi pi-external-link" size="small" text :disabled="!previewUrl" @click="openPreview" />
+      </div>
+      <div v-if="!canGenerateBlank" class="text-sm text-slate-400 text-center py-10">
+        Add the website and school name to see the pamphlet.
+      </div>
+      <div v-else-if="previewError" class="text-sm text-red-500 bg-red-50 rounded-lg px-3 py-2">{{ previewError }}</div>
+      <iframe v-else-if="previewUrl" :src="previewUrl + '#toolbar=0&navpanes=0&view=FitH'" title="Pamphlet preview"
+              class="w-full rounded-lg border border-slate-200 bg-slate-50" style="height: 78vh"></iframe>
+      <div v-else class="flex items-center justify-center py-10"><ProgressSpinner style="width:28px;height:28px" /></div>
+      <p class="text-[11px] text-slate-400 mt-2">
+        Updates as you change the logo, school name, website or selection. Shows the first selected student of each design, front and back
+        (a blank copy when no students are selected).
+      </p>
     </div>
 
     <div v-if="loadingRoster" class="flex items-center justify-center py-10">
@@ -170,7 +219,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { getDocs, query, orderBy, limit, updateDoc, serverTimestamp } from 'firebase/firestore'
 import { useToast } from 'primevue/usetoast'
 import Select from 'primevue/select'
@@ -191,6 +240,8 @@ import { rootSchoolsCollection, schoolCollection } from '../../firebase/schoolCo
 import { useSchoolWebsites, primaryUrl } from '../../composables/useSchoolWebsites.js'
 import { parseClassValue, compareClasses } from '../../utils/classResolver.js'
 import { pendingFile, savePending, deliverFile } from '../../utils/deliverFile.js'
+import { normalizeLogo, logoFromUrl, logoDataUrl, LOGO_MIN_SIDE } from '../../utils/pamphletLogo.js'
+import { loadSavedLogo, saveLogo, deleteSavedLogo } from '../../utils/pamphletLogoStore.js'
 import {
   buildStudentPamphletsPDF, loadPamphletAssets, designForGrade, compareStudents,
   displayWebsite, qrTarget, guessAppSchool, pamphletFilename, blankCopies,
@@ -266,6 +317,97 @@ function prefillWebsite() {
   website.value = site ? displayWebsite(primaryUrl(site)) : ''
 }
 watch([appSchoolId, websitesLoaded], prefillWebsite)
+
+// ── Logo ──────────────────────────────────────────────────────────────────
+// An uploaded logo (saved per ops school) wins over the teacher-app school's
+// logoUrl; either can be switched off for one run with "Print without logo".
+const savedLogo = ref(null)
+const appLogo = ref(null)
+const appLogoError = ref('')
+const logoChoice = ref(null)          // null = automatic: uploaded, else app, else none
+const logoBusy = ref('')
+const logoInput = ref(null)
+
+const effectiveLogoChoice = computed(() =>
+  logoChoice.value ?? (savedLogo.value ? 'saved' : appLogo.value ? 'app' : 'none'))
+const logo = computed(() =>
+  effectiveLogoChoice.value === 'saved' ? savedLogo.value
+    : effectiveLogoChoice.value === 'app' ? appLogo.value : null)
+const logoPreview = computed(() => logoDataUrl(logo.value))
+
+const logoSourceText = computed(() => {
+  if (logoBusy.value === 'app') return 'Loading the logo from the teacher app…'
+  if (logoBusy.value === 'upload') return 'Reading the logo…'
+  if (effectiveLogoChoice.value === 'saved') {
+    const s = savedLogo.value
+    return `Uploaded logo${s.fileName ? ` (${s.fileName})` : ''}${s.updatedBy ? ` — by ${s.updatedBy}` : ''}. Used every time for this school.`
+  }
+  if (effectiveLogoChoice.value === 'app') return 'From the teacher-app school record.'
+  if (logoChoice.value === 'none') return 'Printing without a logo — the school name is centred on its own.'
+  return appSchoolId.value
+    ? 'No logo found — upload one, or the school name is centred on its own.'
+    : 'Pick the teacher-app school to use its logo, or upload one.'
+})
+
+const logoWarnings = computed(() => {
+  const out = []
+  if (appLogoError.value && !savedLogo.value) out.push(`Teacher-app logo: ${appLogoError.value}`)
+  const l = logo.value
+  if (l && Math.max(l.sourceWidth, l.sourceHeight) < LOGO_MIN_SIDE) {
+    out.push(`This logo is only ${l.sourceWidth} × ${l.sourceHeight} px — it may print soft. Upload a larger one if you have it.`)
+  }
+  return out
+})
+
+async function loadAppLogo() {
+  appLogo.value = null
+  appLogoError.value = ''
+  const school = appSchools.value.find(s => s.id === appSchoolId.value)
+  const url = school?.logoUrl || school?.logoUrlDark
+  if (!url) return
+  logoBusy.value = 'app'
+  try {
+    appLogo.value = await logoFromUrl(url)
+  } catch (e) {
+    appLogoError.value = e.message
+  } finally {
+    if (logoBusy.value === 'app') logoBusy.value = ''
+  }
+}
+watch(appSchoolId, loadAppLogo)
+
+async function onLogoFile(event) {
+  const file = event.target.files?.[0]
+  event.target.value = ''
+  if (!file) return
+  logoBusy.value = 'upload'
+  try {
+    const normalized = await normalizeLogo(file)
+    const user = auth.currentUser?.email || 'unknown'
+    await saveLogo(props.school.id, normalized, { fileName: file.name, user })
+    savedLogo.value = { ...normalized, fileName: file.name, updatedBy: user, updatedAt: new Date() }
+    logoChoice.value = 'saved'
+    toast.add({ severity: 'success', summary: 'Logo saved', detail: 'Used for this school\'s pamphlets from now on.', life: 2500 })
+  } catch (e) {
+    console.error('Logo upload failed', e)
+    toast.add({ severity: 'error', summary: 'Could not use that logo', detail: e.message, life: 5000 })
+  } finally {
+    logoBusy.value = ''
+  }
+}
+
+async function removeSavedLogo() {
+  logoBusy.value = 'delete'
+  try {
+    await deleteSavedLogo(props.school.id)
+    savedLogo.value = null
+    if (logoChoice.value === 'saved') logoChoice.value = null
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Could not delete the logo', detail: e.message, life: 4000 })
+  } finally {
+    logoBusy.value = ''
+  }
+}
 
 // ── Roster ────────────────────────────────────────────────────────────────
 const students = ref([])
@@ -405,9 +547,9 @@ const warnings = computed(() => {
   if (noName) out.push(`${noName} student${noName === 1 ? ' has' : 's have'} no name — a blank line is printed to fill in by hand.`)
   const noRoll = chosen.filter(s => !String(s.rollNo ?? '').trim()).length
   if (noRoll) out.push(`${noRoll} student${noRoll === 1 ? ' has' : 's have'} no roll number — Roll No. is left out of their header. Add them in School Setup → Students to print them.`)
-  // The pamphlet fonts are Latin-only; anything else is left out of the header.
-  const nonLatin = chosen.filter(s => /[^\u0000-\u024F\u2018-\u201D]/.test(s.name)).length
-  if (nonLatin) out.push(`${nonLatin} name${nonLatin === 1 ? '' : 's'} use non-English letters (e.g. Hindi script) — those letters are left out. Fix the names in School Setup → Students.`)
+  // The pamphlet font covers English and Hindi (Devanagari); other scripts are left out.
+  const unprintable = chosen.filter(s => /[^\u0000-\u024F\u2018-\u201D\u0900-\u097F\u200C\u200D]/.test(s.name)).length
+  if (unprintable) out.push(`${unprintable} name${unprintable === 1 ? '' : 's'} use letters other than English or Hindi — those letters are left out. Fix the names in School Setup → Students.`)
   if (chosen.some(s => s.classId === NO_CLASS)) out.push('Some students have no class — they are printed last, with a blank class to fill in by hand.')
   return out
 })
@@ -440,6 +582,7 @@ async function build(list, label) {
     students: list,
     schoolName: printedSchoolName.value.trim(),
     website: website.value,
+    logo: logo.value,
     assets,
     onProgress: (done, total) => { progress.value = `${label}${done} / ${total}…` },
   })
@@ -498,9 +641,72 @@ async function generate(kind, student = null) {
   }
 }
 
+// ── Live preview ──────────────────────────────────────────────────────────
+const previewUrl = ref('')
+const previewBusy = ref(false)
+const previewError = ref('')
+const DESIGN_LABEL = { foundational: 'Foundational', middle: 'Middle + Prep' }
+
+// First selected student of each design; blank copies when none are selected.
+const previewStudents = computed(() => {
+  const picks = []
+  for (const design of ['foundational', 'middle']) {
+    const s = selectedStudents.value.find(x => x.design === design)
+    if (s) picks.push(s)
+  }
+  if (picks.length) return picks
+  const designs = blankDesign.value === 'both' ? ['foundational', 'middle'] : [blankDesign.value]
+  return designs.map(d => ({ blank: true, design: d }))
+})
+const previewLabel = computed(() => previewStudents.value
+  .map(s => `${s.blank ? 'Blank copy' : (s.name || s.id)} (${DESIGN_LABEL[s.design]})`).join(' · '))
+
+let previewTimer = null
+let previewRun = 0
+async function refreshPreview() {
+  if (!canGenerateBlank.value) return
+  const run = ++previewRun
+  previewBusy.value = true
+  try {
+    assetsPromise ||= loadPamphletAssets(import.meta.env.BASE_URL || '/')
+    const assets = await assetsPromise.catch(e => { assetsPromise = null; throw e })
+    const bytes = await buildStudentPamphletsPDF({
+      students: previewStudents.value,
+      schoolName: printedSchoolName.value.trim(),
+      website: website.value,
+      logo: logo.value,
+      assets,
+    })
+    if (run !== previewRun) return
+    if (previewUrl.value) URL.revokeObjectURL(previewUrl.value)
+    previewUrl.value = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }))
+    previewError.value = ''
+  } catch (e) {
+    if (run === previewRun) previewError.value = `Could not build the preview: ${e.message}`
+  } finally {
+    if (run === previewRun) previewBusy.value = false
+  }
+}
+watch(
+  () => [logo.value, printedSchoolName.value, website.value,
+    previewStudents.value.map(s => `${s.id}|${s.design}|${s.name}|${s.rollNo}|${s.className}`).join(',')],
+  () => { clearTimeout(previewTimer); previewTimer = setTimeout(refreshPreview, 500) },
+  { immediate: true },
+)
+onBeforeUnmount(() => {
+  clearTimeout(previewTimer)
+  if (previewUrl.value) URL.revokeObjectURL(previewUrl.value)
+})
+function openPreview() {
+  if (previewUrl.value) window.open(previewUrl.value, '_blank')
+}
+
 onMounted(() => {
   loadAppSchools()
   loadWebsites()
+  loadSavedLogo(props.school.id)
+    .then(l => { savedLogo.value = l })
+    .catch(e => console.error('Could not load the saved logo', e))
 })
 </script>
 
