@@ -300,7 +300,7 @@ const warnings = computed(() => {
   const noName = chosen.filter(s => !String(s.name ?? '').trim()).length
   if (noName) out.push(`${noName} student${noName === 1 ? ' has' : 's have'} no name — a blank line is printed to fill in by hand.`)
   const noRoll = chosen.filter(s => !String(s.rollNo ?? '').trim()).length
-  if (noRoll) out.push(`${noRoll} student${noRoll === 1 ? ' has' : 's have'} no roll number — "Roll No.: ____" is printed to fill in by hand. Add them in School Setup → Students to print them.`)
+  if (noRoll) out.push(`${noRoll} student${noRoll === 1 ? ' has' : 's have'} no roll number — Roll No. is left out of their header. Add them in School Setup → Students to print them.`)
   // The pamphlet fonts are Latin-only; anything else is left out of the header.
   const nonLatin = chosen.filter(s => /[^\u0000-\u024F\u2018-\u201D]/.test(s.name)).length
   if (nonLatin) out.push(`${nonLatin} name${nonLatin === 1 ? '' : 's'} use non-English letters (e.g. Hindi script) — those letters are left out. Fix the names in School Setup → Students.`)

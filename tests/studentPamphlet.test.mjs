@@ -26,12 +26,13 @@ test('SP-02 website is printed without protocol; QR always opens https', () => {
   assert.equal(qrTarget(''), '')
 })
 
-test('SP-03 header matches the sample; a missing value prints as a blank to fill by hand', () => {
+test('SP-03 header matches the sample; no roll no is skipped, a missing name/class prints as a blank', () => {
   assert.equal(headerText({ name: 'Aditya Singh', rollNo: '02', className: 'IV Diamond' }),
     'Name: Aditya Singh   Roll No.: 02   Class: IV Diamond')
-  assert.equal(headerText({ name: 'A', rollNo: '', className: 'I A' }), 'Name: A   Roll No.: _____   Class: I A')
+  assert.equal(headerText({ name: 'A', rollNo: '', className: 'I A' }), 'Name: A   Class: I A')
+  assert.equal(headerText({ name: 'A', rollNo: '   ', className: 'I A' }), 'Name: A   Class: I A')
   assert.equal(headerText({ name: '  ', rollNo: null, className: undefined }),
-    'Name: ______________   Roll No.: _____   Class: ________')
+    'Name: ______________   Class: ________')
   assert.equal(headerText({ name: 'Riya   Sharma ', rollNo: ' 7 ', className: 'II A' }), 'Name: Riya Sharma   Roll No.: 7   Class: II A')
 })
 

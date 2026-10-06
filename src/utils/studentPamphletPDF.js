@@ -48,15 +48,19 @@ export function qrTarget(url) {
   return shown ? `https://${shown}` : ''
 }
 
-/** A missing value prints as a blank rule, to be filled in by hand. */
-const BLANK = { name: '______________', rollNo: '_____', className: '________' }
+/** A missing name or class prints as a blank rule, to be filled in by hand.
+ *  A missing roll number is left out of the header altogether. */
+const BLANK = { name: '______________', className: '________' }
 
 const clean = (v) => String(v ?? '').replace(/\s+/g, ' ').trim()
 
 export function headerParts({ name, rollNo, className }) {
   return {
     name: `Name: ${clean(name) || BLANK.name}`,
-    rest: `Roll No.: ${clean(rollNo) || BLANK.rollNo}   Class: ${clean(className) || BLANK.className}`,
+    rest: [
+      clean(rollNo) ? `Roll No.: ${clean(rollNo)}` : null,
+      `Class: ${clean(className) || BLANK.className}`,
+    ].filter(Boolean).join('   '),
   }
 }
 
