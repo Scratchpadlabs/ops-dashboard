@@ -27,8 +27,8 @@
           </p>
         </div>
         <div>
-          <label class="form-label">School name (footer)</label>
-          <InputText v-model="footerName" class="w-full" />
+          <label class="form-label">School name (printed at the top, as typed)</label>
+          <InputText v-model="printedSchoolName" class="w-full" />
         </div>
       </div>
     </div>
@@ -128,7 +128,7 @@
         <Button label="Sample (first student)" icon="pi pi-eye" text :loading="busy === 'sample'" :disabled="!canGenerate || !!busy" @click="generate('sample')" />
         <span v-if="progress && busy !== 'blank'" class="text-xs text-slate-500">{{ progress }}</span>
         <span v-else-if="!website" class="text-xs text-amber-600">Add the website first.</span>
-        <span v-else-if="!footerName.trim()" class="text-xs text-amber-600">Add the school name first.</span>
+        <span v-else-if="!printedSchoolName.trim()" class="text-xs text-amber-600">Add the school name first.</span>
 
         <div v-if="pendingFile" class="w-full flex items-center gap-3 bg-emerald-50 rounded-lg px-3 py-2 mt-1">
           <i class="pi pi-check-circle text-emerald-600"></i>
@@ -158,7 +158,7 @@
                 :disabled="!canGenerateBlank || !!busy" @click="generate('blank')" />
         <span v-if="busy === 'blank' && progress" class="text-xs text-slate-500">{{ progress }}</span>
         <span v-else-if="!website" class="text-xs text-amber-600">Add the website first.</span>
-        <span v-else-if="!footerName.trim()" class="text-xs text-amber-600">Add the school name first.</span>
+        <span v-else-if="!printedSchoolName.trim()" class="text-xs text-amber-600">Add the school name first.</span>
       </div>
       <div v-if="pendingFile && !appSchoolId" class="flex items-center gap-3 bg-emerald-50 rounded-lg px-3 py-2 mt-3">
         <i class="pi pi-check-circle text-emerald-600"></i>
@@ -256,10 +256,10 @@ function onAppSchoolPicked() {
   if (appSchoolId.value) rememberLink(appSchoolId.value)
 }
 
-// ── Website + footer ──────────────────────────────────────────────────────
+// ── Website + school name ──────────────────────────────────────────────────────
 const { sitesFor, load: loadWebsites, loaded: websitesLoaded } = useSchoolWebsites()
 const website = ref('')
-const footerName = ref(props.school.name || '')
+const printedSchoolName = ref(props.school.name || '')
 
 function prefillWebsite() {
   const site = sitesFor(appSchoolId.value)[0]
@@ -412,7 +412,7 @@ const warnings = computed(() => {
   return out
 })
 
-const canGenerateBlank = computed(() => !!displayWebsite(website.value) && !!footerName.value.trim())
+const canGenerateBlank = computed(() => !!displayWebsite(website.value) && !!printedSchoolName.value.trim())
 const canGenerate = computed(() => selectedStudents.value.length > 0 && canGenerateBlank.value)
 
 // ── Blank copies ──────────────────────────────────────────────────────────
@@ -438,7 +438,7 @@ async function build(list, label) {
   const assets = await assetsPromise.catch(e => { assetsPromise = null; throw e })
   return buildStudentPamphletsPDF({
     students: list,
-    schoolName: footerName.value.trim(),
+    schoolName: printedSchoolName.value.trim(),
     website: website.value,
     assets,
     onProgress: (done, total) => { progress.value = `${label}${done} / ${total}…` },
@@ -448,7 +448,7 @@ async function build(list, label) {
 async function generate(kind, student = null) {
   busy.value = kind === 'one' ? `one:${student.id}` : kind
   progress.value = 'Loading templates…'
-  const school = footerName.value.trim()
+  const school = printedSchoolName.value.trim()
   try {
     if (kind === 'blank') {
       const list = blankList()

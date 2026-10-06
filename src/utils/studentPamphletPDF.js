@@ -1,15 +1,16 @@
 /**
  * Student login pamphlets — one per student, stamped onto the blank Canva
- * designs in public/pamphlets/ (built by tools/build_pamphlet_templates.py,
- * which also records where every field goes in pamphletLayout.js).
+ * designs in public/pamphlets/ (built by tools/build_pamphlet_templates.py and
+ * tools/add_pamphlet_school_band.py, which also record where every field goes
+ * in pamphletLayout.js).
  *
  *   foundational.pdf — Nursery … Grade 2: English front, Hindi back
  *   middle.pdf       — Grade 3 and above: login details + how-to, English only
  *
- * Each student gets both pages of their design, with: name / roll no / class
- * across the top, the school website as a QR code and as text, their User ID
- * and Password (the same value — the student doc id), and the school name in
- * the footer.
+ * Each student gets both pages of their design, with: the school logo and
+ * name in a band across the top of the front page, name / roll no / class in
+ * the strip under it, the school website as a QR code and as text, and their
+ * User ID and Password (the same value — the student doc id).
  *
  * The two template pages are embedded ONCE and drawn on every student's page,
  * so a 1,000-student PDF carries the artwork once, not 1,000 times.
@@ -18,6 +19,10 @@
  * template and font bytes as an argument so it runs in node as well as the
  * browser (loadPamphletAssets fetches them in the browser).
  */
+// fontkit's Indic shaper uses generators compiled for regenerator-runtime but
+// doesn't load it: any text that starts with Devanagari (a Hindi school or
+// student name) would throw "regeneratorRuntime is not defined" mid-run.
+import 'regenerator-runtime/runtime.js'
 import { PDFDocument, rgb } from 'pdf-lib'
 import fontkit from '@pdf-lib/fontkit'
 import QRCode from 'qrcode'
@@ -119,14 +124,20 @@ export function fitSize(widthAt, text, preferred, maxWidth, min = 8) {
   return size
 }
 
-// School band at the top of the page: logo on the left, name beside it. The
-// name is sized from the logo's height so the two always read as one unit;
-// with no logo the name is centred on its own.
+// School band at the top of the front page: logo on the left, name beside it
+// in Cormorant Garamond with a short gold rule under it. The name is sized
+// from the logo's height so the two always read as one unit; with no logo
+// the name is centred on its own.
 const SCHOOL_LOGO_FILL = 0.84        // logo height as a share of the band
 const SCHOOL_LOGO_MAX_WIDTH = 140    // a very wide logo is shrunk to this
-const SCHOOL_GAP = 12                // between logo and name
-const SCHOOL_CAP = 0.7               // Poppins cap height, in em
-const SCHOOL_LEADING = 1.2
+const SCHOOL_GAP = 14                // between logo and name
+const SCHOOL_CAP = 0.63              // Cormorant cap height, in em
+const SCHOOL_DESCENT = 0.32          // room for g/y/p under the last line, in em
+const SCHOOL_LEADING = 1.18
+const SCHOOL_RULE = { width: 44, gap: 4, thickness: 0.8 }
+const SCHOOL_MIN_SIZE = 8
+export const SCHOOL_COLOR = [0.17, 0.17, 0.17]
+export const SCHOOL_GOLD = [0xb0 / 255, 0x8d / 255, 0x57 / 255]
 
 /** Split at the word break that makes the two lines most even. */
 export function balancedSplit(widthAt, text, size) {
@@ -134,18 +145,20 @@ export function balancedSplit(widthAt, text, size) {
   if (words.length < 2) return [text]
   let best = null
   for (let i = 1; i < words.length; i++) {
-    const a = words.slice(0, i).join(' ')
-    const b = words.slice(i).join(' ')
-    const w = Math.max(widthAt(a, size), widthAt(b, size))
-    if (!best || w < best.w) best = { w, lines: [a, b] }
+    const lines = [words.slice(0, i).join(' '), words.slice(i).join(' ')]
+    const w = Math.max(...lines.map(l => widthAt(l, size)))
+    if (!best || w < best.w) best = { w, lines }
   }
   return best.lines
 }
 
 /**
- * Where to draw the logo and the school name inside `box` ({x0, x1, top,
- * bottom}, PDF points, y up). logoAspect is width / height, or null for no
- * logo. Returns { logo: {x, y, width, height} | null, lines: [{text, size, x, baseline}] }.
+ * Where to draw the logo, the school name and its rule inside `box`
+ * ({x0, x1, top, bottom}, PDF points, y up). logoAspect is width / height,
+ * or null for no logo. Returns
+ *   { logo: {x, y, width, height} | null,
+ *     lines: [{text, size, x, baseline}],
+ *     rule: {x0, x1, y} }
  */
 export function layoutSchoolHeader(name, logoAspect, widthAt, box) {
   const bandH = box.top - box.bottom
@@ -153,26 +166,30 @@ export function layoutSchoolHeader(name, logoAspect, widthAt, box) {
   const boxW = box.x1 - box.x0
 
   let logo = null
-  if (logoAspect) {
+  if (logoAspect > 0 && Number.isFinite(logoAspect)) {
     let height = bandH * SCHOOL_LOGO_FILL
     let width = height * logoAspect
     if (width > SCHOOL_LOGO_MAX_WIDTH) { width = SCHOOL_LOGO_MAX_WIDTH; height = width / logoAspect }
     logo = { width, height }
   }
-  // Text is proportioned to the logo; without one, to the band.
-  const ref = logo ? Math.max(logo.height, bandH * 0.6) : bandH
-  const oneLine = ref * (logo ? 0.48 : 0.42)
-  const twoLine = ref * (logo ? 0.38 : 0.34)
+  // Text is proportioned to the logo (a very flat logo still gets a readable
+  // name); without one, to the band.
+  const ref = logo ? Math.max(logo.height, bandH * 0.6) : bandH * 0.9
+  const oneLine = ref * 0.56
+  const twoLine = ref * 0.4
   const textMaxW = boxW - (logo ? logo.width + SCHOOL_GAP : 0)
+  // Two lines must still fit the band with the rule under them.
+  const twoLineMax = (bandH - SCHOOL_RULE.gap - 2) / (SCHOOL_CAP + SCHOOL_LEADING + SCHOOL_DESCENT)
 
   let lines
   let size
   if (widthAt(name, oneLine * 0.85) <= textMaxW || !name.includes(' ')) {
-    size = fitSize(widthAt, name, oneLine, textMaxW, 8)
+    size = fitSize(widthAt, name, oneLine, textMaxW, SCHOOL_MIN_SIZE)
     lines = [truncateToWidth(widthAt, name, size, textMaxW)]
   } else {
-    lines = balancedSplit(widthAt, name, twoLine)
-    size = Math.min(...lines.map(l => fitSize(widthAt, l, twoLine, textMaxW, 8)))
+    size = Math.min(twoLine, twoLineMax)
+    lines = balancedSplit(widthAt, name, size)
+    size = Math.min(...lines.map(l => fitSize(widthAt, l, size, textMaxW, SCHOOL_MIN_SIZE)))
     lines = lines.map(l => truncateToWidth(widthAt, l, size, textMaxW))
   }
   const textW = Math.max(...lines.map(l => widthAt(l, size)))
@@ -181,9 +198,11 @@ export function layoutSchoolHeader(name, logoAspect, widthAt, box) {
   if (logo) Object.assign(logo, { x: left, y: cy - logo.height / 2 })
   const textCx = left + (logo ? logo.width + SCHOOL_GAP : 0) + textW / 2
 
-  // Centre the block of cap heights on the logo's middle.
-  const blockH = SCHOOL_CAP * size + (lines.length - 1) * SCHOOL_LEADING * size
+  // Centre caps + lines + rule on the logo's middle.
+  const ruleDrop = SCHOOL_DESCENT * size + SCHOOL_RULE.gap
+  const blockH = SCHOOL_CAP * size + (lines.length - 1) * SCHOOL_LEADING * size + ruleDrop
   const firstBaseline = cy + blockH / 2 - SCHOOL_CAP * size
+  const lastBaseline = firstBaseline - (lines.length - 1) * SCHOOL_LEADING * size
   return {
     logo,
     lines: lines.map((text, i) => ({
@@ -191,6 +210,7 @@ export function layoutSchoolHeader(name, logoAspect, widthAt, box) {
       x: textCx - widthAt(text, size) / 2,
       baseline: firstBaseline - i * SCHOOL_LEADING * size,
     })),
+    rule: { x0: textCx - SCHOOL_RULE.width / 2, x1: textCx + SCHOOL_RULE.width / 2, y: lastBaseline - ruleDrop },
   }
 }
 
@@ -221,6 +241,7 @@ function drawable(font, text) {
 const HEADER_MAX_WIDTH = 530   // inside the page border
 const URL_MAX_WIDTH = 280      // inside the yellow box
 // Room on the User ID / Password rules, from where the value starts.
+// Older layouts without a measured maxWidth on the value slots.
 const VALUE_MAX_WIDTH = { userId: 152, password: 142 }
 const FOOTER_MAX_WIDTH = 520
 
@@ -243,6 +264,41 @@ function placeSlots(slots, ox, oy) {
     if ('top' in slot) { out[key].top = slot.top + oy; out[key].bottom = slot.bottom + oy }
   }
   return out
+}
+
+// fontkit picks ONE shaper per string, from its first letter: in "Name: आरव
+// शर्मा" the Latin shaper runs over the Hindi too, and र्म prints as र् + म
+// instead of the reph. Measure and draw each script's run on its own.
+const DEVANAGARI = /[\u0900-\u097F\uA8E0-\uA8FF\u1CD0-\u1CFF]/
+const LETTER = /\p{L}|\p{M}/u
+
+/** Split into runs of one script; spaces, digits and punctuation stay with the run they follow. */
+export function scriptRuns(text) {
+  const runs = []
+  let cur = ''
+  let curDeva = null
+  for (const ch of String(text)) {
+    const deva = DEVANAGARI.test(ch) || (ch === '\u200C' || ch === '\u200D') ? true : LETTER.test(ch) ? false : null
+    if (deva !== null && curDeva !== null && deva !== curDeva) {
+      runs.push(cur)
+      cur = ''
+    }
+    if (deva !== null) curDeva = deva
+    cur += ch
+  }
+  if (cur) runs.push(cur)
+  return runs
+}
+
+function runsWidth(font, text, size) {
+  return scriptRuns(text).reduce((w, run) => w + font.widthOfTextAtSize(run, size), 0)
+}
+
+function drawRuns(page, text, { x, y, size, font, color }) {
+  for (const run of scriptRuns(text)) {
+    page.drawText(run, { x, y, size, font, color })
+    x += font.widthOfTextAtSize(run, size)
+  }
 }
 
 function drawCentered(page, font, text, slot, maxWidth) {
@@ -284,11 +340,12 @@ export async function loadPamphletAssets(base = '/') {
     if (!res.ok) throw new Error(`Could not load ${path} (${res.status})`)
     return new Uint8Array(await res.arrayBuffer())
   }
-  const [foundational, middle, regular, bold, valueFont] = await Promise.all([
+  const [foundational, middle, regular, bold, valueFont, school] = await Promise.all([
     get('pamphlets/foundational.pdf'), get('pamphlets/middle.pdf'),
     get('fonts/Poppins-Regular.ttf'), get('fonts/Poppins-Bold.ttf'), get('fonts/Inter-Bold.ttf'),
+    get('fonts/CormorantGaramond-SemiBold.ttf'),
   ])
-  return { templates: { foundational, middle }, fonts: { regular, bold, value: valueFont } }
+  return { templates: { foundational, middle }, fonts: { regular, bold, value: valueFont, school } }
 }
 
 /**
@@ -313,6 +370,7 @@ export async function buildStudentPamphletsPDF({ students, schoolName, website, 
     regular: await doc.embedFont(assets.fonts.regular, { subset: true }),
     bold:    await doc.embedFont(assets.fonts.bold, { subset: true }),
     value:   await doc.embedFont(assets.fonts.value, { subset: true }),
+    school:  assets.fonts.school ? await doc.embedFont(assets.fonts.school, { subset: true }) : null,
   }
 
   const templates = {}
@@ -336,6 +394,10 @@ export async function buildStudentPamphletsPDF({ students, schoolName, website, 
   const shownUrl = displayWebsite(website)
   const qr = QRCode.create(qrTarget(website), { errorCorrectionLevel: 'M' })
   const footer = String(schoolName || '').trim().toUpperCase()
+  // The band prints the name as typed. Cormorant covers Latin only; a name it
+  // can't draw in full (e.g. in Devanagari) falls back to Poppins.
+  const bandName = String(schoolName || '').replace(/\s+/g, ' ').trim()
+  const bandFont = fonts.school && drawable(fonts.school, bandName) === bandName ? fonts.school : fonts.regular
   const logoImage = logo?.bytes
     ? await (logo.type === 'jpg' ? doc.embedJpg(logo.bytes) : doc.embedPng(logo.bytes))
     : null
@@ -357,10 +419,10 @@ export async function buildStudentPamphletsPDF({ students, schoolName, website, 
       page.drawPage(embedded, { x: box.x, y: box.y, width: box.width, height: box.height })
 
       if (slots.header) {
-        const widthAt = (t, s) => fonts.regular.widthOfTextAtSize(t, s)
+        const widthAt = (t, s) => runsWidth(fonts.regular, t, s)
         for (const line of layoutHeader(headerStudent, widthAt, slots.header.size, HEADER_MAX_WIDTH)) {
           const width = widthAt(line.text, line.size)
-          page.drawText(line.text, {
+          drawRuns(page, line.text, {
             x: slots.header.cx - width / 2, y: slots.header.baseline + line.dy,
             size: line.size, font: fonts.regular, color: toRgb(slots.header.color),
           })
@@ -379,17 +441,25 @@ export async function buildStudentPamphletsPDF({ students, schoolName, website, 
         const slot = slots[key]
         if (!slot || !id) continue
         const text = drawable(fonts.value, id)
-        const size = fitSize((t, s) => fonts.value.widthOfTextAtSize(t, s), text, slot.size, VALUE_MAX_WIDTH[key])
+        // Never truncated: a cut-off ID is a wrong ID. Shrink instead.
+        const size = fitSize((t, s) => fonts.value.widthOfTextAtSize(t, s), text, slot.size, slot.maxWidth ?? VALUE_MAX_WIDTH[key], 6)
         page.drawText(text, { x: slot.x, y: slot.baseline, size, font: fonts.value, color: toRgb(slot.color) })
       }
-      if (slots.school && footer) {
-        const widthAt = (t, s) => fonts.regular.widthOfTextAtSize(t, s)
+      if (slots.school && bandName) {
+        const widthAt = (t, s) => runsWidth(bandFont, t, s)
         const aspect = logoImage ? logoImage.width / logoImage.height : null
-        const band = layoutSchoolHeader(drawable(fonts.regular, footer), aspect, widthAt, slots.school)
+        const band = layoutSchoolHeader(drawable(bandFont, bandName), aspect, widthAt, slots.school)
         if (band.logo) page.drawImage(logoImage, band.logo)
         for (const line of band.lines) {
-          page.drawText(line.text, { x: line.x, y: line.baseline, size: line.size, font: fonts.regular, color: toRgb(slots.school.color) })
+          drawRuns(page, line.text, { x: line.x, y: line.baseline, size: line.size, font: bandFont, color: toRgb(SCHOOL_COLOR) })
         }
+        page.drawLine({
+          start: { x: band.rule.x0, y: band.rule.y }, end: { x: band.rule.x1, y: band.rule.y },
+          thickness: SCHOOL_RULE.thickness, color: toRgb(SCHOOL_GOLD),
+        })
+      } else if (slots.school && logoImage) {
+        const band = layoutSchoolHeader('', logoImage.width / logoImage.height, () => 0, slots.school)
+        page.drawImage(logoImage, { ...band.logo, x: (slots.school.x0 + slots.school.x1 - band.logo.width) / 2 })
       }
       if (slots.footer && footer) drawCentered(page, fonts.regular, drawable(fonts.regular, footer), slots.footer, FOOTER_MAX_WIDTH)
     }

@@ -42,10 +42,10 @@ def spans(page):
                     yield span
 
 
-def qr_rect(page):
+def qr_rect(page, area=(80, 220, 230, 380)):
     """The QR is vector art: the union of the paths in the SCAN panel's
     left-hand square (the only drawings in that area)."""
-    area = pymupdf.Rect(80, 220, 230, 380)
+    area = pymupdf.Rect(area)
     rects = [d['rect'] for d in page.get_drawings() if d['rect'] in area]
     if not rects:
         return None
@@ -74,7 +74,7 @@ def text_slot(span, page_h, align='center'):
     return slot
 
 
-def blank_page(page, is_sample_value):
+def blank_page(page, is_sample_value, qr_area=(80, 220, 230, 380)):
     """Find and redact the variable bits of one page; return their slots."""
     h = page.rect.height
     found = {}
@@ -95,7 +95,7 @@ def blank_page(page, is_sample_value):
         s = found['header']
         slots['header'] = text_slot(s, h)
         redact.append(pymupdf.Rect(s['bbox']))
-    q = qr_rect(page)
+    q = qr_rect(page, qr_area)
     if q:
         slots['qr'] = {'x': round(q.x0, 2), 'y': round(h - q.y1, 2), 'size': round(q.width, 2)}
         redact.append(q + (-1, -1, 1, 1))
