@@ -118,9 +118,30 @@
       Click <b>Generate remarks</b> to write their comments.
     </div>
     <div v-else-if="scan && scan.multipleSheetsFound && !running" class="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4 text-sm text-amber-900">
-      <i class="pi pi-exclamation-triangle mr-1.5"></i>
-      More than one remarks sheet was found for this class — ticks from every sheet were merged
-      (a key ticked differently across sheets uses whichever sheet was edited most recently).
+      <div class="flex items-start gap-1.5">
+        <i class="pi pi-exclamation-triangle mt-0.5"></i>
+        <div class="flex-1">
+          <p>
+            More than one remarks sheet was found for this class. By default, ticks from every sheet
+            below are merged (a key ticked differently across sheets uses whichever was edited most
+            recently) — narrow to specific sheets if a class this large times out generating all at once.
+          </p>
+          <div class="flex flex-wrap gap-x-4 gap-y-1 mt-2">
+            <label v-for="(s, i) in scan.sheets" :key="s.id" class="flex items-center gap-1.5 text-xs font-normal">
+              <Checkbox v-model="selectedSheetIds" :value="s.id" :disabled="loadingRoster" />
+              {{ sheetLabel(s, i) }}
+            </label>
+          </div>
+          <div class="flex items-center gap-3 mt-2">
+            <Button
+              label="Apply selection" size="small" outlined
+              :disabled="loadingRoster || !selectedSheetIds.length"
+              @click="applySheetSelection"
+            />
+            <span v-if="!selectedSheetIds.length" class="text-xs text-red-600">Select at least one sheet.</span>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- ── Review table ──────────────────────────────────────────────────── -->
@@ -332,20 +353,46 @@ watch(schoolId, async (id) => {
 })
 
 const scan = ref(null)
+// Sheet ids to merge for generation/review, when the class has more than
+// one remarks_sheets doc (see functions/generate_smart_remarks/main.py's
+// module docstring). Empty/unset means "merge every sheet", the old
+// behavior — selecting a subset is an escape hatch for a class whose
+// sheets together are too much work for one run.
+const selectedSheetIds = ref([])
 
 watch(classId, () => {
   scan.value = null
+  selectedSheetIds.value = []
   reload()
 })
 
 async function reload() {
   if (!classId.value) return
   try {
-    scan.value = await loadClass(schoolId.value, classId.value)
+    scan.value = await loadClass(schoolId.value, classId.value, selectedSheetIds.value)
+    if (scan.value?.sheets?.length) {
+      // Default to "all sheets" the first time this class's sheets are seen.
+      const ids = scan.value.sheets.map(s => s.id)
+      if (!selectedSheetIds.value.length || selectedSheetIds.value.some(id => !ids.includes(id))) {
+        selectedSheetIds.value = ids
+      }
+    }
   } catch (e) {
     console.error('Could not load the class', e)
     toast.add({ severity: 'error', summary: 'Could not load this class', detail: e.message, life: 5000 })
   }
+}
+
+function sheetLabel(sheet, index) {
+  const edited = sheet.lastEditedAt ? new Date(sheet.lastEditedAt).toLocaleDateString() : 'not yet edited'
+  const count = sheet.entryCount ?? 0
+  return `Sheet ${index + 1} · ${edited} · ${count} student${count === 1 ? '' : 's'} ticked`
+}
+
+// Re-scan with the narrowed selection so the review table and tick counts
+// reflect only the chosen sheet(s) before generating.
+async function applySheetSelection() {
+  await reload()
 }
 
 // ── Generation run ────────────────────────────────────────────────────────
@@ -380,7 +427,8 @@ async function runOne(item) {
       // A long run is activity: don't let the 30-minute step-up window lapse mid-queue.
       markActivity()
     })
-    item.result = await generate({ schoolId: sid, classId: item.classId, confirmGenderIssue: item.confirmGender, jobId })
+    const sheetIds = item.classId === classId.value ? selectedSheetIds.value : undefined
+    item.result = await generate({ schoolId: sid, classId: item.classId, confirmGenderIssue: item.confirmGender, jobId, sheetIds })
     item.status = RUN_STATUS.DONE
   } catch (e) {
     console.error(`Smart remarks generation failed for ${item.classId}`, e)
