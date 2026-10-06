@@ -71,13 +71,13 @@ export function useSmartRemarks() {
 
   // Returns the scan result (band, sheetFound, tick counts, ...) so the
   // view can show its findings without a second call.
-  async function loadClass(schoolId, classId, sheetIds) {
+  async function loadClass(schoolId, classId, sheetIds, categorySlugs) {
     students.value = []
     remarksByStudent.value = {}
     if (!schoolId || !classId) return null
     loadingRoster.value = true
     try {
-      const scanResult = await scanSmartRemarksRemote({ schoolId, classId, sheetIds })
+      const scanResult = await scanSmartRemarksRemote({ schoolId, classId, sheetIds, categorySlugs })
       if (Array.isArray(scanResult?.roster)) {
         students.value = scanResult.roster
       } else {
