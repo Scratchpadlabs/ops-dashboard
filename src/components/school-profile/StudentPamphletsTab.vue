@@ -65,6 +65,8 @@
               <div class="text-sm font-medium text-slate-800 truncate">{{ row.className }}</div>
               <div class="text-xs text-slate-400">{{ row.count }} student{{ row.count === 1 ? '' : 's' }}</div>
             </div>
+            <button type="button" class="text-[11px] text-slate-400 hover:text-blue-600 px-1"
+                    title="Select only this class" @click.prevent.stop="onlyClass(row.classId)">Only</button>
             <span class="text-[10px] font-semibold px-1.5 py-0.5 rounded" :class="designChip(designFor(row)).cls"
                   :title="row.design ? '' : 'Grade not recognised — using Middle + Prep'">
               {{ designChip(designFor(row)).label }}<template v-if="!row.design && designOverride === 'auto'">?</template>
@@ -77,12 +79,54 @@
         </div>
       </div>
 
+      <!-- ── Students — tick / untick within the selected classes ─────────── -->
+      <div v-if="studentsInClasses.length" class="bg-white rounded-xl border border-slate-200 p-4">
+        <div class="flex items-center gap-2 flex-wrap mb-3">
+          <div class="text-sm font-bold text-slate-900 mr-auto">
+            Students <span class="text-slate-400 font-normal">· {{ selectedStudents.length }} of {{ studentsInClasses.length }} in the selected classes</span>
+          </div>
+          <IconField class="w-64">
+            <InputIcon class="pi pi-search" />
+            <InputText v-model="studentSearch" placeholder="Search name, roll no, ID…" class="w-full" size="small" />
+          </IconField>
+          <Button :label="studentSearch ? 'Tick shown' : 'Tick all'" size="small" text @click="setIncluded(visibleStudents, true)" />
+          <Button :label="studentSearch ? 'Untick shown' : 'Untick all'" size="small" text @click="setIncluded(visibleStudents, false)" />
+        </div>
+        <div class="rounded-lg border border-slate-200 overflow-hidden">
+          <DataTable :value="visibleStudents" dataKey="id" size="small" stripedRows
+                     paginator :rows="25" :rowsPerPageOptions="[25, 50, 100]">
+            <Column style="width:44px">
+              <template #body="{ data }">
+                <Checkbox binary :modelValue="!excludedIds.has(data.id)" @update:modelValue="v => setIncluded([data], v)" />
+              </template>
+            </Column>
+            <Column field="name" header="Name">
+              <template #body="{ data }">
+                <span class="text-sm" :class="data.name ? 'text-slate-800' : 'text-slate-400 italic'">{{ data.name || 'No name' }}</span>
+              </template>
+            </Column>
+            <Column field="className" header="Class" style="width:140px" />
+            <Column field="rollNo" header="Roll No" style="width:90px" />
+            <Column field="id" header="User ID" style="width:130px">
+              <template #body="{ data }"><span class="font-mono text-xs">{{ data.id }}</span></template>
+            </Column>
+            <Column style="width:60px">
+              <template #body="{ data }">
+                <Button icon="pi pi-download" text rounded size="small" title="Download this student's pamphlet"
+                        :loading="busy === 'one:' + data.id" :disabled="!canGenerateBlank || !!busy" @click="generate('one', data)" />
+              </template>
+            </Column>
+          </DataTable>
+          <div v-if="!visibleStudents.length" class="text-center text-sm text-slate-400 py-6">No students match "{{ studentSearch }}".</div>
+        </div>
+      </div>
+
       <!-- ── Generate ─────────────────────────────────────────────────────── -->
       <div class="bg-white rounded-xl border border-slate-200 p-4 flex items-center gap-2 flex-wrap">
         <Button label="Download PDF" icon="pi pi-download" :loading="busy === 'pdf'" :disabled="!canGenerate || !!busy" @click="generate('pdf')" />
         <Button label="One PDF per class (ZIP)" icon="pi pi-folder" outlined :loading="busy === 'zip'" :disabled="!canGenerate || !!busy" @click="generate('zip')" />
         <Button label="Sample (first student)" icon="pi pi-eye" text :loading="busy === 'sample'" :disabled="!canGenerate || !!busy" @click="generate('sample')" />
-        <span v-if="progress" class="text-xs text-slate-500">{{ progress }}</span>
+        <span v-if="progress && busy !== 'blank'" class="text-xs text-slate-500">{{ progress }}</span>
         <span v-else-if="!website" class="text-xs text-amber-600">Add the website first.</span>
         <span v-else-if="!footerName.trim()" class="text-xs text-amber-600">Add the school name first.</span>
 
@@ -93,6 +137,35 @@
         </div>
       </div>
     </template>
+
+    <!-- ── Blank copies — no roster needed ────────────────────────────── -->
+    <div class="bg-white rounded-xl border border-slate-200 p-4">
+      <div class="text-sm font-bold text-slate-900 mb-1">Blank copies</div>
+      <p class="text-xs text-slate-500 mb-3">
+        School name, website and QR printed; name, roll no, class, User ID and Password left blank to fill in by hand —
+        for new admissions or lost pamphlets.
+      </p>
+      <div class="flex items-end gap-3 flex-wrap">
+        <div>
+          <label class="form-label">Design</label>
+          <Select v-model="blankDesign" :options="blankDesignOptions" optionLabel="label" optionValue="value" class="w-72" />
+        </div>
+        <div>
+          <label class="form-label">Copies{{ blankDesign === 'both' ? ' (of each)' : '' }}</label>
+          <InputNumber v-model="blankCount" :min="1" :max="500" showButtons class="w-32" inputClass="w-full" />
+        </div>
+        <Button label="Download blank copies" icon="pi pi-file" outlined :loading="busy === 'blank'"
+                :disabled="!canGenerateBlank || !!busy" @click="generate('blank')" />
+        <span v-if="busy === 'blank' && progress" class="text-xs text-slate-500">{{ progress }}</span>
+        <span v-else-if="!website" class="text-xs text-amber-600">Add the website first.</span>
+        <span v-else-if="!footerName.trim()" class="text-xs text-amber-600">Add the school name first.</span>
+      </div>
+      <div v-if="pendingFile && !appSchoolId" class="flex items-center gap-3 bg-emerald-50 rounded-lg px-3 py-2 mt-3">
+        <i class="pi pi-check-circle text-emerald-600"></i>
+        <div class="min-w-0 flex-1 text-xs text-slate-700 break-all">{{ pendingFile.name }} is ready</div>
+        <Button label="Save" icon="pi pi-download" size="small" @click="savePending" />
+      </div>
+    </div>
   </div>
 </template>
 
@@ -104,6 +177,11 @@ import Select from 'primevue/select'
 import InputText from 'primevue/inputtext'
 import Button from 'primevue/button'
 import Checkbox from 'primevue/checkbox'
+import InputNumber from 'primevue/inputnumber'
+import DataTable from 'primevue/datatable'
+import Column from 'primevue/column'
+import IconField from 'primevue/iconfield'
+import InputIcon from 'primevue/inputicon'
 import ProgressSpinner from 'primevue/progressspinner'
 import JSZip from 'jszip'
 
@@ -115,7 +193,7 @@ import { parseClassValue, compareClasses } from '../../utils/classResolver.js'
 import { pendingFile, savePending, deliverFile } from '../../utils/deliverFile.js'
 import {
   buildStudentPamphletsPDF, loadPamphletAssets, designForGrade, compareStudents,
-  displayWebsite, qrTarget, guessAppSchool, pamphletFilename,
+  displayWebsite, qrTarget, guessAppSchool, pamphletFilename, blankCopies,
 } from '../../utils/studentPamphletPDF.js'
 
 const props = defineProps({
@@ -200,6 +278,8 @@ async function loadRoster(id) {
   students.value = []
   classes.value = []
   selectedClassIds.value = []
+  excludedIds.value = new Set()
+  studentSearch.value = ''
   rosterError.value = ''
   if (!id) return
   loadingRoster.value = true
@@ -250,7 +330,7 @@ const classRows = computed(() => {
 // ── Design ────────────────────────────────────────────────────────────────
 const designOverride = ref('auto')
 const overrideOptions = [
-  { value: 'auto', label: 'Design: by grade (recommended)' },
+  { value: 'auto', label: 'Design: by grade' },
   { value: 'foundational', label: 'Design: Foundational for all' },
   { value: 'middle', label: 'Design: Middle + Prep for all' },
 ]
@@ -264,12 +344,19 @@ function designChip(design) {
     : { label: 'Middle + Prep', cls: 'bg-sky-100 text-sky-700' }
 }
 
+function onlyClass(classId) {
+  selectedClassIds.value = [classId]
+}
+
 function selectAll(on) {
   selectedClassIds.value = on ? classRows.value.map(r => r.classId) : []
 }
 
 // ── What gets printed ─────────────────────────────────────────────────────
-const selectedStudents = computed(() => {
+// Every student in the ticked classes, in print order. Individual students
+// are then unticked via excludedIds — kept as exclusions so ticking another
+// class brings all of its students in without extra clicks.
+const studentsInClasses = computed(() => {
   const rows = new Map(classRows.value.map(r => [r.classId, r]))
   const chosen = new Set(selectedClassIds.value)
   return students.value
@@ -290,6 +377,23 @@ const selectedStudents = computed(() => {
       (x === NO_CLASS) - (y === NO_CLASS) || compareClasses(x, y)))
 })
 
+const excludedIds = ref(new Set())
+const selectedStudents = computed(() => studentsInClasses.value.filter(s => !excludedIds.value.has(s.id)))
+
+function setIncluded(list, on) {
+  const next = new Set(excludedIds.value)
+  for (const s of list) on ? next.delete(s.id) : next.add(s.id)
+  excludedIds.value = next
+}
+
+const studentSearch = ref('')
+const visibleStudents = computed(() => {
+  const q = studentSearch.value.trim().toLowerCase()
+  if (!q) return studentsInClasses.value
+  return studentsInClasses.value.filter(s =>
+    [s.name, s.id, s.rollNo, s.className].some(v => String(v ?? '').toLowerCase().includes(q)))
+})
+
 const warnings = computed(() => {
   const out = []
   const chosen = selectedStudents.value
@@ -308,8 +412,21 @@ const warnings = computed(() => {
   return out
 })
 
-const canGenerate = computed(() =>
-  selectedStudents.value.length > 0 && !!displayWebsite(website.value) && !!footerName.value.trim())
+const canGenerateBlank = computed(() => !!displayWebsite(website.value) && !!footerName.value.trim())
+const canGenerate = computed(() => selectedStudents.value.length > 0 && canGenerateBlank.value)
+
+// ── Blank copies ──────────────────────────────────────────────────────────
+const blankDesign = ref('foundational')
+const blankCount = ref(10)
+const blankDesignOptions = [
+  { value: 'foundational', label: 'Foundational (Nursery – Grade 2)' },
+  { value: 'middle', label: 'Middle + Prep (Grade 3+)' },
+  { value: 'both', label: 'Both designs' },
+]
+function blankList() {
+  const designs = blankDesign.value === 'both' ? ['foundational', 'middle'] : [blankDesign.value]
+  return designs.flatMap(d => blankCopies(d, blankCount.value))
+}
 
 // ── Generate ──────────────────────────────────────────────────────────────
 const busy = ref('')
@@ -324,15 +441,29 @@ async function build(list, label) {
     schoolName: footerName.value.trim(),
     website: website.value,
     assets,
-    onProgress: (done, total) => { progress.value = `${label}${done} / ${total} students…` },
+    onProgress: (done, total) => { progress.value = `${label}${done} / ${total}…` },
   })
 }
 
-async function generate(kind) {
-  busy.value = kind
+async function generate(kind, student = null) {
+  busy.value = kind === 'one' ? `one:${student.id}` : kind
   progress.value = 'Loading templates…'
   const school = footerName.value.trim()
   try {
+    if (kind === 'blank') {
+      const list = blankList()
+      const bytes = await build(list, 'Blank copies: ')
+      deliverFile(new Blob([bytes], { type: 'application/pdf' }), pamphletFilename(school, 'Blank'))
+      toast.add({ severity: 'success', summary: 'Blank copies ready', detail: `${list.length} copies`, life: 2500 })
+      return
+    }
+    if (kind === 'one') {
+      const bytes = await build([student], '')
+      deliverFile(new Blob([bytes], { type: 'application/pdf' }),
+        pamphletFilename(school, [student.name || student.id, student.className].filter(Boolean).join(' - ')))
+      toast.add({ severity: 'success', summary: 'Pamphlet ready', detail: student.name || student.id, life: 2500 })
+      return
+    }
     if (kind === 'sample') {
       const bytes = await build(selectedStudents.value.slice(0, 1), '')
       deliverFile(new Blob([bytes], { type: 'application/pdf' }), pamphletFilename(school, 'Sample'))

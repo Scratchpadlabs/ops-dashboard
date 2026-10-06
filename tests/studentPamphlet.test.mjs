@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs'
 import { PDFDocument } from 'pdf-lib'
 import {
   designForGrade, displayWebsite, qrTarget, headerText, fitSize, compareStudents, layoutHeader, truncateToWidth,
-  guessAppSchool, pamphletFilename, buildStudentPamphletsPDF,
+  guessAppSchool, pamphletFilename, buildStudentPamphletsPDF, blankCopies,
 } from '../src/utils/studentPamphletPDF.js'
 import LAYOUT from '../src/utils/pamphletLayout.js'
 
@@ -137,4 +137,22 @@ test("SP-09 builds two pages per student, even with a name the fonts can't draw"
   const want = template.getPage(0).getMediaBox()
   assert.ok(want.y > 0, 'fixture should exercise a non-zero page box origin')
   for (const page of doc.getPages()) assert.deepEqual(page.getMediaBox(), want)
+})
+
+test('SP-10 blank copies: a line for every header field, no ID or password', async () => {
+  assert.equal(headerText({ blank: true, name: 'ignored', rollNo: '9' }),
+    'Name: ______________   Roll No.: _____   Class: ________')
+  assert.deepEqual(blankCopies('middle', 2), [{ blank: true, design: 'middle' }, { blank: true, design: 'middle' }])
+  assert.deepEqual(blankCopies('middle', 0), [])
+  assert.deepEqual(blankCopies('middle', 'x'), [])
+
+  const assets = {
+    templates: { foundational: read('public/pamphlets/foundational.pdf'), middle: read('public/pamphlets/middle.pdf') },
+    fonts: { regular: read('public/fonts/Poppins-Regular.ttf'), bold: read('public/fonts/Poppins-Bold.ttf'), value: read('public/fonts/Inter-Bold.ttf') },
+  }
+  const bytes = await buildStudentPamphletsPDF({
+    schoolName: 'X School', website: 'x.myhpc.app', assets,
+    students: [...blankCopies('foundational', 2), ...blankCopies('middle', 1)],
+  })
+  assert.equal((await PDFDocument.load(bytes)).getPageCount(), 6)
 })

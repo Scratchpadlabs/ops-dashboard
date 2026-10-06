@@ -50,11 +50,15 @@ export function qrTarget(url) {
 
 /** A missing name or class prints as a blank rule, to be filled in by hand.
  *  A missing roll number is left out of the header altogether. */
-const BLANK = { name: '______________', className: '________' }
+const BLANK = { name: '______________', rollNo: '_____', className: '________' }
 
 const clean = (v) => String(v ?? '').replace(/\s+/g, ' ').trim()
 
-export function headerParts({ name, rollNo, className }) {
+export function headerParts({ name, rollNo, className, blank }) {
+  // A blank copy is filled in by hand, so it gets a line for every field.
+  if (blank) {
+    return { name: `Name: ${BLANK.name}`, rest: `Roll No.: ${BLANK.rollNo}   Class: ${BLANK.className}` }
+  }
   return {
     name: `Name: ${clean(name) || BLANK.name}`,
     rest: [
@@ -212,8 +216,9 @@ export async function loadPamphletAssets(base = '/') {
 
 /**
  * @param {object} opts
- * @param {Array<{id,name,rollNo,className,design}>} opts.students  in print order;
- *        design is 'foundational' | 'middle'
+ * @param {Array<{id,name,rollNo,className,design,blank?}>} opts.students  in print order;
+ *        design is 'foundational' | 'middle'; blank: true for a copy to fill
+ *        in by hand (see blankCopies)
  * @param {string} opts.schoolName   printed in every footer
  * @param {string} opts.website      e.g. "www.nins.myhpc.app"
  * @param {object} opts.assets       from loadPamphletAssets()
@@ -256,8 +261,9 @@ export async function buildStudentPamphletsPDF({ students, schoolName, website, 
 
   let done = 0
   for (const student of students) {
-    const id = String(student.id || '').trim()
+    const id = student.blank ? '' : String(student.id || '').trim()
     const headerStudent = {
+      blank: !!student.blank,
       name: drawable(fonts.regular, student.name),
       rollNo: drawable(fonts.regular, student.rollNo),
       className: drawable(fonts.regular, student.className),
@@ -290,7 +296,7 @@ export async function buildStudentPamphletsPDF({ students, schoolName, website, 
       }
       for (const key of ['userId', 'password']) {
         const slot = slots[key]
-        if (!slot) continue
+        if (!slot || !id) continue
         const text = drawable(fonts.value, id)
         const size = fitSize((t, s) => fonts.value.widthOfTextAtSize(t, s), text, slot.size, VALUE_MAX_WIDTH[key])
         page.drawText(text, { x: slot.x, y: slot.baseline, size, font: fonts.value, color: toRgb(slot.color) })
@@ -307,6 +313,16 @@ export async function buildStudentPamphletsPDF({ students, schoolName, website, 
   }
 
   return doc.save()
+}
+
+/**
+ * Blank copies to fill in by hand (new admissions, lost pamphlets): school
+ * name, website and QR printed; name / roll no / class as blank lines; User
+ * ID and Password left empty on their rules.
+ */
+export function blankCopies(design, count) {
+  const n = Math.max(0, Math.floor(Number(count) || 0))
+  return Array.from({ length: n }, () => ({ blank: true, design }))
 }
 
 export function pamphletFilename(schoolName, suffix = '') {
