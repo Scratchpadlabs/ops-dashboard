@@ -142,15 +142,9 @@ def _build_invoice(data: dict, out):
 
     # Logo + INVOICE text in a table with beige background
     try:
-        # White logo on transparent bg — needs a dark chip behind it
-        raw_logo = Image(logo_path, width=52*mm, height=9.6*mm)
-        logo_img = Table([[raw_logo]], colWidths=[58*mm], rowHeights=[14*mm])
-        logo_img.setStyle(TableStyle([
-            ("BACKGROUND",   (0,0), (-1,-1), DARK_BG),
-            ("ROUNDEDCORNERS", (0,0), (-1,-1), [5,5,5,5]),
-            ("ALIGN",        (0,0), (-1,-1), "CENTER"),
-            ("VALIGN",       (0,0), (-1,-1), "MIDDLE"),
-        ]))
+        # Dark ClarifiEd logo on transparent bg (1258×337) — sits directly on the beige header
+        logo_img = Image(logo_path, width=48*mm, height=48*mm * 337 / 1258)
+        logo_img.hAlign = "LEFT"
     except Exception:
         logo_img = Paragraph("ClarifiEd", _style("logo", fontName=FONT_BOLD, fontSize=14))
 
