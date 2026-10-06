@@ -441,11 +441,16 @@ const bulkUpdateSmartRemarksCallable = httpsCallable(functions, 'bulk_update_sma
 
 // jobId: a smart_remarks_jobs doc id minted by the caller, so the page can
 // watch that exact job while the call is still running.
-export async function generateSmartRemarksRemote({ schoolId, classId, studentIds, confirmGenderIssue, jobId }) {
+// sheetIds: optional — restricts generation to specific remarks_sheets docs
+// instead of merging every sheet for the class, for a class whose several
+// sheets together produce more remarks than one run can finish inside the
+// function's timeout (see functions/generate_smart_remarks/main.py).
+export async function generateSmartRemarksRemote({ schoolId, classId, studentIds, confirmGenderIssue, jobId, sheetIds }) {
   const payload = { school_id: schoolId, class_id: classId }
   if (studentIds?.length) payload.student_ids = studentIds
   if (confirmGenderIssue) payload.confirm_gender_issue = true
   if (jobId) payload.job_id = jobId
+  if (sheetIds?.length) payload.sheet_ids = sheetIds
   const res = await generateSmartRemarksCallable(payload)
   return res.data
 }
@@ -453,8 +458,10 @@ export async function generateSmartRemarksRemote({ schoolId, classId, studentIds
 // Read-only precheck: resolves the class's remark band, whether a sheet
 // exists, and any gender-quality issue, without calling the model or
 // writing anything.
-export async function scanSmartRemarksRemote({ schoolId, classId }) {
-  const res = await scanSmartRemarksCallable({ school_id: schoolId, class_id: classId, scan_only: true })
+export async function scanSmartRemarksRemote({ schoolId, classId, sheetIds }) {
+  const payload = { school_id: schoolId, class_id: classId, scan_only: true }
+  if (sheetIds?.length) payload.sheet_ids = sheetIds
+  const res = await scanSmartRemarksCallable(payload)
   return res.data
 }
 

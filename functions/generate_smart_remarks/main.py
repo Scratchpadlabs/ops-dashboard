@@ -270,7 +270,7 @@ def _fetch_remark_bank(school_ref, band, class_id):
     return index, categories
 
 
-def _fetch_merged_entries(school_ref, class_id):
+def _fetch_merged_entries(school_ref, class_id, sheet_ids=None):
     """Every remarks_sheets doc for this class, merged into one
     {studentId: {remarkKey: bool}} map per student.
 
@@ -287,18 +287,46 @@ def _fetch_merged_entries(school_ref, class_id):
     so a student can have ticks here that a roster built another way would
     never look up. The caller unions these ids into the roster.
 
-    Returns (entries_by_student, sheet_refs, sheet_count).
+    `sheet_ids`, when given, restricts the MERGE to just those sheet ids
+    (still processed oldest-to-newest) instead of every sheet for the class.
+    This is an explicit escape hatch for a class (typically Foundational
+    stage, several tabs/teachers each keeping their own sheet) whose sheets
+    together produce more remarks than one run can finish inside the
+    function's timeout — the dashboard lets an ops admin generate one sheet
+    at a time instead. Omit it (the default) to merge every sheet, as before.
+    Every sheet's entries are still read regardless, so `sheet_summaries`
+    below always describes the whole class, not just the selected subset.
+
+    Returns (entries_by_student, sheet_refs, sheet_count, sheet_summaries).
+    sheet_summaries is every sheet for the class, oldest-to-newest, as
+    {id, lastEditedAt (ISO string or None), lastEditedBy, entryCount} — for
+    a caller to offer a sheet picker regardless of what was selected here.
     """
     docs = list(school_ref.collection("remarks_sheets").where("classId", "==", class_id).stream())
     if not docs:
-        return {}, [], 0
+        return {}, [], 0, []
     docs.sort(key=lambda d: _edited_at_key((d.to_dict() or {}).get("lastEditedAt")))  # oldest first
 
-    entries_by_student = defaultdict(dict)
+    entries_by_doc = {}
+    sheet_summaries = []
     for doc in docs:
-        for entry_doc in doc.reference.collection("entries").stream():
+        entry_docs = list(doc.reference.collection("entries").stream())
+        entries_by_doc[doc.id] = entry_docs
+        data = doc.to_dict() or {}
+        edited_at = data.get("lastEditedAt")
+        sheet_summaries.append({
+            "id": doc.id,
+            "lastEditedAt": edited_at.isoformat() if hasattr(edited_at, "isoformat") else None,
+            "lastEditedBy": data.get("lastEditedBy") or "",
+            "entryCount": len(entry_docs),
+        })
+
+    selected = docs if sheet_ids is None else [d for d in docs if d.id in set(sheet_ids)]
+    entries_by_student = defaultdict(dict)
+    for doc in selected:
+        for entry_doc in entries_by_doc[doc.id]:
             entries_by_student[entry_doc.id].update(entry_doc.to_dict() or {})
-    return dict(entries_by_student), [d.reference for d in docs], len(docs)
+    return dict(entries_by_student), [d.reference for d in selected], len(selected), sheet_summaries
 
 
 def _edited_at_key(value):
@@ -536,6 +564,17 @@ def generate_smart_remarks(req: https_fn.CallableRequest) -> dict:
         raise https_fn.HttpsError(
             https_fn.FunctionsErrorCode.INVALID_ARGUMENT, "job_id must be a plain document id")
 
+    # Optional: restrict generation/scan to specific remarks_sheets docs
+    # instead of merging every sheet for the class (see _fetch_merged_entries)
+    # — lets an ops admin split a class whose several sheets together exceed
+    # the function's timeout into smaller runs. Omit for the old behavior.
+    requested_sheet_ids = data.get("sheet_ids")
+    if requested_sheet_ids is not None and (
+            not isinstance(requested_sheet_ids, list)
+            or not all(isinstance(s, str) and s for s in requested_sheet_ids)):
+        raise https_fn.HttpsError(
+            https_fn.FunctionsErrorCode.INVALID_ARGUMENT, "sheet_ids must be a list of sheet ids")
+
     if not school_id or not class_id:
         raise https_fn.HttpsError(
             https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
@@ -555,7 +594,7 @@ def generate_smart_remarks(req: https_fn.CallableRequest) -> dict:
         payload = {
             "band": None, "stageIssue": raw_stage, "classId": class_id,
             "students": 0, "roster": [], "categories": [], "sheetFound": False,
-            "multipleSheetsFound": False, "genderIssue": None,
+            "multipleSheetsFound": False, "sheets": [], "genderIssue": None,
             "tickedStudents": 0, "unmatchedTicks": 0,
         }
         if scan_only:
@@ -567,7 +606,8 @@ def generate_smart_remarks(req: https_fn.CallableRequest) -> dict:
             "this class. Set classes/{id}.stage before running smart remarks for this class.",
         )
 
-    entries_by_student, sheet_refs, sheet_count = _fetch_merged_entries(school_ref, class_id)
+    entries_by_student, sheet_refs, sheet_count, sheet_summaries = _fetch_merged_entries(
+        school_ref, class_id, sheet_ids=requested_sheet_ids)
     sheet_ids = [s.id for s in sheet_refs]
 
     # Anyone with an entries doc in this class's sheets was listed under this
@@ -593,11 +633,11 @@ def generate_smart_remarks(req: https_fn.CallableRequest) -> dict:
                                 & {c["slug"] for c in categories})}
               for sid in roster_ids]
 
-    if not sheet_refs:
+    if not sheet_summaries:
         payload = {
             "band": band, "classId": class_id, "students": len(roster_ids), "roster": roster,
             "categories": category_labels, "sheetFound": False,
-            "multipleSheetsFound": False, "genderIssue": None,
+            "multipleSheetsFound": False, "sheets": [], "genderIssue": None,
             "tickedStudents": 0, "unmatchedTicks": 0,
         }
         if scan_only:
@@ -605,6 +645,12 @@ def generate_smart_remarks(req: https_fn.CallableRequest) -> dict:
         raise https_fn.HttpsError(
             https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
             "No remarks sheet exists yet for this class — nothing has been ticked by a teacher.",
+        )
+
+    if requested_sheet_ids is not None and not sheet_refs:
+        raise https_fn.HttpsError(
+            https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
+            "The selected remarks sheet(s) could not be found for this class — refresh and try again.",
         )
 
     g_issue = gender_issue(roster_ids, students)
@@ -623,7 +669,7 @@ def generate_smart_remarks(req: https_fn.CallableRequest) -> dict:
     scan_payload = {
         "band": band, "classId": class_id, "students": len(roster_ids), "roster": roster,
         "categories": category_labels, "sheetFound": True,
-        "multipleSheetsFound": sheet_count > 1, "genderIssue": g_issue,
+        "multipleSheetsFound": len(sheet_summaries) > 1, "sheets": sheet_summaries, "genderIssue": g_issue,
         "tickedStudents": ticked_students, "unmatchedTicks": unmatched_ticks,
     }
     if scan_only:
