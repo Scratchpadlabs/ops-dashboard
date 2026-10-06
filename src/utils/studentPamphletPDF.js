@@ -119,6 +119,81 @@ export function fitSize(widthAt, text, preferred, maxWidth, min = 8) {
   return size
 }
 
+// School band at the top of the page: logo on the left, name beside it. The
+// name is sized from the logo's height so the two always read as one unit;
+// with no logo the name is centred on its own.
+const SCHOOL_LOGO_FILL = 0.84        // logo height as a share of the band
+const SCHOOL_LOGO_MAX_WIDTH = 140    // a very wide logo is shrunk to this
+const SCHOOL_GAP = 12                // between logo and name
+const SCHOOL_CAP = 0.7               // Poppins cap height, in em
+const SCHOOL_LEADING = 1.2
+
+/** Split at the word break that makes the two lines most even. */
+export function balancedSplit(widthAt, text, size) {
+  const words = text.split(' ')
+  if (words.length < 2) return [text]
+  let best = null
+  for (let i = 1; i < words.length; i++) {
+    const a = words.slice(0, i).join(' ')
+    const b = words.slice(i).join(' ')
+    const w = Math.max(widthAt(a, size), widthAt(b, size))
+    if (!best || w < best.w) best = { w, lines: [a, b] }
+  }
+  return best.lines
+}
+
+/**
+ * Where to draw the logo and the school name inside `box` ({x0, x1, top,
+ * bottom}, PDF points, y up). logoAspect is width / height, or null for no
+ * logo. Returns { logo: {x, y, width, height} | null, lines: [{text, size, x, baseline}] }.
+ */
+export function layoutSchoolHeader(name, logoAspect, widthAt, box) {
+  const bandH = box.top - box.bottom
+  const cy = (box.top + box.bottom) / 2
+  const boxW = box.x1 - box.x0
+
+  let logo = null
+  if (logoAspect) {
+    let height = bandH * SCHOOL_LOGO_FILL
+    let width = height * logoAspect
+    if (width > SCHOOL_LOGO_MAX_WIDTH) { width = SCHOOL_LOGO_MAX_WIDTH; height = width / logoAspect }
+    logo = { width, height }
+  }
+  // Text is proportioned to the logo; without one, to the band.
+  const ref = logo ? Math.max(logo.height, bandH * 0.6) : bandH
+  const oneLine = ref * (logo ? 0.48 : 0.42)
+  const twoLine = ref * (logo ? 0.38 : 0.34)
+  const textMaxW = boxW - (logo ? logo.width + SCHOOL_GAP : 0)
+
+  let lines
+  let size
+  if (widthAt(name, oneLine * 0.85) <= textMaxW || !name.includes(' ')) {
+    size = fitSize(widthAt, name, oneLine, textMaxW, 8)
+    lines = [truncateToWidth(widthAt, name, size, textMaxW)]
+  } else {
+    lines = balancedSplit(widthAt, name, twoLine)
+    size = Math.min(...lines.map(l => fitSize(widthAt, l, twoLine, textMaxW, 8)))
+    lines = lines.map(l => truncateToWidth(widthAt, l, size, textMaxW))
+  }
+  const textW = Math.max(...lines.map(l => widthAt(l, size)))
+  const groupW = (logo ? logo.width + SCHOOL_GAP : 0) + textW
+  const left = (box.x0 + box.x1) / 2 - groupW / 2
+  if (logo) Object.assign(logo, { x: left, y: cy - logo.height / 2 })
+  const textCx = left + (logo ? logo.width + SCHOOL_GAP : 0) + textW / 2
+
+  // Centre the block of cap heights on the logo's middle.
+  const blockH = SCHOOL_CAP * size + (lines.length - 1) * SCHOOL_LEADING * size
+  const firstBaseline = cy + blockH / 2 - SCHOOL_CAP * size
+  return {
+    logo,
+    lines: lines.map((text, i) => ({
+      text, size,
+      x: textCx - widthAt(text, size) / 2,
+      baseline: firstBaseline - i * SCHOOL_LEADING * size,
+    })),
+  }
+}
+
 /** Class, then roll number (numerically when both are numbers), then name. */
 export function compareStudents(a, b, compareClasses = (x, y) => x.localeCompare(y)) {
   const byClass = compareClasses(a.classId || '', b.classId || '')
@@ -164,6 +239,8 @@ function placeSlots(slots, ox, oy) {
     if ('x' in slot) out[key].x = slot.x + ox
     if ('y' in slot) out[key].y = slot.y + oy
     if ('baseline' in slot) out[key].baseline = slot.baseline + oy
+    if ('x0' in slot) { out[key].x0 = slot.x0 + ox; out[key].x1 = slot.x1 + ox }
+    if ('top' in slot) { out[key].top = slot.top + oy; out[key].bottom = slot.bottom + oy }
   }
   return out
 }
@@ -219,13 +296,14 @@ export async function loadPamphletAssets(base = '/') {
  * @param {Array<{id,name,rollNo,className,design,blank?}>} opts.students  in print order;
  *        design is 'foundational' | 'middle'; blank: true for a copy to fill
  *        in by hand (see blankCopies)
- * @param {string} opts.schoolName   printed in every footer
+ * @param {string} opts.schoolName   printed in the school band (or footer, on older templates)
+ * @param {{bytes: Uint8Array, type: 'png'|'jpg'}} [opts.logo]  school logo for the school band
  * @param {string} opts.website      e.g. "www.nins.myhpc.app"
  * @param {object} opts.assets       from loadPamphletAssets()
  * @param {(done:number,total:number)=>void} [opts.onProgress]
  * @returns {Promise<Uint8Array>}
  */
-export async function buildStudentPamphletsPDF({ students, schoolName, website, assets, onProgress }) {
+export async function buildStudentPamphletsPDF({ students, schoolName, website, logo, assets, onProgress }) {
   const doc = await PDFDocument.create()
   doc.registerFontkit(fontkit)
   doc.setTitle(`${schoolName} — Student Login Pamphlets`)
@@ -258,6 +336,9 @@ export async function buildStudentPamphletsPDF({ students, schoolName, website, 
   const shownUrl = displayWebsite(website)
   const qr = QRCode.create(qrTarget(website), { errorCorrectionLevel: 'M' })
   const footer = String(schoolName || '').trim().toUpperCase()
+  const logoImage = logo?.bytes
+    ? await (logo.type === 'jpg' ? doc.embedJpg(logo.bytes) : doc.embedPng(logo.bytes))
+    : null
 
   let done = 0
   for (const student of students) {
@@ -300,6 +381,15 @@ export async function buildStudentPamphletsPDF({ students, schoolName, website, 
         const text = drawable(fonts.value, id)
         const size = fitSize((t, s) => fonts.value.widthOfTextAtSize(t, s), text, slot.size, VALUE_MAX_WIDTH[key])
         page.drawText(text, { x: slot.x, y: slot.baseline, size, font: fonts.value, color: toRgb(slot.color) })
+      }
+      if (slots.school && footer) {
+        const widthAt = (t, s) => fonts.regular.widthOfTextAtSize(t, s)
+        const aspect = logoImage ? logoImage.width / logoImage.height : null
+        const band = layoutSchoolHeader(drawable(fonts.regular, footer), aspect, widthAt, slots.school)
+        if (band.logo) page.drawImage(logoImage, band.logo)
+        for (const line of band.lines) {
+          page.drawText(line.text, { x: line.x, y: line.baseline, size: line.size, font: fonts.regular, color: toRgb(slots.school.color) })
+        }
       }
       if (slots.footer && footer) drawCentered(page, fonts.regular, drawable(fonts.regular, footer), slots.footer, FOOTER_MAX_WIDTH)
     }
