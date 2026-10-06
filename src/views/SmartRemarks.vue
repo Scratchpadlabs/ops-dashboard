@@ -249,24 +249,62 @@
                 <th class="px-3 py-2 text-right">Students</th>
                 <th class="px-3 py-2 text-right">With ticks</th>
                 <th class="px-3 py-2 text-left">Notes</th>
+                <th class="px-3 py-2 w-8"></th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="r in preflight" :key="r.classId" class="border-t border-slate-100" :class="r.include ? '' : 'text-slate-400'">
-                <td class="px-3 py-1.5"><input type="checkbox" v-model="r.include" :disabled="!r.scan" /></td>
-                <td class="px-3 py-1.5 font-medium">{{ r.label }}</td>
-                <td class="px-3 py-1.5 text-right tabular-nums">
-                  <i v-if="r.checking" class="pi pi-spin pi-spinner text-xs text-slate-400"></i>
-                  <template v-else>{{ r.scan?.students ?? '—' }}</template>
-                </td>
-                <td class="px-3 py-1.5 text-right tabular-nums">{{ r.scan?.tickedStudents ?? '—' }}</td>
-                <td class="px-3 py-1.5 text-xs">
-                  <span v-if="r.error" class="text-red-600">{{ r.error }}</span>
-                  <span v-else-if="r.reason" class="text-amber-600">{{ r.reason }}</span>
-                  <span v-if="r.scan?.genderIssue" class="text-amber-600">Gender data incomplete</span>
-                  <span v-if="r.scan?.multipleSheetsFound" class="text-slate-400"> · several sheets merged</span>
-                </td>
-              </tr>
+              <template v-for="r in preflight" :key="r.classId">
+                <tr class="border-t border-slate-100" :class="r.include ? '' : 'text-slate-400'">
+                  <td class="px-3 py-1.5"><input type="checkbox" v-model="r.include" :disabled="!r.scan" /></td>
+                  <td class="px-3 py-1.5 font-medium">{{ r.label }}</td>
+                  <td class="px-3 py-1.5 text-right tabular-nums">
+                    <i v-if="r.checking" class="pi pi-spin pi-spinner text-xs text-slate-400"></i>
+                    <template v-else>{{ r.scan?.students ?? '—' }}</template>
+                  </td>
+                  <td class="px-3 py-1.5 text-right tabular-nums">{{ r.scan?.tickedStudents ?? '—' }}</td>
+                  <td class="px-3 py-1.5 text-xs">
+                    <span v-if="r.error" class="text-red-600">{{ r.error }}</span>
+                    <span v-else-if="r.reason" class="text-amber-600">{{ r.reason }}</span>
+                    <span v-if="r.scan?.genderIssue" class="text-amber-600">Gender data incomplete</span>
+                    <span v-if="r.scan?.multipleSheetsFound" class="text-slate-400"> · several sheets merged</span>
+                    <span v-if="rowIsNarrowed(r)" class="text-blue-600"> · narrowed</span>
+                  </td>
+                  <td class="px-3 py-1.5">
+                    <button
+                      v-if="rowHasScope(r)" type="button" class="text-slate-400 hover:text-slate-700"
+                      :title="r.expanded ? 'Hide category/sheet picker' : 'Choose categories/sheets for this class'"
+                      @click="r.expanded = !r.expanded"
+                    >
+                      <i class="pi" :class="r.expanded ? 'pi-chevron-up' : 'pi-sliders-h'"></i>
+                    </button>
+                  </td>
+                </tr>
+                <tr v-if="r.expanded && rowHasScope(r)" class="border-t border-slate-100 bg-slate-50/60">
+                  <td colspan="6" class="px-3 py-2">
+                    <div v-if="r.scan?.allCategories?.length > 1" class="mb-2">
+                      <div class="text-xs font-medium text-slate-500 mb-1">Categories</div>
+                      <div class="flex flex-wrap gap-x-4 gap-y-1">
+                        <label v-for="c in r.scan.allCategories" :key="c.slug" class="flex items-center gap-1.5 text-xs">
+                          <Checkbox v-model="r.selectedCategorySlugs" :value="c.slug" />
+                          {{ c.label }}
+                        </label>
+                      </div>
+                    </div>
+                    <div v-if="r.scan?.sheets?.length > 1">
+                      <div class="text-xs font-medium text-slate-500 mb-1">Sheets</div>
+                      <div class="flex flex-wrap gap-x-4 gap-y-1">
+                        <label v-for="(s, i) in r.scan.sheets" :key="s.id" class="flex items-center gap-1.5 text-xs">
+                          <Checkbox v-model="r.selectedSheetIds" :value="s.id" />
+                          {{ sheetLabel(s, i) }}
+                        </label>
+                      </div>
+                    </div>
+                    <p v-if="!r.selectedCategorySlugs.length || !r.selectedSheetIds.length" class="text-xs text-red-600 mt-1">
+                      Select at least one category and sheet, or this class will be left out.
+                    </p>
+                  </td>
+                </tr>
+              </template>
             </tbody>
           </table>
         </div>
@@ -454,9 +492,9 @@ let ticker = null
 const hasRemarks = computed(() =>
   Object.values(remarksByStudent.value).some(r => r && r.length))
 
-function makeItem(id, { confirmGender = false, status = RUN_STATUS.QUEUED, error = '' } = {}) {
+function makeItem(id, { confirmGender = false, status = RUN_STATUS.QUEUED, error = '', sheetIds, categorySlugs } = {}) {
   const label = classes.value.find(c => c.id === id)?.label || id
-  return reactive({ classId: id, label, status, error, confirmGender, job: null, result: null, startedAtMs: null, finishedAtMs: null })
+  return reactive({ classId: id, label, status, error, confirmGender, sheetIds, categorySlugs, job: null, result: null, startedAtMs: null, finishedAtMs: null })
 }
 
 async function runOne(item) {
@@ -472,9 +510,10 @@ async function runOne(item) {
       // A long run is activity: don't let the 30-minute step-up window lapse mid-queue.
       markActivity()
     })
-    const sheetIds = item.classId === classId.value ? selectedSheetIds.value : undefined
-    const categorySlugs = item.classId === classId.value ? selectedCategorySlugs.value : undefined
-    item.result = await generate({ schoolId: sid, classId: item.classId, confirmGenderIssue: item.confirmGender, jobId, sheetIds, categorySlugs })
+    item.result = await generate({
+      schoolId: sid, classId: item.classId, confirmGenderIssue: item.confirmGender, jobId,
+      sheetIds: item.sheetIds, categorySlugs: item.categorySlugs,
+    })
     item.status = RUN_STATUS.DONE
   } catch (e) {
     console.error(`Smart remarks generation failed for ${item.classId}`, e)
@@ -521,7 +560,10 @@ function confirmGenerate() {
 }
 
 async function runSingle(confirmGenderIssue = false) {
-  const item = makeItem(classId.value, { confirmGender: confirmGenderIssue })
+  const item = makeItem(classId.value, {
+    confirmGender: confirmGenderIssue,
+    sheetIds: selectedSheetIds.value, categorySlugs: selectedCategorySlugs.value,
+  })
   await runQueue([item])
   if (item.status === RUN_STATUS.DONE) {
     const result = item.result || {}
@@ -559,7 +601,17 @@ const proceedGender = ref(false)
 
 const allIncluded = computed(() => preflight.value.length > 0 && preflight.value.every(r => r.include || !r.scan))
 const genderIssueCount = computed(() => preflight.value.filter(r => r.include && r.scan?.genderIssue).length)
-const startCount = computed(() => preflight.value.filter(r => r.include && (!r.scan?.genderIssue || proceedGender.value)).length)
+// A row narrowed down to nothing (every category or every sheet unticked)
+// can't run — same as being left out, so it doesn't count toward startCount.
+const rowHasScope = r => (r.scan?.allCategories?.length > 1) || (r.scan?.sheets?.length > 1)
+const rowIsNarrowed = r => rowHasScope(r)
+  && ((r.scan?.allCategories?.length > 1 && r.selectedCategorySlugs?.length !== r.scan.allCategories.length)
+    || (r.scan?.sheets?.length > 1 && r.selectedSheetIds?.length !== r.scan.sheets.length))
+const rowIsEmptyScope = r => rowHasScope(r)
+  && ((r.scan?.allCategories?.length > 1 && !r.selectedCategorySlugs?.length)
+    || (r.scan?.sheets?.length > 1 && !r.selectedSheetIds?.length))
+const startCount = computed(() => preflight.value.filter(r =>
+  r.include && (!r.scan?.genderIssue || proceedGender.value) && !rowIsEmptyScope(r)).length)
 
 function openMulti() {
   multiClassIds.value = classId.value ? [classId.value] : []
@@ -575,6 +627,7 @@ async function checkClasses() {
   checking.value = true
   preflight.value = multiClassIds.value.map(id => reactive({
     classId: id, label: classLabel(id), scan: null, include: false, reason: '', error: '', checking: true,
+    selectedCategorySlugs: [], selectedSheetIds: [], expanded: false,
   }))
   try {
     await mapLimit(preflight.value, 3, async (row) => {
@@ -583,6 +636,9 @@ async function checkClasses() {
         const v = preflightVerdict(row.scan)
         row.include = v.include
         row.reason = v.reason
+        // Default to "everything" — same as omitting the filter server-side.
+        row.selectedCategorySlugs = row.scan?.allCategories?.map(c => c.slug) || []
+        row.selectedSheetIds = row.scan?.sheets?.map(s => s.id) || []
       } catch (e) {
         row.error = e.message || 'Could not check this class'
       } finally {
@@ -600,7 +656,13 @@ function startMulti() {
     if (r.scan?.genderIssue && !proceedGender.value) {
       return makeItem(r.classId, { status: RUN_STATUS.SKIPPED, error: 'Gender data incomplete — not confirmed' })
     }
-    return makeItem(r.classId, { confirmGender: !!r.scan?.genderIssue })
+    if (rowIsEmptyScope(r)) {
+      return makeItem(r.classId, { status: RUN_STATUS.SKIPPED, error: 'No categories/sheets selected' })
+    }
+    return makeItem(r.classId, {
+      confirmGender: !!r.scan?.genderIssue,
+      sheetIds: r.selectedSheetIds, categorySlugs: r.selectedCategorySlugs,
+    })
   })
   // Queued first, skipped listed after, so the panel reads top-down.
   items.sort((a, b) => (a.status === RUN_STATUS.SKIPPED) - (b.status === RUN_STATUS.SKIPPED))
