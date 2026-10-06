@@ -10,7 +10,8 @@ Deploy:
     --trigger-http --allow-unauthenticated \
     --memory 256MB --max-instances 3 --project clarified-1501
 
-Folder needs: main.py, requirements.txt (no extra assets required)
+Folder needs: main.py, requirements.txt, logo.png, sign.jpg, stamp.png
+(stamp.png is a copy of functions/generate_invoice/invoice_stamp.png)
 """
 
 import io
@@ -24,7 +25,7 @@ from PIL import Image as PILImage, ImageChops
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle
-from reportlab.lib.units import cm
+from reportlab.lib.units import cm, mm
 from reportlab.platypus import (
     HRFlowable, Image as RLImage, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle,
 )
@@ -37,6 +38,7 @@ COMPANY_SIGNATORY_DESIGNATION = "Director"
 
 LOGO_PATH      = os.path.join(os.path.dirname(__file__), "logo.png")
 SIGNATURE_PATH = os.path.join(os.path.dirname(__file__), "sign.jpg")
+STAMP_PATH     = os.path.join(os.path.dirname(__file__), "stamp.png")
 
 # ── Brand palette ──────────────────────────────────────────────────────────────
 NAVY  = colors.HexColor("#1e3a5f")
@@ -669,7 +671,8 @@ def _build_pdf(data):
     ))
     story.append(Spacer(1, 18))
 
-    def _sig_box(label, name=None, designation=None, date_str=None, signature_img=None):
+    def _sig_box(label, name=None, designation=None, date_str=None, signature_img=None,
+                 stamp_img=None):
         box = [
             Paragraph(f'{label} :', SIG_NAME),
             Spacer(1, 14),
@@ -681,7 +684,21 @@ def _build_pdf(data):
             Spacer(1, 8),
             Paragraph('Signature:', BODY_SMALL),
         ]
-        if signature_img is not None:
+        if signature_img is not None and stamp_img is not None:
+            # Company stamp sits beside the signature, as on the invoice.
+            row = Table([[signature_img, stamp_img]],
+                        colWidths=[signature_img.drawWidth + 16, stamp_img.drawWidth])
+            row.hAlign = 'LEFT'
+            row.setStyle(TableStyle([
+                ("VALIGN",        (0,0), (-1,-1), "MIDDLE"),
+                ("LEFTPADDING",   (0,0), (-1,-1), 0),
+                ("RIGHTPADDING",  (0,0), (-1,-1), 0),
+                ("TOPPADDING",    (0,0), (-1,-1), 0),
+                ("BOTTOMPADDING", (0,0), (-1,-1), 0),
+            ]))
+            box.append(Spacer(1, 2))
+            box.append(row)
+        elif signature_img is not None:
             box.append(Spacer(1, 2))
             box.append(signature_img)
         else:
@@ -694,6 +711,7 @@ def _build_pdf(data):
         designation=COMPANY_SIGNATORY_DESIGNATION,
         date_str=today,
         signature_img=_load_signature(SIGNATURE_PATH),
+        stamp_img=RLImage(STAMP_PATH, width=22 * mm, height=22 * mm),
     )
     school_box = _sig_box(
         f"For {school_name}",
