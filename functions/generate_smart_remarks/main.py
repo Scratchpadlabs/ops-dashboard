@@ -183,8 +183,8 @@ def gender_issue(student_ids, students):
     total = len(student_ids)
     if total == 0:
         return None
-    known = [students.get(sid, {}).get("gender", "").strip()
-             for sid in student_ids if students.get(sid, {}).get("gender", "").strip()]
+    known = [(students.get(sid, {}).get("gender") or "").strip()
+             for sid in student_ids if (students.get(sid, {}).get("gender") or "").strip()]
     missing = total - len(known)
     distinct = set(known)
     uniform_gender = next(iter(distinct)) if len(distinct) == 1 and len(known) >= 2 else None
@@ -444,7 +444,7 @@ def generate_smart_comment(ai, first_name, gender, category_label, ticked, used_
     different tabs, different sheets, different times).
     """
     used_openings = used_openings if used_openings is not None else set()
-    pronoun = "He" if gender.strip().lower().startswith(("m", "boy")) else "She"
+    pronoun = "He" if (gender or "").strip().lower().startswith(("m", "boy")) else "She"
     his_her = "his" if pronoun == "He" else "her"
     him_her = "him" if pronoun == "He" else "her"
 
