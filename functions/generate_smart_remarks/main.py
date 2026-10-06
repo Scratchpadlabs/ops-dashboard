@@ -575,6 +575,20 @@ def generate_smart_remarks(req: https_fn.CallableRequest) -> dict:
         raise https_fn.HttpsError(
             https_fn.FunctionsErrorCode.INVALID_ARGUMENT, "sheet_ids must be a list of sheet ids")
 
+    # Optional: restrict generation/scan to specific remark categories
+    # (General Remarks, Physical Development, ...) instead of every category
+    # assigned to the class. A Foundational-stage class can have 4-5
+    # categories, each written up per student — together that's often more
+    # (student, category) remarks than fit inside the function's timeout, so
+    # the dashboard lets an admin generate one category's worth at a time.
+    # Omit for the old behavior (every category).
+    requested_category_slugs = data.get("category_slugs")
+    if requested_category_slugs is not None and (
+            not isinstance(requested_category_slugs, list)
+            or not all(isinstance(s, str) and s for s in requested_category_slugs)):
+        raise https_fn.HttpsError(
+            https_fn.FunctionsErrorCode.INVALID_ARGUMENT, "category_slugs must be a list of category slugs")
+
     if not school_id or not class_id:
         raise https_fn.HttpsError(
             https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
@@ -584,16 +598,15 @@ def generate_smart_remarks(req: https_fn.CallableRequest) -> dict:
     school_ref = db.collection("schools").document(school_id)
 
     band, raw_stage = _resolve_band(school_ref, class_id)
-    remark_bank, categories = _fetch_remark_bank(school_ref, band, class_id)
-    category_labels = [c["label"] for c in categories]
+    remark_bank, all_categories = _fetch_remark_bank(school_ref, band, class_id)
 
     # No band is only blocking when it leaves this class with no remark bank
     # at all. Categories assigned to the class by classIds (what the teacher
     # app shows) still apply without one.
-    if band is None and not categories:
+    if band is None and not all_categories:
         payload = {
             "band": None, "stageIssue": raw_stage, "classId": class_id,
-            "students": 0, "roster": [], "categories": [], "sheetFound": False,
+            "students": 0, "roster": [], "categories": [], "allCategories": [], "sheetFound": False,
             "multipleSheetsFound": False, "sheets": [], "genderIssue": None,
             "tickedStudents": 0, "unmatchedTicks": 0,
         }
@@ -605,6 +618,20 @@ def generate_smart_remarks(req: https_fn.CallableRequest) -> dict:
             "band (Foundational/Preparatory/Middle/Secondary), and no remark category lists "
             "this class. Set classes/{id}.stage before running smart remarks for this class.",
         )
+
+    if requested_category_slugs is None:
+        categories = all_categories
+    else:
+        wanted = set(requested_category_slugs)
+        categories = [c for c in all_categories if c["slug"] in wanted]
+        if not categories:
+            raise https_fn.HttpsError(
+                https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
+                "The selected remark category/categories could not be found for this class — "
+                "refresh and try again.",
+            )
+    category_labels = [c["label"] for c in categories]
+    all_categories_summary = [{"slug": c["slug"], "label": c["label"]} for c in all_categories]
 
     entries_by_student, sheet_refs, sheet_count, sheet_summaries = _fetch_merged_entries(
         school_ref, class_id, sheet_ids=requested_sheet_ids)
@@ -636,7 +663,7 @@ def generate_smart_remarks(req: https_fn.CallableRequest) -> dict:
     if not sheet_summaries:
         payload = {
             "band": band, "classId": class_id, "students": len(roster_ids), "roster": roster,
-            "categories": category_labels, "sheetFound": False,
+            "categories": category_labels, "allCategories": all_categories_summary, "sheetFound": False,
             "multipleSheetsFound": False, "sheets": [], "genderIssue": None,
             "tickedStudents": 0, "unmatchedTicks": 0,
         }
@@ -668,7 +695,7 @@ def generate_smart_remarks(req: https_fn.CallableRequest) -> dict:
 
     scan_payload = {
         "band": band, "classId": class_id, "students": len(roster_ids), "roster": roster,
-        "categories": category_labels, "sheetFound": True,
+        "categories": category_labels, "allCategories": all_categories_summary, "sheetFound": True,
         "multipleSheetsFound": len(sheet_summaries) > 1, "sheets": sheet_summaries, "genderIssue": g_issue,
         "tickedStudents": ticked_students, "unmatchedTicks": unmatched_ticks,
     }

@@ -144,6 +144,33 @@
       </div>
     </div>
 
+    <div v-if="scan && scan.allCategories?.length > 1 && !running" class="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4 text-sm text-amber-900">
+      <div class="flex items-start gap-1.5">
+        <i class="pi pi-exclamation-triangle mt-0.5"></i>
+        <div class="flex-1">
+          <p>
+            This class has {{ scan.allCategories.length }} remark categories (General Remarks, Physical
+            Development, ...). By default every category below is generated in one run — narrow to
+            specific categories if a class this large times out generating all at once.
+          </p>
+          <div class="flex flex-wrap gap-x-4 gap-y-1 mt-2">
+            <label v-for="c in scan.allCategories" :key="c.slug" class="flex items-center gap-1.5 text-xs font-normal">
+              <Checkbox v-model="selectedCategorySlugs" :value="c.slug" :disabled="loadingRoster" />
+              {{ c.label }}
+            </label>
+          </div>
+          <div class="flex items-center gap-3 mt-2">
+            <Button
+              label="Apply selection" size="small" outlined
+              :disabled="loadingRoster || !selectedCategorySlugs.length"
+              @click="applyCategorySelection"
+            />
+            <span v-if="!selectedCategorySlugs.length" class="text-xs text-red-600">Select at least one category.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- ── Review table ──────────────────────────────────────────────────── -->
     <div v-if="!classId" class="text-center py-20 bg-white rounded-xl border border-slate-200">
       <i class="pi pi-comments text-4xl text-slate-300 mb-3 block"></i>
@@ -359,22 +386,36 @@ const scan = ref(null)
 // behavior — selecting a subset is an escape hatch for a class whose
 // sheets together are too much work for one run.
 const selectedSheetIds = ref([])
+// Remark category slugs (General Remarks, Physical Development, ...) to
+// generate for, when the class has more than one. Empty/unset means "every
+// category", the old behavior — narrowing is the other escape hatch for a
+// too-large (student x category) run, most relevant for Foundational-stage
+// classes with 4-5 categories each.
+const selectedCategorySlugs = ref([])
 
 watch(classId, () => {
   scan.value = null
   selectedSheetIds.value = []
+  selectedCategorySlugs.value = []
   reload()
 })
 
 async function reload() {
   if (!classId.value) return
   try {
-    scan.value = await loadClass(schoolId.value, classId.value, selectedSheetIds.value)
+    scan.value = await loadClass(schoolId.value, classId.value, selectedSheetIds.value, selectedCategorySlugs.value)
     if (scan.value?.sheets?.length) {
       // Default to "all sheets" the first time this class's sheets are seen.
       const ids = scan.value.sheets.map(s => s.id)
       if (!selectedSheetIds.value.length || selectedSheetIds.value.some(id => !ids.includes(id))) {
         selectedSheetIds.value = ids
+      }
+    }
+    if (scan.value?.allCategories?.length) {
+      // Default to "every category" the first time this class's categories are seen.
+      const slugs = scan.value.allCategories.map(c => c.slug)
+      if (!selectedCategorySlugs.value.length || selectedCategorySlugs.value.some(s => !slugs.includes(s))) {
+        selectedCategorySlugs.value = slugs
       }
     }
   } catch (e) {
@@ -390,8 +431,12 @@ function sheetLabel(sheet, index) {
 }
 
 // Re-scan with the narrowed selection so the review table and tick counts
-// reflect only the chosen sheet(s) before generating.
+// reflect only the chosen sheet(s)/categories before generating.
 async function applySheetSelection() {
+  await reload()
+}
+
+async function applyCategorySelection() {
   await reload()
 }
 
@@ -428,7 +473,8 @@ async function runOne(item) {
       markActivity()
     })
     const sheetIds = item.classId === classId.value ? selectedSheetIds.value : undefined
-    item.result = await generate({ schoolId: sid, classId: item.classId, confirmGenderIssue: item.confirmGender, jobId, sheetIds })
+    const categorySlugs = item.classId === classId.value ? selectedCategorySlugs.value : undefined
+    item.result = await generate({ schoolId: sid, classId: item.classId, confirmGenderIssue: item.confirmGender, jobId, sheetIds, categorySlugs })
     item.status = RUN_STATUS.DONE
   } catch (e) {
     console.error(`Smart remarks generation failed for ${item.classId}`, e)

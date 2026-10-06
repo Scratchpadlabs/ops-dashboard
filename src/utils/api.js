@@ -445,12 +445,18 @@ const bulkUpdateSmartRemarksCallable = httpsCallable(functions, 'bulk_update_sma
 // instead of merging every sheet for the class, for a class whose several
 // sheets together produce more remarks than one run can finish inside the
 // function's timeout (see functions/generate_smart_remarks/main.py).
-export async function generateSmartRemarksRemote({ schoolId, classId, studentIds, confirmGenderIssue, jobId, sheetIds }) {
+// categorySlugs: optional — restricts generation to specific remark
+// categories (General Remarks, Physical Development, ...) instead of every
+// category assigned to the class, for a Foundational-stage class whose
+// several categories together produce more remarks than one run can finish
+// inside the function's timeout.
+export async function generateSmartRemarksRemote({ schoolId, classId, studentIds, confirmGenderIssue, jobId, sheetIds, categorySlugs }) {
   const payload = { school_id: schoolId, class_id: classId }
   if (studentIds?.length) payload.student_ids = studentIds
   if (confirmGenderIssue) payload.confirm_gender_issue = true
   if (jobId) payload.job_id = jobId
   if (sheetIds?.length) payload.sheet_ids = sheetIds
+  if (categorySlugs?.length) payload.category_slugs = categorySlugs
   const res = await generateSmartRemarksCallable(payload)
   return res.data
 }
@@ -458,9 +464,10 @@ export async function generateSmartRemarksRemote({ schoolId, classId, studentIds
 // Read-only precheck: resolves the class's remark band, whether a sheet
 // exists, and any gender-quality issue, without calling the model or
 // writing anything.
-export async function scanSmartRemarksRemote({ schoolId, classId, sheetIds }) {
+export async function scanSmartRemarksRemote({ schoolId, classId, sheetIds, categorySlugs }) {
   const payload = { school_id: schoolId, class_id: classId, scan_only: true }
   if (sheetIds?.length) payload.sheet_ids = sheetIds
+  if (categorySlugs?.length) payload.category_slugs = categorySlugs
   const res = await scanSmartRemarksCallable(payload)
   return res.data
 }
