@@ -48,12 +48,60 @@ export function qrTarget(url) {
   return shown ? `https://${shown}` : ''
 }
 
-export function headerText({ name, rollNo, className }) {
+/** A missing value prints as a blank rule, to be filled in by hand. */
+const BLANK = { name: '______________', rollNo: '_____', className: '________' }
+
+const clean = (v) => String(v ?? '').replace(/\s+/g, ' ').trim()
+
+export function headerParts({ name, rollNo, className }) {
+  return {
+    name: `Name: ${clean(name) || BLANK.name}`,
+    rest: `Roll No.: ${clean(rollNo) || BLANK.rollNo}   Class: ${clean(className) || BLANK.className}`,
+  }
+}
+
+export function headerText(student) {
+  const { name, rest } = headerParts(student)
+  return `${name}   ${rest}`
+}
+
+// Header band: one line as in the Canva sample while it fits at a readable
+// size, else name on its own line above roll no + class. Offsets are from the
+// sample's baseline; the two lines stay inside the band above the border.
+const HEADER_ONE_LINE_MIN = 14
+const HEADER_TWO_LINE_MAX = 15
+const HEADER_TWO_LINE_DY = [16.5, -4]
+const HEADER_MIN = 9
+
+/** Cut `text` to fit `maxWidth` at `size`, ending in an ellipsis. */
+export function truncateToWidth(widthAt, text, size, maxWidth, ellipsis = '…') {
+  if (widthAt(text, size) <= maxWidth) return text
+  let chars = Array.from(text)
+  while (chars.length && widthAt(chars.join('').trimEnd() + ellipsis, size) > maxWidth) chars.pop()
+  return chars.join('').trimEnd() + ellipsis
+}
+
+/**
+ * Lines to draw in the header band: [{ text, size, dy }], dy relative to the
+ * slot baseline. Never wider than maxWidth, however long the name.
+ */
+export function layoutHeader(student, widthAt, preferred, maxWidth, ellipsis = '…') {
+  const one = headerText(student)
+  const oneSize = fitSize(widthAt, one, preferred, maxWidth, HEADER_ONE_LINE_MIN)
+  if (widthAt(one, oneSize) <= maxWidth) return [{ text: one, size: oneSize, dy: 0 }]
+
+  let { name, rest } = headerParts(student)
+  const top = Math.min(preferred, HEADER_TWO_LINE_MAX)
+  const size = Math.min(
+    fitSize(widthAt, name, top, maxWidth, HEADER_MIN),
+    fitSize(widthAt, rest, top, maxWidth, HEADER_MIN),
+  )
+  name = truncateToWidth(widthAt, name, size, maxWidth, ellipsis)
+  rest = truncateToWidth(widthAt, rest, size, maxWidth, ellipsis)
   return [
-    `Name: ${name || ''}`,
-    rollNo ? `Roll No.: ${rollNo}` : null,
-    className ? `Class: ${className}` : null,
-  ].filter(Boolean).join('   ')
+    { text: name, size, dy: HEADER_TWO_LINE_DY[0] },
+    { text: rest, size, dy: HEADER_TWO_LINE_DY[1] },
+  ]
 }
 
 /** Largest size ≤ preferred at which `text` fits `maxWidth` (never below min). */
@@ -89,10 +137,28 @@ function drawable(font, text) {
 
 const HEADER_MAX_WIDTH = 530   // inside the page border
 const URL_MAX_WIDTH = 280      // inside the yellow box
-const VALUE_MAX_WIDTH = 150    // on the User ID / Password rule
+// Room on the User ID / Password rules, from where the value starts.
+const VALUE_MAX_WIDTH = { userId: 152, password: 142 }
 const FOOTER_MAX_WIDTH = 520
 
 const toRgb = (c) => rgb(c[0], c[1], c[2])
+
+/**
+ * Layout slots are measured from the page box's corner, but Canva's page box
+ * doesn't start at (0, 0) — it is [0 7.83 595.5 850.08]. Move every slot by
+ * the box origin so stamped text lands where it sat in the sample.
+ */
+function placeSlots(slots, ox, oy) {
+  const out = {}
+  for (const [key, slot] of Object.entries(slots)) {
+    out[key] = { ...slot }
+    if ('cx' in slot) out[key].cx = slot.cx + ox
+    if ('x' in slot) out[key].x = slot.x + ox
+    if ('y' in slot) out[key].y = slot.y + oy
+    if ('baseline' in slot) out[key].baseline = slot.baseline + oy
+  }
+  return out
+}
 
 function drawCentered(page, font, text, slot, maxWidth) {
   const size = fitSize((t, s) => font.widthOfTextAtSize(t, s), text, slot.size, maxWidth)
@@ -167,8 +233,17 @@ export async function buildStudentPamphletsPDF({ students, schoolName, website, 
     const layout = LAYOUT[design]
     if (!layout) throw new Error(`Unknown pamphlet design "${design}"`)
     const src = await PDFDocument.load(assets.templates[design])
-    const pages = await doc.embedPages(src.getPages())
-    templates[design] = { layout, pages }
+    const srcPages = src.getPages()
+    // Embed the whole page box explicitly: pdf-lib's default box starts at
+    // (0, 0), which shifts Canva's artwork and clips its top 7.83pt.
+    const embedded = await doc.embedPages(srcPages, srcPages.map(p => {
+      const b = p.getMediaBox()
+      return { left: b.x, bottom: b.y, right: b.x + b.width, top: b.y + b.height }
+    }))
+    templates[design] = srcPages.map((p, i) => {
+      const box = p.getMediaBox()
+      return { box, embedded: embedded[i], slots: placeSlots(layout.pages[i] || {}, box.x, box.y) }
+    })
   }
 
   const shownUrl = displayWebsite(website)
@@ -177,19 +252,29 @@ export async function buildStudentPamphletsPDF({ students, schoolName, website, 
 
   let done = 0
   for (const student of students) {
-    const { layout, pages } = templates[student.design]
     const id = String(student.id || '').trim()
-    const header = headerText({
+    const headerStudent = {
       name: drawable(fonts.regular, student.name),
       rollNo: drawable(fonts.regular, student.rollNo),
       className: drawable(fonts.regular, student.className),
-    })
+    }
 
-    layout.pages.forEach((slots, i) => {
-      const page = doc.addPage([layout.width, layout.height])
-      page.drawPage(pages[i], { x: 0, y: 0, width: layout.width, height: layout.height })
+    for (const { box, embedded, slots } of templates[student.design]) {
+      // Same page box as the template, artwork drawn at its own coordinates.
+      const page = doc.addPage([box.width, box.height])
+      page.setMediaBox(box.x, box.y, box.width, box.height)
+      page.drawPage(embedded, { x: box.x, y: box.y, width: box.width, height: box.height })
 
-      if (slots.header) drawCentered(page, fonts.regular, header, slots.header, HEADER_MAX_WIDTH)
+      if (slots.header) {
+        const widthAt = (t, s) => fonts.regular.widthOfTextAtSize(t, s)
+        for (const line of layoutHeader(headerStudent, widthAt, slots.header.size, HEADER_MAX_WIDTH)) {
+          const width = widthAt(line.text, line.size)
+          page.drawText(line.text, {
+            x: slots.header.cx - width / 2, y: slots.header.baseline + line.dy,
+            size: line.size, font: fonts.regular, color: toRgb(slots.header.color),
+          })
+        }
+      }
       if (slots.qr && shownUrl) drawQr(page, qr, slots.qr)
       if (slots.url && shownUrl) {
         const t = drawCentered(page, fonts.bold, drawable(fonts.bold, shownUrl), slots.url, URL_MAX_WIDTH)
@@ -203,11 +288,11 @@ export async function buildStudentPamphletsPDF({ students, schoolName, website, 
         const slot = slots[key]
         if (!slot) continue
         const text = drawable(fonts.value, id)
-        const size = fitSize((t, s) => fonts.value.widthOfTextAtSize(t, s), text, slot.size, VALUE_MAX_WIDTH)
+        const size = fitSize((t, s) => fonts.value.widthOfTextAtSize(t, s), text, slot.size, VALUE_MAX_WIDTH[key])
         page.drawText(text, { x: slot.x, y: slot.baseline, size, font: fonts.value, color: toRgb(slot.color) })
       }
       if (slots.footer && footer) drawCentered(page, fonts.regular, drawable(fonts.regular, footer), slots.footer, FOOTER_MAX_WIDTH)
-    })
+    }
 
     done++
     if (onProgress && (done % 25 === 0 || done === students.length)) {

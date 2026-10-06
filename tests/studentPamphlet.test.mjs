@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { PDFDocument } from 'pdf-lib'
 import {
-  designForGrade, displayWebsite, qrTarget, headerText, fitSize, compareStudents,
+  designForGrade, displayWebsite, qrTarget, headerText, fitSize, compareStudents, layoutHeader, truncateToWidth,
   guessAppSchool, pamphletFilename, buildStudentPamphletsPDF,
 } from '../src/utils/studentPamphletPDF.js'
 import LAYOUT from '../src/utils/pamphletLayout.js'
@@ -26,10 +26,47 @@ test('SP-02 website is printed without protocol; QR always opens https', () => {
   assert.equal(qrTarget(''), '')
 })
 
-test('SP-03 header matches the sample and skips missing parts', () => {
+test('SP-03 header matches the sample; a missing value prints as a blank to fill by hand', () => {
   assert.equal(headerText({ name: 'Aditya Singh', rollNo: '02', className: 'IV Diamond' }),
     'Name: Aditya Singh   Roll No.: 02   Class: IV Diamond')
-  assert.equal(headerText({ name: 'A', rollNo: '', className: 'I A' }), 'Name: A   Class: I A')
+  assert.equal(headerText({ name: 'A', rollNo: '', className: 'I A' }), 'Name: A   Roll No.: _____   Class: I A')
+  assert.equal(headerText({ name: '  ', rollNo: null, className: undefined }),
+    'Name: ______________   Roll No.: _____   Class: ________')
+  assert.equal(headerText({ name: 'Riya   Sharma ', rollNo: ' 7 ', className: 'II A' }), 'Name: Riya Sharma   Roll No.: 7   Class: II A')
+})
+
+// Width model for layout tests: every character is 0.6em wide.
+const mono = (t, s) => Array.from(t).length * s * 0.6
+
+test('SP-03b header stays on one line, as in the sample, while it fits at 14pt', () => {
+  const lines = layoutHeader({ name: 'Aditya Singh', rollNo: '02', className: 'IV Diamond' }, mono, 19, 530)
+  assert.equal(lines.length, 1)
+  assert.equal(lines[0].dy, 0)
+  assert.ok(lines[0].size >= 14 && lines[0].size <= 19)
+})
+
+test('SP-03c a long name moves to its own line; roll no + class go below, nothing overflows', () => {
+  const student = { name: 'Venkata Subramaniam Raghunathan Iyer Krishnamurthy', rollNo: '113', className: 'Senior KG Rose' }
+  const lines = layoutHeader(student, mono, 19, 530)
+  assert.equal(lines.length, 2)
+  assert.equal(lines[0].text, `Name: ${student.name}`)
+  assert.equal(lines[1].text, 'Roll No.: 113   Class: Senior KG Rose')
+  assert.ok(lines[0].dy > lines[1].dy)                     // name above
+  for (const l of lines) assert.ok(mono(l.text, l.size) <= 530)
+  assert.equal(lines[0].size, lines[1].size)
+})
+
+test('SP-03d an absurdly long name is cut with an ellipsis rather than shrunk unreadably', () => {
+  const lines = layoutHeader({ name: 'X'.repeat(200), rollNo: '1', className: 'I A' }, mono, 19, 530)
+  assert.equal(lines.length, 2)
+  assert.ok(lines[0].text.endsWith('…'))
+  assert.ok(lines[0].size >= 9)
+  assert.ok(mono(lines[0].text, lines[0].size) <= 530)
+})
+
+test('SP-03e truncateToWidth leaves fitting text alone and trims trailing spaces before the ellipsis', () => {
+  assert.equal(truncateToWidth(mono, 'abc', 10, 100), 'abc')
+  assert.equal(truncateToWidth(mono, 'ab cdefgh', 10, 24), 'ab…')
 })
 
 test('SP-04 fitSize shrinks until it fits, never below the minimum', () => {
@@ -92,4 +129,11 @@ test("SP-09 builds two pages per student, even with a name the fonts can't draw"
   })
   const doc = await PDFDocument.load(bytes)
   assert.equal(doc.getPageCount(), 4)
+
+  // Canva's page box starts at y = 7.83, not 0. Output pages must keep the
+  // template's box, or the artwork shifts against the stamped text.
+  const template = await PDFDocument.load(assets.templates.foundational)
+  const want = template.getPage(0).getMediaBox()
+  assert.ok(want.y > 0, 'fixture should exercise a non-zero page box origin')
+  for (const page of doc.getPages()) assert.deepEqual(page.getMediaBox(), want)
 })

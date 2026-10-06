@@ -297,14 +297,14 @@ const warnings = computed(() => {
   if (designOverride.value === 'auto' && unknown.length) {
     out.push(`Grade not recognised for ${unknown.map(r => r.className).join(', ')} — these use Middle + Prep. Pick a design above to override.`)
   }
-  const noName = chosen.filter(s => !s.name.trim()).length
-  if (noName) out.push(`${noName} student${noName === 1 ? ' has' : 's have'} no name — the header will show only roll no and class.`)
-  const noRoll = chosen.filter(s => !String(s.rollNo).trim()).length
-  if (noRoll) out.push(`${noRoll} student${noRoll === 1 ? ' has' : 's have'} no roll number.`)
+  const noName = chosen.filter(s => !String(s.name ?? '').trim()).length
+  if (noName) out.push(`${noName} student${noName === 1 ? ' has' : 's have'} no name — a blank line is printed to fill in by hand.`)
+  const noRoll = chosen.filter(s => !String(s.rollNo ?? '').trim()).length
+  if (noRoll) out.push(`${noRoll} student${noRoll === 1 ? ' has' : 's have'} no roll number — "Roll No.: ____" is printed to fill in by hand. Add them in School Setup → Students to print them.`)
   // The pamphlet fonts are Latin-only; anything else is left out of the header.
   const nonLatin = chosen.filter(s => /[^\u0000-\u024F\u2018-\u201D]/.test(s.name)).length
   if (nonLatin) out.push(`${nonLatin} name${nonLatin === 1 ? '' : 's'} use non-English letters (e.g. Hindi script) — those letters are left out. Fix the names in School Setup → Students.`)
-  if (chosen.some(s => s.classId === NO_CLASS)) out.push('Some students have no class — they are printed last, without a class.')
+  if (chosen.some(s => s.classId === NO_CLASS)) out.push('Some students have no class — they are printed last, with a blank class to fill in by hand.')
   return out
 })
 
