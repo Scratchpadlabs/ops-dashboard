@@ -55,6 +55,7 @@
             <Button label="📄 Generate Agreement" size="small" outlined @click="goNewAgreement" />
             <Button label="🧾 Generate Invoice" size="small" outlined @click="goNewInvoice" />
             <Button label="📋 School Setup Guide" size="small" outlined :loading="generatingOnboarding" @click="downloadOnboardingDoc" />
+            <Button label="🎫 Student Pamphlets" size="small" outlined @click="activeTab = 'pamphlets'" />
           </div>
         </div>
 
@@ -85,6 +86,7 @@
         <Tab value="quotations">Quotations ({{ schoolQuotations.length }})</Tab>
         <Tab value="agreements">Agreements ({{ schoolAgreements.length }})</Tab>
         <Tab value="invoices">Invoices ({{ schoolInvoices.length }})</Tab>
+        <Tab value="pamphlets">Student Pamphlets</Tab>
       </TabList>
       <TabPanels>
 
@@ -675,6 +677,11 @@
         </TabPanel>
 
         <!-- ── Data Receivable ─────────────────────────────────────────── -->
+        <TabPanel value="pamphlets">
+          <!-- v-if: only load the roster when the tab is opened. -->
+          <StudentPamphletsTab v-if="activeTab === 'pamphlets'" :school="school" @linked="id => (school.app_school_id = id)" />
+        </TabPanel>
+
         <TabPanel value="data">
           <div class="pt-4 space-y-5">
             <div v-if="!dataReceivable" class="flex items-center justify-center py-10">
@@ -841,6 +848,7 @@ import SanityCheckDialog from '../components/shared/SanityCheckDialog.vue'
 import MarkPaidDialog from '../components/shared/MarkPaidDialog.vue'
 import PaymentPlanPicker from '../components/shared/PaymentPlanPicker.vue'
 import PaymentSegmentBar from '../components/shared/PaymentSegmentBar.vue'
+import StudentPamphletsTab from '../components/school-profile/StudentPamphletsTab.vue'
 import { usePaymentPlans } from '../composables/usePaymentPlans.js'
 import {
   invoiceAmount, invoicePaymentStatus, invoicePaidAmount, invoiceOutstanding,
