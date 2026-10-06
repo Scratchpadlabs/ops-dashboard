@@ -112,7 +112,9 @@
             <Checkbox v-model="selectedClassIds" :value="row.classId" />
             <div class="min-w-0 flex-1">
               <div class="text-sm font-medium text-slate-800 truncate">{{ row.className }}</div>
-              <div class="text-xs text-slate-400">{{ row.count }} student{{ row.count === 1 ? '' : 's' }}</div>
+              <div class="text-xs text-slate-400">
+                {{ row.count }} student{{ row.count === 1 ? '' : 's' }}<template v-if="row.stage"> · {{ STAGES[row.stage].label }}</template>
+              </div>
             </div>
             <button type="button" class="text-[11px] text-slate-400 hover:text-blue-600 px-1"
                     title="Select only this class" @click.prevent.stop="onlyClass(row.classId)">Only</button>
@@ -175,6 +177,19 @@
         <Button label="Download PDF" icon="pi pi-download" :loading="busy === 'pdf'" :disabled="!canGenerate || !!busy" @click="generate('pdf')" />
         <Button label="One PDF per class (ZIP)" icon="pi pi-folder" outlined :loading="busy === 'zip'" :disabled="!canGenerate || !!busy" @click="generate('zip')" />
         <Button label="Sample (first student)" icon="pi pi-eye" text :loading="busy === 'sample'" :disabled="!canGenerate || !!busy" @click="generate('sample')" />
+
+        <!-- By stage: one PDF per stage, separately or all at once -->
+        <div class="w-full flex items-center gap-2 flex-wrap pt-3 mt-1 border-t border-slate-100">
+          <span class="text-xs font-semibold text-slate-500 uppercase tracking-wide mr-1">By stage</span>
+          <Button
+            v-for="g in stageGroups" :key="g.key"
+            :label="`${g.label} · ${g.students.length}`" :title="g.grades" icon="pi pi-file-pdf" size="small" outlined
+            :loading="busy === 'stage:' + g.key" :disabled="!g.students.length || !canGenerateBlank || !!busy"
+            @click="generate('stage', null, g.key)"
+          />
+          <Button :label="`All stages · ${stageGroups.filter(g => g.students.length).length} PDFs (ZIP)`" icon="pi pi-folder" size="small"
+                  :loading="busy === 'stages'" :disabled="!canGenerate || !!busy" @click="generate('stages')" />
+        </div>
         <span v-if="progress && busy !== 'blank'" class="text-xs text-slate-500">{{ progress }}</span>
         <span v-else-if="!website" class="text-xs text-amber-600">Add the website first.</span>
         <span v-else-if="!printedSchoolName.trim()" class="text-xs text-amber-600">Add the school name first.</span>
@@ -244,7 +259,7 @@ import { normalizeLogo, logoFromUrl, logoDataUrl, LOGO_MIN_SIDE } from '../../ut
 import { loadSavedLogo, saveLogo, deleteSavedLogo } from '../../utils/pamphletLogoStore.js'
 import {
   buildStudentPamphletsPDF, loadPamphletAssets, designForGrade, compareStudents,
-  displayWebsite, qrTarget, guessAppSchool, pamphletFilename, blankCopies,
+  displayWebsite, qrTarget, guessAppSchool, pamphletFilename, blankCopies, stageForGrade, STAGES,
 } from '../../utils/studentPamphletPDF.js'
 
 const props = defineProps({
@@ -451,12 +466,13 @@ function classLabel(classId) {
   return String(classId).replace(/_/g, ' ')
 }
 
-function classDesign(classId) {
+function classGrade(classId) {
   if (classId === NO_CLASS) return null
   const c = classes.value.find(x => x.id === classId)
-  const parsed = parseClassValue(c?.clazz || classId)
-  return designForGrade(parsed.gradeOrdinal)
+  return parseClassValue(c?.clazz || classId).gradeOrdinal
 }
+const classDesign = (classId) => designForGrade(classGrade(classId))
+const classStage = (classId) => stageForGrade(classGrade(classId))
 
 const classRows = computed(() => {
   const counts = new Map()
@@ -465,7 +481,9 @@ const classRows = computed(() => {
     counts.set(cid, (counts.get(cid) || 0) + 1)
   }
   return [...counts.entries()]
-    .map(([classId, count]) => ({ classId, count, className: classLabel(classId), design: classDesign(classId) }))
+    .map(([classId, count]) => ({
+      classId, count, className: classLabel(classId), design: classDesign(classId), stage: classStage(classId),
+    }))
     .sort((a, b) => (a.classId === NO_CLASS) - (b.classId === NO_CLASS) || compareClasses(a.classId, b.classId))
 })
 
@@ -513,6 +531,7 @@ const studentsInClasses = computed(() => {
         classId: s.classId,
         className: s.classId === NO_CLASS ? '' : row.className,
         design: designFor(row),
+        stage: row.stage,
       }
     })
     .sort((a, b) => compareStudents(a, b, (x, y) =>
@@ -554,6 +573,17 @@ const warnings = computed(() => {
   return out
 })
 
+// One group per stage, in stage order; classes whose grade isn't recognised
+// (and students with no class) go in a last "Other" group, only if there are any.
+const OTHER_STAGE = { label: 'Other', grades: 'Grade not recognised, or no class' }
+const stageGroups = computed(() => {
+  const groups = Object.entries(STAGES).map(([key, st]) => ({ key, ...st, students: [] }))
+  const other = { key: 'other', ...OTHER_STAGE, students: [] }
+  for (const s of selectedStudents.value) (groups.find(g => g.key === s.stage) || other).students.push(s)
+  return other.students.length ? [...groups, other] : groups
+})
+const stageFileLabel = (g) => (g.key === 'other' ? g.label : `${g.label} (${g.grades})`)
+
 const canGenerateBlank = computed(() => !!displayWebsite(website.value) && !!printedSchoolName.value.trim())
 const canGenerate = computed(() => selectedStudents.value.length > 0 && canGenerateBlank.value)
 
@@ -588,8 +618,8 @@ async function build(list, label) {
   })
 }
 
-async function generate(kind, student = null) {
-  busy.value = kind === 'one' ? `one:${student.id}` : kind
+async function generate(kind, student = null, stageKey = null) {
+  busy.value = kind === 'one' ? `one:${student.id}` : kind === 'stage' ? `stage:${stageKey}` : kind
   progress.value = 'Loading templates…'
   const school = printedSchoolName.value.trim()
   try {
@@ -605,6 +635,27 @@ async function generate(kind, student = null) {
       deliverFile(new Blob([bytes], { type: 'application/pdf' }),
         pamphletFilename(school, [student.name || student.id, student.className].filter(Boolean).join(' - ')))
       toast.add({ severity: 'success', summary: 'Pamphlet ready', detail: student.name || student.id, life: 2500 })
+      return
+    }
+    if (kind === 'stage') {
+      const g = stageGroups.value.find(x => x.key === stageKey)
+      const bytes = await build(g.students, `${g.label}: `)
+      deliverFile(new Blob([bytes], { type: 'application/pdf' }), pamphletFilename(school, stageFileLabel(g)))
+      toast.add({ severity: 'success', summary: `${g.label} pamphlets ready`, detail: `${g.students.length} students`, life: 2500 })
+      return
+    }
+    if (kind === 'stages') {
+      const zip = new JSZip()
+      const groups = stageGroups.value.filter(g => g.students.length)
+      for (const [i, g] of groups.entries()) {
+        const bytes = await build(g.students, `${g.label} (${i + 1} / ${groups.length}): `)
+        zip.file(pamphletFilename(school, stageFileLabel(g)), bytes)
+      }
+      progress.value = 'Zipping…'
+      const blob = await zip.generateAsync({ type: 'blob' })
+      deliverFile(blob, pamphletFilename(school, 'By stage').replace(/\.pdf$/, '.zip'))
+      toast.add({ severity: 'success', summary: 'Stage PDFs ready', life: 3000,
+        detail: groups.map(g => `${g.label}: ${g.students.length}`).join(' · ') })
       return
     }
     if (kind === 'sample') {

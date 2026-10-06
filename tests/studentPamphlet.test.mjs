@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { PDFDocument } from 'pdf-lib'
 import {
-  layoutSchoolHeader, balancedSplit, scriptRuns,
+  layoutSchoolHeader, balancedSplit, scriptRuns, stageForGrade, STAGES,
   designForGrade, displayWebsite, qrTarget, headerText, fitSize, compareStudents, layoutHeader, truncateToWidth,
   guessAppSchool, pamphletFilename, buildStudentPamphletsPDF, blankCopies,
 } from '../src/utils/studentPamphletPDF.js'
@@ -225,4 +225,14 @@ test('SP-15 Hindi and Latin are shaped as separate runs (र्म must print as
   assert.deepEqual(scriptRuns('St. Xavier\'s'), ["St. Xavier's"])
   assert.deepEqual(scriptRuns(''), [])
   assert.equal(scriptRuns('Name: आरव शर्मा   Roll No.: 31').join(''), 'Name: आरव शर्मा   Roll No.: 31')
+})
+
+test('SP-16 stages: Nursery – Grade 2 Foundational, 3 – 5 Preparatory, 6 and above Middle & Secondary', () => {
+  // classResolver ordinals: Pre-Nursery -3, Nursery -2, LKG -1, UKG 0.
+  assert.deepEqual([-3, -2, -1, 0, 1, 2].map(stageForGrade), Array(6).fill('foundational'))
+  assert.deepEqual([3, 4, 5].map(stageForGrade), Array(3).fill('preparatory'))
+  assert.deepEqual([6, 8, 10, 12].map(stageForGrade), Array(4).fill('middleSecondary'))
+  assert.equal(stageForGrade(null), null)
+  assert.equal(stageForGrade(undefined), null)
+  assert.deepEqual(Object.keys(STAGES), ['foundational', 'preparatory', 'middleSecondary'])
 })

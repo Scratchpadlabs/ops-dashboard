@@ -42,6 +42,24 @@ export function designForGrade(gradeOrdinal) {
   return gradeOrdinal <= LAST_FOUNDATIONAL_GRADE ? 'foundational' : 'middle'
 }
 
+/**
+ * NEP stages, for downloading one PDF per stage. Preparatory and Middle &
+ * Secondary share the Middle + Prep design; the split is only how the
+ * pamphlets are bundled.
+ */
+export const STAGES = {
+  foundational:    { label: 'Foundational', grades: 'Nursery – Grade 2' },
+  preparatory:     { label: 'Preparatory', grades: 'Grades 3 – 5' },
+  middleSecondary: { label: 'Middle & Secondary', grades: 'Grade 6 and above' },
+}
+
+/** Which stage a class is in, from its grade ordinal (null = not recognised). */
+export function stageForGrade(gradeOrdinal) {
+  if (gradeOrdinal === null || gradeOrdinal === undefined) return null
+  if (gradeOrdinal <= LAST_FOUNDATIONAL_GRADE) return 'foundational'
+  return gradeOrdinal <= 5 ? 'preparatory' : 'middleSecondary'
+}
+
 /** "nins.myhpc.app", "https://www.x.app/" → what is printed under the QR. */
 export function displayWebsite(url) {
   return String(url || '').trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '')
