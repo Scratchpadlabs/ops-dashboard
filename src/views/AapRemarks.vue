@@ -840,15 +840,26 @@ async function runDownload(format) {
       const total = groups.reduce((n, g) => n + g.studentIds.length, 0)
       if (!total) {
         toast.add({ severity: 'warn', summary: 'Nothing to download',
-          detail: downloadApprovedOnly.value ? 'No approved remarks in these classes yet.' : 'No remarks in these classes yet.', life: 5000 })
+          detail: downloadApprovedOnly.value ? 'No approved remarks in these classes yet.' : 'No remarks in these classes yet — generate them first.', life: 5000 })
         return
       }
-      downloadStatus.value = `Building ${total} PDF page${total === 1 ? '' : 's'} across ${groups.length} class${groups.length === 1 ? '' : 'es'}…`
+      // Classes with nothing to print drop out of the file. Named, so "14
+      // selected, 4 in the zip" reads as "10 not generated yet" rather than a
+      // broken download.
+      const included = new Set(groups.map(g => g.classId))
+      const leftOut = picked.filter(c => !included.has(c.id)).map(c => c.label)
+      const leftOutNote = leftOut.length
+        ? `${leftOut.length} of ${picked.length} selected classes have no ${downloadApprovedOnly.value ? 'approved ' : ''}remarks yet and are not in the file: ${leftOut.join(', ')}`
+        : ''
+      downloadStatus.value = `Building ${total} PDF page${total === 1 ? '' : 's'} across ${groups.length} of ${picked.length} class${picked.length === 1 ? '' : 'es'}…`
       const status = await downloadClassPdfs(schoolId.value, groups, {
         approvedOnly: downloadApprovedOnly.value, layout: pdfPerStudent.value ? 'students' : reportScope.value,
       })
-      if (status === 'downloaded') toast.add({ severity: 'success', life: 4000, summary: `PDFs downloaded — ${total} student${total === 1 ? '' : 's'} `
-        + `in ${groups.length} class${groups.length === 1 ? '' : 'es'}` })
+      if (status === 'downloaded') toast.add({
+        severity: leftOut.length ? 'warn' : 'success', life: leftOut.length ? 15000 : 4000,
+        summary: `PDFs downloaded — ${total} student${total === 1 ? '' : 's'} in ${groups.length} class${groups.length === 1 ? '' : 'es'}`,
+        detail: leftOutNote || undefined,
+      })
     }
     downloadVisible.value = false
   } catch (e) {
