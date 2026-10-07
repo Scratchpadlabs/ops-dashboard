@@ -119,10 +119,11 @@
             >
               {{ data.comment || 'No comment — click to write one' }}
             </button>
-            <!-- The function only writes remarks for students the AAP surveys
-                 actually rated, so an empty row is a data gap, not a failure. -->
+            <!-- No remark doc yet. That is either a class not generated yet or
+                 a student the AAP surveys never rated — this row can't tell
+                 which, so it doesn't claim the survey is empty. -->
             <span v-else class="text-xs text-slate-400">
-              No AAP survey ratings found for this student in this class.
+              No remark yet — not generated, or no AAP survey ratings for this student.
             </span>
           </template>
         </Column>

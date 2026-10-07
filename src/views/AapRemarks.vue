@@ -246,6 +246,15 @@
           </label>
         </div>
       </div>
+
+      <!-- Ratings whose student id has no student doc are dropped server-side
+           (left the school, or re-created under a new id); said here so the
+           missing comments aren't a mystery. -->
+      <div v-if="unknownStudents.length" class="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 mb-4">
+        {{ unknownStudents.length }} rated student id{{ unknownStudents.length === 1 ? ' has' : 's have' }} no
+        student record and {{ unknownStudents.length === 1 ? 'is' : 'are' }} left out:
+        {{ unknownStudents.slice(0, 12).join(', ') }}{{ unknownStudents.length > 12 ? '…' : '' }}
+      </div>
     </template>
 
     <!-- ── File ready ────────────────────────────────────────────────────── -->
@@ -513,6 +522,9 @@ function genderIssueText(g) {
   if (g.uniformGender) parts.push(`every student with a gender is “${g.uniformGender}”`)
   return parts.join('; ')
 }
+
+const unknownStudents = computed(() =>
+  [...new Set(classIds.value.flatMap(id => scans.value[id]?.unknownStudents || []))].sort())
 
 const isGenderError = (e) => !!e?.message?.includes('Gender data looks incomplete')
 
