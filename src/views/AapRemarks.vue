@@ -220,6 +220,32 @@
         <Button label="Relate subjects" icon="pi pi-link" size="small" class="ml-auto"
                 :disabled="!group.stage" @click="openMapDialog(group.stage)" />
       </div>
+
+      <!-- The function refuses these classes until told the gender data was
+           seen and accepted (confirm_gender_issue), so the page has to show
+           the problem and offer that choice — without it they can never run. -->
+      <div v-if="genderIssues.length"
+           class="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4 flex items-start gap-3">
+        <i class="pi pi-exclamation-triangle text-amber-500 mt-0.5"></i>
+        <div class="text-sm text-amber-900 min-w-0 flex-1">
+          <div>
+            <strong>{{ genderIssues.length }}</strong>
+            class{{ genderIssues.length === 1 ? ' has' : 'es have' }} missing or suspiciously uniform gender
+            data. A blank gender is written about as “She”, so
+            {{ genderIssues.length === 1 ? 'it is' : 'they are' }} skipped unless you confirm below.
+            Fixing the roster and re-importing is the better fix.
+          </div>
+          <ul class="mt-1.5 text-xs text-amber-800 space-y-0.5">
+            <li v-for="g in genderIssues" :key="g.classId">
+              <span class="font-semibold">{{ classLabel(g.classId) }}:</span> {{ genderIssueText(g) }}
+            </li>
+          </ul>
+          <label class="flex items-start gap-2 mt-2 cursor-pointer">
+            <input type="checkbox" v-model="proceedGender" class="mt-1" />
+            <span>Generate {{ genderIssues.length === 1 ? 'this class' : 'these classes' }} anyway</span>
+          </label>
+        </div>
+      </div>
     </template>
 
     <!-- ── File ready ────────────────────────────────────────────────────── -->
@@ -471,6 +497,25 @@ watch(schoolId, async (id) => {
   }
 })
 
+// ── Gender gate ───────────────────────────────────────────────────────────
+// Mirrors Smart Remarks: the scan reports each class's genderIssue, and a
+// flagged class only runs once someone has ticked "generate anyway". Reset on
+// every class change so a confirmation never carries over to classes nobody
+// looked at.
+const proceedGender = ref(false)
+const genderIssues = computed(() => classIds.value
+  .filter(id => scans.value[id]?.genderIssue)
+  .map(id => ({ classId: id, ...scans.value[id].genderIssue })))
+
+function genderIssueText(g) {
+  const parts = []
+  if (g.missingCount) parts.push(`${g.missingCount} of ${g.totalCount} rated students have no gender`)
+  if (g.uniformGender) parts.push(`every student with a gender is “${g.uniformGender}”`)
+  return parts.join('; ')
+}
+
+const isGenderError = (e) => !!e?.message?.includes('Gender data looks incomplete')
+
 // ── Subjects & topics ─────────────────────────────────────────────────────
 const selectedSubjects = ref([])
 const selectedTopics = ref([])     // values: `${subject}::${topicKey}`
@@ -486,6 +531,7 @@ let selectionTimer = null
 watch(classIds, () => {
   selectedSubjects.value = []
   selectedTopics.value = []
+  proceedGender.value = false
   // Called empty rather than just clearing the refs: each bumps its load
   // token, so a roster or scan still in flight for the OLD pick is dropped
   // when it lands instead of being painted under the new one.
@@ -831,13 +877,20 @@ const scopeLabel = computed(() => {
 
 function confirmGenerate() {
   const multi = classIds.value.length > 1
-  if (!hasRemarks.value && !multi) { runGenerate(); return }
+  const flagged = genderIssues.value.length
+  if (!hasRemarks.value && !multi && !flagged) { runGenerate(); return }
   const parts = []
   if (multi) parts.push(`This runs ${classIds.value.length} classes one after another (${classesLabel(classIds.value)}).`)
   if (hasRemarks.value) {
     parts.push(`Running again for ${scopeLabel.value} rewrites every comment in that scope that isn't approved yet.`)
   } else {
     parts.push(`Scope: ${scopeLabel.value}.`)
+  }
+  if (flagged) {
+    const which = classesLabel(genderIssues.value.map(g => g.classId))
+    parts.push(proceedGender.value
+      ? `${which} ${flagged === 1 ? 'has' : 'have'} gender warnings and will be generated anyway — blank genders are written as “She”.`
+      : `${which} ${flagged === 1 ? 'has' : 'have'} gender warnings and will be skipped.`)
   }
   confirm.require({
     header: 'Generate remarks',
@@ -862,12 +915,15 @@ async function runGenerate() {
   runQueue.value = [...classIds.value]
   const totals = { written: 0, skippedApproved: 0, skippedNoFramework: 0 }
   const failures = []
+  const skippedGender = []
   const results = {}
   try {
     for (let i = 0; i < runQueue.value.length; i++) {
       const classId = runQueue.value[i]
       runIndex.value = i
       job.value = null
+      const flagged = !!scans.value[classId]?.genderIssue
+      if (flagged && !proceedGender.value) { skippedGender.push(classId); continue }
       try {
         // Started BEFORE the call: the callable only returns its jobId when
         // the whole run is finished, so the progress doc has to be found
@@ -879,6 +935,7 @@ async function runGenerate() {
           classId,
           subjects: selectedSubjects.value,
           topics: selectedTopicPairs.value,
+          confirmGenderIssue: flagged && proceedGender.value,
         })
         results[classId] = result
         totals.written += result.written || 0
@@ -886,7 +943,11 @@ async function runGenerate() {
         totals.skippedNoFramework += result.skippedNoFramework || 0
       } catch (e) {
         console.error(`AAP generation failed for ${classId}`, e)
-        failures.push(`${classLabel(classId)}: ${e.message || 'generation failed'}`)
+        // The scan didn't flag it but the run did (roster changed since):
+        // a skip awaiting confirmation, not a failure. Rescanned below so the
+        // gender banner picks it up.
+        if (isGenderError(e)) skippedGender.push(classId)
+        else failures.push(`${classLabel(classId)}: ${e.message || 'generation failed'}`)
       } finally {
         stopWatching()
       }
@@ -895,6 +956,7 @@ async function runGenerate() {
     // current truth about those classes' subjects.
     scans.value = { ...scans.value, ...results }
     if (failures.length) runError.value = failures.join('\n')
+    if (skippedGender.some(id => !scans.value[id]?.genderIssue)) await runScan()
 
     // Report what was WRITTEN, and account for the rest. The earlier version
     // announced "126 remarks processed" for a run that wrote nothing, because
@@ -902,9 +964,10 @@ async function runGenerate() {
     const skipped = []
     if (totals.skippedApproved) skipped.push(`${totals.skippedApproved} already approved`)
     if (totals.skippedNoFramework) skipped.push(`${totals.skippedNoFramework} with no rubric row`)
+    if (skippedGender.length) skipped.push(`${skippedGender.length} class${skippedGender.length === 1 ? '' : 'es'} awaiting gender confirmation`)
     if (failures.length) skipped.push(`${failures.length} class${failures.length === 1 ? '' : 'es'} failed`)
     toast.add({
-      severity: totals.written && !failures.length ? 'success' : 'warn',
+      severity: totals.written && !failures.length && !skippedGender.length ? 'success' : 'warn',
       summary: totals.written
         ? `${totals.written} remark${totals.written === 1 ? '' : 's'} written`
         : 'No remarks written',
@@ -927,7 +990,7 @@ async function runGenerate() {
  * treats an explicit student_ids list as "the dashboard asked for this one on
  * purpose".
  */
-async function regenerateStudent(studentId) {
+async function regenerateStudent(studentId, confirmGenderIssue = false) {
   const student = students.value.find(s => s.id === studentId)
   regeneratingStudentId.value = studentId
   runError.value = ''
@@ -938,6 +1001,7 @@ async function regenerateStudent(studentId) {
       studentIds: [studentId],
       subjects: selectedSubjects.value,
       topics: selectedTopicPairs.value,
+      confirmGenderIssue,
     })
     await reloadStudent(schoolId.value, studentId)
     toast.add({
@@ -946,6 +1010,20 @@ async function regenerateStudent(studentId) {
       life: 3000,
     })
   } catch (e) {
+    // One student can only trip the missing-gender check, never the uniform
+    // one, so the question is about this student specifically.
+    if (isGenderError(e) && !confirmGenderIssue) {
+      confirm.require({
+        header: 'No gender on record',
+        message: `${student?.name || 'This student'} has no gender in the roster, so the comment will refer to them as “She”. `
+          + 'Fix the roster first, or write it anyway?',
+        icon: 'pi pi-exclamation-triangle',
+        rejectLabel: 'Cancel',
+        acceptLabel: 'Write anyway',
+        accept: () => regenerateStudent(studentId, true),
+      })
+      return
+    }
     console.error('AAP regeneration failed', e)
     runError.value = e.message || 'Regeneration failed'
   } finally {
