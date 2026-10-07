@@ -679,7 +679,7 @@ def generate_aap_remarks(req: https_fn.CallableRequest) -> dict:
             "stage": None, "classId": class_id, "stageIssue": grade_token,
             "students": 0, "subjects": [], "frameworkSubjects": [],
             "aliasConflicts": [], "unmatchedSubjects": [],
-            "genderIssue": None, "unresolvedResponses": 0,
+            "genderIssue": None, "unresolvedResponses": 0, "unknownStudents": [],
         }
         if scan_only:
             return payload
@@ -693,11 +693,20 @@ def generate_aap_remarks(req: https_fn.CallableRequest) -> dict:
     topic_ratings, unresolved_responses, context = fetch_survey_ratings(school_id, class_id)
     if only_student_ids:
         topic_ratings = {sid: s for sid, s in topic_ratings.items() if sid in only_student_ids}
-    ratings = subject_ratings(topic_ratings, only_topics)
 
     # Needed for both the gender scan below and generation itself, so fetched
     # once, before the scan_only early return.
     students = fetch_students(school_id, list(topic_ratings.keys()))
+    # Ratings for an id with no student doc (a child who left, or a record
+    # re-created under a new id) belong to nobody on the roster. Kept, they
+    # counted as "missing gender" and tripped the gender gate for every class
+    # they appeared in (The Keystone Ankuram: 16 such ids flagged 12 classes
+    # whose roster gender was complete), and a confirmed run would write
+    # remarks under a student id the roster doesn't show. Dropped here and
+    # reported instead.
+    unknown_students = sorted(sid for sid in topic_ratings if sid not in students)
+    topic_ratings = {sid: s for sid, s in topic_ratings.items() if sid in students}
+    ratings = subject_ratings(topic_ratings, only_topics)
     gender_issue = _compute_gender_issue(topic_ratings, students)
 
     by_label, alias_index, alias_conflicts = fetch_framework(stage)
@@ -751,6 +760,7 @@ def generate_aap_remarks(req: https_fn.CallableRequest) -> dict:
         "unmatchedSubjects": unmatched,
         "genderIssue": gender_issue,
         "unresolvedResponses": unresolved_responses,
+        "unknownStudents": unknown_students,
     }
     if scan_only:
         return scan_payload
