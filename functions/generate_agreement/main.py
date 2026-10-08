@@ -10,7 +10,8 @@ Deploy:
     --trigger-http --allow-unauthenticated \
     --memory 256MB --max-instances 3 --project clarified-1501
 
-Folder needs: main.py, requirements.txt (no extra assets required)
+Folder needs: main.py, requirements.txt, logo.png, sign.jpg, stamp.png
+(stamp.png is a copy of functions/generate_invoice/invoice_stamp.png)
 """
 
 import io
@@ -24,7 +25,7 @@ from PIL import Image as PILImage, ImageChops
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle
-from reportlab.lib.units import cm
+from reportlab.lib.units import cm, mm
 from reportlab.platypus import (
     HRFlowable, Image as RLImage, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle,
 )
@@ -37,6 +38,7 @@ COMPANY_SIGNATORY_DESIGNATION = "Director"
 
 LOGO_PATH      = os.path.join(os.path.dirname(__file__), "logo.png")
 SIGNATURE_PATH = os.path.join(os.path.dirname(__file__), "sign.jpg")
+STAMP_PATH     = os.path.join(os.path.dirname(__file__), "stamp.png")
 
 # ── Brand palette ──────────────────────────────────────────────────────────────
 NAVY  = colors.HexColor("#1e3a5f")
@@ -113,10 +115,10 @@ def _load_logo(height=None, width=None):
     return RLImage(buf, width=target_w, height=target_h)
 
 
-def _load_signature(path, height=26):
+def _trim_signature(path):
     """Trim the white background off a scanned/photographed signature (no
-    alpha channel to crop by, unlike the logo) and return a right-sized,
-    transparent Image flowable."""
+    alpha channel to crop by, unlike the logo) and return it as RGBA with the
+    paper made transparent."""
     im = PILImage.open(path).convert("RGB")
     bg = PILImage.new("RGB", im.size, (255, 255, 255))
     bbox = ImageChops.difference(im, bg).getbbox()
@@ -128,13 +130,54 @@ def _load_signature(path, height=26):
         (r, g, b, 0) if (r > 240 and g > 240 and b > 240) else (r, g, b, a)
         for r, g, b, a in pixels
     ])
-    w, h = im.size
+    return im
+
+
+def _png_flowable(im, height):
     buf = io.BytesIO()
     im.save(buf, format="PNG")
     buf.seek(0)
-    target_h = height
-    target_w = target_h * w / h
-    return RLImage(buf, width=target_w, height=target_h)
+    w, h = im.size
+    return RLImage(buf, width=height * w / h, height=height)
+
+
+def _load_signature_with_stamp(sig_path, stamp_path, sig_height=26, stamp_height=22 * mm):
+    """Composite the company stamp over the tail of the signature, tilted a
+    little and ink-blended (multiply), so it reads like a real hand-stamped
+    signature rather than two images side by side."""
+    px = 6  # pixels per point; keeps the composite crisp when printed
+    sig = _trim_signature(sig_path)
+    sig = sig.resize((round(sig_height * px * sig.width / sig.height), round(sig_height * px)),
+                     PILImage.LANCZOS)
+    stamp = PILImage.open(stamp_path).convert("RGBA")
+    bbox = stamp.getbbox()
+    if bbox:
+        stamp = stamp.crop(bbox)
+    side = round(stamp_height * px)
+    stamp = stamp.resize((side, side), PILImage.LANCZOS)
+    stamp = stamp.rotate(-12, resample=PILImage.BICUBIC, expand=True)
+    # Real stamp ink is never fully opaque; let the signature show through.
+    stamp.putalpha(stamp.getchannel("A").point(lambda a: int(a * 0.85)))
+
+    # Stamp starts 55% of the way along the signature and sits slightly low,
+    # so it covers the signature's tail.
+    sx = round(sig.width * 0.55)
+    canvas_w = max(sig.width, sx + stamp.width)
+    canvas_h = max(stamp.height, sig.height)
+    sig_y = round((canvas_h - sig.height) * 0.35)
+    stamp_y = canvas_h - stamp.height
+
+    def _on_white(layer, xy):
+        sheet = PILImage.new("RGB", (canvas_w, canvas_h), (255, 255, 255))
+        sheet.paste(layer, xy, layer)
+        return sheet
+
+    ink = ImageChops.multiply(_on_white(sig, (0, sig_y)), _on_white(stamp, (sx, stamp_y)))
+    # Alpha = how far each pixel is from paper white, so the result stays transparent.
+    alpha = ImageChops.invert(ink.convert("L")).point(lambda v: min(255, v * 3))
+    out = ink.convert("RGBA")
+    out.putalpha(alpha)
+    return _png_flowable(out, canvas_h / px)
 
 
 def _inr(n):
@@ -693,7 +736,7 @@ def _build_pdf(data):
         name=COMPANY_SIGNATORY_NAME,
         designation=COMPANY_SIGNATORY_DESIGNATION,
         date_str=today,
-        signature_img=_load_signature(SIGNATURE_PATH),
+        signature_img=_load_signature_with_stamp(SIGNATURE_PATH, STAMP_PATH),
     )
     school_box = _sig_box(
         f"For {school_name}",

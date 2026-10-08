@@ -4,6 +4,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { PDFDocument } from 'pdf-lib'
 import {
+  layoutSchoolHeader, balancedSplit, scriptRuns, stageForGrade, STAGES,
   designForGrade, displayWebsite, qrTarget, headerText, fitSize, compareStudents, layoutHeader, truncateToWidth,
   guessAppSchool, pamphletFilename, buildStudentPamphletsPDF, blankCopies, pagesFor,
 } from '../src/utils/studentPamphletPDF.js'
@@ -108,8 +109,13 @@ test('SP-07 filename drops characters Windows refuses', () => {
 test('SP-08 layout has every slot the pamphlet needs on page 1', () => {
   for (const design of ['foundational', 'middle']) {
     const p1 = LAYOUT[design].pages[0]
-    for (const key of ['header', 'qr', 'url', 'userId', 'password', 'footer']) assert.ok(p1[key], `${design} ${key}`)
+    for (const key of ['school', 'header', 'qr', 'url', 'userId', 'password']) assert.ok(p1[key], `${design} ${key}`)
     assert.equal(LAYOUT[design].pages.length, 2)
+    // The school name moved from the footer to the band.
+    for (const page of LAYOUT[design].pages) assert.equal(page.footer, undefined, `${design} footer`)
+    // The band sits above the student strip, inside the page border.
+    assert.ok(p1.school.bottom > p1.header.baseline + 19, `${design} band above strip`)
+    assert.ok(p1.school.x0 > 22 && p1.school.x1 < 573, `${design} band inside border`)
   }
 })
 
@@ -157,7 +163,81 @@ test('SP-10 blank copies: a line for every header field, no ID or password', asy
   assert.equal((await PDFDocument.load(bytes)).getPageCount(), 6)
 })
 
-test('SP-11 Foundational back page: Hindi by default, Marathi on request; Middle unaffected', async () => {
+// ── School band ──────────────────────────────────────────────────────────────
+const BAND = { x0: 30, x1: 565, top: 837, bottom: 785 }
+const inside = (r, box) => r.x0 >= box.x0 - 0.01 && r.x1 <= box.x1 + 0.01 && r.y0 >= box.bottom - 0.01 && r.y1 <= box.top + 0.01
+// Text extent at size s, using the same cap / descent the layout assumes.
+const textBox = (l) => ({ x0: l.x, x1: l.x + mono(l.text, l.size), y0: l.baseline - 0.32 * l.size, y1: l.baseline + 0.63 * l.size })
+
+function checkBand(name, aspect) {
+  const b = layoutSchoolHeader(name, aspect, mono, BAND)
+  for (const l of b.lines) assert.ok(inside(textBox(l), BAND), `text inside band: ${name} @ ${aspect}`)
+  assert.ok(b.rule.y >= BAND.bottom && b.rule.y < Math.min(...b.lines.map(l => l.baseline)), 'rule under the name, inside band')
+  if (b.logo) {
+    const logo = { x0: b.logo.x, x1: b.logo.x + b.logo.width, y0: b.logo.y, y1: b.logo.y + b.logo.height }
+    assert.ok(inside(logo, BAND), `logo inside band @ ${aspect}`)
+    assert.ok(Math.abs(b.logo.width / b.logo.height - aspect) < 1e-9, 'logo keeps its aspect ratio')
+    for (const l of b.lines) assert.ok(l.x >= logo.x1 + 10, 'name never overlaps the logo')
+  }
+  return b
+}
+
+test('SP-11 school band: every logo shape and name length stays inside the band, never overlapping', () => {
+  const names = ['ABC School', 'Aditya International School', "St. Xavier's High School & Junior College",
+    'Dr. D. Y. Patil International School and Junior College of Science, Pimpri',
+    'Shri Swami Vivekanand Shikshan Sanstha Sanchalit Adarsh Vidya Mandir English Medium School Pimpri Chinchwad Pune',
+    'Supercalifragilisticexpialidociousinternationalschoolofexcellence']
+  for (const name of names) for (const aspect of [null, 1, 0.5, 0.25, 2, 3.3, 6, 12]) checkBand(name, aspect)
+})
+
+test('SP-12 school band: the name is sized from the logo, so a bigger logo means a bigger name', () => {
+  const square = layoutSchoolHeader('Aditya International School', 1, mono, BAND)
+  const flat = layoutSchoolHeader('Aditya International School', 12, mono, BAND)
+  assert.ok(flat.logo.height < square.logo.height)
+  assert.ok(flat.lines[0].size < square.lines[0].size)
+  // ...but a very flat logo never shrinks the name below a readable size.
+  assert.ok(flat.lines[0].size >= 10)
+})
+
+test('SP-13 school band: long names wrap to two balanced lines; one long word is cut with an ellipsis', () => {
+  const two = layoutSchoolHeader('Dr. D. Y. Patil International School and Junior College of Science, Pimpri', 1, mono, BAND)
+  assert.equal(two.lines.length, 2)
+  assert.equal(two.lines.map(l => l.text.replace('…', '')).join(' ').length > 40, true)
+  const word = layoutSchoolHeader('Supercalifragilisticexpialidocious'.repeat(4), 1, mono, BAND)
+  assert.equal(word.lines.length, 1)
+  assert.ok(word.lines[0].text.endsWith('…'))
+  assert.deepEqual(balancedSplit(mono, 'One Two Three Four', 10), ['One Two', 'Three Four'])
+})
+
+test('SP-14 school band: the logo + name group is centred; with no logo the name is centred alone', () => {
+  for (const aspect of [null, 1, 3]) {
+    const b = layoutSchoolHeader('Navodaya Public School', aspect, mono, BAND)
+    const left = b.logo ? b.logo.x : b.lines[0].x
+    const right = Math.max(...b.lines.map(l => l.x + mono(l.text, l.size)))
+    assert.ok(Math.abs((left + right) / 2 - (BAND.x0 + BAND.x1) / 2) < 0.01)
+  }
+})
+
+test('SP-15 Hindi and Latin are shaped as separate runs (र्म must print as a reph, not र् + म)', () => {
+  assert.deepEqual(scriptRuns('Name: आरव शर्मा   Roll No.: 31   Class: UKG B'),
+    ['Name: ', 'आरव शर्मा   ', 'Roll No.: 31   Class: UKG B'])
+  assert.deepEqual(scriptRuns('आर्यन Kumar'), ['आर्यन ', 'Kumar'])
+  assert.deepEqual(scriptRuns('St. Xavier\'s'), ["St. Xavier's"])
+  assert.deepEqual(scriptRuns(''), [])
+  assert.equal(scriptRuns('Name: आरव शर्मा   Roll No.: 31').join(''), 'Name: आरव शर्मा   Roll No.: 31')
+})
+
+test('SP-16 stages: Nursery – Grade 2 Foundational, 3 – 5 Preparatory, 6 and above Middle & Secondary', () => {
+  // classResolver ordinals: Pre-Nursery -3, Nursery -2, LKG -1, UKG 0.
+  assert.deepEqual([-3, -2, -1, 0, 1, 2].map(stageForGrade), Array(6).fill('foundational'))
+  assert.deepEqual([3, 4, 5].map(stageForGrade), Array(3).fill('preparatory'))
+  assert.deepEqual([6, 8, 10, 12].map(stageForGrade), Array(4).fill('middleSecondary'))
+  assert.equal(stageForGrade(null), null)
+  assert.equal(stageForGrade(undefined), null)
+  assert.deepEqual(Object.keys(STAGES), ['foundational', 'preparatory', 'middleSecondary'])
+})
+
+test('SP-17 Foundational back page: Hindi by default, Marathi on request; Middle unaffected', async () => {
   assert.deepEqual(pagesFor('foundational'), [['foundational', 0], ['foundational', 1]])
   assert.deepEqual(pagesFor('foundational', 'marathi'), [['foundational', 0], ['foundationalMarathi', 0]])
   assert.deepEqual(pagesFor('middle', 'marathi'), [['middle', 0], ['middle', 1]])
