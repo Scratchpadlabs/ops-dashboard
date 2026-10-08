@@ -5,10 +5,10 @@
       <div class="text-sm font-bold text-slate-900 mb-1">Student Login Pamphlets</div>
       <p class="text-xs text-slate-500 mb-4">
         One pamphlet per student with their name, roll no, class, User ID / Password and the school website as a QR code.
-        Nursery – Grade 2 get the Foundational design (English front, Hindi back); Grade 3 and above get Middle + Prep.
+        Nursery – Grade 2 get the Foundational design (English front, Hindi or Marathi back); Grade 3 and above get Middle + Prep.
       </p>
 
-      <div class="grid gap-4 md:grid-cols-3">
+      <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <div>
           <label class="form-label">Teacher-app school</label>
           <Select
@@ -29,6 +29,11 @@
         <div>
           <label class="form-label">School name (footer)</label>
           <InputText v-model="footerName" class="w-full" />
+        </div>
+        <div>
+          <label class="form-label">Foundational back page</label>
+          <Select v-model="foundationalBack" :options="FOUNDATIONAL_BACK_LANGUAGES" optionLabel="label" optionValue="value" class="w-full" />
+          <p class="text-xs text-slate-400 mt-1">Front is always English. Middle + Prep is English only.</p>
         </div>
       </div>
     </div>
@@ -63,14 +68,16 @@
             <Checkbox v-model="selectedClassIds" :value="row.classId" />
             <div class="min-w-0 flex-1">
               <div class="text-sm font-medium text-slate-800 truncate">{{ row.className }}</div>
-              <div class="text-xs text-slate-400">{{ row.count }} student{{ row.count === 1 ? '' : 's' }}</div>
+              <div class="flex items-center gap-1.5 flex-wrap mt-0.5">
+                <span class="text-xs text-slate-400">{{ row.count }} student{{ row.count === 1 ? '' : 's' }}</span>
+                <span class="text-[10px] font-semibold px-1.5 py-0.5 rounded whitespace-nowrap" :class="designChip(designFor(row)).cls"
+                      :title="row.design ? '' : 'Grade not recognised — using Middle + Prep'">
+                  {{ designChip(designFor(row)).label }}<template v-if="!row.design && designOverride === 'auto'">?</template>
+                </span>
+              </div>
             </div>
-            <button type="button" class="text-[11px] text-slate-400 hover:text-blue-600 px-1"
+            <button type="button" class="text-[11px] text-slate-400 hover:text-blue-600 px-1 self-start"
                     title="Select only this class" @click.prevent.stop="onlyClass(row.classId)">Only</button>
-            <span class="text-[10px] font-semibold px-1.5 py-0.5 rounded" :class="designChip(designFor(row)).cls"
-                  :title="row.design ? '' : 'Grade not recognised — using Middle + Prep'">
-              {{ designChip(designFor(row)).label }}<template v-if="!row.design && designOverride === 'auto'">?</template>
-            </span>
           </label>
         </div>
 
@@ -194,6 +201,7 @@ import { pendingFile, savePending, deliverFile } from '../../utils/deliverFile.j
 import {
   buildStudentPamphletsPDF, loadPamphletAssets, designForGrade, compareStudents,
   displayWebsite, qrTarget, guessAppSchool, pamphletFilename, blankCopies,
+  FOUNDATIONAL_BACK_LANGUAGES,
 } from '../../utils/studentPamphletPDF.js'
 
 const props = defineProps({
@@ -260,6 +268,13 @@ function onAppSchoolPicked() {
 const { sitesFor, load: loadWebsites, loaded: websitesLoaded } = useSchoolWebsites()
 const website = ref('')
 const footerName = ref(props.school.name || '')
+
+// Defaults to the school's Second Language (Overview → Details) when it is one
+// we have a back page for; Hindi otherwise.
+const foundationalBack = ref(
+  FOUNDATIONAL_BACK_LANGUAGES.find(l => l.label.toLowerCase() === String(props.school.second_language || '').trim().toLowerCase())?.value
+  || 'hindi')
+const backLabel = computed(() => FOUNDATIONAL_BACK_LANGUAGES.find(l => l.value === foundationalBack.value)?.label || '')
 
 function prefillWebsite() {
   const site = sitesFor(appSchoolId.value)[0]
@@ -340,7 +355,7 @@ function designFor(row) {
 }
 function designChip(design) {
   return design === 'foundational'
-    ? { label: 'Foundational', cls: 'bg-violet-100 text-violet-700' }
+    ? { label: `Foundational · ${backLabel.value}`, cls: 'bg-violet-100 text-violet-700' }
     : { label: 'Middle + Prep', cls: 'bg-sky-100 text-sky-700' }
 }
 
@@ -441,6 +456,7 @@ async function build(list, label) {
     schoolName: footerName.value.trim(),
     website: website.value,
     assets,
+    foundationalBack: foundationalBack.value,
     onProgress: (done, total) => { progress.value = `${label}${done} / ${total}…` },
   })
 }
