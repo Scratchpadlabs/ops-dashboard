@@ -55,10 +55,31 @@ export async function guardedSetDoc(collection, ref, payload, { mode = MODE_CREA
   return setDoc(ref, payload, { merge })
 }
 
-/** updateDoc, validated as a partial write. */
-export async function guardedUpdateDoc(collection, ref, payload) {
-  assertValid(collection, payload, MODE_UPDATE)
+/**
+ * updateDoc, validated as a partial write.
+ *
+ * `baseline` is the same fields as currently stored. When given, only errors
+ * the write would ADD are fatal — errors already present in the stored data
+ * are tolerated, so a write that rewrites a whole array to change one entry
+ * (e.g. Reset Topic dropping survey_initiated_by off one subjects.topics
+ * item) isn't blocked by other entries that were malformed before it.
+ */
+export async function guardedUpdateDoc(collection, ref, payload, { baseline } = {}) {
+  if (baseline) assertNoNewErrors(collection, payload, baseline)
+  else assertValid(collection, payload, MODE_UPDATE)
   return updateDoc(ref, payload)
+}
+
+function assertNoNewErrors(collection, payload, baseline) {
+  const key = e => `${e.field}|${e.reason}`
+  const before = new Set(validateDoc(collection, baseline, { partial: true }).errors.map(key))
+  const result = validateDoc(collection, payload, { partial: true })
+  const added = result.errors.filter(e => !before.has(key(e)))
+  if (added.length) throw new SchemaViolation(collection, added, result.warnings)
+  if (result.errors.length) {
+    console.warn(`[schema] ${collection} — pre-existing, left as is: ${formatErrors(result.errors)}`)
+  }
+  return result.warnings
 }
 
 /**
