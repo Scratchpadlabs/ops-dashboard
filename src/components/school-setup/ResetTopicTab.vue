@@ -248,7 +248,8 @@ async function runReset() {
             : t),
         }
       })
-      await guardedUpdateDoc('classes', schoolDoc(props.schoolId, 'classes', selectedClassId.value), { subjects: updatedSubjects })
+      await guardedUpdateDoc('classes', schoolDoc(props.schoolId, 'classes', selectedClassId.value),
+        { subjects: updatedSubjects }, { baseline: { subjects: classData.subjects || [] } })
     }
 
     // Subject: drop survey_initiated_by entirely off the one matched topic,
@@ -261,7 +262,11 @@ async function runReset() {
         const { survey_initiated_by, ...rest } = t
         return rest
       })
-      await guardedUpdateDoc('subjects', schoolDoc(props.schoolId, 'subjects', selectedSubjectId.value), { topics: updatedTopics })
+      // Baseline: this subject's other topics may already be off-schema
+      // (e.g. teacher-app-written entries with no `topic` name) — that's not
+      // this reset's problem, and only removing a key can't make it worse.
+      await guardedUpdateDoc('subjects', schoolDoc(props.schoolId, 'subjects', selectedSubjectId.value),
+        { topics: updatedTopics }, { baseline: { topics: subjectData.topics || [] } })
     }
 
     // Responses: delete every response doc the preview found.
