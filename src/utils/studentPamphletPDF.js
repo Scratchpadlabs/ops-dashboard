@@ -24,8 +24,26 @@ import QRCode from 'qrcode'
 import LAYOUT from './pamphletLayout.js'
 
 export const DESIGNS = {
-  foundational: { label: 'Foundational (Nursery – Grade 2, English + Hindi)' },
+  foundational: { label: 'Foundational (Nursery – Grade 2, English + second language)' },
   middle:       { label: 'Middle + Prep (Grade 3 and above, English)' },
+}
+
+/** The Foundational back page's language; the front is always English. */
+export const FOUNDATIONAL_BACK_LANGUAGES = [
+  { value: 'hindi', label: 'Hindi' },
+  { value: 'marathi', label: 'Marathi' },
+]
+
+/**
+ * Which template pages make up one student's pamphlet: [templateKey, pageIndex]
+ * pairs, templateKey being a key of pamphletLayout.js / assets.templates.
+ */
+export function pagesFor(design, foundationalBack = 'hindi') {
+  if (design === 'middle') return [['middle', 0], ['middle', 1]]
+  if (design !== 'foundational') throw new Error(`Unknown pamphlet design "${design}"`)
+  if (foundationalBack === 'hindi') return [['foundational', 0], ['foundational', 1]]
+  if (foundationalBack === 'marathi') return [['foundational', 0], ['foundationalMarathi', 0]]
+  throw new Error(`Unknown Foundational back-page language "${foundationalBack}"`)
 }
 
 /** Grades up to 2 (Pre-Nursery … UKG are ≤ 0 in classResolver) are Foundational. */
@@ -207,11 +225,14 @@ export async function loadPamphletAssets(base = '/') {
     if (!res.ok) throw new Error(`Could not load ${path} (${res.status})`)
     return new Uint8Array(await res.arrayBuffer())
   }
-  const [foundational, middle, regular, bold, valueFont] = await Promise.all([
-    get('pamphlets/foundational.pdf'), get('pamphlets/middle.pdf'),
+  const [foundational, middle, foundationalMarathi, regular, bold, valueFont] = await Promise.all([
+    get('pamphlets/foundational.pdf'), get('pamphlets/middle.pdf'), get('pamphlets/foundational-marathi.pdf'),
     get('fonts/Poppins-Regular.ttf'), get('fonts/Poppins-Bold.ttf'), get('fonts/Inter-Bold.ttf'),
   ])
-  return { templates: { foundational, middle }, fonts: { regular, bold, value: valueFont } }
+  return {
+    templates: { foundational, middle, foundationalMarathi },
+    fonts: { regular, bold, value: valueFont },
+  }
 }
 
 /**
@@ -222,10 +243,14 @@ export async function loadPamphletAssets(base = '/') {
  * @param {string} opts.schoolName   printed in every footer
  * @param {string} opts.website      e.g. "www.nins.myhpc.app"
  * @param {object} opts.assets       from loadPamphletAssets()
+ * @param {'hindi'|'marathi'} [opts.foundationalBack]  language of the
+ *        Foundational back page (front is English); default Hindi
  * @param {(done:number,total:number)=>void} [opts.onProgress]
  * @returns {Promise<Uint8Array>}
  */
-export async function buildStudentPamphletsPDF({ students, schoolName, website, assets, onProgress }) {
+export async function buildStudentPamphletsPDF({
+  students, schoolName, website, assets, onProgress, foundationalBack = 'hindi',
+}) {
   const doc = await PDFDocument.create()
   doc.registerFontkit(fontkit)
   doc.setTitle(`${schoolName} — Student Login Pamphlets`)
@@ -237,11 +262,12 @@ export async function buildStudentPamphletsPDF({ students, schoolName, website, 
     value:   await doc.embedFont(assets.fonts.value, { subset: true }),
   }
 
-  const templates = {}
-  for (const design of new Set(students.map(s => s.design))) {
-    const layout = LAYOUT[design]
-    if (!layout) throw new Error(`Unknown pamphlet design "${design}"`)
-    const src = await PDFDocument.load(assets.templates[design])
+  // Each template file is embedded once, however many designs use its pages.
+  const embeddedFiles = {}
+  async function embedTemplate(key) {
+    const layout = LAYOUT[key]
+    if (!layout || !assets.templates[key]) throw new Error(`Missing pamphlet template "${key}"`)
+    const src = await PDFDocument.load(assets.templates[key])
     const srcPages = src.getPages()
     // Embed the whole page box explicitly: pdf-lib's default box starts at
     // (0, 0), which shifts Canva's artwork and clips its top 7.83pt.
@@ -249,10 +275,18 @@ export async function buildStudentPamphletsPDF({ students, schoolName, website, 
       const b = p.getMediaBox()
       return { left: b.x, bottom: b.y, right: b.x + b.width, top: b.y + b.height }
     }))
-    templates[design] = srcPages.map((p, i) => {
+    return srcPages.map((p, i) => {
       const box = p.getMediaBox()
       return { box, embedded: embedded[i], slots: placeSlots(layout.pages[i] || {}, box.x, box.y) }
     })
+  }
+  const templates = {}
+  for (const design of new Set(students.map(s => s.design))) {
+    templates[design] = []
+    for (const [key, index] of pagesFor(design, foundationalBack)) {
+      embeddedFiles[key] ||= await embedTemplate(key)
+      templates[design].push(embeddedFiles[key][index])
+    }
   }
 
   const shownUrl = displayWebsite(website)

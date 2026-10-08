@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs'
 import { PDFDocument } from 'pdf-lib'
 import {
   designForGrade, displayWebsite, qrTarget, headerText, fitSize, compareStudents, layoutHeader, truncateToWidth,
-  guessAppSchool, pamphletFilename, buildStudentPamphletsPDF, blankCopies,
+  guessAppSchool, pamphletFilename, buildStudentPamphletsPDF, blankCopies, pagesFor,
 } from '../src/utils/studentPamphletPDF.js'
 import LAYOUT from '../src/utils/pamphletLayout.js'
 
@@ -115,7 +115,7 @@ test('SP-08 layout has every slot the pamphlet needs on page 1', () => {
 
 test("SP-09 builds two pages per student, even with a name the fonts can't draw", async () => {
   const assets = {
-    templates: { foundational: read('public/pamphlets/foundational.pdf'), middle: read('public/pamphlets/middle.pdf') },
+    templates: { foundational: read('public/pamphlets/foundational.pdf'), middle: read('public/pamphlets/middle.pdf'), foundationalMarathi: read('public/pamphlets/foundational-marathi.pdf') },
     fonts: { regular: read('public/fonts/Poppins-Regular.ttf'), bold: read('public/fonts/Poppins-Bold.ttf'), value: read('public/fonts/Inter-Bold.ttf') },
   }
   const bytes = await buildStudentPamphletsPDF({
@@ -147,7 +147,7 @@ test('SP-10 blank copies: a line for every header field, no ID or password', asy
   assert.deepEqual(blankCopies('middle', 'x'), [])
 
   const assets = {
-    templates: { foundational: read('public/pamphlets/foundational.pdf'), middle: read('public/pamphlets/middle.pdf') },
+    templates: { foundational: read('public/pamphlets/foundational.pdf'), middle: read('public/pamphlets/middle.pdf'), foundationalMarathi: read('public/pamphlets/foundational-marathi.pdf') },
     fonts: { regular: read('public/fonts/Poppins-Regular.ttf'), bold: read('public/fonts/Poppins-Bold.ttf'), value: read('public/fonts/Inter-Bold.ttf') },
   }
   const bytes = await buildStudentPamphletsPDF({
@@ -155,4 +155,30 @@ test('SP-10 blank copies: a line for every header field, no ID or password', asy
     students: [...blankCopies('foundational', 2), ...blankCopies('middle', 1)],
   })
   assert.equal((await PDFDocument.load(bytes)).getPageCount(), 6)
+})
+
+test('SP-11 Foundational back page: Hindi by default, Marathi on request; Middle unaffected', async () => {
+  assert.deepEqual(pagesFor('foundational'), [['foundational', 0], ['foundational', 1]])
+  assert.deepEqual(pagesFor('foundational', 'marathi'), [['foundational', 0], ['foundationalMarathi', 0]])
+  assert.deepEqual(pagesFor('middle', 'marathi'), [['middle', 0], ['middle', 1]])
+  assert.throws(() => pagesFor('foundational', 'tamil'), /back-page language/)
+
+  // The Marathi page has every slot the Hindi back page has.
+  assert.deepEqual(Object.keys(LAYOUT.foundationalMarathi.pages[0]).sort(), Object.keys(LAYOUT.foundational.pages[1]).sort())
+
+  const assets = {
+    templates: {
+      foundational: read('public/pamphlets/foundational.pdf'), middle: read('public/pamphlets/middle.pdf'),
+      foundationalMarathi: read('public/pamphlets/foundational-marathi.pdf'),
+    },
+    fonts: { regular: read('public/fonts/Poppins-Regular.ttf'), bold: read('public/fonts/Poppins-Bold.ttf'), value: read('public/fonts/Inter-Bold.ttf') },
+  }
+  const bytes = await buildStudentPamphletsPDF({
+    schoolName: 'X School', website: 'x.myhpc.app', assets, foundationalBack: 'marathi',
+    students: [
+      { id: 'x0001', name: 'A', rollNo: '1', className: 'UKG A', design: 'foundational' },
+      { id: 'x0002', name: 'B', rollNo: '2', className: 'V A', design: 'middle' },
+    ],
+  })
+  assert.equal((await PDFDocument.load(bytes)).getPageCount(), 4)
 })
