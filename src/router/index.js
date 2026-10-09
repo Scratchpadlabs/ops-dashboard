@@ -31,6 +31,8 @@ const routes = [
   { path: '/school-setup',  component: SchoolSetup,   name: 'school-setup', meta: { opsAdminOnly: true } },
   { path: '/import',        component: Import,        name: 'import', meta: { opsAdminOnly: true } },
   { path: '/surveys',       component: Surveys,       name: 'surveys', meta: { opsAdminOnly: true } },
+  // Lazy: the video preview pulls in React + Remotion, which no other page needs.
+  { path: '/year-wrap',     component: () => import('../views/YearWrap.vue'), name: 'year-wrap', meta: { opsAdminOnly: true } },
   { path: '/import/:jobId', component: ImportReview,  name: 'import-review', meta: { opsAdminOnly: true } },
   { path: '/import-templates', component: ImportTemplates, name: 'import-templates', meta: { opsAdminOnly: true } },
   { path: '/aap-remarks',   component: AapRemarks,    name: 'aap-remarks', meta: { opsAdminOnly: true } },

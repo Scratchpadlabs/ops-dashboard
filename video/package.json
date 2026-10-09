@@ -2,12 +2,14 @@
   "name": "ops-dashboard-year-wrap-video",
   "private": true,
   "type": "module",
-  "description": "Personalised AAM year-wrap videos: survey answers → storyline JSON → Remotion → MP4",
+  "description": "Personalised AAM year-wrap videos: survey answers \u2192 storyline JSON \u2192 Remotion \u2192 MP4",
   "scripts": {
     "test": "node --test tests/*.test.mjs",
     "studio": "remotion studio src/remotion/index.jsx",
     "music": "python3 scripts/make-music.py",
-    "render:samples": "node scripts/render-samples.mjs"
+    "render:samples": "node scripts/render-samples.mjs",
+    "start": "node server/index.mjs",
+    "bundle": "node server/bundle.mjs"
   },
   "dependencies": {
     "@fontsource/baloo-2": "5.2.6",
@@ -15,8 +17,9 @@
     "@remotion/bundler": "4.0.534",
     "@remotion/cli": "4.0.534",
     "@remotion/renderer": "4.0.534",
-    "react": "18.3.1",
-    "react-dom": "18.3.1",
+    "firebase-admin": "14.2.0",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
     "remotion": "4.0.534"
   }
 }

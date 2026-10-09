@@ -136,3 +136,23 @@ test('grade and name helpers', () => {
   assert.equal(firstNameOf({ name: '  riya   patel ' }), 'Riya')
   assert.equal(firstNameOf({ name: '' }), '')
 })
+
+import { segmentFor, storyInput, AAM_SURVEY_IDS } from '../src/storyline/roster.mjs'
+
+test('roster: segment comes from the survey answered, then from grade', () => {
+  assert.deepEqual(AAM_SURVEY_IDS, ['AAM1-mid', 'AAM2-mid', 'AAM1-prep', 'AAM2-prep'])
+  assert.equal(segmentFor({ respondedIn: ['AAM2-prep'], gradeOrdinal: 7 }), 'prep', 'assigned survey wins over grade')
+  assert.equal(segmentFor({ respondedIn: [], gradeOrdinal: 4 }), 'prep')
+  assert.equal(segmentFor({ gradeOrdinal: 8 }), 'mid')
+  assert.equal(segmentFor({ gradeOrdinal: 2 }), null)
+  assert.equal(segmentFor({ gradeOrdinal: 9 }), null)
+})
+
+test('roster: storyInput pairs each round with its survey, null when missing', () => {
+  const surveys = { 'AAM1-mid': survey('AAM1-mid'), 'AAM2-mid': survey('AAM2-mid') }
+  const r1 = responseFrom('mid', 'AAM1-mid', { dream: 'Doctor' })
+  const input = storyInput({ segment: 'mid', student: { id: 's', name: 'Riya' }, surveys, responses: { 'AAM1-mid': r1 } })
+  assert.equal(input.rounds.start.response, r1)
+  assert.equal(input.rounds.end, null)
+  assert.equal(buildStoryline(input).scenes.find((x) => x.role === 'dream').answer.text, 'Doctor')
+})

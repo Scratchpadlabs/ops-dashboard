@@ -21,7 +21,9 @@ function useFontsReady(family) {
   }, [family, handle])
 }
 
-export function YearWrap({ storyline }) {
+// `musicSrc` ({prep, mid} → URL) lets the dashboard's in-browser preview
+// serve the tracks from its own build; the renderer uses public/ via staticFile.
+export function YearWrap({ storyline, musicSrc }) {
   const theme = THEMES[storyline.segment] || THEMES.mid
   useFontsReady(theme.font.match(/"([^"]+)"/)[1])
   const frame = useCurrentFrame()
@@ -53,7 +55,7 @@ export function YearWrap({ storyline }) {
           })}
         </Series>
         <Audio
-          src={staticFile(theme.music)}
+          src={musicSrc?.[storyline.segment] || staticFile(theme.music)}
           volume={(f) => interpolate(f, [0, 15, total - 60, total], [0, 0.85, 0.85, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })}
         />
       </AbsoluteFill>
