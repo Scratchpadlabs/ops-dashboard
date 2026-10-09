@@ -12,7 +12,8 @@ import { segmentFor, storyInput } from '../../video/src/storyline/roster.mjs'
 import { SEGMENTS } from '../../video/src/storyline/questions.mjs'
 import { buildSchoolContext, compareClasses, rawClassValue, resolveClass } from '../utils/classResolver.js'
 import {
-  yearWrapAnswers, yearWrapCancel, yearWrapRender, yearWrapRoster, yearWrapSave, yearWrapStatus,
+  yearWrapAnswers, yearWrapCancel, yearWrapPublish, yearWrapRender, yearWrapRoster, yearWrapSave, yearWrapStatus,
+  yearWrapUnpublish,
 } from '../utils/yearWrapApi.js'
 
 export const NO_CLASS = '(no class)'
@@ -26,6 +27,15 @@ export function academicYearOf(millis) {
   const d = new Date(millis)
   const y = d.getMonth() >= 3 ? d.getFullYear() : d.getFullYear() - 1
   return `${y}-${String(y + 1).slice(-2)}`
+}
+
+/**
+ * The parent-facing share link. Served by this same Hosting site: /w/** is
+ * rewritten to wrap.html (firebase.json), a standalone page that plays the
+ * storyline in the browser.
+ */
+export function shareUrl(linkId) {
+  return linkId ? `${location.origin}/w/${linkId}` : ''
 }
 
 /** queued/rendering for longer than the service could still be working on it. */
@@ -152,6 +162,27 @@ export function useYearWrap() {
     return res
   }
 
+  /** Share links: no rendering — the parent's browser plays the storyline. */
+  async function publish(rows) {
+    const items = rows.filter((r) => r.storyline?.renderable).map((r) => ({ studentId: r.id, storyline: r.storyline }))
+    if (!items.length) return { published: 0 }
+    const next = { ...videos.value }
+    for (let i = 0; i < items.length; i += 300) {
+      const { links } = await yearWrapPublish({ schoolId: currentSchoolId, items: items.slice(i, i + 300) })
+      for (const [id, linkId] of Object.entries(links)) next[id] = { ...(next[id] || {}), linkId, linkPublishedAt: Date.now() }
+    }
+    videos.value = next
+    return { published: items.length }
+  }
+
+  async function unpublish(rows) {
+    const res = await yearWrapUnpublish({ schoolId: currentSchoolId, studentIds: rows.map((r) => r.id) })
+    const next = { ...videos.value }
+    for (const r of rows) if (next[r.id]) next[r.id] = { ...next[r.id], linkId: null, linkPublishedAt: null }
+    videos.value = next
+    return res
+  }
+
   async function cancel() {
     const res = await yearWrapCancel({ schoolId: currentSchoolId })
     await refreshStatus()
@@ -181,6 +212,6 @@ export function useYearWrap() {
 
   return {
     school, students, classes, surveyYear, classRows, videos, loadingRoster, loadingClass,
-    loadRoster, loadClass, saveEdit, render, cancel, refreshStatus, stopPolling,
+    loadRoster, loadClass, saveEdit, render, publish, unpublish, cancel, refreshStatus, stopPolling,
   }
 }

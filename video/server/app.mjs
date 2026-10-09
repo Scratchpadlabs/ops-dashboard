@@ -8,13 +8,17 @@
  *   POST /save     {schoolId, studentId, storyline}   save an edited storyline (null = reset)
  *   POST /render   {schoolId, academicYear, items}    queue [{studentId, storyline}]
  *   POST /cancel   {schoolId}                         drop this school's queued renders
+ *   POST /publish  {schoolId, items}                  share links for [{studentId, storyline}]
+ *   POST /unpublish {schoolId, studentIds}            revoke those students' links
+ *   GET  /w/:linkId                                   PUBLIC — the storyline a share link plays
  *   GET  /healthz
  *
- * Every POST needs `Authorization: Bearer <Firebase ID token>` from an ops
+ * /w/:linkId is the only route without sign-in: it is what a parent's phone
+ * calls, and the 128-bit random id is the credential. Every POST needs `Authorization: Bearer <Firebase ID token>` from an ops
  * admin. The allowlist mirrors src/config/opsAdmins.js and
  * functions/shared/ops_admins.py — keep the three in step.
  */
-import { answers, checkId, httpError, roster, saveEdit, videoDocs } from './data.mjs'
+import { answers, checkId, httpError, publishLinks, readLink, roster, saveEdit, unpublishLinks, videoDocs } from './data.mjs'
 
 export const OPS_ADMIN_EMAILS = ['sid@ops.clarified.in', 'angel@ops.clarified.in']
 
@@ -39,6 +43,8 @@ export function createHandler({ db, queue, verifyIdToken, now, allowedOrigins = 
     },
     '/render': ({ schoolId, academicYear, items }, email) => queue.enqueue({ schoolId, academicYear, items, email }),
     '/cancel': ({ schoolId }) => queue.cancel(schoolId),
+    '/publish': ({ schoolId, items }, email) => publishLinks(db, schoolId, items, email, now()),
+    '/unpublish': ({ schoolId, studentIds }) => unpublishLinks(db, schoolId, studentIds),
   }
 
   return async function handle(req, res) {
@@ -52,6 +58,21 @@ export function createHandler({ db, queue, verifyIdToken, now, allowedOrigins = 
     }
     if (req.method === 'OPTIONS') return send(res, 204)
     if (req.method === 'GET' && req.url === '/healthz') return send(res, 200, { ok: true, queue: queue.state() })
+
+    const link = req.method === 'GET' && /^\/w\/([^/?#]+)/.exec(req.url || '')
+    if (link) {
+      try {
+        const storyline = await readLink(db, decodeURIComponent(link[1]))
+        if (!storyline) return send(res, 404, { error: 'This link has expired or does not exist.' })
+        // Short cache: a re-published edit shows up within a minute.
+        res.setHeader('Cache-Control', 'public, max-age=60')
+        res.setHeader('X-Robots-Tag', 'noindex')
+        return send(res, 200, { storyline })
+      } catch (e) {
+        console.error('/w', e)
+        return send(res, 500, { error: 'Internal error' })
+      }
+    }
 
     const route = routes[req.url?.split('?')[0]]
     if (req.method !== 'POST' || !route) return send(res, 404, { error: 'Not found' })

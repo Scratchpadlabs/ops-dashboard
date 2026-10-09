@@ -31,7 +31,7 @@ function fakeDb() {
     async getAll(...refs) { return refs.map((r) => snap(r.path)) },
     batch() {
       const ops = []
-      return { set: (r, d, o) => ops.push(() => r.set(d, o)), async commit() { for (const op of ops) await op() } }
+      return { set: (r, d, o) => ops.push(() => r.set(d, o)), delete: (r) => ops.push(() => docs.delete(r.path)), async commit() { for (const op of ops) await op() } }
     },
   }
 }
@@ -180,4 +180,46 @@ test('isInactive mirrors survey_rules.py', () => {
   assert.ok(isInactive({ isActive: false }))
   assert.ok(isInactive({ status: 'TC Issued' }))
   assert.ok(!isInactive({}))
+})
+
+test('links: publish → public read → re-publish keeps the link → revoke', async () => {
+  const { handler, db } = setup()
+  const s = story()
+  const pub = await call(handler, '/publish', { schoolId: 'S', items: [{ studentId: 'stu1', storyline: s }] })
+  assert.equal(pub.status, 200)
+  const linkId = pub.body.links.stu1
+  assert.match(linkId, /^[A-Za-z0-9_-]{22}$/)
+
+  // A parent: no sign-in at all.
+  const view = await call(handler, `/w/${linkId}`, null, null, 'GET')
+  assert.equal(view.status, 200)
+  assert.equal(view.body.storyline.scenes.length, s.scenes.length)
+  assert.equal(view.body.storyline.student.name, 'ANANYA IYER')
+  assert.ok(!('warnings' in view.body.storyline), 'review notes are not public')
+  assert.ok(!('id' in view.body.storyline.student), 'no internal ids')
+
+  // Edit after sending: same link, new content.
+  s.scenes[1].end.text = 'Astronaut'
+  const again = await call(handler, '/publish', { schoolId: 'S', items: [{ studentId: 'stu1', storyline: s }] })
+  assert.equal(again.body.links.stu1, linkId)
+  assert.equal((await call(handler, `/w/${linkId}`, null, null, 'GET')).body.storyline.scenes[1].end.text, 'Astronaut')
+  assert.equal(db.docs.get(VIDEO('S', 'stu1')).linkId, linkId)
+
+  const rev = await call(handler, '/unpublish', { schoolId: 'S', studentIds: ['stu1', 'never-published'] })
+  assert.equal(rev.body.revoked, 1)
+  assert.equal((await call(handler, `/w/${linkId}`, null, null, 'GET')).status, 404)
+  assert.equal(db.docs.get(VIDEO('S', 'stu1')).linkId, null)
+
+  // Publishing again after a revoke issues a NEW link — the old one stays dead.
+  const fresh = await call(handler, '/publish', { schoolId: 'S', items: [{ studentId: 'stu1', storyline: s }] })
+  assert.notEqual(fresh.body.links.stu1, linkId)
+})
+
+test('links: publishing needs an ops admin; bad ids are 404s, not errors', async () => {
+  const { handler } = setup()
+  assert.equal((await call(handler, '/publish', { schoolId: 'S', items: [{ studentId: 'a', storyline: story() }] }, 'outsider')).status, 403)
+  assert.equal((await call(handler, '/publish', { schoolId: 'S', items: [{ studentId: 'a/b', storyline: story() }] })).status, 400)
+  for (const bad of ['short', '..%2F..%2Fschools', 'x'.repeat(100)]) {
+    assert.equal((await call(handler, `/w/${bad}`, null, null, 'GET')).status, 404, bad)
+  }
 })
