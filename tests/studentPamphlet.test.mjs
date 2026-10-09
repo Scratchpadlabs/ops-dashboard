@@ -280,6 +280,10 @@ test('SP-19 inactive, sample/demo/training/test classes and "no class" are not t
   assert.equal(classSkipReason({ name: 'Sample Class' }, 'sample_class'), 'sample')
   assert.equal(classSkipReason(undefined, 'TEST_A'), 'sample')
   assert.equal(classSkipReason(undefined, '__none__'), 'no class')
+  // Holding classes named for students who are no longer current.
+  for (const name of ['Inactive', 'Left Students', 'Alumni', 'Passed Out', 'Old', 'Archive', 'Transferred', 'Dropouts'])
+    assert.equal(classSkipReason({ name }, name.replace(/\s+/g, '_')), 'inactive', name)
+  assert.equal(classSkipReason({ name: 'Golden Batch' }, 'Golden'), null)    // "old" inside a word
   // Words that merely contain those letters are real classes.
   assert.equal(classSkipReason({ name: 'Contest Section' }, 'IV_Contest'), null)
   assert.equal(classSkipReason({ name: 'Demonstration School V A' }, 'V_A'), null)

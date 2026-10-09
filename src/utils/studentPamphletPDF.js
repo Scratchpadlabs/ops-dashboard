@@ -541,6 +541,8 @@ export function classSkipReason(classDoc, classId, { noClassId = '__none__' } = 
   if (classId === noClassId) return 'no class'
   if (classDoc && (classDoc.isActive === false || classDoc.isActive === 'false')) return 'inactive'
   const text = [classId, classDoc?.name, classDoc?.clazz, classDoc?.section].filter(Boolean).join(' ')
+  // Holding classes for students who are no longer current, named rather than flagged.
+  if (/(^|[^a-z])(inactive|left|alumni|archived?|old|passed[\s_-]*out|transferred|dropouts?|deleted|removed)([^a-z]|$)/i.test(text)) return 'inactive'
   if (/(^|[^a-z])(sample|demo|training|test|dummy)([^a-z]|$)/i.test(text)) return 'sample'
   return null
 }
