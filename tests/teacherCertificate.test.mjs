@@ -106,9 +106,17 @@ test('TC-10 sample / demo accounts are recognised', () => {
   assert.equal(isSampleName('Samplewala Rao'), false)
 })
 
-test('TC-11 blank certificates by teacher count: <10 → 3, 10–19 → 5, 20–29 → 7, 30+ → 10', () => {
-  assert.deepEqual([0, 1, 9].map(defaultBlankCount), [3, 3, 3])
-  assert.deepEqual([10, 15, 19].map(defaultBlankCount), [5, 5, 5])
-  assert.deepEqual([20, 25, 29].map(defaultBlankCount), [7, 7, 7])
-  assert.deepEqual([30, 31, 120].map(defaultBlankCount), [10, 10, 10])
+test('TC-11 blank certificate policy brackets, edges included', () => {
+  const expect = {
+    0: 3, 9: 3,
+    10: 5, 19: 5,
+    20: 7, 29: 7,
+    30: 10, 40: 10,
+    41: 12, 48: 12,
+    49: 15, 60: 15,
+    61: 20, 80: 20,
+    81: 25, 100: 25,
+    101: 25, 250: 25,   // past the policy: the last count
+  }
+  for (const [n, blanks] of Object.entries(expect)) assert.equal(defaultBlankCount(Number(n)), blanks, `${n} teachers`)
 })

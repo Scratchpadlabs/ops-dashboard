@@ -63,15 +63,25 @@ export function isSampleName(name) {
 }
 
 /**
- * Default number of blank certificates, by how many teachers the school has:
- * under 10 → 3, 10–19 → 5, 20–29 → 7, 30 or more → 10.
+ * Blank certificate policy: how many blanks to print for a school with this
+ * many teachers. [up to and including this many teachers, blanks]; above the
+ * last bracket (100) the last count applies.
  */
+export const BLANK_POLICY = [
+  [9, 3],      // under 10
+  [19, 5],     // 10–19
+  [29, 7],     // 20–29
+  [40, 10],    // 30–40
+  [48, 12],    // 41–48
+  [60, 15],    // 49–60
+  [80, 20],    // 61–80
+  [100, 25],   // 81–100
+]
+
 export function defaultBlankCount(teacherCount) {
   const n = Number(teacherCount) || 0
-  if (n >= 30) return 10
-  if (n >= 20) return 7
-  if (n >= 10) return 5
-  return 3
+  const bracket = BLANK_POLICY.find(([upTo]) => n <= upTo)
+  return bracket ? bracket[1] : BLANK_POLICY[BLANK_POLICY.length - 1][1]
 }
 
 /** Largest size ≤ preferred (step 0.5) at which text fits maxWidth, never below min. */
