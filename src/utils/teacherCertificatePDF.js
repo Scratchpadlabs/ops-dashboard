@@ -62,9 +62,16 @@ export function isSampleName(name) {
   return /\bsample\b/i.test(String(name ?? ''))
 }
 
-/** Default number of blank certificates: 10% of the teachers, rounded up, at least 1. */
+/**
+ * Default number of blank certificates, by how many teachers the school has:
+ * under 10 → 3, 10–19 → 5, 20–29 → 7, 30 or more → 10.
+ */
 export function defaultBlankCount(teacherCount) {
-  return Math.max(1, Math.ceil((Number(teacherCount) || 0) * 0.1))
+  const n = Number(teacherCount) || 0
+  if (n >= 30) return 10
+  if (n >= 20) return 7
+  if (n >= 10) return 5
+  return 3
 }
 
 /** Largest size ≤ preferred (step 0.5) at which text fits maxWidth, never below min. */

@@ -106,11 +106,9 @@ test('TC-10 sample / demo accounts are recognised', () => {
   assert.equal(isSampleName('Samplewala Rao'), false)
 })
 
-test('TC-11 blank certificates default to 10% of the teachers, rounded up, at least 1', () => {
-  assert.equal(defaultBlankCount(0), 1)
-  assert.equal(defaultBlankCount(5), 1)
-  assert.equal(defaultBlankCount(10), 1)
-  assert.equal(defaultBlankCount(11), 2)
-  assert.equal(defaultBlankCount(23), 3)
-  assert.equal(defaultBlankCount(100), 10)
+test('TC-11 blank certificates by teacher count: <10 → 3, 10–19 → 5, 20–29 → 7, 30+ → 10', () => {
+  assert.deepEqual([0, 1, 9].map(defaultBlankCount), [3, 3, 3])
+  assert.deepEqual([10, 15, 19].map(defaultBlankCount), [5, 5, 5])
+  assert.deepEqual([20, 25, 29].map(defaultBlankCount), [7, 7, 7])
+  assert.deepEqual([30, 31, 120].map(defaultBlankCount), [10, 10, 10])
 })
