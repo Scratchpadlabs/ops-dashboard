@@ -116,7 +116,11 @@
           >
             <Checkbox v-model="selectedClassIds" :value="row.classId" />
             <div class="min-w-0 flex-1">
-              <div class="text-sm font-medium text-slate-800 truncate">{{ row.className }}</div>
+              <div class="text-sm font-medium text-slate-800 truncate">
+                {{ row.className }}
+                <span v-if="row.skip" class="ml-1 text-[10px] font-semibold uppercase text-slate-500 bg-slate-100 rounded px-1 py-0.5"
+                      title="Not ticked by default — tick it to include">{{ row.skip }}</span>
+              </div>
               <div class="flex items-center gap-1.5 flex-wrap mt-0.5">
                 <span class="text-xs text-slate-400">
                   {{ row.count }} student{{ row.count === 1 ? '' : 's' }}<template v-if="row.stage"> · {{ STAGES[row.stage].label }}</template>
@@ -263,7 +267,7 @@ import { normalizeLogo, logoFromUrl, logoDataUrl, LOGO_MIN_SIDE } from '../../ut
 import { loadSavedLogo, saveLogo, deleteSavedLogo } from '../../utils/pamphletLogoStore.js'
 import {
   buildStudentPamphletsPDF, loadPamphletAssets, designForGrade, compareStudents,
-  displayWebsite, qrTarget, guessAppSchool, pamphletFilename, blankCopies, stageForGrade, STAGES, defaultBlankPamphlets,
+  displayWebsite, qrTarget, guessAppSchool, pamphletFilename, blankCopies, stageForGrade, STAGES, defaultBlankPamphlets, classSkipReason,
   FOUNDATIONAL_BACK_LANGUAGES,
 } from '../../utils/studentPamphletPDF.js'
 
@@ -459,7 +463,7 @@ async function loadRoster(id) {
     ])
     students.value = sSnap.docs.map(d => ({ ...d.data(), id: d.id }))
     classes.value = cSnap.docs.map(d => ({ ...d.data(), id: d.id }))
-    selectedClassIds.value = classRows.value.map(r => r.classId)
+    selectedClassIds.value = classRows.value.filter(r => !r.skip).map(r => r.classId)
   } catch (e) {
     rosterError.value = `Could not load students: ${e.message}`
   } finally {
@@ -495,6 +499,7 @@ const classRows = computed(() => {
   return [...counts.entries()]
     .map(([classId, count]) => ({
       classId, count, className: classLabel(classId), design: classDesign(classId), stage: classStage(classId),
+      skip: classSkipReason(classes.value.find(c => c.id === classId), classId, { noClassId: NO_CLASS }),
     }))
     .sort((a, b) => (a.classId === NO_CLASS) - (b.classId === NO_CLASS) || compareClasses(a.classId, b.classId))
 })
@@ -520,8 +525,9 @@ function onlyClass(classId) {
   selectedClassIds.value = [classId]
 }
 
+// "All" means every real class; inactive / sample / no-class stay unticked.
 function selectAll(on) {
-  selectedClassIds.value = on ? classRows.value.map(r => r.classId) : []
+  selectedClassIds.value = on ? classRows.value.filter(r => !r.skip).map(r => r.classId) : []
 }
 
 // ── What gets printed ─────────────────────────────────────────────────────

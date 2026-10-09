@@ -532,6 +532,19 @@ export async function buildStudentPamphletsPDF({
  * name, website and QR printed; name / roll no / class as blank lines; User
  * ID and Password left empty on their rules.
  */
+/**
+ * Why a class is left unticked by default, or null to tick it: classes marked
+ * inactive in School Setup, sample / demo / training / test classes, and the
+ * students with no class at all. They can still be ticked by hand.
+ */
+export function classSkipReason(classDoc, classId, { noClassId = '__none__' } = {}) {
+  if (classId === noClassId) return 'no class'
+  if (classDoc && (classDoc.isActive === false || classDoc.isActive === 'false')) return 'inactive'
+  const text = [classId, classDoc?.name, classDoc?.clazz, classDoc?.section].filter(Boolean).join(' ')
+  if (/(^|[^a-z])(sample|demo|training|test|dummy)([^a-z]|$)/i.test(text)) return 'sample'
+  return null
+}
+
 /** Default blank copies for a design: 10% of its students, rounded up (0 when none). */
 export function defaultBlankPamphlets(studentCount) {
   return Math.ceil((Number(studentCount) || 0) * 0.1)
