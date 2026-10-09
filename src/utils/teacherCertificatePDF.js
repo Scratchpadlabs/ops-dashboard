@@ -52,9 +52,19 @@ const clean = (v) => String(v ?? '').replace(/\s+/g, ' ').trim()
  * dash or comma left hanging by removing it) is dropped: "Vinaya".
  */
 export function certificateName(name) {
-  return clean(String(name ?? '').replace(/\bteachers?\b/gi, ' '))
+  const text = clean(String(name ?? '').replace(/\bteachers?\b/gi, ' '))
     .replace(/^[\s\-–—,.:]+|[\s\-–—,:]+$/g, '')
     .trim()
+  return spaceAfterTitle(text)
+}
+
+/**
+ * Titles typed without a gap ("Mr.Siddhesh", "Dr .Smita") get exactly one
+ * space after the dot: "Mr. Siddhesh", "Dr. Smita".
+ */
+const TITLES = 'Mrs|Mr|Ms|Miss|Dr|Prof|Smt|Shri|Sri|Kum|Km'
+export function spaceAfterTitle(name) {
+  return String(name ?? '').replace(new RegExp(`\\b(${TITLES})\\s*\\.\\s*(?=\\S)`, 'gi'), '$1. ')
 }
 
 /** Demo / test accounts ("Sample Teacher", "sample 1") never get a certificate. */
