@@ -31,10 +31,15 @@
         <Button label="Refresh" icon="pi pi-refresh" size="small" text :disabled="!classId" :loading="loadingClass" @click="openClass" />
         <Button label="Cancel queued" icon="pi pi-times" size="small" text severity="secondary"
           :disabled="!anyActive" @click="cancelQueued" />
-        <Button :label="zipLabel" icon="pi pi-download" size="small" outlined
-          :disabled="!doneRows.length || zipping" :loading="zipping" @click="downloadZip" />
-        <Button :label="selection.length ? `Render ${selection.length} selected` : 'Render whole class'" icon="pi pi-video" size="small"
+        <Button v-if="doneRows.length" :label="zipLabel" icon="pi pi-download" size="small" text
+          :disabled="zipping" :loading="zipping" @click="downloadZip" />
+        <Button :label="selection.length ? `Render MP4 (${selection.length})` : 'Render MP4s'" icon="pi pi-video" size="small" text
+          v-tooltip.bottom="'Optional: make video files. Share links need no rendering.'"
           :disabled="!renderTargets.length || !YEAR_WRAP_URL" @click="confirmRender(renderTargets)" />
+        <Button label="Download links (CSV)" icon="pi pi-file-excel" size="small" outlined
+          :disabled="!linkedRows.length" @click="downloadLinks" />
+        <Button :label="selection.length ? `Create links for ${selection.length} selected` : 'Create links for whole class'" icon="pi pi-link" size="small"
+          :disabled="!renderTargets.length || !YEAR_WRAP_URL" :loading="publishing" @click="confirmPublish(renderTargets)" />
       </div>
     </div>
 
@@ -77,7 +82,8 @@
         <span>{{ classRows.length }} students</span>
         <span>· {{ counts.ready }} ready</span>
         <span v-if="counts.noData">· {{ counts.noData }} without AAM answers</span>
-        <span>· {{ counts.done }} rendered</span>
+        <span>· {{ linkedRows.length }} with links</span>
+        <span v-if="counts.done">· {{ counts.done }} MP4s</span>
       </div>
       <DataTable v-model:selection="selection" :value="classRows" dataKey="id" size="small" stripedRows>
         <Column selectionMode="multiple" style="width:40px" />
@@ -98,7 +104,18 @@
             <div v-if="data.storyline.renderable" class="text-[11px] text-slate-400">{{ (data.storyline.durationInFrames / 30).toFixed(0) }}s · {{ data.storyline.scenes.length }} scenes</div>
           </template>
         </Column>
-        <Column header="Video" style="width:220px">
+        <Column header="Share link" style="width:190px">
+          <template #body="{ data }">
+            <div v-if="videos[data.id]?.linkId" class="flex items-center gap-0.5">
+              <Button icon="pi pi-copy" text rounded size="small" v-tooltip.top="'Copy link'" @click="copyLink(data)" />
+              <Button icon="pi pi-whatsapp" text rounded size="small" severity="success" v-tooltip.top="'Send on WhatsApp'" @click="whatsapp(data)" />
+              <Button icon="pi pi-external-link" text rounded size="small" severity="secondary" v-tooltip.top="'Open as a parent sees it'" @click="openLink(data)" />
+              <Button icon="pi pi-ban" text rounded size="small" severity="danger" v-tooltip.top="'Revoke link'" @click="confirmRevoke([data])" />
+            </div>
+            <span v-else class="text-xs text-slate-400">No link yet</span>
+          </template>
+        </Column>
+        <Column header="MP4" style="width:150px">
           <template #body="{ data }">
             <VideoStatus :video="videos[data.id]" />
           </template>
@@ -119,7 +136,8 @@
       <div v-if="review && draft" class="grid gap-5" style="grid-template-columns: 340px 1fr">
         <div>
           <YearWrapPlayer :storyline="draft" />
-          <p class="text-xs text-slate-400 mt-2">Live preview — edits show immediately. The rendered MP4 is identical.</p>
+          <p class="text-xs text-slate-400 mt-2">Live preview, exactly what a parent sees from the link. Edits show immediately.</p>
+          <p v-if="videos[review.id]?.linkId" class="text-xs text-emerald-700 mt-1"><i class="pi pi-link text-xs"></i> Linked: saving updates what parents see, on the same link.</p>
         </div>
         <div class="max-h-[70vh] overflow-y-auto pr-1">
           <StorylineEditor :storyline="draft" @update:storyline="(s) => draft = s" />
@@ -129,8 +147,9 @@
         <Button v-if="review?.edited" label="Reset to automatic" text severity="secondary" icon="pi pi-undo" @click="resetDraft" />
         <span class="flex-1"></span>
         <Button label="Close" text @click="reviewOpen = false" />
-        <Button label="Save" outlined :loading="saving" :disabled="!dirty" @click="saveDraft(false)" />
-        <Button label="Save & render" icon="pi pi-video" :loading="saving" :disabled="!YEAR_WRAP_URL" @click="saveDraft(true)" />
+        <Button label="Save" outlined :loading="saving" :disabled="!dirty" @click="saveDraft(null)" />
+        <Button label="Save & render MP4" text :loading="saving" :disabled="!YEAR_WRAP_URL" @click="saveDraft('render')" />
+        <Button :label="videos[review?.id]?.linkId ? 'Save & update link' : 'Save & create link'" icon="pi pi-link" :loading="saving" :disabled="!YEAR_WRAP_URL" @click="saveDraft('link')" />
       </template>
     </Dialog>
 
@@ -164,7 +183,7 @@ import JSZip from 'jszip'
 import YearWrapPlayer from '../components/year-wrap/YearWrapPlayer.vue'
 import StorylineEditor from '../components/year-wrap/StorylineEditor.vue'
 import { useSurveys } from '../composables/useSurveys.js'
-import { useYearWrap, videoState, SEGMENT_LABELS } from '../composables/useYearWrap.js'
+import { useYearWrap, videoState, shareUrl, SEGMENT_LABELS } from '../composables/useYearWrap.js'
 import { computeCurrentAcademicYear } from '../composables/useAcademicYear.js'
 import { YEAR_WRAP_URL } from '../utils/yearWrapApi.js'
 import { deliverFile, pendingFile, savePending, discardPending } from '../utils/deliverFile.js'
@@ -175,8 +194,8 @@ const route = useRoute()
 const router = useRouter()
 const { schools, loadSchools } = useSurveys()
 const {
-  classes, classRows, videos, loadingRoster, loadingClass, surveyYear,
-  loadRoster, loadClass, saveEdit, render, cancel, stopPolling,
+  school, classes, classRows, videos, loadingRoster, loadingClass, surveyYear,
+  loadRoster, loadClass, saveEdit, render, publish, unpublish, cancel, stopPolling,
 } = useYearWrap()
 
 const schoolId = ref(route.query.school || null)
@@ -258,6 +277,73 @@ async function cancelQueued() {
   })
 }
 
+// ── share links ─────────────────────────────────────────────────────────────
+const publishing = ref(false)
+const linkedRows = computed(() => classRows.value.filter((r) => videos.value[r.id]?.linkId))
+const linkOf = (row) => shareUrl(videos.value[row.id]?.linkId)
+const firstNameOf = (row) => row.storyline?.scenes?.[0]?.name || String(row.name || '').split(' ')[0]
+
+function confirmPublish(rows) {
+  const already = rows.filter((r) => videos.value[r.id]?.linkId).length
+  confirm.require({
+    header: 'Create share links',
+    message: `Create links for ${rows.length} student${rows.length > 1 ? 's' : ''} in ${classId.value}?`
+      + (already ? ` ${already} already have a link — theirs stay the same and show the latest version.` : '')
+      + ' Anyone with a link can watch that one video, so send each link only to that child\'s family.',
+    acceptLabel: 'Create links',
+    rejectLabel: 'Cancel',
+    accept: async () => {
+      publishing.value = true
+      await guard(async () => {
+        const r = await publish(rows)
+        toast.add({ severity: 'success', summary: `${r.published} link${r.published === 1 ? '' : 's'} ready`, detail: 'Copy, send on WhatsApp, or download them all as a CSV.', life: 4000 })
+        selection.value = []
+      })
+      publishing.value = false
+    },
+  })
+}
+
+function confirmRevoke(rows) {
+  confirm.require({
+    header: 'Revoke link',
+    message: `Stop ${rows.map((r) => r.name).join(', ')}'s link from working? Anyone who opens it will see "link expired". Creating a link again gives a new address.`,
+    acceptLabel: 'Revoke',
+    rejectLabel: 'Keep',
+    acceptClass: 'p-button-danger',
+    accept: () => guard(async () => {
+      await unpublish(rows)
+      toast.add({ severity: 'info', summary: 'Link revoked', life: 2500 })
+    }),
+  })
+}
+
+async function copyLink(row, { quiet = false } = {}) {
+  const url = linkOf(row)
+  try {
+    await navigator.clipboard.writeText(url)
+    if (!quiet) toast.add({ severity: 'success', summary: 'Link copied', detail: url, life: 2500 })
+  } catch {
+    window.prompt('Copy this link:', url)
+  }
+}
+
+function shareMessage(row) {
+  const from = school.value?.name ? ` from ${school.value.name}` : ''
+  return `Here is ${firstNameOf(row)}'s year in review${from} 🎉 Tap to watch: ${linkOf(row)}`
+}
+const whatsapp = (row) => window.open(`https://wa.me/?text=${encodeURIComponent(shareMessage(row))}`, '_blank', 'noopener')
+const openLink = (row) => window.open(linkOf(row), '_blank', 'noopener')
+
+function downloadLinks() {
+  const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`
+  const lines = [['Student', 'Class', 'Link', 'WhatsApp message'].map(esc).join(',')]
+  for (const r of linkedRows.value) lines.push([r.name, r.classId, linkOf(r), shareMessage(r)].map(esc).join(','))
+  // BOM so Excel reads the emoji and Indian names correctly.
+  const blob = new Blob(['\ufeff' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' })
+  deliverFile(blob, `year-wrap-links_${classId.value}_${academicYear.value}.csv`)
+}
+
 // ── review dialog ───────────────────────────────────────────────────────────
 const reviewOpen = ref(false)
 const review = ref(null)
@@ -273,20 +359,28 @@ function openReview(row) {
 function resetDraft() {
   draft.value = JSON.parse(JSON.stringify(review.value.auto))
 }
-async function saveDraft(andRender) {
+// then: null (just save) | 'link' (save + create/update the share link) | 'render' (save + MP4)
+async function saveDraft(then) {
   saving.value = true
   try {
     await guard(async () => {
       const isAuto = JSON.stringify(draft.value) === JSON.stringify(review.value.auto)
       if (dirty.value || (isAuto && review.value.edited)) await saveEdit(review.value.id, isAuto ? null : draft.value)
       const row = classRows.value.find((r) => r.id === review.value.id)
-      if (andRender) {
+      // A sent link always shows the latest saved version.
+      const linked = !!videos.value[row.id]?.linkId
+      if (then === 'link' || linked) await publish([row])
+      if (then === 'render') {
         await render([row], academicYear.value)
         toast.add({ severity: 'success', summary: 'Saved and queued', life: 3000 })
         reviewOpen.value = false
+      } else if (then === 'link') {
+        await copyLink(row, { quiet: true })
+        toast.add({ severity: 'success', summary: linked ? 'Saved — link updated' : 'Link created', detail: 'Copied to clipboard', life: 3000 })
+        reviewOpen.value = false
       } else {
         review.value = row
-        toast.add({ severity: 'success', summary: 'Saved', life: 2000 })
+        toast.add({ severity: 'success', summary: linked ? 'Saved — link updated' : 'Saved', life: 2000 })
       }
     })
   } finally {

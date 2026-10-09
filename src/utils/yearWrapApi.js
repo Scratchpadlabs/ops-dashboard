@@ -36,3 +36,5 @@ export const yearWrapStatus = ({ schoolId, studentIds }) => post('/status', { sc
 export const yearWrapSave = ({ schoolId, studentId, storyline }) => post('/save', { schoolId, studentId, storyline })
 export const yearWrapRender = ({ schoolId, academicYear, items }) => post('/render', { schoolId, academicYear, items })
 export const yearWrapCancel = ({ schoolId }) => post('/cancel', { schoolId })
+export const yearWrapPublish = ({ schoolId, items }) => post('/publish', { schoolId, items })
+export const yearWrapUnpublish = ({ schoolId, studentIds }) => post('/unpublish', { schoolId, studentIds })

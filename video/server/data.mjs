@@ -6,6 +6,7 @@
  * roster carries ids and class fields only, and answers are fetched per batch
  * of student ids, so payloads stay bounded by class size, not school size.
  */
+import { randomBytes } from 'node:crypto'
 import { AAM_SURVEY_IDS } from '../src/storyline/roster.mjs'
 
 export const VIDEOS = 'year_wrap_videos'
@@ -158,4 +159,78 @@ export function checkId(id, what = 'id') {
 
 export function httpError(status, message) {
   return Object.assign(new Error(message), { status })
+}
+
+// ── share links ────────────────────────────────────────────────────────────
+// A link is an unguessable id (128 random bits) → one student's storyline.
+// The parent's page plays it in the browser, so nothing is rendered or
+// stored but the storyline JSON (~5 KB). Links live in a top-level
+// collection so the public read needs only the id, never a school path.
+export const LINKS = 'year_wrap_links'
+
+export function newLinkId() {
+  return randomBytes(16).toString('base64url')
+}
+
+/**
+ * Publishes (or re-publishes) storylines as share links. A student keeps the
+ * same link across re-publishes, so fixing a typo after the link has been
+ * sent updates what the parent sees.
+ */
+export async function publishLinks(db, schoolId, items, email, now) {
+  if (!Array.isArray(items) || !items.length) throw httpError(400, 'Nothing to publish')
+  if (items.length > 300) throw httpError(400, 'At most 300 links per request')
+  const checked = items.map(({ studentId, storyline }) => ({ studentId: checkId(studentId, 'studentId'), storyline: checkStoryline(storyline) }))
+  const videos = db.collection('schools').doc(schoolId).collection(VIDEOS)
+  const existing = await db.getAll(...checked.map((x) => videos.doc(x.studentId)))
+  const batch = db.batch()
+  const links = {}
+  checked.forEach(({ studentId, storyline }, i) => {
+    const linkId = existing[i].exists && existing[i].get('linkId') ? existing[i].get('linkId') : newLinkId()
+    links[studentId] = linkId
+    batch.set(db.collection(LINKS).doc(linkId), {
+      schoolId, studentId, storyline: publicStoryline(storyline), publishedBy: email, publishedAt: now,
+    }, { merge: true })
+    batch.set(videos.doc(studentId), {
+      linkId, linkPublishedAt: now, studentName: storyline.student?.name || '', className: storyline.student?.className || '',
+      segment: storyline.segment,
+    }, { merge: true })
+  })
+  await batch.commit()
+  return { links }
+}
+
+export async function unpublishLinks(db, schoolId, studentIds) {
+  const ids = [...new Set(studentIds || [])].map((x) => checkId(x, 'studentId'))
+  if (!ids.length) return { revoked: 0 }
+  const videos = db.collection('schools').doc(schoolId).collection(VIDEOS)
+  const snaps = await db.getAll(...ids.map((id) => videos.doc(id)))
+  const batch = db.batch()
+  let revoked = 0
+  for (const s of snaps) {
+    const linkId = s.exists ? s.get('linkId') : null
+    if (!linkId) continue
+    batch.delete(db.collection(LINKS).doc(linkId))
+    batch.set(videos.doc(s.id), { linkId: null, linkPublishedAt: null }, { merge: true })
+    revoked++
+  }
+  await batch.commit()
+  return { revoked }
+}
+
+/** Public: the storyline behind a link, or null. */
+export async function readLink(db, linkId) {
+  if (!/^[A-Za-z0-9_-]{16,64}$/.test(String(linkId || ''))) return null
+  const snap = await db.collection(LINKS).doc(linkId).get()
+  return snap.exists ? snap.get('storyline') || null : null
+}
+
+/** What a parent's browser receives: what the video shows, nothing else. */
+export function publicStoryline(s) {
+  return {
+    segment: s.segment, fps: s.fps, durationInFrames: s.durationInFrames, academicYear: s.academicYear || '',
+    student: { name: s.student?.name || '', className: s.student?.className || '' },
+    school: { name: s.school?.name || '' },
+    scenes: s.scenes,
+  }
 }

@@ -9,6 +9,10 @@
     ],
     "rewrites": [
       {
+        "source": "/w/**",
+        "destination": "/wrap.html"
+      },
+      {
         "source": "**",
         "destination": "/index.html"
       }

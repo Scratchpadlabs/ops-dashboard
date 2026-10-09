@@ -73,6 +73,29 @@ A student's segment comes from the AAM survey they answered (`-prep` or
 Preparatory and 6–8 is Middle. The academic year is taken from the AAM1
 survey dates, and ops can change it.
 
+## Share links (recommended: no rendering)
+
+**Create links** gives each student a private link such as
+`https://clarified-1501.web.app/w/k3J9…` (the id is 128 random bits).
+Opening it plays the video **in the parent's browser**, using the same
+template and music, from `wrap.html` / `src/wrap/main.jsx`. That page is a
+separate, light entry with no dashboard code and no login.
+
+- Nothing is rendered or stored except the storyline, about 5 KB per child,
+  in `year_wrap_links/{linkId}`.
+- Re-publishing (or saving an edit in Review) keeps the same link and
+  updates what parents see within a minute.
+- **Revoke** deletes the link. Creating a link again issues a new address.
+- **Download links (CSV)** gives Student, Class, Link and a ready-to-send
+  WhatsApp message.
+- The parent's page only receives what the video shows (names, class,
+  school, answers), never ids or review notes.
+- Hosting routes `/w/**` to `wrap.html` (`firebase.json`). The page reads
+  the storyline from the service's public `GET /w/:linkId`, so the
+  service's `ALLOWED_ORIGINS` must include the Hosting domain.
+
+MP4 rendering (below) is still there for anyone who needs a file.
+
 ## Render service API
 
 All routes are `POST` with a JSON body. Each call needs a Firebase ID token
@@ -87,6 +110,9 @@ from an ops admin, sent as `Authorization: Bearer …`. The allowlist mirrors
 | `/save` | `{schoolId, studentId, storyline \| null}` | saves an edit (`null` resets it) |
 | `/render` | `{schoolId, academicYear, items: [{studentId, storyline}]}` | queues renders |
 | `/cancel` | `{schoolId}` | drops this school's queued renders |
+| `/publish` | `{schoolId, items: [{studentId, storyline}]}` | creates or updates share links, returns `{links: {studentId: linkId}}` |
+| `/unpublish` | `{schoolId, studentIds}` | revokes those links |
+| `GET /w/:linkId` | — | **public, no sign-in**: the storyline a link plays |
 
 State lives in `schools/{schoolId}/year_wrap_videos/{studentId}` and moves
 through `queued → rendering (progress) → done (videoUrl, thumbUrl) | failed (error)`.
@@ -95,8 +121,9 @@ Videos are stored at `year_wrap/{schoolId}/{academicYear}/{studentId}.mp4`
 (plus a `.jpg` thumbnail) in the default bucket, behind a Firebase download
 token.
 
-The queue is held in memory and renders one video at a time, about 80 s for
-a 1-minute video on 4 vCPU. If the instance restarts, its queued students
+The queue is held in memory and renders one video at a time, about 40 s for
+a 1-minute video on 4 vCPU. Output is 720×1280 (`OUTPUT` in
+`server/render.mjs`), about 5 MB per video. If the instance restarts, its queued students
 stay "queued". After 30 minutes the page shows them as "Stuck — render
 again".
 
