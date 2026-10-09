@@ -6,6 +6,7 @@ import { PDFDocument } from 'pdf-lib'
 import {
   LAYOUT, layoutName, balancedSplit, schoolRuns, wrapRuns, hasUnprintable,
   defaultPrintedSchool, certificateFilename, buildTeacherCertificatesPDF,
+  certificateName, isSampleName, defaultBlankCount,
 } from '../src/utils/teacherCertificatePDF.js'
 
 const read = (p) => new Uint8Array(readFileSync(new URL(`../${p}`, import.meta.url)))
@@ -83,4 +84,33 @@ test('TC-08 builds one A4 landscape page per teacher, blank names included', asy
   assert.equal(doc.getPageCount(), 3)
   const { width, height } = doc.getPage(0).getSize()
   assert.ok(Math.abs(width - 841.89) < 0.01 && Math.abs(height - 595.28) < 0.01)
+})
+
+test('TC-09 "teacher" is dropped from names, with any dash or comma it leaves behind', () => {
+  assert.equal(certificateName('Vinaya Teacher'), 'Vinaya')
+  assert.equal(certificateName('vinaya teacher'), 'Vinaya'.toLowerCase())
+  assert.equal(certificateName('Teacher - Vinaya'), 'Vinaya')
+  assert.equal(certificateName('Vinaya Patil, Teacher'), 'Vinaya Patil')
+  assert.equal(certificateName('Science Teachers Rekha'), 'Science Rekha')
+  assert.equal(certificateName('Teacher'), '')
+  // Only the whole word: names that merely contain it are untouched.
+  assert.equal(certificateName('Teacherina Rao'), 'Teacherina Rao')
+  assert.deepEqual(layoutName('Vinaya Teacher', mono).map(l => l.text), ['VINAYA'])
+})
+
+test('TC-10 sample / demo accounts are recognised', () => {
+  assert.equal(isSampleName('Sample Teacher'), true)
+  assert.equal(isSampleName('sample 2'), true)
+  assert.equal(isSampleName('SAMPLE'), true)
+  assert.equal(isSampleName('Asha Rao'), false)
+  assert.equal(isSampleName('Samplewala Rao'), false)
+})
+
+test('TC-11 blank certificates default to 10% of the teachers, rounded up, at least 1', () => {
+  assert.equal(defaultBlankCount(0), 1)
+  assert.equal(defaultBlankCount(5), 1)
+  assert.equal(defaultBlankCount(10), 1)
+  assert.equal(defaultBlankCount(11), 2)
+  assert.equal(defaultBlankCount(23), 3)
+  assert.equal(defaultBlankCount(100), 10)
 })

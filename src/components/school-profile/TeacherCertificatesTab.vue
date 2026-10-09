@@ -86,6 +86,10 @@
         <Textarea v-model="extraNames" class="w-full" rows="2" autoResize placeholder="e.g. a guest teacher who attended the workshop" />
       </div>
 
+      <p v-if="skipped.length" class="mt-3 text-xs text-slate-500">
+        Skipped {{ skipped.length }} sample/demo {{ skipped.length === 1 ? 'entry' : 'entries' }}: {{ skipped.join(', ') }}.
+        "Teacher" is left out of names on the certificate.
+      </p>
       <div v-if="warnings.length" class="mt-3 text-xs text-amber-700 bg-amber-50 rounded-lg px-3 py-2 space-y-0.5">
         <div v-for="w in warnings" :key="w">{{ w }}</div>
       </div>
@@ -102,11 +106,11 @@
       <div class="flex items-end gap-3 flex-wrap pt-3 border-t border-slate-100">
         <div>
           <label class="form-label">Blank certificates</label>
-          <InputNumber v-model="blankCount" :min="1" :max="200" showButtons class="w-32" inputClass="w-full" />
+          <InputNumber v-model="blankCount" :min="1" :max="200" showButtons class="w-32" inputClass="w-full" @input="blankEdited = true" />
         </div>
         <Button label="Download blank" icon="pi pi-file" outlined :loading="busy === 'blank'"
                 :disabled="!canGenerate || !!busy" @click="generate('blank')" />
-        <span class="text-xs text-slate-400">School and year printed, name left blank to write by hand.</span>
+        <span class="text-xs text-slate-400">School and year printed, name left blank to write by hand. Default: 10% of the teachers.</span>
       </div>
       <div v-if="pendingFile" class="flex items-center gap-3 bg-emerald-50 rounded-lg px-3 py-2">
         <i class="pi pi-check-circle text-emerald-600"></i>
@@ -141,6 +145,7 @@ import { pendingFile, savePending, deliverFile } from '../../utils/deliverFile.j
 import { guessAppSchool } from '../../utils/studentPamphletPDF.js'
 import {
   buildTeacherCertificatesPDF, loadCertificateAssets, certificateFilename, hasUnprintable, defaultPrintedSchool,
+  certificateName, isSampleName, defaultBlankCount,
 } from '../../utils/teacherCertificatePDF.js'
 
 const props = defineProps({
@@ -204,6 +209,7 @@ const canGenerate = computed(() => !!printedSchool.value.trim() && !!academicYea
 
 // ── Teachers ──────────────────────────────────────────────────────────────
 const staff = ref([])
+const skipped = ref([])
 const loadingStaff = ref(false)
 const staffError = ref('')
 const extraNames = ref('')
@@ -212,15 +218,19 @@ const search = ref('')
 
 async function loadStaff(id) {
   staff.value = []
+  skipped.value = []
   excluded.value = new Set()
   staffError.value = ''
   if (!id) return
   loadingStaff.value = true
   try {
     const snap = await getDocs(query(schoolCollection(id, 'staffs'), orderBy('name')))
-    staff.value = snap.docs
+    const all = snap.docs
       .map(d => ({ key: d.id, name: String(d.data().name || '').trim(), type: d.data().type || 'teacher' }))
-      .filter(s => s.name)
+    // Sample/demo accounts, and entries that are only "Teacher", get no certificate.
+    const keep = (s) => !isSampleName(s.name) && certificateName(s.name)
+    staff.value = all.filter(keep)
+    skipped.value = all.filter(s => !keep(s)).map(s => s.name || '(no name)')
   } catch (e) {
     staffError.value = `Could not load teachers: ${e.message}`
   } finally {
@@ -229,7 +239,7 @@ async function loadStaff(id) {
 }
 watch(appSchoolId, loadStaff)
 
-const extraPeople = computed(() => extraNames.value.split('\n').map(n => n.trim()).filter(Boolean)
+const extraPeople = computed(() => extraNames.value.split('\n').map(n => n.trim()).filter(n => certificateName(n))
   .map((name, i) => ({ key: `extra:${i}:${name}`, name, type: '—', extra: true })))
 const allPeople = computed(() => [...staff.value, ...extraPeople.value])
 const visible = computed(() => {
@@ -243,7 +253,7 @@ function setIncluded(list, on) {
   for (const p of list) on ? next.delete(p.key) : next.add(p.key)
   excluded.value = next
 }
-const printedName = (name) => String(name || '').replace(/\s+/g, ' ').trim().toUpperCase()
+const printedName = (name) => certificateName(name).toUpperCase()
 
 const warnings = computed(() => {
   const out = []
@@ -263,7 +273,10 @@ const warnings = computed(() => {
 // ── Generate ──────────────────────────────────────────────────────────────
 const busy = ref('')
 const progress = ref('')
-const blankCount = ref(5)
+// 10% of the school's teachers (rounded up) until someone types a number.
+const blankCount = ref(defaultBlankCount(0))
+const blankEdited = ref(false)
+watch(() => staff.value.length, n => { if (!blankEdited.value) blankCount.value = defaultBlankCount(n) }, { immediate: true })
 let assetsPromise = null
 
 async function build(teachers) {
