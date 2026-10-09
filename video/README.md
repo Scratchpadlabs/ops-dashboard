@@ -95,8 +95,9 @@ Videos are stored at `year_wrap/{schoolId}/{academicYear}/{studentId}.mp4`
 (plus a `.jpg` thumbnail) in the default bucket, behind a Firebase download
 token.
 
-The queue is held in memory and renders one video at a time, about 80 s for
-a 1-minute video on 4 vCPU. If the instance restarts, its queued students
+The queue is held in memory and renders one video at a time, about 40 s for
+a 1-minute video on 4 vCPU. Output is 720×1280 (`OUTPUT` in
+`server/render.mjs`), about 5 MB per video. If the instance restarts, its queued students
 stay "queued". After 30 minutes the page shows them as "Stuck — render
 again".
 
