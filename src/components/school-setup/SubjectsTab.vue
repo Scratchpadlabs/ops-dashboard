@@ -272,7 +272,7 @@ import { guardedSetDoc, guardedUpdateDoc, saveErrorMessage } from '../../schemas
 import { db, auth } from '../../firebase/config'
 import { toCsv, downloadCsv } from '../../utils/csv.js'
 import { useEducationKB } from '../../composables/useEducationKB.js'
-import { loadGoalsLibrary, normalizeGrade } from '../../composables/useImport.js'
+import { loadGoalsLibrary, normalizeGrade } from '../../utils/goalsLibrary.js'
 import { SUBJECT, COSCHOLASTIC, classify as classifyValue } from '../../utils/educationKB.js'
 import { checkEnteredMarksCoScholastic, isCoScholasticArea, slugify as slugifyText } from '../../utils/assessmentHelpers.js'
 

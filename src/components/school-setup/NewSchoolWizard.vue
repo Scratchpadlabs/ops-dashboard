@@ -122,48 +122,6 @@
           <p class="text-xs text-slate-400">Every grade gets every section. Fine-tune individual classes later in Classes &amp; Teachers.</p>
         </div>
 
-        <div v-else-if="form.structureRoute === 'import'" class="space-y-2">
-          <div class="flex items-end gap-2">
-            <div class="flex-1">
-              <label class="form-label">Staged student file</label>
-              <Select v-model="importJobId" :options="importJobs" optionLabel="label" optionValue="id"
-                placeholder="Pick an uploaded student file" class="w-full"
-                :loading="loadingJobs" @update:modelValue="scanImportJob" />
-            </div>
-            <Button label="Rescan" icon="pi pi-refresh" size="small" outlined
-              :disabled="!importJobId" :loading="scanning" @click="scanImportJob(importJobId)" />
-          </div>
-
-          <p v-if="!importJobs.length && !loadingJobs" class="text-xs text-slate-500">
-            No student file staged for this school yet.
-            <router-link to="/import" class="text-violet-600 underline">Upload one</router-link> —
-            you do not need any classes configured first.
-          </p>
-
-          <div v-if="importScan" class="text-xs text-slate-500">
-            Scanned {{ importScan.rowsScanned }} row(s) · {{ importScan.grades.length }} grade(s)
-            <span v-if="importScan.rowsWithoutGrade" class="text-amber-600">
-              · {{ importScan.rowsWithoutGrade }} row(s) had no readable grade
-            </span>
-          </div>
-
-          <div v-if="derivedClasses.length" class="border border-slate-200 rounded-lg divide-y divide-slate-100 max-h-64 overflow-auto">
-            <label v-for="c in derivedClasses" :key="c.docId"
-              class="flex items-center gap-2 px-3 py-1.5 text-sm cursor-pointer hover:bg-slate-50">
-              <Checkbox v-model="c.accepted" binary />
-              <span class="font-mono text-xs w-28">{{ c.docId }}</span>
-              <span class="text-xs text-slate-400">{{ c.studentCount }} student(s)</span>
-              <span v-if="c.sectionInferred"
-                class="text-[10px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-700"
-                v-tooltip="'No section in the file for this grade — defaulted to ' + c.section + '. Edit later in Classes &amp; Teachers.'">
-                section assumed
-              </span>
-            </label>
-          </div>
-
-          <div v-if="importError" class="text-sm text-red-500 bg-red-50 rounded-lg px-3 py-2">{{ importError }}</div>
-        </div>
-
         <div v-else class="text-sm text-slate-600 bg-slate-50 rounded-lg px-3 py-2.5">
           A config template will be applied after the school is created — pick one in the
           <b>Templates</b> tab. Templates carry terms, scales, assessments and co-scholastic
@@ -199,11 +157,9 @@
             </ul>
 
             <div class="text-sm text-blue-900 bg-white/70 rounded px-3 py-2">
-              <b>Whatever format they already have is fine.</b>
-              Excel or CSV, one sheet or many, headers part-way down the page, merged
-              header rows, class written as “I”, “1”, “Grade 1” or “Std I” — the importer
-              handles all of it and shows you a review screen before anything is written.
-              Do not send them away to reformat a file.
+              <b>Send them the templates below.</b>
+              The Teachers and Students tabs import a CSV with these columns and show a
+              preview before anything is written.
             </div>
 
             <div>
@@ -329,8 +285,8 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, watch, onMounted } from 'vue'
-import { setDoc, getDoc, getDocs, query, where, serverTimestamp, writeBatch } from 'firebase/firestore'
+import { ref, reactive, computed, onMounted } from 'vue'
+import { setDoc, getDoc, serverTimestamp, writeBatch } from 'firebase/firestore'
 import { useToast } from 'primevue/usetoast'
 import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
@@ -343,13 +299,10 @@ import ProgressSpinner from 'primevue/progressspinner'
 import WizardShell from '../wizard/WizardShell.vue'
 import { useWizardRun } from '../../composables/useWizardRun.js'
 import { captionFor } from '../../utils/wizardCaptions.js'
-import {
-  rootSchoolDoc, schoolDoc, stagingImportsCollection, stagingImportRowsCollection,
-} from '../../firebase/schoolCollections.js'
+import { rootSchoolDoc, schoolDoc } from '../../firebase/schoolCollections.js'
 import { db, auth } from '../../firebase/config'
 import { checkNewSchoolRemote, schoolStateRemote } from '../../utils/api.js'
 import { slugifySchoolId } from '../../utils/wizardHelpers.js'
-import { deriveClassStructure } from '../../utils/deriveClasses.js'
 import {
   STUDENT_COLUMNS, TEACHER_COLUMNS, studentTemplateCsv, teacherTemplateCsv, downloadCsv,
 } from '../../utils/importTemplates.js'
@@ -395,7 +348,6 @@ const GRADE_OPTIONS = ['Nursery', 'LKG', 'UKG', 'I', 'II', 'III', 'IV', 'V', 'VI
                         'VII', 'VIII', 'IX', 'X', 'XI', 'XII']
 const STRUCTURE_ROUTES = [
   { value: 'manual', label: 'Enter manually', hint: 'Pick grades and sections' },
-  { value: 'import', label: 'From a student file', hint: 'Derive it from a staged import' },
   { value: 'template', label: 'Apply a template', hint: 'Use a saved config bundle' },
 ]
 const REVIEW_COUNTS = [
@@ -417,8 +369,8 @@ const HANDOFF_STEPS = {
     placeholder: 'e.g. 2 terms, 5-point scale, template applied',
   },
   'new.people': {
-    body: 'Import teachers first so class-teacher links resolve, then the student roster. The importer cleans names, emails and grades, and shows a review screen before anything is written.',
-    links: [{ to: '/import', label: 'Open Import' }, { to: 'classes-teachers', label: 'Classes & Teachers' }],
+    body: 'Import teachers first so class-teacher links resolve, then the student roster. Use the CSV import on the Teachers and Students tabs; each shows a preview before anything is written.',
+    links: [{ to: 'teachers', label: 'Teachers' }, { to: 'students', label: 'Students' }, { to: 'classes-teachers', label: 'Classes & Teachers' }],
     placeholder: 'e.g. 21 teachers, 342 students',
   },
   'new.surveys': {
@@ -461,83 +413,10 @@ function downloadTeacherTemplate() {
 }
 
 const previewClasses = computed(() => {
-  // Derived from an uploaded file — the whole point of this route is that no
-  // classes exist yet, so nothing here consults Firestore.
-  if (form.structureRoute === 'import') {
-    return derivedClasses.value.filter(c => c.accepted).map(c => c.docId)
-  }
   if (form.structureRoute !== 'manual') return []
   const sections = form.sections.split(',').map(s => s.trim()).filter(Boolean)
   if (!form.grades.length || !sections.length) return []
   return form.grades.flatMap(g => sections.map(s => `${g}_${s}`))
-})
-
-// ── "From a student file" ───────────────────────────────────────────────────
-// Reads the staged rows directly and scans the grade/section columns. It does
-// NOT go through buildCommitPlan: that validates every row against configured
-// classes, which is exactly the circular dependency this step exists to break.
-const importJobs = ref([])
-const importJobId = ref(null)
-const importScan = ref(null)
-const derivedClasses = ref([])
-const loadingJobs = ref(false)
-const scanning = ref(false)
-const importError = ref('')
-
-async function loadImportJobs() {
-  const sid = run.value?.school_id
-  if (!sid) return
-  loadingJobs.value = true
-  importError.value = ''
-  try {
-    const snap = await getDocs(query(stagingImportsCollection(), where('school_id', '==', sid)))
-    importJobs.value = snap.docs
-      .map(d => ({ id: d.id, ...d.data() }))
-      .filter(j => j.entity === 'students')
-      .sort((a, b) => (b.created_at?.seconds || 0) - (a.created_at?.seconds || 0))
-      .map(j => ({
-        id: j.id,
-        label: `${(j.source_files || []).map(f => f.name).join(', ') || j.id} · ${j.row_count ?? '?'} rows · ${j.status}`,
-      }))
-    if (importJobs.value.length === 1) {
-      importJobId.value = importJobs.value[0].id
-      await scanImportJob(importJobId.value)
-    }
-  } catch (e) {
-    console.error(e)
-    importError.value = 'Could not list staged imports.'
-  } finally {
-    loadingJobs.value = false
-  }
-}
-
-async function scanImportJob(jobId) {
-  if (!jobId) return
-  scanning.value = true
-  importError.value = ''
-  try {
-    const snap = await getDocs(stagingImportRowsCollection(jobId))
-    // Excluded rows are still scanned: a row excluded for a missing NAME still
-    // tells us its class exists.
-    const rows = snap.docs.map(d => d.data()?.data || {})
-    const scan = deriveClassStructure(rows)
-    importScan.value = scan
-    derivedClasses.value = scan.classes
-    if (!scan.classes.length) {
-      importError.value = scan.rowsScanned
-        ? 'No grade values could be read from this file — check it has a class/grade column.'
-        : 'That staged import has no rows.'
-    }
-  } catch (e) {
-    console.error(e)
-    importError.value = 'Could not read the staged import.'
-  } finally {
-    scanning.value = false
-  }
-}
-
-watch(() => form.structureRoute, (route) => {
-  if (route === 'import' && !importJobs.value.length) loadImportJobs()
 })
 
 /**
@@ -563,8 +442,8 @@ const pendingData = computed(() => {
   if (!state.value) return []
   const c = state.value.counts
   const out = []
-  if (!c.staffs) out.push({ key: 'staffs', label: 'Teachers not imported yet', to: '/import', action: 'Import' })
-  if (!c.students) out.push({ key: 'students', label: 'Students not imported yet', to: '/import', action: 'Import' })
+  if (!c.staffs) out.push({ key: 'staffs', label: 'Teachers not imported yet', to: 'teachers', action: 'Import' })
+  if (!c.students) out.push({ key: 'students', label: 'Students not imported yet', to: 'students', action: 'Import' })
   if (c.students && !c.students_with_surveys) out.push({ key: 'surveys', label: 'Surveys not assigned yet', to: '/surveys', action: 'Assign' })
   return out
 })
@@ -593,8 +472,8 @@ const canContinue = computed(() => {
     if (check.value.similar?.length && !form.dupeAcknowledged) return false
     return true
   }
-  // Manual entry and "from a student file" both compose a class list the
-  // wizard writes itself on Continue, so either can advance on that list.
+  // Manual entry composes a class list the wizard writes itself on Continue,
+  // so it can advance on that list.
   // 'template' still defers to another screen and keeps the old gate.
   if (currentStep.value === 'new.structure' && form.structureRoute !== 'template') {
     return previewClasses.value.length > 0 || requirementMet.value
@@ -787,14 +666,9 @@ async function commitStep(key) {
 
   if (key === 'new.structure') {
     const sid = run.value?.school_id
-    // 'import' now produces a real class list (previewClasses), so it writes
-    // like the manual route. Only 'template' still defers to another screen.
+    // Only 'template' defers to another screen; manual writes its class list.
     if (form.structureRoute === 'template') return 'From template'
     const classes = previewClasses.value
-    if (form.structureRoute === 'import' && !classes.length) {
-      error.value = 'Pick a staged student file and accept at least one class first.'
-      return false
-    }
     for (let i = 0; i < classes.length; i += 400) {
       const batch = writeBatch(db)
       for (const cid of classes.slice(i, i + 400)) {

@@ -470,7 +470,7 @@ const POST_TASKS = [
   { key: 'surveys', label: "Assign this session's surveys", to: '/surveys', action: 'Open Surveys' },
   { key: 'teachers', label: 'Verify the teacher list and class-teacher links', to: 'classes-teachers', action: 'Classes & Teachers' },
   { key: 'classes', label: 'Confirm classes match the new session', to: 'classes-teachers', action: 'Classes' },
-  { key: 'intake', label: 'Import the new intake', to: '/import', action: 'Open Import' },
+  { key: 'intake', label: 'Import the new intake', to: 'students', action: 'Students' },
 ]
 
 const wizard = useWizardRun('reset', STEPS)

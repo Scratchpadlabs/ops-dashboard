@@ -117,17 +117,6 @@ export async function generateOnboardingPDF(school, activeYear) {
   downloadBlob(blob, `Onboarding_${school.name}_${activeYear || '2026-27'}.pdf`)
 }
 
-// ── Import extraction + commit ────────────────────────────────────────────────
-// Both are Firebase callable functions (httpsCallable), not raw fetch(): the
-// callable protocol handles CORS/preflight itself and forwards the signed-in
-// user's Firebase Auth ID token as req.auth, which process_import/commit_import
-// verify server-side against the ops-admin allowlist. The region MUST match
-// where the functions are deployed (asia-south1, see ../firebase/config.js) —
-// a wrong or missing region silently targets us-central1 and looks exactly
-// like a CORS failure in the browser.
-const processImportCallable = httpsCallable(functions, 'process_import', { timeout: 540_000 })
-const commitImportCallable = httpsCallable(functions, 'commit_import', { timeout: 120_000 })
-
 // Education-KB LLM fallback — LAST RESORT, one call per never-before-seen
 // value. Callers must check the deterministic KB first (useEducationKB.js
 // does); the function itself re-checks and short-circuits rather than
@@ -511,47 +500,6 @@ export async function sheetsOverviewRemote({ schoolId }) {
 export function downloadReport({ filename, mime, content_base64 }) {
   const bytes = Uint8Array.from(atob(content_base64), c => c.charCodeAt(0))
   downloadBlob(new Blob([bytes], { type: mime }), filename)
-}
-
-export async function startProcessImport({ schoolId, jobId, entity, files }) {
-  const res = await processImportCallable({ schoolId, jobId, entity, files })
-  return res.data
-}
-
-export async function commitImportRemote({ schoolId, jobId, entity, items, overwriteExisting }) {
-  const res = await commitImportCallable({ schoolId, jobId, entity, items, overwriteExisting })
-  return res.data
-}
-
-// ── Custom import templates ───────────────────────────────────────────────
-// Deliberately callable-only, never a direct Firestore read/write from the
-// browser — import_templates has no firestore.rules entry at all, on
-// purpose (see functions/generate_import/import_templates.py's module
-// docstring: this Firestore project is shared with other apps and a past
-// rules deploy broke them).
-const listImportTemplatesCallable = httpsCallable(functions, 'list_import_templates', { timeout: 30_000 })
-const getImportTemplateCallable = httpsCallable(functions, 'get_import_template', { timeout: 30_000 })
-const saveImportTemplateCallable = httpsCallable(functions, 'save_import_template', { timeout: 30_000 })
-const deleteImportTemplateCallable = httpsCallable(functions, 'delete_import_template', { timeout: 30_000 })
-
-export async function listImportTemplatesRemote({ includeArchived } = {}) {
-  const res = await listImportTemplatesCallable({ includeArchived: !!includeArchived })
-  return res.data.templates
-}
-
-export async function getImportTemplateRemote({ slug }) {
-  const res = await getImportTemplateCallable({ slug })
-  return res.data.template
-}
-
-export async function saveImportTemplateRemote(templateData) {
-  const res = await saveImportTemplateCallable(templateData)
-  return res.data.template
-}
-
-export async function deleteImportTemplateRemote({ slug }) {
-  const res = await deleteImportTemplateCallable({ slug })
-  return res.data
 }
 
 // ── Pending Items letter (v2: draft -> edit -> render compose flow) ────────

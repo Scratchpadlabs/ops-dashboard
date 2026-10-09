@@ -7,10 +7,7 @@ import Tools from '../views/Tools.vue'
 import Schools from '../views/Schools.vue'
 import SchoolProfile from '../views/SchoolProfile.vue'
 import SchoolSetup from '../views/SchoolSetup.vue'
-import Import from '../views/Import.vue'
 import Surveys from '../views/Surveys.vue'
-import ImportReview from '../views/ImportReview.vue'
-import ImportTemplates from '../views/ImportTemplates.vue'
 import AapRemarks from '../views/AapRemarks.vue'
 import SmartRemarks from '../views/SmartRemarks.vue'
 import Quotations from '../views/Quotations.vue'
@@ -29,12 +26,9 @@ const routes = [
   { path: '/schools',       component: Schools,       name: 'schools' },
   { path: '/schools/:id',   component: SchoolProfile, name: 'school-profile' },
   { path: '/school-setup',  component: SchoolSetup,   name: 'school-setup', meta: { opsAdminOnly: true } },
-  { path: '/import',        component: Import,        name: 'import', meta: { opsAdminOnly: true } },
   { path: '/surveys',       component: Surveys,       name: 'surveys', meta: { opsAdminOnly: true } },
   // Lazy: the video preview pulls in React + Remotion, which no other page needs.
   { path: '/year-wrap',     component: () => import('../views/YearWrap.vue'), name: 'year-wrap', meta: { opsAdminOnly: true } },
-  { path: '/import/:jobId', component: ImportReview,  name: 'import-review', meta: { opsAdminOnly: true } },
-  { path: '/import-templates', component: ImportTemplates, name: 'import-templates', meta: { opsAdminOnly: true } },
   { path: '/aap-remarks',   component: AapRemarks,    name: 'aap-remarks', meta: { opsAdminOnly: true } },
   { path: '/smart-remarks', component: SmartRemarks,  name: 'smart-remarks', meta: { opsAdminOnly: true } },
   { path: '/quotations',    component: Quotations,    name: 'quotations' },

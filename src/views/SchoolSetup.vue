@@ -255,7 +255,7 @@ function onResetTarget(schoolId) {
 /**
  * The wizards hand off to the place that actually does a piece of work rather
  * than reimplementing it. A target is either a tab key on this page or an app
- * route ('/import', '/surveys') — leading slash is the discriminator.
+ * route ('/surveys') — leading slash is the discriminator.
  *
  * Wizard progress lives in Firestore (setup_wizard_runs), not in component
  * state, so leaving for another tab or route and coming back resumes at the

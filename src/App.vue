@@ -287,7 +287,6 @@ const baseNavItems = [
   { to: '/tools',       label: 'Tools',       icon: 'pi pi-wrench' },
   { to: '/schools',     label: 'Schools',     icon: 'pi pi-building' },
   { to: '/school-setup', label: 'School Setup', icon: 'pi pi-shield' },
-  { to: '/import',      label: 'Import',      icon: 'pi pi-cloud-upload' },
   { to: '/surveys',     label: 'Surveys',     icon: 'pi pi-inbox' },
   { to: '/year-wrap',   label: 'Year-Wrap Videos', icon: 'pi pi-video' },
   { to: '/aap-remarks', label: 'AAP Remarks', icon: 'pi pi-comments' },
@@ -299,7 +298,7 @@ const baseNavItems = [
   { to: '/settings',    label: 'Settings',    icon: 'pi pi-cog' },
 ]
 
-const ADMIN_ONLY_NAV_PATHS = ['/school-setup', '/import', '/surveys', '/year-wrap', '/aap-remarks', '/smart-remarks']
+const ADMIN_ONLY_NAV_PATHS = ['/school-setup', '/surveys', '/year-wrap', '/aap-remarks', '/smart-remarks']
 const HIDDEN_NAV_PATHS_BY_EMAIL = {
   'ruchika@ops.clarified.in': ['/expenses'],
 }
@@ -315,8 +314,6 @@ const pageTitles = {
   'tools':        'Tools',
   'schools':      'Schools',
   'school-setup': 'School Setup',
-  'import':       'Import',
-  'import-review':'Review Import',
   'surveys':      'Surveys',
   'aap-remarks':  'AAP Remarks',
   'smart-remarks': 'Smart Remarks',
