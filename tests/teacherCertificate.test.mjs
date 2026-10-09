@@ -1,0 +1,86 @@
+// Run with `npm test` (node's built-in test runner — no extra dependencies).
+import { test } from 'node:test'
+import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { PDFDocument } from 'pdf-lib'
+import {
+  LAYOUT, layoutName, balancedSplit, schoolRuns, wrapRuns, hasUnprintable,
+  defaultPrintedSchool, certificateFilename, buildTeacherCertificatesPDF,
+} from '../src/utils/teacherCertificatePDF.js'
+
+const read = (p) => new Uint8Array(readFileSync(new URL(`../${p}`, import.meta.url)))
+// Width model: every character 0.6 em.
+const mono = (t, s) => Array.from(t).length * s * 0.6
+const N = LAYOUT.name
+
+test('TC-01 a normal name is one line at the sample size, upper case', () => {
+  assert.deepEqual(layoutName('Subhash Koli', mono), [{ text: 'SUBHASH KOLI', size: N.size, dy: 0 }])
+  assert.deepEqual(layoutName('  ', mono), [])
+})
+
+test('TC-02 a longer name shrinks to fit the rule before it wraps', () => {
+  const [line, ...rest] = layoutName('Birat Ranjan Meher Kumar', mono)
+  assert.equal(rest.length, 0)
+  assert.ok(line.size < N.size && line.size >= N.oneLineMin)
+  assert.ok(mono(line.text, line.size) <= N.maxWidth)
+})
+
+test('TC-03 a very long name goes on two balanced lines, both inside the rule, first above', () => {
+  const lines = layoutName('Dr. Shrimati Annapurna Devi Raghavendra Rao Kulkarni Deshpande', mono)
+  assert.equal(lines.length, 2)
+  assert.equal(lines[0].size, lines[1].size)
+  assert.ok(lines[0].dy < 0 && lines[1].dy === 0)
+  for (const l of lines) assert.ok(mono(l.text, l.size) <= N.maxWidth)
+  assert.equal(lines.map(l => l.text).join(' '), 'DR. SHRIMATI ANNAPURNA DEVI RAGHAVENDRA RAO KULKARNI DESHPANDE')
+})
+
+test('TC-04 one endless word is cut with an ellipsis, never overflowing', () => {
+  const [line] = layoutName('X'.repeat(200), mono)
+  assert.ok(line.text.endsWith('…'))
+  assert.ok(mono(line.text, line.size) <= N.maxWidth)
+  assert.deepEqual(balancedSplit(mono, 'ONE TWO THREE FOUR', 10), ['ONE TWO', 'THREE FOUR'])
+})
+
+test('TC-05 school line: bold school with its comma, then the year; long schools wrap', () => {
+  assert.deepEqual(schoolRuns('Navodaya Central School, Raichur', '2025-26'), [
+    { text: 'as part of ', bold: false },
+    { text: 'Navodaya Central School, Raichur,', bold: true },
+    { text: ' during the academic year 2025-26', bold: false },
+  ])
+  // A trailing comma typed into the field is not doubled.
+  assert.equal(schoolRuns('ABC School,', '2025-26')[1].text, 'ABC School,')
+  const w = (t) => t.length * 10
+  const lines = wrapRuns(schoolRuns('Navodaya Central School, Raichur', '2025-26'), w, 600)
+  assert.ok(lines.length >= 2)
+  for (const line of lines) assert.ok(line.at(-1).x + w(line.at(-1).text) <= 600)
+  assert.equal(lines.flat().map(p => p.text).join(' '),
+    'as part of Navodaya Central School, Raichur, during the academic year 2025-26')
+  assert.ok(lines.flat().find(p => p.text === 'Navodaya').bold)
+})
+
+test('TC-06 default school is "Name, City" without repeating the city', () => {
+  assert.equal(defaultPrintedSchool({ name: 'Navodaya Central School', city: 'Raichur' }), 'Navodaya Central School, Raichur')
+  assert.equal(defaultPrintedSchool({ name: 'Sharda English School, Dharur', city: 'Dharur' }), 'Sharda English School, Dharur')
+  assert.equal(defaultPrintedSchool({ name: 'ABC School' }), 'ABC School')
+})
+
+test('TC-07 helpers: unprintable letters flagged, safe file names', () => {
+  assert.equal(hasUnprintable('Asha Rao'), false)
+  assert.equal(hasUnprintable('आशा राव'), true)
+  assert.equal(certificateFilename('St. Mary/Joseph: School', 'Blank'), 'St. Mary Joseph School - Teacher Certificates - Blank.pdf')
+})
+
+test('TC-08 builds one A4 landscape page per teacher, blank names included', async () => {
+  const assets = {
+    template: read('public/certificates/teacher.png'),
+    fonts: { name: read('public/fonts/CinzelDecorative-Regular.ttf'), regular: read('public/fonts/Raleway-Regular.ttf'), bold: read('public/fonts/Raleway-Bold.ttf') },
+  }
+  const bytes = await buildTeacherCertificatesPDF({
+    teachers: [{ name: 'Subhash Koli' }, { name: 'आशा Rao' }, { name: '' }],
+    schoolName: 'Navodaya Central School, Raichur', academicYear: '2025-26', assets,
+  })
+  const doc = await PDFDocument.load(bytes)
+  assert.equal(doc.getPageCount(), 3)
+  const { width, height } = doc.getPage(0).getSize()
+  assert.ok(Math.abs(width - 841.89) < 0.01 && Math.abs(height - 595.28) < 0.01)
+})

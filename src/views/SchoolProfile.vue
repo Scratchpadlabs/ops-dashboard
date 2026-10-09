@@ -56,6 +56,7 @@
             <Button label="🧾 Generate Invoice" size="small" outlined @click="goNewInvoice" />
             <Button label="📋 School Setup Guide" size="small" outlined :loading="generatingOnboarding" @click="downloadOnboardingDoc" />
             <Button label="🎫 Student Pamphlets" size="small" outlined @click="activeTab = 'pamphlets'" />
+            <Button label="🏅 Teacher Certificates" size="small" outlined @click="activeTab = 'certificates'" />
           </div>
         </div>
 
@@ -87,6 +88,7 @@
         <Tab value="agreements">Agreements ({{ schoolAgreements.length }})</Tab>
         <Tab value="invoices">Invoices ({{ schoolInvoices.length }})</Tab>
         <Tab value="pamphlets">Student Pamphlets</Tab>
+        <Tab value="certificates">Teacher Certificates</Tab>
       </TabList>
       <TabPanels>
 
@@ -682,6 +684,11 @@
           <StudentPamphletsTab v-if="activeTab === 'pamphlets'" :school="school" @linked="id => (school.app_school_id = id)" />
         </TabPanel>
 
+        <TabPanel value="certificates">
+          <!-- v-if: only load the teacher list when the tab is opened. -->
+          <TeacherCertificatesTab v-if="activeTab === 'certificates'" :school="school" @linked="id => (school.app_school_id = id)" />
+        </TabPanel>
+
         <TabPanel value="data">
           <div class="pt-4 space-y-5">
             <div v-if="!dataReceivable" class="flex items-center justify-center py-10">
@@ -849,6 +856,7 @@ import MarkPaidDialog from '../components/shared/MarkPaidDialog.vue'
 import PaymentPlanPicker from '../components/shared/PaymentPlanPicker.vue'
 import PaymentSegmentBar from '../components/shared/PaymentSegmentBar.vue'
 import StudentPamphletsTab from '../components/school-profile/StudentPamphletsTab.vue'
+import TeacherCertificatesTab from '../components/school-profile/TeacherCertificatesTab.vue'
 import { usePaymentPlans } from '../composables/usePaymentPlans.js'
 import {
   invoiceAmount, invoicePaymentStatus, invoicePaidAmount, invoiceOutstanding,
