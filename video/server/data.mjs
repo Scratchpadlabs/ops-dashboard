@@ -168,6 +168,26 @@ export function httpError(status, message) {
 // collection so the public read needs only the id, never a school path.
 export const LINKS = 'year_wrap_links'
 
+// The parent-facing page lives on the dashboard's Hosting site (/w/** →
+// wrap.html). Used to give the student app a full URL to open.
+export const SHARE_BASE_URL = (process.env.SHARE_BASE_URL || 'https://clarified-1501.web.app').replace(/\/+$/, '')
+
+/**
+ * What the student app reads: students/{id}.yearWrap. The app already reads
+ * this doc for Reports, so the "Year in Review" card needs no new query.
+ * Merge-written — nothing else on the student doc is touched.
+ */
+export function studentYearWrap(linkId, storyline, now) {
+  return {
+    url: `${SHARE_BASE_URL}/w/${linkId}`,
+    linkId,
+    academicYear: storyline.academicYear || '',
+    segment: storyline.segment,
+    title: `My Year in Review${storyline.academicYear ? ` ${storyline.academicYear}` : ''}`,
+    publishedAt: now,
+  }
+}
+
 export function newLinkId() {
   return randomBytes(16).toString('base64url')
 }
@@ -195,6 +215,8 @@ export async function publishLinks(db, schoolId, items, email, now) {
       linkId, linkPublishedAt: now, studentName: storyline.student?.name || '', className: storyline.student?.className || '',
       segment: storyline.segment,
     }, { merge: true })
+    batch.set(db.collection('schools').doc(schoolId).collection('students').doc(studentId),
+      { yearWrap: studentYearWrap(linkId, storyline, now) }, { merge: true })
   })
   await batch.commit()
   return { links }
@@ -212,6 +234,7 @@ export async function unpublishLinks(db, schoolId, studentIds) {
     if (!linkId) continue
     batch.delete(db.collection(LINKS).doc(linkId))
     batch.set(videos.doc(s.id), { linkId: null, linkPublishedAt: null }, { merge: true })
+    batch.set(db.collection('schools').doc(schoolId).collection('students').doc(s.id), { yearWrap: null }, { merge: true })
     revoked++
   }
   await batch.commit()

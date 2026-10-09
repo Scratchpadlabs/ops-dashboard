@@ -86,6 +86,10 @@ separate, light entry with no dashboard code and no login.
 - Re-publishing (or saving an edit in Review) keeps the same link and
   updates what parents see within a minute.
 - **Revoke** deletes the link. Creating a link again issues a new address.
+- Creating a link also writes `students/{studentId}.yearWrap`
+  (`{url, linkId, academicYear, segment, title, publishedAt}`), merged so
+  nothing else on the doc changes. The student app's Reports tab shows its
+  **Year in Review** card from this. Revoking sets it to `null`.
 - **Download links (CSV)** gives Student, Class, Link and a ready-to-send
   WhatsApp message.
 - The parent's page only receives what the video shows (names, class,

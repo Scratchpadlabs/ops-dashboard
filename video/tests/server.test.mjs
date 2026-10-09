@@ -204,11 +204,19 @@ test('links: publish → public read → re-publish keeps the link → revoke', 
   assert.equal(again.body.links.stu1, linkId)
   assert.equal((await call(handler, `/w/${linkId}`, null, null, 'GET')).body.storyline.scenes[1].end.text, 'Astronaut')
   assert.equal(db.docs.get(VIDEO('S', 'stu1')).linkId, linkId)
+  // The student app reads students/{id}.yearWrap for its Reports card.
+  const yw = db.docs.get('schools/S/students/stu1').yearWrap
+  assert.equal(yw.url, `https://clarified-1501.web.app/w/${linkId}`)
+  assert.equal(yw.linkId, linkId)
+  assert.equal(yw.segment, 'mid')
+  assert.equal(yw.academicYear, '2025–26')
+  assert.equal(yw.title, 'My Year in Review 2025–26')
 
   const rev = await call(handler, '/unpublish', { schoolId: 'S', studentIds: ['stu1', 'never-published'] })
   assert.equal(rev.body.revoked, 1)
   assert.equal((await call(handler, `/w/${linkId}`, null, null, 'GET')).status, 404)
   assert.equal(db.docs.get(VIDEO('S', 'stu1')).linkId, null)
+  assert.equal(db.docs.get('schools/S/students/stu1').yearWrap, null, 'card disappears from the app')
 
   // Publishing again after a revoke issues a NEW link — the old one stays dead.
   const fresh = await call(handler, '/publish', { schoolId: 'S', items: [{ studentId: 'stu1', storyline: s }] })
