@@ -6,7 +6,7 @@ import { PDFDocument } from 'pdf-lib'
 import {
   LAYOUT, layoutName, balancedSplit, schoolRuns, wrapRuns, hasUnprintable,
   defaultPrintedSchool, certificateFilename, buildTeacherCertificatesPDF,
-  certificateName, isSampleName, defaultBlankCount,
+  certificateName, isSampleName, defaultBlankCount, spaceAfterTitle,
 } from '../src/utils/teacherCertificatePDF.js'
 
 const read = (p) => new Uint8Array(readFileSync(new URL(`../${p}`, import.meta.url)))
@@ -119,4 +119,23 @@ test('TC-11 blank certificate policy brackets, edges included', () => {
     101: 25, 250: 25,   // past the policy: the last count
   }
   for (const [n, blanks] of Object.entries(expect)) assert.equal(defaultBlankCount(Number(n)), blanks, `${n} teachers`)
+})
+
+test('TC-12 titles typed without a gap get one: Mr.Siddhesh -> Mr. Siddhesh', () => {
+  const cases = {
+    'Mr.Siddhesh': 'Mr. Siddhesh',
+    'Dr.Siddhesh': 'Dr. Siddhesh',
+    'Mrs.Smita': 'Mrs. Smita',
+    'Ms.Smita': 'Ms. Smita',
+    'MRS.SMITA PATIL': 'MRS. SMITA PATIL',
+    'Dr .Smita': 'Dr. Smita',
+    'Prof.A.K. Rao': 'Prof. A.K. Rao',
+    'Smt.Kavita Teacher': 'Smt. Kavita',
+    'Mr. Siddhesh': 'Mr. Siddhesh',      // already right: unchanged
+    'Mr Siddhesh': 'Mr Siddhesh',        // no dot: left as typed
+    'Amr.Khan': 'Amr.Khan',              // not a title
+  }
+  for (const [raw, want] of Object.entries(cases)) assert.equal(certificateName(raw), want, raw)
+  assert.equal(spaceAfterTitle('Mrs.Smita'), 'Mrs. Smita')
+  assert.deepEqual(layoutName('Mr.Siddhesh', mono).map(l => l.text), ['MR. SIDDHESH'])
 })
