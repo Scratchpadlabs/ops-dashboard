@@ -532,6 +532,11 @@ export async function buildStudentPamphletsPDF({
  * name, website and QR printed; name / roll no / class as blank lines; User
  * ID and Password left empty on their rules.
  */
+/** Default blank copies for a design: 10% of its students, rounded up (0 when none). */
+export function defaultBlankPamphlets(studentCount) {
+  return Math.ceil((Number(studentCount) || 0) * 0.1)
+}
+
 export function blankCopies(design, count) {
   const n = Math.max(0, Math.floor(Number(count) || 0))
   return Array.from({ length: n }, () => ({ blank: true, design }))

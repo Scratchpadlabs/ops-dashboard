@@ -6,7 +6,7 @@ import { PDFDocument } from 'pdf-lib'
 import {
   layoutSchoolHeader, balancedSplit, scriptRuns, stageForGrade, STAGES,
   designForGrade, displayWebsite, qrTarget, headerText, fitSize, compareStudents, layoutHeader, truncateToWidth,
-  guessAppSchool, pamphletFilename, buildStudentPamphletsPDF, blankCopies, pagesFor,
+  guessAppSchool, pamphletFilename, buildStudentPamphletsPDF, blankCopies, pagesFor, defaultBlankPamphlets,
 } from '../src/utils/studentPamphletPDF.js'
 import LAYOUT from '../src/utils/pamphletLayout.js'
 
@@ -261,4 +261,13 @@ test('SP-17 Foundational back page: Hindi by default, Marathi on request; Middle
     ],
   })
   assert.equal((await PDFDocument.load(bytes)).getPageCount(), 4)
+})
+
+test("SP-18 blank pamphlets default to 10% of a design's students, rounded up", () => {
+  assert.equal(defaultBlankPamphlets(0), 0)       // no students of that design: none
+  assert.equal(defaultBlankPamphlets(1), 1)
+  assert.equal(defaultBlankPamphlets(10), 1)
+  assert.equal(defaultBlankPamphlets(11), 2)
+  assert.equal(defaultBlankPamphlets(95), 10)
+  assert.equal(defaultBlankPamphlets(221), 23)
 })

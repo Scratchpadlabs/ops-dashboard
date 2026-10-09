@@ -217,16 +217,13 @@
         for new admissions or lost pamphlets.
       </p>
       <div class="flex items-end gap-3 flex-wrap">
-        <div>
-          <label class="form-label">Design</label>
-          <Select v-model="blankDesign" :options="blankDesignOptions" optionLabel="label" optionValue="value" class="w-72" />
+        <div v-for="d in ['foundational', 'middle']" :key="d">
+          <label class="form-label">{{ DESIGN_LABEL[d] }}</label>
+          <InputNumber v-model="blankCounts[d]" :min="0" :max="2000" showButtons class="w-32" inputClass="w-full" />
+          <div class="text-[11px] text-slate-400 mt-1">10% of {{ designStudentCounts[d] }} student{{ designStudentCounts[d] === 1 ? '' : 's' }}</div>
         </div>
-        <div>
-          <label class="form-label">Copies{{ blankDesign === 'both' ? ' (of each)' : '' }}</label>
-          <InputNumber v-model="blankCount" :min="1" :max="500" showButtons class="w-32" inputClass="w-full" />
-        </div>
-        <Button label="Download blank copies" icon="pi pi-file" outlined :loading="busy === 'blank'"
-                :disabled="!canGenerateBlank || !!busy" @click="generate('blank')" />
+        <Button :label="`Download blank copies (${blankTotal})`" icon="pi pi-file" outlined :loading="busy === 'blank'"
+                :disabled="!canGenerateBlank || !blankTotal || !!busy" @click="generate('blank')" />
         <span v-if="busy === 'blank' && progress" class="text-xs text-slate-500">{{ progress }}</span>
         <span v-else-if="!website" class="text-xs text-amber-600">Add the website first.</span>
         <span v-else-if="!printedSchoolName.trim()" class="text-xs text-amber-600">Add the school name first.</span>
@@ -241,7 +238,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
+import { ref, reactive, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { getDocs, query, orderBy, limit, updateDoc, serverTimestamp } from 'firebase/firestore'
 import { useToast } from 'primevue/usetoast'
 import Select from 'primevue/select'
@@ -266,7 +263,7 @@ import { normalizeLogo, logoFromUrl, logoDataUrl, LOGO_MIN_SIDE } from '../../ut
 import { loadSavedLogo, saveLogo, deleteSavedLogo } from '../../utils/pamphletLogoStore.js'
 import {
   buildStudentPamphletsPDF, loadPamphletAssets, designForGrade, compareStudents,
-  displayWebsite, qrTarget, guessAppSchool, pamphletFilename, blankCopies, stageForGrade, STAGES,
+  displayWebsite, qrTarget, guessAppSchool, pamphletFilename, blankCopies, stageForGrade, STAGES, defaultBlankPamphlets,
   FOUNDATIONAL_BACK_LANGUAGES,
 } from '../../utils/studentPamphletPDF.js'
 
@@ -603,16 +600,26 @@ const canGenerateBlank = computed(() => !!displayWebsite(website.value) && !!pri
 const canGenerate = computed(() => selectedStudents.value.length > 0 && canGenerateBlank.value)
 
 // ── Blank copies ──────────────────────────────────────────────────────────
-const blankDesign = ref('foundational')
-const blankCount = ref(10)
-const blankDesignOptions = [
-  { value: 'foundational', label: 'Foundational (Nursery – Grade 2)' },
-  { value: 'middle', label: 'Middle + Prep (Grade 3+)' },
-  { value: 'both', label: 'Both designs' },
-]
+// One count per design, defaulting to 10% of that design's selected students
+// (rounded up) until someone types a number; 0 skips the design.
+const designStudentCounts = computed(() => ({
+  foundational: selectedStudents.value.filter(s => s.design === 'foundational').length,
+  middle: selectedStudents.value.filter(s => s.design === 'middle').length,
+}))
+const blankCounts = reactive({ foundational: 0, middle: 0 })
+// The default each field was last given: a field still showing it follows
+// the roster as it loads or changes; anything else was typed and is kept.
+const blankDefaults = { foundational: 0, middle: 0 }
+watch(designStudentCounts, counts => {
+  for (const d of ['foundational', 'middle']) {
+    const next = defaultBlankPamphlets(counts[d])
+    if (blankCounts[d] === blankDefaults[d]) blankCounts[d] = next
+    blankDefaults[d] = next
+  }
+}, { immediate: true })
+const blankTotal = computed(() => (blankCounts.foundational || 0) + (blankCounts.middle || 0))
 function blankList() {
-  const designs = blankDesign.value === 'both' ? ['foundational', 'middle'] : [blankDesign.value]
-  return designs.flatMap(d => blankCopies(d, blankCount.value))
+  return ['foundational', 'middle'].flatMap(d => blankCopies(d, blankCounts[d]))
 }
 
 // ── Generate ──────────────────────────────────────────────────────────────
@@ -722,8 +729,8 @@ const previewStudents = computed(() => {
     if (s) picks.push(s)
   }
   if (picks.length) return picks
-  const designs = blankDesign.value === 'both' ? ['foundational', 'middle'] : [blankDesign.value]
-  return designs.map(d => ({ blank: true, design: d }))
+  const designs = ['foundational', 'middle'].filter(d => blankCounts[d] > 0)
+  return (designs.length ? designs : ['foundational']).map(d => ({ blank: true, design: d }))
 })
 const previewLabel = computed(() => previewStudents.value
   .map(s => `${s.blank ? 'Blank copy' : (s.name || s.id)} (${DESIGN_LABEL[s.design]})`).join(' · '))

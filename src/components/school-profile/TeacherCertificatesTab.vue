@@ -106,7 +106,7 @@
       <div class="flex items-end gap-3 flex-wrap pt-3 border-t border-slate-100">
         <div>
           <label class="form-label">Blank certificates</label>
-          <InputNumber v-model="blankCount" :min="1" :max="200" showButtons class="w-32" inputClass="w-full" @input="blankEdited = true" />
+          <InputNumber v-model="blankCount" :min="1" :max="200" showButtons class="w-32" inputClass="w-full" />
         </div>
         <Button label="Download blank" icon="pi pi-file" outlined :loading="busy === 'blank'"
                 :disabled="!canGenerate || !!busy" @click="generate('blank')" />
@@ -275,12 +275,18 @@ const busy = ref('')
 const progress = ref('')
 // From BLANK_POLICY (by teacher count) until someone types a number.
 const blankCount = ref(defaultBlankCount(0))
-const blankEdited = ref(false)
+// The default last given: while the field still shows it, it follows the
+// teacher list as it loads; a typed number is kept.
+let blankDefault = blankCount.value
 const blankPolicyText = computed(() => {
   const n = staff.value.length
   return `${n} teacher${n === 1 ? '' : 's'} → ${defaultBlankCount(n)} blank`
 })
-watch(() => staff.value.length, n => { if (!blankEdited.value) blankCount.value = defaultBlankCount(n) }, { immediate: true })
+watch(() => staff.value.length, n => {
+  const next = defaultBlankCount(n)
+  if (blankCount.value === blankDefault) blankCount.value = next
+  blankDefault = next
+}, { immediate: true })
 let assetsPromise = null
 
 async function build(teachers) {
