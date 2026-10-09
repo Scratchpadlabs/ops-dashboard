@@ -6,7 +6,7 @@ import { PDFDocument } from 'pdf-lib'
 import {
   layoutSchoolHeader, balancedSplit, scriptRuns, stageForGrade, STAGES,
   designForGrade, displayWebsite, qrTarget, headerText, fitSize, compareStudents, layoutHeader, truncateToWidth,
-  guessAppSchool, pamphletFilename, buildStudentPamphletsPDF, blankCopies, pagesFor, defaultBlankPamphlets,
+  guessAppSchool, pamphletFilename, buildStudentPamphletsPDF, blankCopies, pagesFor, defaultBlankPamphlets, classSkipReason,
 } from '../src/utils/studentPamphletPDF.js'
 import LAYOUT from '../src/utils/pamphletLayout.js'
 
@@ -270,4 +270,17 @@ test("SP-18 blank pamphlets default to 10% of a design's students, rounded up", 
   assert.equal(defaultBlankPamphlets(11), 2)
   assert.equal(defaultBlankPamphlets(95), 10)
   assert.equal(defaultBlankPamphlets(221), 23)
+})
+
+test('SP-19 inactive, sample/demo/training/test classes and "no class" are not ticked by default', () => {
+  assert.equal(classSkipReason({ clazz: 'III', section: 'A', isActive: true }, 'III_A'), null)
+  assert.equal(classSkipReason({ clazz: 'III', section: 'B' }, 'III_B'), null)
+  assert.equal(classSkipReason({ clazz: 'III', section: 'C', isActive: false }, 'III_C'), 'inactive')
+  assert.equal(classSkipReason({ clazz: 'Training', section: 'DEMO', name: 'Training Demo' }, 'Training_DEMO'), 'sample')
+  assert.equal(classSkipReason({ name: 'Sample Class' }, 'sample_class'), 'sample')
+  assert.equal(classSkipReason(undefined, 'TEST_A'), 'sample')
+  assert.equal(classSkipReason(undefined, '__none__'), 'no class')
+  // Words that merely contain those letters are real classes.
+  assert.equal(classSkipReason({ name: 'Contest Section' }, 'IV_Contest'), null)
+  assert.equal(classSkipReason({ name: 'Demonstration School V A' }, 'V_A'), null)
 })
