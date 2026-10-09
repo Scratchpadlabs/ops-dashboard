@@ -1275,7 +1275,7 @@ function defaultPhase2() {
     { id: 'workshop_scheduling',  label: 'Workshop Scheduling',              done: false, comment: '', date: '' },
     { id: 'teacher_ids',          label: 'Teacher ID Distribution',          done: false, comment: '', date: '' },
     { id: 'student_ids',          label: 'Student ID Distribution',          done: false, comment: '', date: '' },
-    { id: 'hpc_calendar',         label: 'HPC Calendar Sent',                done: false, comment: '', date: '' },
+    { id: 'hpc_calendar',         label: 'HPC Annual Timeline Sent',         done: false, comment: '', date: '' },
     { id: 'workshop_done',        label: 'Workshop Done',                    done: false, comment: '', date: '' },
     { id: 'student_pamphlets',    label: "Students' Pamphlets Generated",    done: false, comment: '', date: '' },
     { id: 'teacher_certificates', label: "Teachers' Certificates Generated", done: false, comment: '', date: '' },
@@ -1388,6 +1388,7 @@ async function loadOperations() {
       if (data.phase1) {
         // Fix label on docs migrated before the HPW correction.
         ;(data.terms || []).forEach(t => (t.items || []).forEach(i => { if (i.id === 'inclusion') i.label = 'HPW Inclusion' }))
+        ;(data.phase2 || []).forEach(i => { if (i.id === 'hpc_calendar') i.label = 'HPC Annual Timeline Sent' })
         operations.value = data
       } else {
         // Legacy structure — migrate once and persist.
