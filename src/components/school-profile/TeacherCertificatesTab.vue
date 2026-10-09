@@ -110,7 +110,7 @@
         </div>
         <Button label="Download blank" icon="pi pi-file" outlined :loading="busy === 'blank'"
                 :disabled="!canGenerate || !!busy" @click="generate('blank')" />
-        <span class="text-xs text-slate-400">School and year printed, name left blank to write by hand. Default: 3 (under 10 teachers), 5 (10–19), 7 (20–29), 10 (30+).</span>
+        <span class="text-xs text-slate-400">School and year printed, name left blank to write by hand. Default from the blank certificate policy: {{ blankPolicyText }}.</span>
       </div>
       <div v-if="pendingFile" class="flex items-center gap-3 bg-emerald-50 rounded-lg px-3 py-2">
         <i class="pi pi-check-circle text-emerald-600"></i>
@@ -273,9 +273,13 @@ const warnings = computed(() => {
 // ── Generate ──────────────────────────────────────────────────────────────
 const busy = ref('')
 const progress = ref('')
-// By teacher count (under 10: 3, 10–19: 5, 20–29: 7, 30+: 10) until someone types a number.
+// From BLANK_POLICY (by teacher count) until someone types a number.
 const blankCount = ref(defaultBlankCount(0))
 const blankEdited = ref(false)
+const blankPolicyText = computed(() => {
+  const n = staff.value.length
+  return `${n} teacher${n === 1 ? '' : 's'} → ${defaultBlankCount(n)} blank`
+})
 watch(() => staff.value.length, n => { if (!blankEdited.value) blankCount.value = defaultBlankCount(n) }, { immediate: true })
 let assetsPromise = null
 
