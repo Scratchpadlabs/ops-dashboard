@@ -46,6 +46,34 @@ export const LAYOUT = {
 const toRgb = (c) => rgb(c[0], c[1], c[2])
 const clean = (v) => String(v ?? '').replace(/\s+/g, ' ').trim()
 
+/**
+ * The name as it goes on the certificate. School rosters often store staff
+ * as "Vinaya Teacher" or "Teacher - Vinaya"; the word "teacher" (and any
+ * dash or comma left hanging by removing it) is dropped: "Vinaya".
+ */
+export function certificateName(name) {
+  return clean(String(name ?? '').replace(/\bteachers?\b/gi, ' '))
+    .replace(/^[\s\-–—,.:]+|[\s\-–—,:]+$/g, '')
+    .trim()
+}
+
+/** Demo / test accounts ("Sample Teacher", "sample 1") never get a certificate. */
+export function isSampleName(name) {
+  return /\bsample\b/i.test(String(name ?? ''))
+}
+
+/**
+ * Default number of blank certificates, by how many teachers the school has:
+ * under 10 → 3, 10–19 → 5, 20–29 → 7, 30 or more → 10.
+ */
+export function defaultBlankCount(teacherCount) {
+  const n = Number(teacherCount) || 0
+  if (n >= 30) return 10
+  if (n >= 20) return 7
+  if (n >= 10) return 5
+  return 3
+}
+
 /** Largest size ≤ preferred (step 0.5) at which text fits maxWidth, never below min. */
 export function fitSize(widthAt, text, preferred, maxWidth, min) {
   let size = preferred
@@ -79,7 +107,7 @@ function truncate(widthAt, text, size, maxWidth) {
  * relative to the rule baseline (negative = higher). Never wider than the rule.
  */
 export function layoutName(name, widthAt, L = LAYOUT.name) {
-  const text = clean(name).toUpperCase()
+  const text = certificateName(name).toUpperCase()
   if (!text) return []
   const one = fitSize(widthAt, text, L.size, L.maxWidth, L.oneLineMin)
   if (widthAt(text, one) <= L.maxWidth) return [{ text, size: one, dy: 0 }]
@@ -207,7 +235,7 @@ export async function buildTeacherCertificatesPDF({ teachers, schoolName, academ
     const page = doc.addPage([PAGE_W, PAGE_H])
     page.drawImage(art, { x: 0, y: 0, width: PAGE_W, height: PAGE_H })
 
-    for (const line of layoutName(drawable(fonts.name, clean(teacher.name).toUpperCase()), nameWidth)) {
+    for (const line of layoutName(drawable(fonts.name, certificateName(teacher.name).toUpperCase()), nameWidth)) {
       page.drawText(line.text, {
         x: px(N.x), y: py(N.baseline + line.dy), size: px(line.size), font: fonts.name, color: toRgb(N.color),
       })

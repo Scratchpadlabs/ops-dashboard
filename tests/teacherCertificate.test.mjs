@@ -6,6 +6,7 @@ import { PDFDocument } from 'pdf-lib'
 import {
   LAYOUT, layoutName, balancedSplit, schoolRuns, wrapRuns, hasUnprintable,
   defaultPrintedSchool, certificateFilename, buildTeacherCertificatesPDF,
+  certificateName, isSampleName, defaultBlankCount,
 } from '../src/utils/teacherCertificatePDF.js'
 
 const read = (p) => new Uint8Array(readFileSync(new URL(`../${p}`, import.meta.url)))
@@ -83,4 +84,31 @@ test('TC-08 builds one A4 landscape page per teacher, blank names included', asy
   assert.equal(doc.getPageCount(), 3)
   const { width, height } = doc.getPage(0).getSize()
   assert.ok(Math.abs(width - 841.89) < 0.01 && Math.abs(height - 595.28) < 0.01)
+})
+
+test('TC-09 "teacher" is dropped from names, with any dash or comma it leaves behind', () => {
+  assert.equal(certificateName('Vinaya Teacher'), 'Vinaya')
+  assert.equal(certificateName('vinaya teacher'), 'Vinaya'.toLowerCase())
+  assert.equal(certificateName('Teacher - Vinaya'), 'Vinaya')
+  assert.equal(certificateName('Vinaya Patil, Teacher'), 'Vinaya Patil')
+  assert.equal(certificateName('Science Teachers Rekha'), 'Science Rekha')
+  assert.equal(certificateName('Teacher'), '')
+  // Only the whole word: names that merely contain it are untouched.
+  assert.equal(certificateName('Teacherina Rao'), 'Teacherina Rao')
+  assert.deepEqual(layoutName('Vinaya Teacher', mono).map(l => l.text), ['VINAYA'])
+})
+
+test('TC-10 sample / demo accounts are recognised', () => {
+  assert.equal(isSampleName('Sample Teacher'), true)
+  assert.equal(isSampleName('sample 2'), true)
+  assert.equal(isSampleName('SAMPLE'), true)
+  assert.equal(isSampleName('Asha Rao'), false)
+  assert.equal(isSampleName('Samplewala Rao'), false)
+})
+
+test('TC-11 blank certificates by teacher count: <10 → 3, 10–19 → 5, 20–29 → 7, 30+ → 10', () => {
+  assert.deepEqual([0, 1, 9].map(defaultBlankCount), [3, 3, 3])
+  assert.deepEqual([10, 15, 19].map(defaultBlankCount), [5, 5, 5])
+  assert.deepEqual([20, 25, 29].map(defaultBlankCount), [7, 7, 7])
+  assert.deepEqual([30, 31, 120].map(defaultBlankCount), [10, 10, 10])
 })
