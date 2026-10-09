@@ -1,0 +1,7390 @@
+{
+ "AAM1-mid": [
+  {
+   "id": "q_000",
+   "type": "scq",
+   "questionText": "If you had one superpower, what would it be? 🌟",
+   "answers": [
+    {
+     "id": "ans_000_01",
+     "label": "a) 🚀 Flying"
+    },
+    {
+     "id": "ans_000_02",
+     "label": "b) 🕵️ Invisibility"
+    },
+    {
+     "id": "ans_000_03",
+     "label": "c) 💨 Super speed"
+    },
+    {
+     "id": "ans_000_04",
+     "label": "d) 🐾 Talking to animals"
+    },
+    {
+     "id": "ans_000_05",
+     "label": "e) ⏱️ Time travel"
+    },
+    {
+     "id": "ans_000_06",
+     "label": "f) 🍕 The power to turn anything into pizza"
+    }
+   ]
+  },
+  {
+   "id": "q_001",
+   "type": "scq",
+   "questionText": "What is the one thing you enjoy doing the most in your free time?",
+   "answers": [
+    {
+     "id": "ans_001_01",
+     "label": "Playing my favourite sport"
+    },
+    {
+     "id": "ans_001_02",
+     "label": "Listening to music"
+    },
+    {
+     "id": "ans_001_03",
+     "label": "Watching fun and learning videos"
+    },
+    {
+     "id": "ans_001_04",
+     "label": "Reading storybooks and novels"
+    },
+    {
+     "id": "ans_001_05",
+     "label": "Spending time with friends"
+    },
+    {
+     "id": "ans_001_06",
+     "label": "Drawing, sketching, or painting"
+    },
+    {
+     "id": "ans_001_07",
+     "label": "Playing my favourite musical instrument"
+    },
+    {
+     "id": "ans_001_08",
+     "label": "Dancing"
+    },
+    {
+     "id": "ans_001_09",
+     "label": "Cycling"
+    },
+    {
+     "id": "ans_001_10",
+     "label": "Playing indoor games"
+    },
+    {
+     "id": "ans_001_11",
+     "label": "Writing stories"
+    },
+    {
+     "id": "ans_001_12",
+     "label": "Writing poems"
+    },
+    {
+     "id": "ans_001_13",
+     "label": "Swimming"
+    },
+    {
+     "id": "ans_001_14",
+     "label": "Skating"
+    },
+    {
+     "id": "ans_001_15",
+     "label": "Helping my family at home"
+    },
+    {
+     "id": "ans_001_16",
+     "label": "Spending time with grandparents"
+    },
+    {
+     "id": "ans_001_17",
+     "label": "Taking care of pets"
+    },
+    {
+     "id": "ans_001_18",
+     "label": "Exploring nature"
+    },
+    {
+     "id": "ans_001_19",
+     "label": "Gardening"
+    },
+    {
+     "id": "ans_001_20",
+     "label": "Making crafts"
+    },
+    {
+     "id": "ans_001_21",
+     "label": "Photography"
+    },
+    {
+     "id": "ans_001_22",
+     "label": "Doing simple experiments"
+    },
+    {
+     "id": "ans_001_23",
+     "label": "Trying cooking"
+    },
+    {
+     "id": "ans_001_24",
+     "label": "Designing posters"
+    },
+    {
+     "id": "ans_001_25",
+     "label": "Learning about space and planets"
+    },
+    {
+     "id": "ans_001_26",
+     "label": "Practising public speaking"
+    },
+    {
+     "id": "ans_001_27",
+     "label": "Improving my handwriting"
+    },
+    {
+     "id": "ans_001_28",
+     "label": "Learning a new language"
+    },
+    {
+     "id": "ans_001_29",
+     "label": "Solving puzzles and brain teasers"
+    },
+    {
+     "id": "ans_001_30",
+     "label": "Exploring maps and globes"
+    },
+    {
+     "id": "ans_001_31",
+     "label": "Building models and projects"
+    },
+    {
+     "id": "ans_001_32",
+     "label": "Collect interesting items"
+    },
+    {
+     "id": "ans_001_33",
+     "label": "Learn basic coding on the computer"
+    }
+   ]
+  },
+  {
+   "id": "q_002",
+   "type": "scq",
+   "questionText": "What is the one skill you would like to improve the most?",
+   "answers": [
+    {
+     "id": "ans_002_01",
+     "label": "Speaking more confidently in class"
+    },
+    {
+     "id": "ans_002_02",
+     "label": "Writing neatly"
+    },
+    {
+     "id": "ans_002_03",
+     "label": "Reading big books on my own"
+    },
+    {
+     "id": "ans_002_04",
+     "label": "Improving my English vocabulary"
+    },
+    {
+     "id": "ans_002_05",
+     "label": "Solving tricky maths problems"
+    },
+    {
+     "id": "ans_002_06",
+     "label": "Doing mental maths faster"
+    },
+    {
+     "id": "ans_002_07",
+     "label": "Making friends more easily"
+    },
+    {
+     "id": "ans_002_08",
+     "label": "Understanding science experiments better"
+    },
+    {
+     "id": "ans_002_09",
+     "label": "Remembering what I study for longer"
+    },
+    {
+     "id": "ans_002_10",
+     "label": "Writing essays and stories better"
+    },
+    {
+     "id": "ans_002_11",
+     "label": "Doing well in group projects"
+    },
+    {
+     "id": "ans_002_12",
+     "label": "Managing my time better"
+    },
+    {
+     "id": "ans_002_13",
+     "label": "Organising my school bag and books"
+    },
+    {
+     "id": "ans_002_14",
+     "label": "Staying calm when I feel angry"
+    },
+    {
+     "id": "ans_002_15",
+     "label": "Listening carefully when others speak"
+    },
+    {
+     "id": "ans_002_16",
+     "label": "Not getting distracted while studying"
+    },
+    {
+     "id": "ans_002_17",
+     "label": "Waking up early and being on time"
+    },
+    {
+     "id": "ans_002_18",
+     "label": "Practising sports more regularly"
+    },
+    {
+     "id": "ans_002_19",
+     "label": "Playing my favourite sport better"
+    },
+    {
+     "id": "ans_002_20",
+     "label": "Swimming with more confidence"
+    },
+    {
+     "id": "ans_002_21",
+     "label": "Skating smoothly without falling"
+    },
+    {
+     "id": "ans_002_22",
+     "label": "Playing my favourite musical instrument better"
+    },
+    {
+     "id": "ans_002_23",
+     "label": "Singing in tune"
+    },
+    {
+     "id": "ans_002_24",
+     "label": "Dancing with confidence"
+    },
+    {
+     "id": "ans_002_25",
+     "label": "Drawing and painting neatly"
+    },
+    {
+     "id": "ans_002_26",
+     "label": "Speaking on stage without fear"
+    }
+   ]
+  },
+  {
+   "id": "q_003",
+   "type": "scq",
+   "questionText": "What is one way you show kindness or care for others?",
+   "answers": [
+    {
+     "id": "ans_003_01",
+     "label": "Helping my classmates with homework"
+    },
+    {
+     "id": "ans_003_02",
+     "label": "Sharing my things with friends"
+    },
+    {
+     "id": "ans_003_03",
+     "label": "Including everyone in games"
+    },
+    {
+     "id": "ans_003_04",
+     "label": "Sharing my snacks with others"
+    },
+    {
+     "id": "ans_003_05",
+     "label": "Listening when someone wants to talk"
+    },
+    {
+     "id": "ans_003_06",
+     "label": "Standing up for a friend"
+    },
+    {
+     "id": "ans_003_07",
+     "label": "Giving compliments to people"
+    },
+    {
+     "id": "ans_003_08",
+     "label": "Helping at home with chores"
+    },
+    {
+     "id": "ans_003_09",
+     "label": "Helping my juniors whenever possible"
+    },
+    {
+     "id": "ans_003_10",
+     "label": "Saying kind words when someone is sad"
+    },
+    {
+     "id": "ans_003_11",
+     "label": "Helping a new student feel comfortable"
+    },
+    {
+     "id": "ans_003_12",
+     "label": "Respecting my teachers and elders"
+    },
+    {
+     "id": "ans_003_13",
+     "label": "Helping my friends prepare for exams"
+    },
+    {
+     "id": "ans_003_14",
+     "label": "Letting them borrow something I have"
+    },
+    {
+     "id": "ans_003_15",
+     "label": "Encouraging others during sports and activities"
+    },
+    {
+     "id": "ans_003_16",
+     "label": "Volunteering at school events"
+    },
+    {
+     "id": "ans_003_17",
+     "label": "Taking care of pets responsibly"
+    }
+   ]
+  },
+  {
+   "id": "q_004",
+   "type": "scq",
+   "questionText": "When do you feel proud of yourself?",
+   "answers": [
+    {
+     "id": "ans_004_01",
+     "label": "Finishing a difficult project"
+    },
+    {
+     "id": "ans_004_02",
+     "label": "Making my parents happy"
+    },
+    {
+     "id": "ans_004_03",
+     "label": "Scoring well in exams"
+    },
+    {
+     "id": "ans_004_04",
+     "label": "Helping a friend in need"
+    },
+    {
+     "id": "ans_004_05",
+     "label": "Winning in sports"
+    },
+    {
+     "id": "ans_004_06",
+     "label": "Making my teachers happy"
+    },
+    {
+     "id": "ans_004_07",
+     "label": "Performing well on stage"
+    },
+    {
+     "id": "ans_004_08",
+     "label": "Learning something tough"
+    },
+    {
+     "id": "ans_004_09",
+     "label": "Standing up for what is right"
+    },
+    {
+     "id": "ans_004_10",
+     "label": "Being kind and helpful to others"
+    },
+    {
+     "id": "ans_004_11",
+     "label": "Overcoming my fear"
+    },
+    {
+     "id": "ans_004_12",
+     "label": "Completing a task on time"
+    },
+    {
+     "id": "ans_004_13",
+     "label": "Working hard for a goal and achieving it"
+    },
+    {
+     "id": "ans_004_14",
+     "label": "Performing confidently on stage"
+    }
+   ]
+  },
+  {
+   "id": "q_005",
+   "type": "scq",
+   "questionText": "What do you want to become in the future?",
+   "answers": [
+    {
+     "id": "ans_005_01",
+     "label": "Doctor 🩺"
+    },
+    {
+     "id": "ans_005_02",
+     "label": "Cricketer 🏏"
+    },
+    {
+     "id": "ans_005_03",
+     "label": "Footballer ⚽"
+    },
+    {
+     "id": "ans_005_04",
+     "label": "Police officer 👮"
+    },
+    {
+     "id": "ans_005_05",
+     "label": "Pilot ✈️"
+    },
+    {
+     "id": "ans_005_06",
+     "label": "Judge ⚖️"
+    },
+    {
+     "id": "ans_005_07",
+     "label": "Lawyer 📚"
+    },
+    {
+     "id": "ans_005_08",
+     "label": "Space scientist 🪐"
+    },
+    {
+     "id": "ans_005_09",
+     "label": "Astronaut 👨‍🚀"
+    },
+    {
+     "id": "ans_005_10",
+     "label": "Engineer"
+    },
+    {
+     "id": "ans_005_11",
+     "label": "Sportsperson 🏅"
+    },
+    {
+     "id": "ans_005_12",
+     "label": "IAS officer"
+    },
+    {
+     "id": "ans_005_13",
+     "label": "Singer 🎤"
+    },
+    {
+     "id": "ans_005_14",
+     "label": "Actor 🎭"
+    },
+    {
+     "id": "ans_005_15",
+     "label": "Architect 🏛️"
+    },
+    {
+     "id": "ans_005_16",
+     "label": "Scientist 🔬"
+    },
+    {
+     "id": "ans_005_17",
+     "label": "Chef 👨‍🍳"
+    },
+    {
+     "id": "ans_005_18",
+     "label": "Dancer"
+    },
+    {
+     "id": "ans_005_19",
+     "label": "Badminton player 🏸"
+    },
+    {
+     "id": "ans_005_20",
+     "label": "Artist 🎨"
+    },
+    {
+     "id": "ans_005_21",
+     "label": "Entrepreneur/ Businessperson"
+    },
+    {
+     "id": "ans_005_22",
+     "label": "Prime Minister 🇮🇳"
+    },
+    {
+     "id": "ans_005_23",
+     "label": "IPS officer 🚓"
+    },
+    {
+     "id": "ans_005_24",
+     "label": "ISRO engineer 🚀"
+    },
+    {
+     "id": "ans_005_25",
+     "label": "President 🏛️"
+    },
+    {
+     "id": "ans_005_26",
+     "label": "Chess player ♟️"
+    },
+    {
+     "id": "ans_005_27",
+     "label": "Olympian 🏅"
+    },
+    {
+     "id": "ans_005_28",
+     "label": "Karate champion 🥋"
+    },
+    {
+     "id": "ans_005_29",
+     "label": "Environmentalist 🌿"
+    },
+    {
+     "id": "ans_005_30",
+     "label": "Musician 🎼"
+    },
+    {
+     "id": "ans_005_31",
+     "label": "Author ✍️"
+    },
+    {
+     "id": "ans_005_32",
+     "label": "Army officer 🪖"
+    },
+    {
+     "id": "ans_005_33",
+     "label": "Table tennis player 🏓"
+    },
+    {
+     "id": "ans_005_34",
+     "label": "Interior designer 🛋️"
+    },
+    {
+     "id": "ans_005_35",
+     "label": "Animator 🖌️"
+    },
+    {
+     "id": "ans_005_36",
+     "label": "Photographer 📸"
+    },
+    {
+     "id": "ans_005_37",
+     "label": "News reporter 🎙️"
+    },
+    {
+     "id": "ans_005_38",
+     "label": "Marine biologist 🐬"
+    },
+    {
+     "id": "ans_005_39",
+     "label": "Skater ⛸️"
+    },
+    {
+     "id": "ans_005_40",
+     "label": "Event organiser 🎪"
+    },
+    {
+     "id": "ans_005_41",
+     "label": "Poet 📝"
+    },
+    {
+     "id": "ans_005_42",
+     "label": "Teacher 👩‍🏫"
+    },
+    {
+     "id": "ans_005_43",
+     "label": "Navy officer"
+    },
+    {
+     "id": "ans_005_44",
+     "label": "Fashion designer"
+    },
+    {
+     "id": "ans_005_45",
+     "label": "Hockey player 🏑"
+    },
+    {
+     "id": "ans_005_46",
+     "label": "School principal 🏫"
+    },
+    {
+     "id": "ans_005_47",
+     "label": "Gymnast 🤸"
+    }
+   ]
+  },
+  {
+   "id": "q_006",
+   "type": "rmcq",
+   "questionText": "What are the two things you will do to achieve your future goal of becoming [the role you chose]?",
+   "answers": [
+    {
+     "id": "ans_006_01",
+     "label": "Studying hard and doing well in subjects"
+    },
+    {
+     "id": "ans_006_02",
+     "label": "Practising regularly in my interest area"
+    },
+    {
+     "id": "ans_006_03",
+     "label": "Reading books and learning more about my dream field"
+    },
+    {
+     "id": "ans_006_04",
+     "label": "Attend workshops, camps, and competitions to gain experience"
+    },
+    {
+     "id": "ans_006_05",
+     "label": "Watch and read about famous role models in my chosen field"
+    },
+    {
+     "id": "ans_006_06",
+     "label": "Practice communication"
+    },
+    {
+     "id": "ans_006_07",
+     "label": "Participate in school events to gain confidence"
+    },
+    {
+     "id": "ans_006_08",
+     "label": "Listening to teachers and following advice"
+    },
+    {
+     "id": "ans_006_09",
+     "label": "Managing my time and staying disciplined"
+    },
+    {
+     "id": "ans_006_10",
+     "label": "Trying again even if it’s difficult"
+    },
+    {
+     "id": "ans_006_11",
+     "label": "Learning from mistakes and improving"
+    },
+    {
+     "id": "ans_006_12",
+     "label": "Asking questions and staying curious"
+    },
+    {
+     "id": "ans_006_13",
+     "label": "Keeping myself healthy and strong"
+    },
+    {
+     "id": "ans_006_14",
+     "label": "Setting small goals and achieving them step by step"
+    },
+    {
+     "id": "ans_006_15",
+     "label": "Watch educational and tutorials videos"
+    },
+    {
+     "id": "ans_006_16",
+     "label": "Join clubs and groups related to my interest"
+    }
+   ]
+  },
+  {
+   "id": "q_007",
+   "type": "rmcq",
+   "questionText": "What are the two study habits you need to follow to achieve your future goal of becoming [the role you chose]?",
+   "answers": [
+    {
+     "id": "ans_007_01",
+     "label": "Doing my homework on time every day"
+    },
+    {
+     "id": "ans_007_02",
+     "label": "Revising lessons every day"
+    },
+    {
+     "id": "ans_007_03",
+     "label": "Reviewing my class notes after school"
+    },
+    {
+     "id": "ans_007_04",
+     "label": "Reading extra books about my chosen field"
+    },
+    {
+     "id": "ans_007_05",
+     "label": "Making short notes while studying"
+    },
+    {
+     "id": "ans_007_06",
+     "label": "Summarising lessons in my own words"
+    },
+    {
+     "id": "ans_007_07",
+     "label": "Asking questions when I don’t understand something"
+    },
+    {
+     "id": "ans_007_08",
+     "label": "Breaking big tasks into smaller steps"
+    },
+    {
+     "id": "ans_007_09",
+     "label": "Making a study schedule for each subject"
+    },
+    {
+     "id": "ans_007_10",
+     "label": "Practising what I learned by teaching friends"
+    },
+    {
+     "id": "ans_007_11",
+     "label": "Studying in a quiet place without distractions"
+    },
+    {
+     "id": "ans_007_12",
+     "label": "Keeping my study place organised"
+    },
+    {
+     "id": "ans_007_13",
+     "label": "Managing my study time well"
+    },
+    {
+     "id": "ans_007_14",
+     "label": "Learning from my mistakes in exams"
+    },
+    {
+     "id": "ans_007_15",
+     "label": "Getting a good night’s sleep so my mind is fresh"
+    },
+    {
+     "id": "ans_007_16",
+     "label": "Reading each chapter more than once to understand it better"
+    },
+    {
+     "id": "ans_007_17",
+     "label": "Revising previous lessons at least once a week"
+    }
+   ]
+  },
+  {
+   "id": "q_008",
+   "type": "rmcq",
+   "questionText": "What are the 5 most important skills you need to achieve your future goal?",
+   "answers": [
+    {
+     "id": "ans_008_01",
+     "label": "Learning new facts and remembering them well"
+    },
+    {
+     "id": "ans_008_02",
+     "label": "Thinking of new and creative ideas"
+    },
+    {
+     "id": "ans_008_03",
+     "label": "Writing neatly"
+    },
+    {
+     "id": "ans_008_04",
+     "label": "Run fast and build strong stamina"
+    },
+    {
+     "id": "ans_008_05",
+     "label": "Reading faster and understanding better"
+    },
+    {
+     "id": "ans_008_06",
+     "label": "Solving maths problems well"
+    },
+    {
+     "id": "ans_008_07",
+     "label": "Doing science experiments carefully"
+    },
+    {
+     "id": "ans_008_08",
+     "label": "Working well in a team"
+    },
+    {
+     "id": "ans_008_09",
+     "label": "Leading others in group work"
+    },
+    {
+     "id": "ans_008_10",
+     "label": "Managing my time properly"
+    },
+    {
+     "id": "ans_008_11",
+     "label": "Practising regularly to get better"
+    },
+    {
+     "id": "ans_008_12",
+     "label": "Staying calm under pressure"
+    },
+    {
+     "id": "ans_008_13",
+     "label": "Not giving up easily"
+    },
+    {
+     "id": "ans_008_14",
+     "label": "Use technology wisely"
+    },
+    {
+     "id": "ans_008_15",
+     "label": "Finding the needed information on the internet"
+    },
+    {
+     "id": "ans_008_16",
+     "label": "Playing sports with discipline and teamwork"
+    },
+    {
+     "id": "ans_008_17",
+     "label": "Practising public speaking"
+    },
+    {
+     "id": "ans_008_18",
+     "label": "Helping and supporting others"
+    },
+    {
+     "id": "ans_008_19",
+     "label": "Showing respect to teachers and elders"
+    },
+    {
+     "id": "ans_008_20",
+     "label": "Improving my drawing and art skills"
+    },
+    {
+     "id": "ans_008_21",
+     "label": "Playing my favourite musical instrument well"
+    },
+    {
+     "id": "ans_008_22",
+     "label": "Learning new languages"
+    },
+    {
+     "id": "ans_008_23",
+     "label": "Taking care of my health and fitness"
+    },
+    {
+     "id": "ans_008_24",
+     "label": "Thinking of smart solutions to problems"
+    },
+    {
+     "id": "ans_008_25",
+     "label": "Making good choices on my own"
+    },
+    {
+     "id": "ans_008_26",
+     "label": "Taking responsibility in school activities"
+    },
+    {
+     "id": "ans_008_27",
+     "label": "Expressing my thoughts clearly when I speak and write"
+    },
+    {
+     "id": "ans_008_28",
+     "label": "Controlling my emotions and staying positive"
+    },
+    {
+     "id": "ans_008_29",
+     "label": "Adjusting to new situations easily"
+    }
+   ]
+  },
+  {
+   "id": "q_009",
+   "type": "scq",
+   "questionText": "What is your academic goal for this year?",
+   "answers": [
+    {
+     "id": "ans_009_01",
+     "label": "Read more books and improve my vocabulary"
+    },
+    {
+     "id": "ans_009_02",
+     "label": "Write better essays and stories"
+    },
+    {
+     "id": "ans_009_03",
+     "label": "Improve grammar and spellings"
+    },
+    {
+     "id": "ans_009_04",
+     "label": "Speak English more confidently"
+    },
+    {
+     "id": "ans_009_05",
+     "label": "Solve tricky maths problems faster"
+    },
+    {
+     "id": "ans_009_06",
+     "label": "Understand science experiments and concepts better"
+    },
+    {
+     "id": "ans_009_07",
+     "label": "Do projects and models to explain science topics"
+    },
+    {
+     "id": "ans_009_08",
+     "label": "Do better in social science"
+    },
+    {
+     "id": "ans_009_09",
+     "label": "Draw neat maps and diagrams"
+    },
+    {
+     "id": "ans_009_10",
+     "label": "Learn how to use Artificial Intelligence (AI)"
+    },
+    {
+     "id": "ans_009_11",
+     "label": "Get better at using computers and technology"
+    },
+    {
+     "id": "ans_009_12",
+     "label": "Pay more attention and focus in class"
+    },
+    {
+     "id": "ans_009_13",
+     "label": "Finish homework and revise lessons regularly"
+    },
+    {
+     "id": "ans_009_14",
+     "label": "Improve my problem-solving skills"
+    },
+    {
+     "id": "ans_009_15",
+     "label": "Draw and colour diagrams and pictures more neatly"
+    },
+    {
+     "id": "ans_009_16",
+     "label": "Learn about important current events"
+    },
+    {
+     "id": "ans_009_17",
+     "label": "Take part in quizzes and GK activities"
+    },
+    {
+     "id": "ans_009_18",
+     "label": "Work on creative writing and storytelling"
+    },
+    {
+     "id": "ans_009_19",
+     "label": "Get full marks in at least one subject"
+    }
+   ]
+  },
+  {
+   "id": "q_010",
+   "type": "scq",
+   "questionText": "Why is this goal important to you?",
+   "answers": [
+    {
+     "id": "ans_010_01",
+     "label": "It will help me become smarter and more knowledgeable"
+    },
+    {
+     "id": "ans_010_02",
+     "label": "I want to score better marks in exams"
+    },
+    {
+     "id": "ans_010_03",
+     "label": "It will help me in my future career"
+    },
+    {
+     "id": "ans_010_04",
+     "label": "I want to make my parents and teachers proud"
+    },
+    {
+     "id": "ans_010_05",
+     "label": "It will boost my confidence and make me feel good"
+    },
+    {
+     "id": "ans_010_06",
+     "label": "I enjoy learning new things and improving myself"
+    },
+    {
+     "id": "ans_010_07",
+     "label": "It will help me do better in competitions"
+    },
+    {
+     "id": "ans_010_08",
+     "label": "I want to understand subjects more deeply, not just memorize"
+    },
+    {
+     "id": "ans_010_09",
+     "label": "It will make my school time more fun and interesting"
+    },
+    {
+     "id": "ans_010_10",
+     "label": "I want to prove to myself that I can achieve anything"
+    },
+    {
+     "id": "ans_010_11",
+     "label": "It will help me develop good study habits"
+    },
+    {
+     "id": "ans_010_12",
+     "label": "I want to be the best in my class"
+    },
+    {
+     "id": "ans_010_13",
+     "label": "It will make it easier for me to do homework and projects"
+    },
+    {
+     "id": "ans_010_14",
+     "label": "I want to participate in more school activities and clubs"
+    },
+    {
+     "id": "ans_010_15",
+     "label": "It will help me become more independent in learning"
+    },
+    {
+     "id": "ans_010_16",
+     "label": "I want to improve my creativity and thinking skills"
+    },
+    {
+     "id": "ans_010_17",
+     "label": "It will make my favourite subjects even more interesting"
+    },
+    {
+     "id": "ans_010_18",
+     "label": "I want to be more organized and manage my time well"
+    },
+    {
+     "id": "ans_010_19",
+     "label": "It will help me feel more confident when answering in class"
+    },
+    {
+     "id": "ans_010_20",
+     "label": "I want to learn new skills that will be useful in real life"
+    },
+    {
+     "id": "ans_010_21",
+     "label": "It will prepare me for higher classes and bigger challenges"
+    },
+    {
+     "id": "ans_010_22",
+     "label": "I want to be able to explain things better to my friends"
+    },
+    {
+     "id": "ans_010_23",
+     "label": "It will help me solve problems more easily"
+    },
+    {
+     "id": "ans_010_24",
+     "label": "I want to do well in entrance exams and scholarship tests"
+    },
+    {
+     "id": "ans_010_25",
+     "label": "It will make me feel proud of my progress and achievements"
+    }
+   ]
+  },
+  {
+   "id": "q_011",
+   "type": "rmcq",
+   "questionText": "What are two steps you will take to reach this goal?",
+   "answers": [
+    {
+     "id": "ans_011_01",
+     "label": "Study a little every day instead of only before exams"
+    },
+    {
+     "id": "ans_011_02",
+     "label": "Pay more attention in class and make good notes"
+    },
+    {
+     "id": "ans_011_03",
+     "label": "Ask teachers and my friends when I don’t understand something"
+    },
+    {
+     "id": "ans_011_04",
+     "label": "Practise subjects and topics I find difficult more often"
+    },
+    {
+     "id": "ans_011_05",
+     "label": "Read extra books and use educational videos to learn better"
+    },
+    {
+     "id": "ans_011_06",
+     "label": "Complete homework and projects on time"
+    },
+    {
+     "id": "ans_011_07",
+     "label": "Revise lessons regularly and not just before tests"
+    },
+    {
+     "id": "ans_011_08",
+     "label": "Make a simple study timetable and follow it"
+    },
+    {
+     "id": "ans_011_09",
+     "label": "Stay focused by reducing distractions like TV and mobile while studying"
+    },
+    {
+     "id": "ans_011_10",
+     "label": "Keep my books and study space neat and organised"
+    },
+    {
+     "id": "ans_011_11",
+     "label": "Set small study targets and reward myself when I finish them"
+    },
+    {
+     "id": "ans_011_12",
+     "label": "Take short breaks while studying to stay fresh"
+    },
+    {
+     "id": "ans_011_13",
+     "label": "Practise writing neatly and presenting answers well in exams"
+    },
+    {
+     "id": "ans_011_14",
+     "label": "Practise speaking very confidently"
+    },
+    {
+     "id": "ans_011_15",
+     "label": "Stay positive and keep trying, even if I make mistakes"
+    }
+   ]
+  },
+  {
+   "id": "q_012",
+   "type": "scq",
+   "questionText": "What is your personal goal for this year?",
+   "answers": [
+    {
+     "id": "ans_012_01",
+     "label": "Make new friends and be more social"
+    },
+    {
+     "id": "ans_012_02",
+     "label": "Be kind to everyone"
+    },
+    {
+     "id": "ans_012_03",
+     "label": "Play my favourite sport more often"
+    },
+    {
+     "id": "ans_012_04",
+     "label": "Help my family with chores at home"
+    },
+    {
+     "id": "ans_012_05",
+     "label": "Learn to play a new musical instrument"
+    },
+    {
+     "id": "ans_012_06",
+     "label": "Take care of my health and fitness"
+    },
+    {
+     "id": "ans_012_07",
+     "label": "Eat healthy food and avoid junk"
+    },
+    {
+     "id": "ans_012_08",
+     "label": "Make cool crafts, models, and DIY projects"
+    },
+    {
+     "id": "ans_012_09",
+     "label": "Wake up early and follow a routine"
+    },
+    {
+     "id": "ans_012_10",
+     "label": "Take care of pets responsibly"
+    },
+    {
+     "id": "ans_012_11",
+     "label": "Try photography and making short videos"
+    },
+    {
+     "id": "ans_012_12",
+     "label": "Spend more time with my grandparents and elders"
+    },
+    {
+     "id": "ans_012_13",
+     "label": "Be more confident in myself"
+    },
+    {
+     "id": "ans_012_14",
+     "label": "Control my anger and stay calm in tough situations"
+    },
+    {
+     "id": "ans_012_15",
+     "label": "Be more organised in my daily life"
+    },
+    {
+     "id": "ans_012_16",
+     "label": "Use my mobile and TV time wisely"
+    },
+    {
+     "id": "ans_012_17",
+     "label": "Read more storybooks for fun"
+    },
+    {
+     "id": "ans_012_18",
+     "label": "Draw, paint, and do creative activities regularly"
+    },
+    {
+     "id": "ans_012_19",
+     "label": "Learn a new hobby and a skill"
+    },
+    {
+     "id": "ans_012_20",
+     "label": "Improve my handwriting and neatness"
+    },
+    {
+     "id": "ans_012_21",
+     "label": "Travel and explore new places"
+    },
+    {
+     "id": "ans_012_22",
+     "label": "Save money and spend it carefully"
+    },
+    {
+     "id": "ans_012_23",
+     "label": "Take part in school cultural and sports activities"
+    },
+    {
+     "id": "ans_012_24",
+     "label": "Stand up for my friends and support others"
+    },
+    {
+     "id": "ans_012_25",
+     "label": "Be more positive and not give up easily"
+    },
+    {
+     "id": "ans_012_26",
+     "label": "Start a small project of my own"
+    }
+   ]
+  },
+  {
+   "id": "q_013",
+   "type": "scq",
+   "questionText": "Why is this goal important to you?",
+   "answers": [
+    {
+     "id": "ans_013_01",
+     "label": "It will help me feel happier and more confident"
+    },
+    {
+     "id": "ans_013_02",
+     "label": "It will make my daily life easier and more organized"
+    },
+    {
+     "id": "ans_013_03",
+     "label": "It will help me make more friends and improve my social skills"
+    },
+    {
+     "id": "ans_013_04",
+     "label": "It will help me stay healthy and active"
+    },
+    {
+     "id": "ans_013_05",
+     "label": "It will prepare me for future challenges"
+    },
+    {
+     "id": "ans_013_06",
+     "label": "It will make my parents and teachers proud"
+    },
+    {
+     "id": "ans_013_07",
+     "label": "It will help me feel more independent and responsible"
+    },
+    {
+     "id": "ans_013_08",
+     "label": "It will make school and home life more enjoyable"
+    },
+    {
+     "id": "ans_013_09",
+     "label": "It will help me be more creative and express myself better"
+    },
+    {
+     "id": "ans_013_10",
+     "label": "It will help me overcome my fears and try new things"
+    },
+    {
+     "id": "ans_013_11",
+     "label": "It will teach me important life skills"
+    },
+    {
+     "id": "ans_013_12",
+     "label": "It will help me be more disciplined and focused"
+    },
+    {
+     "id": "ans_013_13",
+     "label": "It will teach me how to set and achieve goals in life"
+    },
+    {
+     "id": "ans_013_14",
+     "label": "It will help me be more kind and understanding toward others"
+    },
+    {
+     "id": "ans_013_15",
+     "label": "It will make me enjoy learning and discovering new things"
+    },
+    {
+     "id": "ans_013_16",
+     "label": "It will help me take better care of myself and my belongings"
+    },
+    {
+     "id": "ans_013_17",
+     "label": "It will help me be more patient and understanding in difficult situations"
+    },
+    {
+     "id": "ans_013_18",
+     "label": "It will make me feel more prepared for my future"
+    },
+    {
+     "id": "ans_013_19",
+     "label": "It will help me believe in myself and never give up"
+    }
+   ]
+  },
+  {
+   "id": "q_014",
+   "type": "rmcq",
+   "questionText": "What are two steps you will take to reach this goal?",
+   "answers": [
+    {
+     "id": "ans_014_01",
+     "label": "Wake up early and follow a routine"
+    },
+    {
+     "id": "ans_014_02",
+     "label": "Eat healthy food and drink enough water"
+    },
+    {
+     "id": "ans_014_03",
+     "label": "Practise my favourite sport regularly"
+    },
+    {
+     "id": "ans_014_04",
+     "label": "Spend less time on mobile, TV, and video games"
+    },
+    {
+     "id": "ans_014_05",
+     "label": "Help my family with chores at home"
+    },
+    {
+     "id": "ans_014_06",
+     "label": "Practise playing a musical instrument every day"
+    },
+    {
+     "id": "ans_014_07",
+     "label": "Do creative activities like drawing, painting, or crafts"
+    },
+    {
+     "id": "ans_014_08",
+     "label": "Read books or stories for fun and learning"
+    },
+    {
+     "id": "ans_014_09",
+     "label": "Talk politely and kindly with friends and family"
+    },
+    {
+     "id": "ans_014_10",
+     "label": "Control my anger by staying calm in tough situations"
+    },
+    {
+     "id": "ans_014_11",
+     "label": "Keep my room and school bag organised"
+    },
+    {
+     "id": "ans_014_12",
+     "label": "Take care of pets every day with love and responsibility"
+    },
+    {
+     "id": "ans_014_13",
+     "label": "Practise speaking in front of a mirror to gain confidence"
+    },
+    {
+     "id": "ans_014_14",
+     "label": "Spend time with grandparents or elders"
+    },
+    {
+     "id": "ans_014_15",
+     "label": "Save a little money instead of spending it quickly"
+    },
+    {
+     "id": "ans_014_16",
+     "label": "Try new hobbies like photography, cooking, or DIY projects"
+    },
+    {
+     "id": "ans_014_17",
+     "label": "Be positive and not give up easily"
+    },
+    {
+     "id": "ans_014_18",
+     "label": "Stand up for my friends and support them"
+    },
+    {
+     "id": "ans_014_19",
+     "label": "Join school clubs, sports, or activities"
+    },
+    {
+     "id": "ans_014_20",
+     "label": "Travel and explore new places when possible"
+    },
+    {
+     "id": "ans_014_21",
+     "label": "Set small daily or weekly targets"
+    },
+    {
+     "id": "ans_014_22",
+     "label": "Make a simple routine and follow it"
+    },
+    {
+     "id": "ans_014_23",
+     "label": "Practise regularly, even if only for a short time"
+    },
+    {
+     "id": "ans_014_24",
+     "label": "Learn from mistakes and try again"
+    },
+    {
+     "id": "ans_014_25",
+     "label": "Ask for feedback from teachers, parents, or friends"
+    },
+    {
+     "id": "ans_014_26",
+     "label": "Stay patient and don’t expect results too quickly"
+    },
+    {
+     "id": "ans_014_27",
+     "label": "Remind myself daily why this goal is important"
+    },
+    {
+     "id": "ans_014_28",
+     "label": "Reward myself when I make progress"
+    }
+   ]
+  }
+ ],
+ "AAM2-mid": [
+  {
+   "id": "q_000",
+   "type": "scq",
+   "questionText": "If you had one superpower, what would it be? 🌟",
+   "answers": [
+    {
+     "id": "ans_000_01",
+     "label": "a) 🚀 Flying"
+    },
+    {
+     "id": "ans_000_02",
+     "label": "b) 🕵️ Invisibility"
+    },
+    {
+     "id": "ans_000_03",
+     "label": "c) 💨 Super speed"
+    },
+    {
+     "id": "ans_000_04",
+     "label": "d) 🐾 Talking to animals"
+    },
+    {
+     "id": "ans_000_05",
+     "label": "e) ⏱️ Time travel"
+    },
+    {
+     "id": "ans_000_06",
+     "label": "f) 🍕 The power to turn anything into pizza"
+    }
+   ]
+  },
+  {
+   "id": "q_001",
+   "type": "scq",
+   "questionText": "What is the one thing you enjoy doing the most in your free time?",
+   "answers": [
+    {
+     "id": "ans_001_01",
+     "label": "Playing my favourite sport"
+    },
+    {
+     "id": "ans_001_02",
+     "label": "Listening to music"
+    },
+    {
+     "id": "ans_001_03",
+     "label": "Watching fun and learning videos"
+    },
+    {
+     "id": "ans_001_04",
+     "label": "Reading storybooks and novels"
+    },
+    {
+     "id": "ans_001_05",
+     "label": "Spending time with friends"
+    },
+    {
+     "id": "ans_001_06",
+     "label": "Drawing, sketching, or painting"
+    },
+    {
+     "id": "ans_001_07",
+     "label": "Playing my favourite musical instrument"
+    },
+    {
+     "id": "ans_001_08",
+     "label": "Dancing"
+    },
+    {
+     "id": "ans_001_09",
+     "label": "Cycling"
+    },
+    {
+     "id": "ans_001_10",
+     "label": "Playing indoor games"
+    },
+    {
+     "id": "ans_001_11",
+     "label": "Writing stories"
+    },
+    {
+     "id": "ans_001_12",
+     "label": "Writing poems"
+    },
+    {
+     "id": "ans_001_13",
+     "label": "Swimming"
+    },
+    {
+     "id": "ans_001_14",
+     "label": "Skating"
+    },
+    {
+     "id": "ans_001_15",
+     "label": "Helping my family at home"
+    },
+    {
+     "id": "ans_001_16",
+     "label": "Spending time with grandparents"
+    },
+    {
+     "id": "ans_001_17",
+     "label": "Taking care of pets"
+    },
+    {
+     "id": "ans_001_18",
+     "label": "Exploring nature"
+    },
+    {
+     "id": "ans_001_19",
+     "label": "Gardening"
+    },
+    {
+     "id": "ans_001_20",
+     "label": "Making crafts"
+    },
+    {
+     "id": "ans_001_21",
+     "label": "Photography"
+    },
+    {
+     "id": "ans_001_22",
+     "label": "Doing simple experiments"
+    },
+    {
+     "id": "ans_001_23",
+     "label": "Trying cooking"
+    },
+    {
+     "id": "ans_001_24",
+     "label": "Designing posters"
+    },
+    {
+     "id": "ans_001_25",
+     "label": "Learning about space and planets"
+    },
+    {
+     "id": "ans_001_26",
+     "label": "Practising public speaking"
+    },
+    {
+     "id": "ans_001_27",
+     "label": "Improving my handwriting"
+    },
+    {
+     "id": "ans_001_28",
+     "label": "Learning a new language"
+    },
+    {
+     "id": "ans_001_29",
+     "label": "Solving puzzles and brain teasers"
+    },
+    {
+     "id": "ans_001_30",
+     "label": "Exploring maps and globes"
+    },
+    {
+     "id": "ans_001_31",
+     "label": "Building models and projects"
+    },
+    {
+     "id": "ans_001_32",
+     "label": "Collect interesting items"
+    },
+    {
+     "id": "ans_001_33",
+     "label": "Learn basic coding on the computer"
+    }
+   ]
+  },
+  {
+   "id": "q_002",
+   "type": "scq",
+   "questionText": "What is the one skill you would like to improve the most?",
+   "answers": [
+    {
+     "id": "ans_002_01",
+     "label": "Speaking more confidently in class"
+    },
+    {
+     "id": "ans_002_02",
+     "label": "Writing neatly"
+    },
+    {
+     "id": "ans_002_03",
+     "label": "Reading big books on my own"
+    },
+    {
+     "id": "ans_002_04",
+     "label": "Improving my English vocabulary"
+    },
+    {
+     "id": "ans_002_05",
+     "label": "Solving tricky maths problems"
+    },
+    {
+     "id": "ans_002_06",
+     "label": "Doing mental maths faster"
+    },
+    {
+     "id": "ans_002_07",
+     "label": "Making friends more easily"
+    },
+    {
+     "id": "ans_002_08",
+     "label": "Understanding science experiments better"
+    },
+    {
+     "id": "ans_002_09",
+     "label": "Remembering what I study for longer"
+    },
+    {
+     "id": "ans_002_10",
+     "label": "Writing essays and stories better"
+    },
+    {
+     "id": "ans_002_11",
+     "label": "Doing well in group projects"
+    },
+    {
+     "id": "ans_002_12",
+     "label": "Managing my time better"
+    },
+    {
+     "id": "ans_002_13",
+     "label": "Organising my school bag and books"
+    },
+    {
+     "id": "ans_002_14",
+     "label": "Staying calm when I feel angry"
+    },
+    {
+     "id": "ans_002_15",
+     "label": "Listening carefully when others speak"
+    },
+    {
+     "id": "ans_002_16",
+     "label": "Not getting distracted while studying"
+    },
+    {
+     "id": "ans_002_17",
+     "label": "Waking up early and being on time"
+    },
+    {
+     "id": "ans_002_18",
+     "label": "Practising sports more regularly"
+    },
+    {
+     "id": "ans_002_19",
+     "label": "Playing my favourite sport better"
+    },
+    {
+     "id": "ans_002_20",
+     "label": "Swimming with more confidence"
+    },
+    {
+     "id": "ans_002_21",
+     "label": "Skating smoothly without falling"
+    },
+    {
+     "id": "ans_002_22",
+     "label": "Playing my favourite musical instrument better"
+    },
+    {
+     "id": "ans_002_23",
+     "label": "Singing in tune"
+    },
+    {
+     "id": "ans_002_24",
+     "label": "Dancing with confidence"
+    },
+    {
+     "id": "ans_002_25",
+     "label": "Drawing and painting neatly"
+    },
+    {
+     "id": "ans_002_26",
+     "label": "Speaking on stage without fear"
+    }
+   ]
+  },
+  {
+   "id": "q_003",
+   "type": "scq",
+   "questionText": "What is one way you show kindness or care for others?",
+   "answers": [
+    {
+     "id": "ans_003_01",
+     "label": "Helping my classmates with homework"
+    },
+    {
+     "id": "ans_003_02",
+     "label": "Sharing my things with friends"
+    },
+    {
+     "id": "ans_003_03",
+     "label": "Including everyone in games"
+    },
+    {
+     "id": "ans_003_04",
+     "label": "Sharing my snacks with others"
+    },
+    {
+     "id": "ans_003_05",
+     "label": "Listening when someone wants to talk"
+    },
+    {
+     "id": "ans_003_06",
+     "label": "Standing up for a friend"
+    },
+    {
+     "id": "ans_003_07",
+     "label": "Giving compliments to people"
+    },
+    {
+     "id": "ans_003_08",
+     "label": "Helping at home with chores"
+    },
+    {
+     "id": "ans_003_09",
+     "label": "Helping my juniors whenever possible"
+    },
+    {
+     "id": "ans_003_10",
+     "label": "Saying kind words when someone is sad"
+    },
+    {
+     "id": "ans_003_11",
+     "label": "Helping a new student feel comfortable"
+    },
+    {
+     "id": "ans_003_12",
+     "label": "Respecting my teachers and elders"
+    },
+    {
+     "id": "ans_003_13",
+     "label": "Helping my friends prepare for exams"
+    },
+    {
+     "id": "ans_003_14",
+     "label": "Letting them borrow something I have"
+    },
+    {
+     "id": "ans_003_15",
+     "label": "Encouraging others during sports and activities"
+    },
+    {
+     "id": "ans_003_16",
+     "label": "Volunteering at school events"
+    },
+    {
+     "id": "ans_003_17",
+     "label": "Taking care of pets responsibly"
+    }
+   ]
+  },
+  {
+   "id": "q_004",
+   "type": "scq",
+   "questionText": "When do you feel proud of yourself?",
+   "answers": [
+    {
+     "id": "ans_004_01",
+     "label": "Finishing a difficult project"
+    },
+    {
+     "id": "ans_004_02",
+     "label": "Making my parents happy"
+    },
+    {
+     "id": "ans_004_03",
+     "label": "Scoring well in exams"
+    },
+    {
+     "id": "ans_004_04",
+     "label": "Helping a friend in need"
+    },
+    {
+     "id": "ans_004_05",
+     "label": "Winning in sports"
+    },
+    {
+     "id": "ans_004_06",
+     "label": "Making my teachers happy"
+    },
+    {
+     "id": "ans_004_07",
+     "label": "Performing well on stage"
+    },
+    {
+     "id": "ans_004_08",
+     "label": "Learning something tough"
+    },
+    {
+     "id": "ans_004_09",
+     "label": "Standing up for what is right"
+    },
+    {
+     "id": "ans_004_10",
+     "label": "Being kind and helpful to others"
+    },
+    {
+     "id": "ans_004_11",
+     "label": "Overcoming my fear"
+    },
+    {
+     "id": "ans_004_12",
+     "label": "Completing a task on time"
+    },
+    {
+     "id": "ans_004_13",
+     "label": "Working hard for a goal and achieving it"
+    },
+    {
+     "id": "ans_004_14",
+     "label": "Performing confidently on stage"
+    }
+   ]
+  },
+  {
+   "id": "q_005",
+   "type": "scq",
+   "questionText": "What do you want to become in the future?",
+   "answers": [
+    {
+     "id": "ans_005_01",
+     "label": "Doctor 🩺"
+    },
+    {
+     "id": "ans_005_02",
+     "label": "Cricketer 🏏"
+    },
+    {
+     "id": "ans_005_03",
+     "label": "Footballer ⚽"
+    },
+    {
+     "id": "ans_005_04",
+     "label": "Police officer 👮"
+    },
+    {
+     "id": "ans_005_05",
+     "label": "Pilot ✈️"
+    },
+    {
+     "id": "ans_005_06",
+     "label": "Judge ⚖️"
+    },
+    {
+     "id": "ans_005_07",
+     "label": "Lawyer 📚"
+    },
+    {
+     "id": "ans_005_08",
+     "label": "Space scientist 🪐"
+    },
+    {
+     "id": "ans_005_09",
+     "label": "Astronaut 👨‍🚀"
+    },
+    {
+     "id": "ans_005_10",
+     "label": "Engineer"
+    },
+    {
+     "id": "ans_005_11",
+     "label": "Sportsperson 🏅"
+    },
+    {
+     "id": "ans_005_12",
+     "label": "IAS officer"
+    },
+    {
+     "id": "ans_005_13",
+     "label": "Singer 🎤"
+    },
+    {
+     "id": "ans_005_14",
+     "label": "Actor 🎭"
+    },
+    {
+     "id": "ans_005_15",
+     "label": "Architect 🏛️"
+    },
+    {
+     "id": "ans_005_16",
+     "label": "Scientist 🔬"
+    },
+    {
+     "id": "ans_005_17",
+     "label": "Chef 👨‍🍳"
+    },
+    {
+     "id": "ans_005_18",
+     "label": "Dancer"
+    },
+    {
+     "id": "ans_005_19",
+     "label": "Badminton player 🏸"
+    },
+    {
+     "id": "ans_005_20",
+     "label": "Artist 🎨"
+    },
+    {
+     "id": "ans_005_21",
+     "label": "Entrepreneur/ Businessperson"
+    },
+    {
+     "id": "ans_005_22",
+     "label": "Prime Minister 🇮🇳"
+    },
+    {
+     "id": "ans_005_23",
+     "label": "IPS officer 🚓"
+    },
+    {
+     "id": "ans_005_24",
+     "label": "ISRO engineer 🚀"
+    },
+    {
+     "id": "ans_005_25",
+     "label": "President 🏛️"
+    },
+    {
+     "id": "ans_005_26",
+     "label": "Chess player ♟️"
+    },
+    {
+     "id": "ans_005_27",
+     "label": "Olympian 🏅"
+    },
+    {
+     "id": "ans_005_28",
+     "label": "Karate champion 🥋"
+    },
+    {
+     "id": "ans_005_29",
+     "label": "Environmentalist 🌿"
+    },
+    {
+     "id": "ans_005_30",
+     "label": "Musician 🎼"
+    },
+    {
+     "id": "ans_005_31",
+     "label": "Author ✍️"
+    },
+    {
+     "id": "ans_005_32",
+     "label": "Army officer 🪖"
+    },
+    {
+     "id": "ans_005_33",
+     "label": "Table tennis player 🏓"
+    },
+    {
+     "id": "ans_005_34",
+     "label": "Interior designer 🛋️"
+    },
+    {
+     "id": "ans_005_35",
+     "label": "Animator 🖌️"
+    },
+    {
+     "id": "ans_005_36",
+     "label": "Photographer 📸"
+    },
+    {
+     "id": "ans_005_37",
+     "label": "News reporter 🎙️"
+    },
+    {
+     "id": "ans_005_38",
+     "label": "Marine biologist 🐬"
+    },
+    {
+     "id": "ans_005_39",
+     "label": "Skater ⛸️"
+    },
+    {
+     "id": "ans_005_40",
+     "label": "Event organiser 🎪"
+    },
+    {
+     "id": "ans_005_41",
+     "label": "Poet 📝"
+    },
+    {
+     "id": "ans_005_42",
+     "label": "Teacher 👩‍🏫"
+    },
+    {
+     "id": "ans_005_43",
+     "label": "Navy officer"
+    },
+    {
+     "id": "ans_005_44",
+     "label": "Fashion designer"
+    },
+    {
+     "id": "ans_005_45",
+     "label": "Hockey player 🏑"
+    },
+    {
+     "id": "ans_005_46",
+     "label": "School principal 🏫"
+    },
+    {
+     "id": "ans_005_47",
+     "label": "Gymnast 🤸"
+    }
+   ]
+  },
+  {
+   "id": "q_006",
+   "type": "rmcq",
+   "questionText": "What are the two things you will do to achieve your future goal of becoming [the role you chose]?",
+   "answers": [
+    {
+     "id": "ans_006_01",
+     "label": "Studying hard and doing well in subjects"
+    },
+    {
+     "id": "ans_006_02",
+     "label": "Practising regularly in my interest area"
+    },
+    {
+     "id": "ans_006_03",
+     "label": "Reading books and learning more about my dream field"
+    },
+    {
+     "id": "ans_006_04",
+     "label": "Attend workshops, camps, and competitions to gain experience"
+    },
+    {
+     "id": "ans_006_05",
+     "label": "Watch and read about famous role models in my chosen field"
+    },
+    {
+     "id": "ans_006_06",
+     "label": "Practice communication"
+    },
+    {
+     "id": "ans_006_07",
+     "label": "Participate in school events to gain confidence"
+    },
+    {
+     "id": "ans_006_08",
+     "label": "Listening to teachers and following advice"
+    },
+    {
+     "id": "ans_006_09",
+     "label": "Managing my time and staying disciplined"
+    },
+    {
+     "id": "ans_006_10",
+     "label": "Trying again even if it’s difficult"
+    },
+    {
+     "id": "ans_006_11",
+     "label": "Learning from mistakes and improving"
+    },
+    {
+     "id": "ans_006_12",
+     "label": "Asking questions and staying curious"
+    },
+    {
+     "id": "ans_006_13",
+     "label": "Keeping myself healthy and strong"
+    },
+    {
+     "id": "ans_006_14",
+     "label": "Setting small goals and achieving them step by step"
+    },
+    {
+     "id": "ans_006_15",
+     "label": "Watch educational and tutorials videos"
+    },
+    {
+     "id": "ans_006_16",
+     "label": "Join clubs and groups related to my interest"
+    }
+   ]
+  },
+  {
+   "id": "q_007",
+   "type": "rmcq",
+   "questionText": "What are the two study habits you need to follow to achieve your future goal of becoming [the role you chose]?",
+   "answers": [
+    {
+     "id": "ans_007_01",
+     "label": "Doing my homework on time every day"
+    },
+    {
+     "id": "ans_007_02",
+     "label": "Revising lessons every day"
+    },
+    {
+     "id": "ans_007_03",
+     "label": "Reviewing my class notes after school"
+    },
+    {
+     "id": "ans_007_04",
+     "label": "Reading extra books about my chosen field"
+    },
+    {
+     "id": "ans_007_05",
+     "label": "Making short notes while studying"
+    },
+    {
+     "id": "ans_007_06",
+     "label": "Summarising lessons in my own words"
+    },
+    {
+     "id": "ans_007_07",
+     "label": "Asking questions when I don’t understand something"
+    },
+    {
+     "id": "ans_007_08",
+     "label": "Breaking big tasks into smaller steps"
+    },
+    {
+     "id": "ans_007_09",
+     "label": "Making a study schedule for each subject"
+    },
+    {
+     "id": "ans_007_10",
+     "label": "Practising what I learned by teaching friends"
+    },
+    {
+     "id": "ans_007_11",
+     "label": "Studying in a quiet place without distractions"
+    },
+    {
+     "id": "ans_007_12",
+     "label": "Keeping my study place organised"
+    },
+    {
+     "id": "ans_007_13",
+     "label": "Managing my study time well"
+    },
+    {
+     "id": "ans_007_14",
+     "label": "Learning from my mistakes in exams"
+    },
+    {
+     "id": "ans_007_15",
+     "label": "Getting a good night’s sleep so my mind is fresh"
+    },
+    {
+     "id": "ans_007_16",
+     "label": "Reading each chapter more than once to understand it better"
+    },
+    {
+     "id": "ans_007_17",
+     "label": "Revising previous lessons at least once a week"
+    }
+   ]
+  },
+  {
+   "id": "q_008",
+   "type": "rmcq",
+   "questionText": "What are the 5 most important skills you need to achieve your future goal?",
+   "answers": [
+    {
+     "id": "ans_008_01",
+     "label": "Learning new facts and remembering them well"
+    },
+    {
+     "id": "ans_008_02",
+     "label": "Thinking of new and creative ideas"
+    },
+    {
+     "id": "ans_008_03",
+     "label": "Writing neatly"
+    },
+    {
+     "id": "ans_008_04",
+     "label": "Run fast and build strong stamina"
+    },
+    {
+     "id": "ans_008_05",
+     "label": "Reading faster and understanding better"
+    },
+    {
+     "id": "ans_008_06",
+     "label": "Solving maths problems well"
+    },
+    {
+     "id": "ans_008_07",
+     "label": "Doing science experiments carefully"
+    },
+    {
+     "id": "ans_008_08",
+     "label": "Working well in a team"
+    },
+    {
+     "id": "ans_008_09",
+     "label": "Leading others in group work"
+    },
+    {
+     "id": "ans_008_10",
+     "label": "Managing my time properly"
+    },
+    {
+     "id": "ans_008_11",
+     "label": "Practising regularly to get better"
+    },
+    {
+     "id": "ans_008_12",
+     "label": "Staying calm under pressure"
+    },
+    {
+     "id": "ans_008_13",
+     "label": "Not giving up easily"
+    },
+    {
+     "id": "ans_008_14",
+     "label": "Use technology wisely"
+    },
+    {
+     "id": "ans_008_15",
+     "label": "Finding the needed information on the internet"
+    },
+    {
+     "id": "ans_008_16",
+     "label": "Playing sports with discipline and teamwork"
+    },
+    {
+     "id": "ans_008_17",
+     "label": "Practising public speaking"
+    },
+    {
+     "id": "ans_008_18",
+     "label": "Helping and supporting others"
+    },
+    {
+     "id": "ans_008_19",
+     "label": "Showing respect to teachers and elders"
+    },
+    {
+     "id": "ans_008_20",
+     "label": "Improving my drawing and art skills"
+    },
+    {
+     "id": "ans_008_21",
+     "label": "Playing my favourite musical instrument well"
+    },
+    {
+     "id": "ans_008_22",
+     "label": "Learning new languages"
+    },
+    {
+     "id": "ans_008_23",
+     "label": "Taking care of my health and fitness"
+    },
+    {
+     "id": "ans_008_24",
+     "label": "Thinking of smart solutions to problems"
+    },
+    {
+     "id": "ans_008_25",
+     "label": "Making good choices on my own"
+    },
+    {
+     "id": "ans_008_26",
+     "label": "Taking responsibility in school activities"
+    },
+    {
+     "id": "ans_008_27",
+     "label": "Expressing my thoughts clearly when I speak and write"
+    },
+    {
+     "id": "ans_008_28",
+     "label": "Controlling my emotions and staying positive"
+    },
+    {
+     "id": "ans_008_29",
+     "label": "Adjusting to new situations easily"
+    }
+   ]
+  },
+  {
+   "id": "q_009",
+   "type": "scq",
+   "questionText": "What is your academic goal for this year?",
+   "answers": [
+    {
+     "id": "ans_009_01",
+     "label": "Read more books and improve my vocabulary"
+    },
+    {
+     "id": "ans_009_02",
+     "label": "Write better essays and stories"
+    },
+    {
+     "id": "ans_009_03",
+     "label": "Improve grammar and spellings"
+    },
+    {
+     "id": "ans_009_04",
+     "label": "Speak English more confidently"
+    },
+    {
+     "id": "ans_009_05",
+     "label": "Solve tricky maths problems faster"
+    },
+    {
+     "id": "ans_009_06",
+     "label": "Understand science experiments and concepts better"
+    },
+    {
+     "id": "ans_009_07",
+     "label": "Do projects and models to explain science topics"
+    },
+    {
+     "id": "ans_009_08",
+     "label": "Do better in social science"
+    },
+    {
+     "id": "ans_009_09",
+     "label": "Draw neat maps and diagrams"
+    },
+    {
+     "id": "ans_009_10",
+     "label": "Learn how to use Artificial Intelligence (AI)"
+    },
+    {
+     "id": "ans_009_11",
+     "label": "Get better at using computers and technology"
+    },
+    {
+     "id": "ans_009_12",
+     "label": "Pay more attention and focus in class"
+    },
+    {
+     "id": "ans_009_13",
+     "label": "Finish homework and revise lessons regularly"
+    },
+    {
+     "id": "ans_009_14",
+     "label": "Improve my problem-solving skills"
+    },
+    {
+     "id": "ans_009_15",
+     "label": "Draw and colour diagrams and pictures more neatly"
+    },
+    {
+     "id": "ans_009_16",
+     "label": "Learn about important current events"
+    },
+    {
+     "id": "ans_009_17",
+     "label": "Take part in quizzes and GK activities"
+    },
+    {
+     "id": "ans_009_18",
+     "label": "Work on creative writing and storytelling"
+    },
+    {
+     "id": "ans_009_19",
+     "label": "Get full marks in at least one subject"
+    }
+   ]
+  },
+  {
+   "id": "q_010",
+   "type": "scq",
+   "questionText": "Why is this goal important to you?",
+   "answers": [
+    {
+     "id": "ans_010_01",
+     "label": "It will help me become smarter and more knowledgeable"
+    },
+    {
+     "id": "ans_010_02",
+     "label": "I want to score better marks in exams"
+    },
+    {
+     "id": "ans_010_03",
+     "label": "It will help me in my future career"
+    },
+    {
+     "id": "ans_010_04",
+     "label": "I want to make my parents and teachers proud"
+    },
+    {
+     "id": "ans_010_05",
+     "label": "It will boost my confidence and make me feel good"
+    },
+    {
+     "id": "ans_010_06",
+     "label": "I enjoy learning new things and improving myself"
+    },
+    {
+     "id": "ans_010_07",
+     "label": "It will help me do better in competitions"
+    },
+    {
+     "id": "ans_010_08",
+     "label": "I want to understand subjects more deeply, not just memorize"
+    },
+    {
+     "id": "ans_010_09",
+     "label": "It will make my school time more fun and interesting"
+    },
+    {
+     "id": "ans_010_10",
+     "label": "I want to prove to myself that I can achieve anything"
+    },
+    {
+     "id": "ans_010_11",
+     "label": "It will help me develop good study habits"
+    },
+    {
+     "id": "ans_010_12",
+     "label": "I want to be the best in my class"
+    },
+    {
+     "id": "ans_010_13",
+     "label": "It will make it easier for me to do homework and projects"
+    },
+    {
+     "id": "ans_010_14",
+     "label": "I want to participate in more school activities and clubs"
+    },
+    {
+     "id": "ans_010_15",
+     "label": "It will help me become more independent in learning"
+    },
+    {
+     "id": "ans_010_16",
+     "label": "I want to improve my creativity and thinking skills"
+    },
+    {
+     "id": "ans_010_17",
+     "label": "It will make my favourite subjects even more interesting"
+    },
+    {
+     "id": "ans_010_18",
+     "label": "I want to be more organized and manage my time well"
+    },
+    {
+     "id": "ans_010_19",
+     "label": "It will help me feel more confident when answering in class"
+    },
+    {
+     "id": "ans_010_20",
+     "label": "I want to learn new skills that will be useful in real life"
+    },
+    {
+     "id": "ans_010_21",
+     "label": "It will prepare me for higher classes and bigger challenges"
+    },
+    {
+     "id": "ans_010_22",
+     "label": "I want to be able to explain things better to my friends"
+    },
+    {
+     "id": "ans_010_23",
+     "label": "It will help me solve problems more easily"
+    },
+    {
+     "id": "ans_010_24",
+     "label": "I want to do well in entrance exams and scholarship tests"
+    },
+    {
+     "id": "ans_010_25",
+     "label": "It will make me feel proud of my progress and achievements"
+    }
+   ]
+  },
+  {
+   "id": "q_011",
+   "type": "rmcq",
+   "questionText": "What are two steps you will take to reach this goal?",
+   "answers": [
+    {
+     "id": "ans_011_01",
+     "label": "Study a little every day instead of only before exams"
+    },
+    {
+     "id": "ans_011_02",
+     "label": "Pay more attention in class and make good notes"
+    },
+    {
+     "id": "ans_011_03",
+     "label": "Ask teachers and my friends when I don’t understand something"
+    },
+    {
+     "id": "ans_011_04",
+     "label": "Practise subjects and topics I find difficult more often"
+    },
+    {
+     "id": "ans_011_05",
+     "label": "Read extra books and use educational videos to learn better"
+    },
+    {
+     "id": "ans_011_06",
+     "label": "Complete homework and projects on time"
+    },
+    {
+     "id": "ans_011_07",
+     "label": "Revise lessons regularly and not just before tests"
+    },
+    {
+     "id": "ans_011_08",
+     "label": "Make a simple study timetable and follow it"
+    },
+    {
+     "id": "ans_011_09",
+     "label": "Stay focused by reducing distractions like TV and mobile while studying"
+    },
+    {
+     "id": "ans_011_10",
+     "label": "Keep my books and study space neat and organised"
+    },
+    {
+     "id": "ans_011_11",
+     "label": "Set small study targets and reward myself when I finish them"
+    },
+    {
+     "id": "ans_011_12",
+     "label": "Take short breaks while studying to stay fresh"
+    },
+    {
+     "id": "ans_011_13",
+     "label": "Practise writing neatly and presenting answers well in exams"
+    },
+    {
+     "id": "ans_011_14",
+     "label": "Practise speaking very confidently"
+    },
+    {
+     "id": "ans_011_15",
+     "label": "Stay positive and keep trying, even if I make mistakes"
+    }
+   ]
+  },
+  {
+   "id": "q_012",
+   "type": "scq",
+   "questionText": "What is your personal goal for this year?",
+   "answers": [
+    {
+     "id": "ans_012_01",
+     "label": "Make new friends and be more social"
+    },
+    {
+     "id": "ans_012_02",
+     "label": "Be kind to everyone"
+    },
+    {
+     "id": "ans_012_03",
+     "label": "Play my favourite sport more often"
+    },
+    {
+     "id": "ans_012_04",
+     "label": "Help my family with chores at home"
+    },
+    {
+     "id": "ans_012_05",
+     "label": "Learn to play a new musical instrument"
+    },
+    {
+     "id": "ans_012_06",
+     "label": "Take care of my health and fitness"
+    },
+    {
+     "id": "ans_012_07",
+     "label": "Eat healthy food and avoid junk"
+    },
+    {
+     "id": "ans_012_08",
+     "label": "Make cool crafts, models, and DIY projects"
+    },
+    {
+     "id": "ans_012_09",
+     "label": "Wake up early and follow a routine"
+    },
+    {
+     "id": "ans_012_10",
+     "label": "Take care of pets responsibly"
+    },
+    {
+     "id": "ans_012_11",
+     "label": "Try photography and making short videos"
+    },
+    {
+     "id": "ans_012_12",
+     "label": "Spend more time with my grandparents and elders"
+    },
+    {
+     "id": "ans_012_13",
+     "label": "Be more confident in myself"
+    },
+    {
+     "id": "ans_012_14",
+     "label": "Control my anger and stay calm in tough situations"
+    },
+    {
+     "id": "ans_012_15",
+     "label": "Be more organised in my daily life"
+    },
+    {
+     "id": "ans_012_16",
+     "label": "Use my mobile and TV time wisely"
+    },
+    {
+     "id": "ans_012_17",
+     "label": "Read more storybooks for fun"
+    },
+    {
+     "id": "ans_012_18",
+     "label": "Draw, paint, and do creative activities regularly"
+    },
+    {
+     "id": "ans_012_19",
+     "label": "Learn a new hobby and a skill"
+    },
+    {
+     "id": "ans_012_20",
+     "label": "Improve my handwriting and neatness"
+    },
+    {
+     "id": "ans_012_21",
+     "label": "Travel and explore new places"
+    },
+    {
+     "id": "ans_012_22",
+     "label": "Save money and spend it carefully"
+    },
+    {
+     "id": "ans_012_23",
+     "label": "Take part in school cultural and sports activities"
+    },
+    {
+     "id": "ans_012_24",
+     "label": "Stand up for my friends and support others"
+    },
+    {
+     "id": "ans_012_25",
+     "label": "Be more positive and not give up easily"
+    },
+    {
+     "id": "ans_012_26",
+     "label": "Start a small project of my own"
+    }
+   ]
+  },
+  {
+   "id": "q_013",
+   "type": "scq",
+   "questionText": "Why is this goal important to you?",
+   "answers": [
+    {
+     "id": "ans_013_01",
+     "label": "It will help me feel happier and more confident"
+    },
+    {
+     "id": "ans_013_02",
+     "label": "It will make my daily life easier and more organized"
+    },
+    {
+     "id": "ans_013_03",
+     "label": "It will help me make more friends and improve my social skills"
+    },
+    {
+     "id": "ans_013_04",
+     "label": "It will help me stay healthy and active"
+    },
+    {
+     "id": "ans_013_05",
+     "label": "It will prepare me for future challenges"
+    },
+    {
+     "id": "ans_013_06",
+     "label": "It will make my parents and teachers proud"
+    },
+    {
+     "id": "ans_013_07",
+     "label": "It will help me feel more independent and responsible"
+    },
+    {
+     "id": "ans_013_08",
+     "label": "It will make school and home life more enjoyable"
+    },
+    {
+     "id": "ans_013_09",
+     "label": "It will help me be more creative and express myself better"
+    },
+    {
+     "id": "ans_013_10",
+     "label": "It will help me overcome my fears and try new things"
+    },
+    {
+     "id": "ans_013_11",
+     "label": "It will teach me important life skills"
+    },
+    {
+     "id": "ans_013_12",
+     "label": "It will help me be more disciplined and focused"
+    },
+    {
+     "id": "ans_013_13",
+     "label": "It will teach me how to set and achieve goals in life"
+    },
+    {
+     "id": "ans_013_14",
+     "label": "It will help me be more kind and understanding toward others"
+    },
+    {
+     "id": "ans_013_15",
+     "label": "It will make me enjoy learning and discovering new things"
+    },
+    {
+     "id": "ans_013_16",
+     "label": "It will help me take better care of myself and my belongings"
+    },
+    {
+     "id": "ans_013_17",
+     "label": "It will help me be more patient and understanding in difficult situations"
+    },
+    {
+     "id": "ans_013_18",
+     "label": "It will make me feel more prepared for my future"
+    },
+    {
+     "id": "ans_013_19",
+     "label": "It will help me believe in myself and never give up"
+    }
+   ]
+  },
+  {
+   "id": "q_014",
+   "type": "rmcq",
+   "questionText": "What are two steps you will take to reach this goal?",
+   "answers": [
+    {
+     "id": "ans_014_01",
+     "label": "Wake up early and follow a routine"
+    },
+    {
+     "id": "ans_014_02",
+     "label": "Eat healthy food and drink enough water"
+    },
+    {
+     "id": "ans_014_03",
+     "label": "Practise my favourite sport regularly"
+    },
+    {
+     "id": "ans_014_04",
+     "label": "Spend less time on mobile, TV, and video games"
+    },
+    {
+     "id": "ans_014_05",
+     "label": "Help my family with chores at home"
+    },
+    {
+     "id": "ans_014_06",
+     "label": "Practise playing a musical instrument every day"
+    },
+    {
+     "id": "ans_014_07",
+     "label": "Do creative activities like drawing, painting, or crafts"
+    },
+    {
+     "id": "ans_014_08",
+     "label": "Read books or stories for fun and learning"
+    },
+    {
+     "id": "ans_014_09",
+     "label": "Talk politely and kindly with friends and family"
+    },
+    {
+     "id": "ans_014_10",
+     "label": "Control my anger by staying calm in tough situations"
+    },
+    {
+     "id": "ans_014_11",
+     "label": "Keep my room and school bag organised"
+    },
+    {
+     "id": "ans_014_12",
+     "label": "Take care of pets every day with love and responsibility"
+    },
+    {
+     "id": "ans_014_13",
+     "label": "Practise speaking in front of a mirror to gain confidence"
+    },
+    {
+     "id": "ans_014_14",
+     "label": "Spend time with grandparents or elders"
+    },
+    {
+     "id": "ans_014_15",
+     "label": "Save a little money instead of spending it quickly"
+    },
+    {
+     "id": "ans_014_16",
+     "label": "Try new hobbies like photography, cooking, or DIY projects"
+    },
+    {
+     "id": "ans_014_17",
+     "label": "Be positive and not give up easily"
+    },
+    {
+     "id": "ans_014_18",
+     "label": "Stand up for my friends and support them"
+    },
+    {
+     "id": "ans_014_19",
+     "label": "Join school clubs, sports, or activities"
+    },
+    {
+     "id": "ans_014_20",
+     "label": "Travel and explore new places when possible"
+    },
+    {
+     "id": "ans_014_21",
+     "label": "Set small daily or weekly targets"
+    },
+    {
+     "id": "ans_014_22",
+     "label": "Make a simple routine and follow it"
+    },
+    {
+     "id": "ans_014_23",
+     "label": "Practise regularly, even if only for a short time"
+    },
+    {
+     "id": "ans_014_24",
+     "label": "Learn from mistakes and try again"
+    },
+    {
+     "id": "ans_014_25",
+     "label": "Ask for feedback from teachers, parents, or friends"
+    },
+    {
+     "id": "ans_014_26",
+     "label": "Stay patient and don’t expect results too quickly"
+    },
+    {
+     "id": "ans_014_27",
+     "label": "Remind myself daily why this goal is important"
+    },
+    {
+     "id": "ans_014_28",
+     "label": "Reward myself when I make progress"
+    }
+   ]
+  },
+  {
+   "id": "q_school_special_001",
+   "type": "scq",
+   "questionText": "What makes your school special for you?",
+   "answers": [
+    {
+     "id": "ans_school_special_01",
+     "label": "I enjoy participating in competitions and showing my talent"
+    },
+    {
+     "id": "ans_school_special_02",
+     "label": "I love that my school encourages me to try new things"
+    },
+    {
+     "id": "ans_school_special_03",
+     "label": "I feel very happy here because my school is like my second home"
+    },
+    {
+     "id": "ans_school_special_04",
+     "label": "I love that our school organises exciting events and celebrations"
+    },
+    {
+     "id": "ans_school_special_05",
+     "label": "I like that we get to play many fun sports and games here"
+    },
+    {
+     "id": "ans_school_special_06",
+     "label": "I like that my teachers always listen to me and understand me"
+    },
+    {
+     "id": "ans_school_special_07",
+     "label": "I feel happy here because my school motivates me to do better every day"
+    },
+    {
+     "id": "ans_school_special_08",
+     "label": "I love how our school celebrates our achievements so beautifully"
+    },
+    {
+     "id": "ans_school_special_09",
+     "label": "The most special thing is that everyone here treats each other kindly"
+    },
+    {
+     "id": "ans_school_special_10",
+     "label": "The best part is that I get many chances to participate in competitions and sports"
+    }
+   ]
+  }
+ ],
+ "AAM1-prep": [
+  {
+   "id": "q_87158bf9",
+   "type": "scq",
+   "questionText": "If you had one superpower, what would it be? 🌟",
+   "answers": [
+    {
+     "id": "ans_10352db0",
+     "label": "a) 🚀 Flying"
+    },
+    {
+     "id": "ans_0b731ea0",
+     "label": "b) 🕵️ Invisibility"
+    },
+    {
+     "id": "ans_9cc98196",
+     "label": "c) 💨 Super speed"
+    },
+    {
+     "id": "ans_36f2bbd1",
+     "label": "d) 🐾 Talking to animals"
+    },
+    {
+     "id": "ans_b22ac4b2",
+     "label": "e) ⏱️ Time travel"
+    },
+    {
+     "id": "ans_d9d9bbe2",
+     "label": "f) 🍕 The power to turn anything into pizza"
+    }
+   ]
+  },
+  {
+   "id": "q_b0a299c2",
+   "type": "scq",
+   "questionText": "What would you like to be when you grow up?",
+   "answers": [
+    {
+     "id": "ans_aa947902",
+     "label": "Doctor 🩺"
+    },
+    {
+     "id": "ans_696f820f",
+     "label": "Cricketer 🏏"
+    },
+    {
+     "id": "ans_d9ef8ad8",
+     "label": "Footballer ⚽"
+    },
+    {
+     "id": "ans_7f5fc985",
+     "label": "Police officer 👮"
+    },
+    {
+     "id": "ans_a8394a2b",
+     "label": "Pilot ✈️"
+    },
+    {
+     "id": "ans_460ae9d9",
+     "label": "Judge ⚖️"
+    },
+    {
+     "id": "ans_1e2b4810",
+     "label": "Lawyer 📚"
+    },
+    {
+     "id": "ans_62c09378",
+     "label": "Space scientist 🪐"
+    },
+    {
+     "id": "ans_2effe293",
+     "label": "Astronaut 👨‍🚀"
+    },
+    {
+     "id": "ans_0226f6dd",
+     "label": "Engineer"
+    },
+    {
+     "id": "ans_50b748d3",
+     "label": "Sportsperson 🏅"
+    },
+    {
+     "id": "ans_b045e279",
+     "label": "IAS officer"
+    },
+    {
+     "id": "ans_d3959d1e",
+     "label": "Singer 🎤"
+    },
+    {
+     "id": "ans_97f06c96",
+     "label": "Actor 🎭"
+    },
+    {
+     "id": "ans_afc5a918",
+     "label": "Architect 🏛️"
+    },
+    {
+     "id": "ans_71a8f181",
+     "label": "Scientist 🔬"
+    },
+    {
+     "id": "ans_89af82f2",
+     "label": "Chef 👨‍🍳"
+    },
+    {
+     "id": "ans_e354de44",
+     "label": "Dancer"
+    },
+    {
+     "id": "ans_b309e8d2",
+     "label": "Badminton player 🏸"
+    },
+    {
+     "id": "ans_df5d8d31",
+     "label": "Artist 🎨"
+    },
+    {
+     "id": "ans_079da2c7",
+     "label": "Entrepreneur/ Businessperson"
+    },
+    {
+     "id": "ans_f173193b",
+     "label": "Prime Minister 🇮🇳"
+    },
+    {
+     "id": "ans_8e6a7f88",
+     "label": "IPS officer 🚓"
+    },
+    {
+     "id": "ans_9867a6a5",
+     "label": "ISRO engineer 🚀"
+    },
+    {
+     "id": "ans_16e1c86f",
+     "label": "President 🏛️"
+    },
+    {
+     "id": "ans_fc7976ff",
+     "label": "Chess player ♟️"
+    },
+    {
+     "id": "ans_57837963",
+     "label": "Olympian 🏅"
+    },
+    {
+     "id": "ans_5fd87fb2",
+     "label": "Karate champion 🥋"
+    },
+    {
+     "id": "ans_3c466b4c",
+     "label": "Environmentalist 🌿"
+    },
+    {
+     "id": "ans_5b56848f",
+     "label": "Musician 🎼"
+    },
+    {
+     "id": "ans_7f1776c0",
+     "label": "Author ✍️"
+    },
+    {
+     "id": "ans_5b45a64a",
+     "label": "Army officer 🪖"
+    },
+    {
+     "id": "ans_b7ed5078",
+     "label": "Table tennis player 🏓"
+    },
+    {
+     "id": "ans_39d09024",
+     "label": "Interior designer 🛋️"
+    },
+    {
+     "id": "ans_3ec86d0d",
+     "label": "Animator 🖌️"
+    },
+    {
+     "id": "ans_d923a056",
+     "label": "Photographer 📸"
+    },
+    {
+     "id": "ans_821af91a",
+     "label": "News reporter 🎙️"
+    },
+    {
+     "id": "ans_80affe0a",
+     "label": "Marine biologist 🐬"
+    },
+    {
+     "id": "ans_f134dd2f",
+     "label": "Skater ⛸️"
+    },
+    {
+     "id": "ans_7d3fa1d9",
+     "label": "Event organiser 🎪"
+    },
+    {
+     "id": "ans_1791db75",
+     "label": "Poet 📝"
+    },
+    {
+     "id": "ans_33161ac7",
+     "label": "Teacher 👩‍🏫"
+    },
+    {
+     "id": "ans_0ce75fb8",
+     "label": "Navy officer"
+    },
+    {
+     "id": "ans_72d75517",
+     "label": "Fashion designer"
+    },
+    {
+     "id": "ans_590086f7",
+     "label": "Hockey player 🏑"
+    },
+    {
+     "id": "ans_7faf8c9b",
+     "label": "School principal 🏫"
+    },
+    {
+     "id": "ans_96fa18b2",
+     "label": "Gymnast 🤸"
+    }
+   ]
+  },
+  {
+   "id": "q_e5806a6f",
+   "type": "scq",
+   "questionText": "What is one new thing you want to learn in school this year?",
+   "answers": [
+    {
+     "id": "ans_dffd07e1",
+     "label": "Learning cool facts from my favourite subject"
+    },
+    {
+     "id": "ans_63089142",
+     "label": "Learning multiplication tables"
+    },
+    {
+     "id": "ans_0d0f6c13",
+     "label": "Winning a medal or certificate"
+    },
+    {
+     "id": "ans_2142b6d4",
+     "label": "Writing a story or comic by myself"
+    },
+    {
+     "id": "ans_975c7d7c",
+     "label": "Using a computer for learning"
+    },
+    {
+     "id": "ans_471544a4",
+     "label": "Making posters and charts of my favourite topics"
+    },
+    {
+     "id": "ans_f117c145",
+     "label": "Using big and new words when I talk"
+    },
+    {
+     "id": "ans_88d6cf9e",
+     "label": "Solving number puzzles and riddles"
+    },
+    {
+     "id": "ans_2a58ebc6",
+     "label": "Doing fun science experiments"
+    },
+    {
+     "id": "ans_d7601a06",
+     "label": "Understanding how plants and animals grow"
+    },
+    {
+     "id": "ans_f20cd025",
+     "label": "Learning about space and planets"
+    },
+    {
+     "id": "ans_aa383ac0",
+     "label": "Drawing easy maps of places"
+    },
+    {
+     "id": "ans_012c20df",
+     "label": "Learning how to use a dictionary"
+    },
+    {
+     "id": "ans_5016fd1f",
+     "label": "Drawing and labeling a diagram"
+    }
+   ]
+  },
+  {
+   "id": "q_1f846fac",
+   "type": "scq",
+   "questionText": "What is one fun thing you want to learn this year?",
+   "answers": [
+    {
+     "id": "ans_43c7b40b",
+     "label": "Learn to take awesome photos"
+    },
+    {
+     "id": "ans_7c4abf8d",
+     "label": "Making my own bookmark"
+    },
+    {
+     "id": "ans_78eb01d5",
+     "label": "Creating fun riddles"
+    },
+    {
+     "id": "ans_89e86758",
+     "label": "Playing a musical instrument"
+    },
+    {
+     "id": "ans_d8ef652b",
+     "label": "Learning magic tricks and surprise people"
+    },
+    {
+     "id": "ans_480c50a1",
+     "label": "Decorating my room nicely"
+    },
+    {
+     "id": "ans_e63d9314",
+     "label": "Writing neatly and beautifully"
+    },
+    {
+     "id": "ans_7da57c6a",
+     "label": "Writing funny jokes"
+    },
+    {
+     "id": "ans_2cf46e27",
+     "label": "How to start a conversation"
+    },
+    {
+     "id": "ans_dd1b8d6d",
+     "label": "Making awesome posters"
+    },
+    {
+     "id": "ans_c689c53b",
+     "label": "Drawing fun cartoons and comics"
+    },
+    {
+     "id": "ans_66541ea9",
+     "label": "Doing cool origami"
+    },
+    {
+     "id": "ans_889f6961",
+     "label": "Painting without making a mess"
+    },
+    {
+     "id": "ans_b2bb3358",
+     "label": "Making models with clay"
+    },
+    {
+     "id": "ans_f6f4f33c",
+     "label": "Learning to write in cursive"
+    },
+    {
+     "id": "ans_a26c62e7",
+     "label": "Creating a scrapbook"
+    },
+    {
+     "id": "ans_e48573aa",
+     "label": "Grow my own little plant"
+    }
+   ]
+  },
+  {
+   "id": "q_121e61b7",
+   "type": "scq",
+   "questionText": "What is your favourite food?",
+   "answers": [
+    {
+     "id": "ans_9f650831",
+     "label": "Pizza 🍕"
+    },
+    {
+     "id": "ans_83071b9a",
+     "label": "Ice Cream 🍦"
+    },
+    {
+     "id": "ans_1576861c",
+     "label": "Chocolate 🍫"
+    },
+    {
+     "id": "ans_4d2cef76",
+     "label": "Burger 🍔"
+    },
+    {
+     "id": "ans_75d48b06",
+     "label": "French Fries 🍟"
+    },
+    {
+     "id": "ans_48af80cd",
+     "label": "Pasta 🍝"
+    },
+    {
+     "id": "ans_9bff3064",
+     "label": "Noodles 🍜"
+    },
+    {
+     "id": "ans_1778bec5",
+     "label": "Biryani 🍛"
+    },
+    {
+     "id": "ans_bf341a1f",
+     "label": "Momos 🥟"
+    },
+    {
+     "id": "ans_a325a6f1",
+     "label": "Pani Puri"
+    },
+    {
+     "id": "ans_36341d8d",
+     "label": "Vada Pav 🍔"
+    },
+    {
+     "id": "ans_fb666313",
+     "label": "Pav Bhaji 🍛"
+    },
+    {
+     "id": "ans_9e62aa1a",
+     "label": "Chole Bhature 🍽"
+    },
+    {
+     "id": "ans_be409543",
+     "label": "Dosa 🥞"
+    },
+    {
+     "id": "ans_ca40e0ee",
+     "label": "Idli and Sambar 🥥"
+    },
+    {
+     "id": "ans_c0cb42f6",
+     "label": "Chapati and Sabzi 🌿"
+    },
+    {
+     "id": "ans_c776e2b9",
+     "label": "Milkshake 🥤"
+    },
+    {
+     "id": "ans_cc4d1785",
+     "label": "Popcorn 🍿"
+    },
+    {
+     "id": "ans_b4360252",
+     "label": "Cake 🎂"
+    },
+    {
+     "id": "ans_c3357fd9",
+     "label": "Cupcake 🧁"
+    },
+    {
+     "id": "ans_86f2f45c",
+     "label": "Donuts 🍩"
+    },
+    {
+     "id": "ans_c6b97a18",
+     "label": "Gulab Jamun 🍮"
+    },
+    {
+     "id": "ans_df67621c",
+     "label": "Falooda 🍧"
+    },
+    {
+     "id": "ans_0f7d4958",
+     "label": "Lassi 🥛"
+    },
+    {
+     "id": "ans_ea8c9f19",
+     "label": "Chicken Nuggets 🍖"
+    },
+    {
+     "id": "ans_99578a60",
+     "label": "Garlic Bread 🥖"
+    },
+    {
+     "id": "ans_4bb238e2",
+     "label": "Lasagna 🧀"
+    },
+    {
+     "id": "ans_1aa8742a",
+     "label": "Sushi 🍣"
+    },
+    {
+     "id": "ans_82d32f0c",
+     "label": "Ramen 🍜"
+    },
+    {
+     "id": "ans_9074c0ec",
+     "label": "Croissant 🥐"
+    },
+    {
+     "id": "ans_922f888b",
+     "label": "Waffles 🧇"
+    },
+    {
+     "id": "ans_0c89da1f",
+     "label": "Pancakes 🥞"
+    },
+    {
+     "id": "ans_d5ba6a2f",
+     "label": "Brownies 🍫"
+    },
+    {
+     "id": "ans_6a66c2de",
+     "label": "Marshmallows"
+    },
+    {
+     "id": "ans_e6e7c9e3",
+     "label": "Kebab 🥙"
+    },
+    {
+     "id": "ans_0142c3c6",
+     "label": "Shawarma 🥙"
+    },
+    {
+     "id": "ans_c4cfbe0c",
+     "label": "Nachos and Chips"
+    },
+    {
+     "id": "ans_cc89c696",
+     "label": "Samosa 🥟"
+    },
+    {
+     "id": "ans_21b72135",
+     "label": "Sandwich 🥪"
+    },
+    {
+     "id": "ans_ea69e38f",
+     "label": "Poha"
+    },
+    {
+     "id": "ans_2cbe5af5",
+     "label": "Upma"
+    },
+    {
+     "id": "ans_06999e8a",
+     "label": "Paratha 🫓"
+    },
+    {
+     "id": "ans_d4535796",
+     "label": "Curd Rice 🍚"
+    },
+    {
+     "id": "ans_bc3cba85",
+     "label": "Fried Rice 🍚"
+    },
+    {
+     "id": "ans_ac9f5986",
+     "label": "Spring Roll 🥠"
+    },
+    {
+     "id": "ans_8f64b8ce",
+     "label": "Cheese Balls 🧀"
+    },
+    {
+     "id": "ans_3111a25a",
+     "label": "Biscuits 🍪"
+    },
+    {
+     "id": "ans_87bf8d2c",
+     "label": "Fruit Salad 🍉"
+    },
+    {
+     "id": "ans_1ad5beca",
+     "label": "Dhokla 🍰"
+    },
+    {
+     "id": "ans_8f33edb3",
+     "label": "Thepla 🌿"
+    },
+    {
+     "id": "ans_60d659bd",
+     "label": "Rice & Dal 🍚"
+    },
+    {
+     "id": "ans_891f157a",
+     "label": "Khichdi 🥣"
+    },
+    {
+     "id": "ans_f0c9b4ab",
+     "label": "Misal Pav"
+    }
+   ]
+  },
+  {
+   "id": "q_054bf981",
+   "type": "scq",
+   "questionText": "What is one thing you can do really well?",
+   "answers": [
+    {
+     "id": "ans_295f0cc0",
+     "label": "Solving puzzles and riddles"
+    },
+    {
+     "id": "ans_f27eda34",
+     "label": "Keeping my things organised"
+    },
+    {
+     "id": "ans_2af04e70",
+     "label": "Playing board games"
+    },
+    {
+     "id": "ans_660578a8",
+     "label": "Helping my friends"
+    },
+    {
+     "id": "ans_6a9b6368",
+     "label": "Packing my own bag"
+    },
+    {
+     "id": "ans_2acaa641",
+     "label": "Dancing"
+    },
+    {
+     "id": "ans_b2fec380",
+     "label": "Telling interesting facts"
+    },
+    {
+     "id": "ans_006cab82",
+     "label": "Making new friends"
+    },
+    {
+     "id": "ans_468a9941",
+     "label": "Waking up early"
+    },
+    {
+     "id": "ans_a735a8b1",
+     "label": "Learning new words"
+    },
+    {
+     "id": "ans_8c2c62f2",
+     "label": "Making craft & models"
+    },
+    {
+     "id": "ans_e3259fb5",
+     "label": "Jumping really high"
+    },
+    {
+     "id": "ans_cefcc647",
+     "label": "Being a good team player"
+    },
+    {
+     "id": "ans_284ffaea",
+     "label": "Writing neatly"
+    },
+    {
+     "id": "ans_3eaa77cd",
+     "label": "Reciting poems"
+    },
+    {
+     "id": "ans_54ed3aae",
+     "label": "Trying new things without fear"
+    },
+    {
+     "id": "ans_0a75b2dc",
+     "label": "Explaining things to others"
+    },
+    {
+     "id": "ans_c77128a9",
+     "label": "Telling funny stories"
+    },
+    {
+     "id": "ans_b3536958",
+     "label": "Being polite to everyone"
+    },
+    {
+     "id": "ans_06d6db45",
+     "label": "Taking care of pets"
+    },
+    {
+     "id": "ans_1a3404b9",
+     "label": "Being brave during tough tasks"
+    },
+    {
+     "id": "ans_91605dc4",
+     "label": "Drawing and colouring"
+    },
+    {
+     "id": "ans_188e8869",
+     "label": "Playing my favourite sport"
+    },
+    {
+     "id": "ans_ab322afd",
+     "label": "Reading storybooks"
+    },
+    {
+     "id": "ans_c5f49665",
+     "label": "Learning from my mistakes"
+    },
+    {
+     "id": "ans_ca9b5656",
+     "label": "Speaking confidently in class"
+    },
+    {
+     "id": "ans_396830e5",
+     "label": "Running fast"
+    },
+    {
+     "id": "ans_f72d463e",
+     "label": "Taking care of plants"
+    },
+    {
+     "id": "ans_6f1ff105",
+     "label": "Taking care of my things"
+    },
+    {
+     "id": "ans_4dff6ec5",
+     "label": "Singing songs"
+    },
+    {
+     "id": "ans_2ab4bc80",
+     "label": "Keeping secrets"
+    },
+    {
+     "id": "ans_b3eee6f7",
+     "label": "Helping at home"
+    },
+    {
+     "id": "ans_a7732ffb",
+     "label": "Remembering things quickly"
+    }
+   ]
+  },
+  {
+   "id": "q_e8109525",
+   "type": "scq",
+   "questionText": "What is your favourite sport?",
+   "answers": [
+    {
+     "id": "ans_4abeab6b",
+     "label": "Football ⚽"
+    },
+    {
+     "id": "ans_196fa4a9",
+     "label": "Badminton 🏸"
+    },
+    {
+     "id": "ans_6ff9b5db",
+     "label": "Swimming 🏊‍♂️"
+    },
+    {
+     "id": "ans_d3d7a925",
+     "label": "Basketball 🏀"
+    },
+    {
+     "id": "ans_0d44f753",
+     "label": "Martial Arts 🥋"
+    },
+    {
+     "id": "ans_4aadc139",
+     "label": "Tennis 🎾"
+    },
+    {
+     "id": "ans_00ac9201",
+     "label": "Cricket 🏏"
+    },
+    {
+     "id": "ans_d5338119",
+     "label": "Table Tennis 🏓"
+    },
+    {
+     "id": "ans_0b7ddcba",
+     "label": "Kabaddi 🤼"
+    },
+    {
+     "id": "ans_ea58e8ec",
+     "label": "Kho Kho 🏃‍♂️"
+    },
+    {
+     "id": "ans_fde2477b",
+     "label": "Cycling 🚴‍♂️"
+    },
+    {
+     "id": "ans_a3136fed",
+     "label": "Skating ⛸"
+    },
+    {
+     "id": "ans_98ed3d85",
+     "label": "Gymnastics 🤸‍♂️"
+    },
+    {
+     "id": "ans_fde2ea8a",
+     "label": "Chess ♟"
+    },
+    {
+     "id": "ans_de0aa740",
+     "label": "Carrom 🎯"
+    },
+    {
+     "id": "ans_ea1dc62e",
+     "label": "Hide and Seek 🙈"
+    },
+    {
+     "id": "ans_2e4cf0d2",
+     "label": "Archery 🏹"
+    },
+    {
+     "id": "ans_94f5bb7f",
+     "label": "Volleyball 🏐"
+    },
+    {
+     "id": "ans_53137a14",
+     "label": "Dodgeball 🏐"
+    },
+    {
+     "id": "ans_e15cf867",
+     "label": "Horse Riding 🐎"
+    },
+    {
+     "id": "ans_6bb4934b",
+     "label": "Boxing 🥊"
+    },
+    {
+     "id": "ans_332eec7e",
+     "label": "Rope Skipping 🪢"
+    },
+    {
+     "id": "ans_94a407ce",
+     "label": "Frisbee 🥏"
+    },
+    {
+     "id": "ans_f40b3223",
+     "label": "Tug of War 🤼‍♂️"
+    },
+    {
+     "id": "ans_09a8ab8e",
+     "label": "Javelin Throw 🏹"
+    },
+    {
+     "id": "ans_033d29a4",
+     "label": "Hula Hooping 🟠"
+    },
+    {
+     "id": "ans_a058aff2",
+     "label": "Baseball ⚾"
+    },
+    {
+     "id": "ans_ff7b7fb3",
+     "label": "Rugby 🏉"
+    }
+   ]
+  },
+  {
+   "id": "q_b4288b03",
+   "type": "scq",
+   "questionText": "What is one thing you find difficult and hard to do?",
+   "answers": [
+    {
+     "id": "ans_682c840c",
+     "label": "Remembering where I put my things"
+    },
+    {
+     "id": "ans_dd9d72fc",
+     "label": "Staying calm when I lose a game"
+    },
+    {
+     "id": "ans_6e6e9002",
+     "label": "Waiting patiently in long lines"
+    },
+    {
+     "id": "ans_06e8fc90",
+     "label": "Writing neatly"
+    },
+    {
+     "id": "ans_ecc5d759",
+     "label": "Controlling my laughter"
+    },
+    {
+     "id": "ans_ea20afc0",
+     "label": "Drawing and colouring"
+    },
+    {
+     "id": "ans_ff4de5d7",
+     "label": "Running very fast"
+    },
+    {
+     "id": "ans_660215e1",
+     "label": "Jumping high"
+    },
+    {
+     "id": "ans_3a0d8e2a",
+     "label": "Swimming"
+    },
+    {
+     "id": "ans_5fa1a110",
+     "label": "Skating without falling"
+    },
+    {
+     "id": "ans_680d88a4",
+     "label": "Listening quietly for a long time"
+    },
+    {
+     "id": "ans_59da4536",
+     "label": "Waiting for my turn"
+    },
+    {
+     "id": "ans_57f101a9",
+     "label": "Finishing my classwork on time"
+    },
+    {
+     "id": "ans_b16aae8b",
+     "label": "Waking up early every day"
+    },
+    {
+     "id": "ans_cbc974da",
+     "label": "Making new friends quickly"
+    },
+    {
+     "id": "ans_f82161a1",
+     "label": "Saying sorry when I hurt someone"
+    },
+    {
+     "id": "ans_0b6b1fee",
+     "label": "Learning from my mistakes"
+    },
+    {
+     "id": "ans_7be0d37b",
+     "label": "Reading big words"
+    },
+    {
+     "id": "ans_ffdd7360",
+     "label": "Solving tricky math problems"
+    }
+   ]
+  },
+  {
+   "id": "q_37037000",
+   "type": "scq",
+   "questionText": "What is your favourite festival?",
+   "answers": [
+    {
+     "id": "ans_f018daf8",
+     "label": "Diwali 🎆"
+    },
+    {
+     "id": "ans_c8761d31",
+     "label": "Holi 🎨"
+    },
+    {
+     "id": "ans_9cf48381",
+     "label": "Christmas 🎄"
+    },
+    {
+     "id": "ans_ca9da152",
+     "label": "Eid 🌙"
+    },
+    {
+     "id": "ans_93c82fd9",
+     "label": "Ganesh Chaturthi"
+    },
+    {
+     "id": "ans_c6974880",
+     "label": "Navratri 💃"
+    },
+    {
+     "id": "ans_36b2cec6",
+     "label": "Dussehra 🏹"
+    },
+    {
+     "id": "ans_91297cc5",
+     "label": "Raksha Bandhan 🎁"
+    },
+    {
+     "id": "ans_570cdfa2",
+     "label": "Makar Sankranti 🪁"
+    },
+    {
+     "id": "ans_96b5042d",
+     "label": "Janmashtami"
+    },
+    {
+     "id": "ans_3f62f0a7",
+     "label": "Lohri 🔥"
+    },
+    {
+     "id": "ans_8a5f5f60",
+     "label": "Easter 🐣"
+    },
+    {
+     "id": "ans_206540ee",
+     "label": "Buddha Purnima"
+    },
+    {
+     "id": "ans_700cdf8a",
+     "label": "Onam 🌼"
+    },
+    {
+     "id": "ans_8c8c68d3",
+     "label": "Baisakhi 🌾"
+    },
+    {
+     "id": "ans_679cad44",
+     "label": "Pongal 🍚"
+    },
+    {
+     "id": "ans_2d6dd5ef",
+     "label": "New Year 🎉"
+    },
+    {
+     "id": "ans_681934a7",
+     "label": "Halloween 🎃"
+    },
+    {
+     "id": "ans_8fc56d19",
+     "label": "Thanksgiving 🦃"
+    },
+    {
+     "id": "ans_a01e7930",
+     "label": "Basant Panchami 🎨"
+    }
+   ]
+  },
+  {
+   "id": "q_bc7fe01e",
+   "type": "scq",
+   "questionText": "What is one thing you want to get better at?",
+   "answers": [
+    {
+     "id": "ans_e3c01501",
+     "label": "speaking more confidently"
+    },
+    {
+     "id": "ans_70d51137",
+     "label": "playing my favourite sports better"
+    },
+    {
+     "id": "ans_d76a8da0",
+     "label": "making new friends easily"
+    },
+    {
+     "id": "ans_f27984d6",
+     "label": "staying calm when I’m angry"
+    },
+    {
+     "id": "ans_7c515860",
+     "label": "spelling difficult words"
+    },
+    {
+     "id": "ans_b5494859",
+     "label": "writing neatly"
+    },
+    {
+     "id": "ans_6078f9b8",
+     "label": "telling stories in a fun way"
+    },
+    {
+     "id": "ans_605b62b1",
+     "label": "drawing and colouring better"
+    },
+    {
+     "id": "ans_19c0cfe5",
+     "label": "singing nicely"
+    },
+    {
+     "id": "ans_48e6890b",
+     "label": "listening carefully to others"
+    },
+    {
+     "id": "ans_20394f9e",
+     "label": "dancing better"
+    },
+    {
+     "id": "ans_2e4559f9",
+     "label": "running faster"
+    },
+    {
+     "id": "ans_a2a25dc7",
+     "label": "jumping higher"
+    },
+    {
+     "id": "ans_0f27f905",
+     "label": "saving my pocket money"
+    },
+    {
+     "id": "ans_1e2de62d",
+     "label": "reading big words easily"
+    },
+    {
+     "id": "ans_912ba6da",
+     "label": "solving tricky maths questions"
+    },
+    {
+     "id": "ans_f63e015e",
+     "label": "finishing homework on time"
+    },
+    {
+     "id": "ans_3fd8f626",
+     "label": "being a good team player"
+    },
+    {
+     "id": "ans_1c7988a1",
+     "label": "swimming without fear"
+    },
+    {
+     "id": "ans_3f2d27aa",
+     "label": "skating without falling"
+    },
+    {
+     "id": "ans_bcbece25",
+     "label": "staying calm when I lose a game"
+    },
+    {
+     "id": "ans_72f5d1c2",
+     "label": "waiting for my turn patiently"
+    },
+    {
+     "id": "ans_08e2930d",
+     "label": "riding a bicycle without help"
+    },
+    {
+     "id": "ans_bc9208b8",
+     "label": "keeping my room organized"
+    },
+    {
+     "id": "ans_b369bc34",
+     "label": "keeping my school bag packed properly"
+    },
+    {
+     "id": "ans_c0768480",
+     "label": "being ready on time for school"
+    },
+    {
+     "id": "ans_abd65560",
+     "label": "saying sorry when I make a mistake"
+    },
+    {
+     "id": "ans_6eddde85",
+     "label": "not interrupting when someone is talking"
+    }
+   ]
+  },
+  {
+   "id": "q_74f2839e",
+   "type": "scq",
+   "questionText": "What is one thing you do not enjoy doing?",
+   "answers": [
+    {
+     "id": "ans_80e8167d",
+     "label": "Eat bitter vegetables"
+    },
+    {
+     "id": "ans_2319afb3",
+     "label": "Wait in a long line"
+    },
+    {
+     "id": "ans_62465e04",
+     "label": "Sharpen pencils again and again"
+    },
+    {
+     "id": "ans_7242b4d1",
+     "label": "Drink plain milk"
+    },
+    {
+     "id": "ans_fbfeeef7",
+     "label": "Get my hands dirty with glue"
+    },
+    {
+     "id": "ans_afa48290",
+     "label": "Sit between two noisy friends"
+    },
+    {
+     "id": "ans_252927a1",
+     "label": "Wake up early"
+    },
+    {
+     "id": "ans_1ff58593",
+     "label": "Walk slowly in line"
+    },
+    {
+     "id": "ans_5da017fd",
+     "label": "Listen to a song I don’t know"
+    },
+    {
+     "id": "ans_fd0e8cc0",
+     "label": "Clean my room daily"
+    },
+    {
+     "id": "ans_52ee81d5",
+     "label": "Share my favourite toys"
+    },
+    {
+     "id": "ans_8223161d",
+     "label": "Write too much"
+    },
+    {
+     "id": "ans_0add1996",
+     "label": "Sit still for a long time"
+    },
+    {
+     "id": "ans_7bc8a019",
+     "label": "Go to bed early"
+    },
+    {
+     "id": "ans_2f51385d",
+     "label": "Lose in a game"
+    },
+    {
+     "id": "ans_37b44b32",
+     "label": "Read big words"
+    },
+    {
+     "id": "ans_6d4aa417",
+     "label": "Fold my clothes"
+    },
+    {
+     "id": "ans_36846cb1",
+     "label": "Read the same story again & again"
+    },
+    {
+     "id": "ans_424ca0f1",
+     "label": "Watch a movie without popcorn"
+    },
+    {
+     "id": "ans_ef5fe979",
+     "label": "Pack my own school bag"
+    },
+    {
+     "id": "ans_6ec3281e",
+     "label": "Do handwriting practice"
+    },
+    {
+     "id": "ans_7c330421",
+     "label": "Rewrite work neatly"
+    }
+   ]
+  },
+  {
+   "id": "q_3d537cbf",
+   "type": "scq",
+   "questionText": "Who is your idol? (the person you like a lot)",
+   "answers": [
+    {
+     "id": "ans_0c9d4b6d",
+     "label": "My mother"
+    },
+    {
+     "id": "ans_8fbbe9f2",
+     "label": "My father"
+    },
+    {
+     "id": "ans_a6d110cb",
+     "label": "My teacher 👩‍🏫"
+    },
+    {
+     "id": "ans_369bb209",
+     "label": "Cristiano Ronaldo ⚽"
+    },
+    {
+     "id": "ans_459509a7",
+     "label": "Virat Kohli 🏏"
+    },
+    {
+     "id": "ans_0c42f6e0",
+     "label": "M.S. Dhoni 🏏"
+    },
+    {
+     "id": "ans_201d2e9b",
+     "label": "Lionel Messi ⚽"
+    },
+    {
+     "id": "ans_1b5ed43a",
+     "label": "Sachin Tendulkar 🏏"
+    },
+    {
+     "id": "ans_0d781231",
+     "label": "My brother"
+    },
+    {
+     "id": "ans_e74c3dab",
+     "label": "My sister"
+    },
+    {
+     "id": "ans_fa3a835f",
+     "label": "Barack Obama 🏛️"
+    },
+    {
+     "id": "ans_035faece",
+     "label": "Neeraj Chopra 🏅"
+    },
+    {
+     "id": "ans_60b97a2f",
+     "label": "Mark Zuckerberg 💻"
+    },
+    {
+     "id": "ans_64f0de16",
+     "label": "Mary Kom 🥊"
+    },
+    {
+     "id": "ans_2702749e",
+     "label": "P.V. Sindhu"
+    },
+    {
+     "id": "ans_999b6caf",
+     "label": "My grandparents"
+    },
+    {
+     "id": "ans_c7b97c57",
+     "label": "Harmanpreet Kaur 🏏"
+    },
+    {
+     "id": "ans_7d8fd32a",
+     "label": "Rohit Sharma 🏏"
+    },
+    {
+     "id": "ans_9ad10c87",
+     "label": "Sunita Williams 🧑‍🚀"
+    },
+    {
+     "id": "ans_0467e120",
+     "label": "Usain Bolt 🏃‍♂️"
+    },
+    {
+     "id": "ans_d04f8d59",
+     "label": "Roger Federer 🎾"
+    },
+    {
+     "id": "ans_90df5c99",
+     "label": "Novak Djokovic 🎾"
+    },
+    {
+     "id": "ans_54e06fcb",
+     "label": "Stephen Curry 🏀"
+    },
+    {
+     "id": "ans_0db705c9",
+     "label": "Serena Williams 🎾"
+    },
+    {
+     "id": "ans_b49dd991",
+     "label": "Elon Musk 🚀"
+    },
+    {
+     "id": "ans_d0000d17",
+     "label": "Steve Jobs 💻"
+    },
+    {
+     "id": "ans_3d06cac8",
+     "label": "Sundar Pichai 💻"
+    },
+    {
+     "id": "ans_872b6dad",
+     "label": "Vishwanathan Anand ♟️"
+    },
+    {
+     "id": "ans_364b9065",
+     "label": "Gukesh Dommaraju ♟️"
+    },
+    {
+     "id": "ans_f10be610",
+     "label": "Albert Einstein"
+    },
+    {
+     "id": "ans_3840e3d4",
+     "label": "Isaac Newton"
+    },
+    {
+     "id": "ans_d74b7a0a",
+     "label": "Neil Armstrong 🌕"
+    },
+    {
+     "id": "ans_663362d2",
+     "label": "Ratan Tata"
+    },
+    {
+     "id": "ans_e1fc6612",
+     "label": "J.K. Rowling 📚"
+    },
+    {
+     "id": "ans_51a1b579",
+     "label": "Narendra Modi 🇮🇳"
+    },
+    {
+     "id": "ans_182d46e0",
+     "label": "Saina Nehwal 🏸"
+    },
+    {
+     "id": "ans_686e5dbd",
+     "label": "Dr A.P.J. Abdul Kalam 🚀"
+    }
+   ]
+  },
+  {
+   "id": "q_f2d925c4",
+   "type": "scq",
+   "questionText": "What is your favourite thing to do when you are not studying?",
+   "answers": [
+    {
+     "id": "ans_39e806e5",
+     "label": "Go to the beach"
+    },
+    {
+     "id": "ans_3867b4ab",
+     "label": "Go on road trips with my family"
+    },
+    {
+     "id": "ans_c2e46508",
+     "label": "Create origami"
+    },
+    {
+     "id": "ans_4cc6350a",
+     "label": "Play my favourite sport"
+    },
+    {
+     "id": "ans_9db14c87",
+     "label": "Draw comics & characters"
+    },
+    {
+     "id": "ans_e50a32ce",
+     "label": "Help my parents"
+    },
+    {
+     "id": "ans_10f258ee",
+     "label": "Go on a picnic with friends"
+    },
+    {
+     "id": "ans_edd621ed",
+     "label": "Make new friends"
+    },
+    {
+     "id": "ans_a372ed83",
+     "label": "Visit hills & mountains"
+    },
+    {
+     "id": "ans_a34a83b8",
+     "label": "Play with friends"
+    },
+    {
+     "id": "ans_3fbe45d5",
+     "label": "Try out science experiments"
+    },
+    {
+     "id": "ans_f9bacf91",
+     "label": "Collect stickers & cards"
+    },
+    {
+     "id": "ans_e84a5440",
+     "label": "Read storybooks"
+    },
+    {
+     "id": "ans_1d1bdb59",
+     "label": "Watch cartoons"
+    },
+    {
+     "id": "ans_a1878dac",
+     "label": "Go to the library"
+    },
+    {
+     "id": "ans_6744ed21",
+     "label": "Solve puzzles"
+    },
+    {
+     "id": "ans_fb36ccdb",
+     "label": "Take care of my pets"
+    },
+    {
+     "id": "ans_b315ddbd",
+     "label": "Tell funny jokes & stories"
+    },
+    {
+     "id": "ans_48b5f0a8",
+     "label": "Listen to music"
+    },
+    {
+     "id": "ans_9c26426f",
+     "label": "Sing songs"
+    },
+    {
+     "id": "ans_e32b41df",
+     "label": "Dance"
+    },
+    {
+     "id": "ans_fc40a980",
+     "label": "Draw and colour"
+    },
+    {
+     "id": "ans_3da1da99",
+     "label": "Ride my bicycle"
+    },
+    {
+     "id": "ans_8f76de11",
+     "label": "Climb trees during play"
+    },
+    {
+     "id": "ans_6f1634b4",
+     "label": "Help my friends at school"
+    },
+    {
+     "id": "ans_f9b4a8f0",
+     "label": "Take care of plants"
+    },
+    {
+     "id": "ans_1b35e0d2",
+     "label": "Write short stories"
+    },
+    {
+     "id": "ans_690212f9",
+     "label": "Act in dramas"
+    },
+    {
+     "id": "ans_b06f1795",
+     "label": "Explore new games"
+    },
+    {
+     "id": "ans_68c3091d",
+     "label": "Decorate my notebooks & projects"
+    }
+   ]
+  }
+ ],
+ "AAM2-prep": [
+  {
+   "id": "q_87158bf9",
+   "type": "scq",
+   "questionText": "If you had one superpower, what would it be? 🌟",
+   "answers": [
+    {
+     "id": "ans_10352db0",
+     "label": "a) 🚀 Flying"
+    },
+    {
+     "id": "ans_0b731ea0",
+     "label": "b) 🕵️ Invisibility"
+    },
+    {
+     "id": "ans_9cc98196",
+     "label": "c) 💨 Super speed"
+    },
+    {
+     "id": "ans_36f2bbd1",
+     "label": "d) 🐾 Talking to animals"
+    },
+    {
+     "id": "ans_b22ac4b2",
+     "label": "e) ⏱️ Time travel"
+    },
+    {
+     "id": "ans_d9d9bbe2",
+     "label": "f) 🍕 The power to turn anything into pizza"
+    }
+   ]
+  },
+  {
+   "id": "q_b0a299c2",
+   "type": "scq",
+   "questionText": "What would you like to be when you grow up?",
+   "answers": [
+    {
+     "id": "ans_aa947902",
+     "label": "Doctor 🩺"
+    },
+    {
+     "id": "ans_696f820f",
+     "label": "Cricketer 🏏"
+    },
+    {
+     "id": "ans_d9ef8ad8",
+     "label": "Footballer ⚽"
+    },
+    {
+     "id": "ans_7f5fc985",
+     "label": "Police officer 👮"
+    },
+    {
+     "id": "ans_a8394a2b",
+     "label": "Pilot ✈️"
+    },
+    {
+     "id": "ans_460ae9d9",
+     "label": "Judge ⚖️"
+    },
+    {
+     "id": "ans_1e2b4810",
+     "label": "Lawyer 📚"
+    },
+    {
+     "id": "ans_62c09378",
+     "label": "Space scientist 🪐"
+    },
+    {
+     "id": "ans_2effe293",
+     "label": "Astronaut 👨‍🚀"
+    },
+    {
+     "id": "ans_0226f6dd",
+     "label": "Engineer"
+    },
+    {
+     "id": "ans_50b748d3",
+     "label": "Sportsperson 🏅"
+    },
+    {
+     "id": "ans_b045e279",
+     "label": "IAS officer"
+    },
+    {
+     "id": "ans_d3959d1e",
+     "label": "Singer 🎤"
+    },
+    {
+     "id": "ans_97f06c96",
+     "label": "Actor 🎭"
+    },
+    {
+     "id": "ans_afc5a918",
+     "label": "Architect 🏛️"
+    },
+    {
+     "id": "ans_71a8f181",
+     "label": "Scientist 🔬"
+    },
+    {
+     "id": "ans_89af82f2",
+     "label": "Chef 👨‍🍳"
+    },
+    {
+     "id": "ans_e354de44",
+     "label": "Dancer"
+    },
+    {
+     "id": "ans_b309e8d2",
+     "label": "Badminton player 🏸"
+    },
+    {
+     "id": "ans_df5d8d31",
+     "label": "Artist 🎨"
+    },
+    {
+     "id": "ans_079da2c7",
+     "label": "Entrepreneur/ Businessperson"
+    },
+    {
+     "id": "ans_f173193b",
+     "label": "Prime Minister 🇮🇳"
+    },
+    {
+     "id": "ans_8e6a7f88",
+     "label": "IPS officer 🚓"
+    },
+    {
+     "id": "ans_9867a6a5",
+     "label": "ISRO engineer 🚀"
+    },
+    {
+     "id": "ans_16e1c86f",
+     "label": "President 🏛️"
+    },
+    {
+     "id": "ans_fc7976ff",
+     "label": "Chess player ♟️"
+    },
+    {
+     "id": "ans_57837963",
+     "label": "Olympian 🏅"
+    },
+    {
+     "id": "ans_5fd87fb2",
+     "label": "Karate champion 🥋"
+    },
+    {
+     "id": "ans_3c466b4c",
+     "label": "Environmentalist 🌿"
+    },
+    {
+     "id": "ans_5b56848f",
+     "label": "Musician 🎼"
+    },
+    {
+     "id": "ans_7f1776c0",
+     "label": "Author ✍️"
+    },
+    {
+     "id": "ans_5b45a64a",
+     "label": "Army officer 🪖"
+    },
+    {
+     "id": "ans_b7ed5078",
+     "label": "Table tennis player 🏓"
+    },
+    {
+     "id": "ans_39d09024",
+     "label": "Interior designer 🛋️"
+    },
+    {
+     "id": "ans_3ec86d0d",
+     "label": "Animator 🖌️"
+    },
+    {
+     "id": "ans_d923a056",
+     "label": "Photographer 📸"
+    },
+    {
+     "id": "ans_821af91a",
+     "label": "News reporter 🎙️"
+    },
+    {
+     "id": "ans_80affe0a",
+     "label": "Marine biologist 🐬"
+    },
+    {
+     "id": "ans_f134dd2f",
+     "label": "Skater ⛸️"
+    },
+    {
+     "id": "ans_7d3fa1d9",
+     "label": "Event organiser 🎪"
+    },
+    {
+     "id": "ans_1791db75",
+     "label": "Poet 📝"
+    },
+    {
+     "id": "ans_33161ac7",
+     "label": "Teacher 👩‍🏫"
+    },
+    {
+     "id": "ans_0ce75fb8",
+     "label": "Navy officer"
+    },
+    {
+     "id": "ans_72d75517",
+     "label": "Fashion designer"
+    },
+    {
+     "id": "ans_590086f7",
+     "label": "Hockey player 🏑"
+    },
+    {
+     "id": "ans_7faf8c9b",
+     "label": "School principal 🏫"
+    },
+    {
+     "id": "ans_96fa18b2",
+     "label": "Gymnast 🤸"
+    }
+   ]
+  },
+  {
+   "id": "q_e5806a6f",
+   "type": "scq",
+   "questionText": "What is one new thing you want to learn in school this year?",
+   "answers": [
+    {
+     "id": "ans_dffd07e1",
+     "label": "Learning cool facts from my favourite subject"
+    },
+    {
+     "id": "ans_63089142",
+     "label": "Learning multiplication tables"
+    },
+    {
+     "id": "ans_0d0f6c13",
+     "label": "Winning a medal or certificate"
+    },
+    {
+     "id": "ans_2142b6d4",
+     "label": "Writing a story or comic by myself"
+    },
+    {
+     "id": "ans_975c7d7c",
+     "label": "Using a computer for learning"
+    },
+    {
+     "id": "ans_471544a4",
+     "label": "Making posters and charts of my favourite topics"
+    },
+    {
+     "id": "ans_f117c145",
+     "label": "Using big and new words when I talk"
+    },
+    {
+     "id": "ans_88d6cf9e",
+     "label": "Solving number puzzles and riddles"
+    },
+    {
+     "id": "ans_2a58ebc6",
+     "label": "Doing fun science experiments"
+    },
+    {
+     "id": "ans_d7601a06",
+     "label": "Understanding how plants and animals grow"
+    },
+    {
+     "id": "ans_f20cd025",
+     "label": "Learning about space and planets"
+    },
+    {
+     "id": "ans_aa383ac0",
+     "label": "Drawing easy maps of places"
+    },
+    {
+     "id": "ans_012c20df",
+     "label": "Learning how to use a dictionary"
+    },
+    {
+     "id": "ans_5016fd1f",
+     "label": "Drawing and labeling a diagram"
+    }
+   ]
+  },
+  {
+   "id": "q_1f846fac",
+   "type": "scq",
+   "questionText": "What is one fun thing you want to learn this year?",
+   "answers": [
+    {
+     "id": "ans_43c7b40b",
+     "label": "Learn to take awesome photos"
+    },
+    {
+     "id": "ans_7c4abf8d",
+     "label": "Making my own bookmark"
+    },
+    {
+     "id": "ans_78eb01d5",
+     "label": "Creating fun riddles"
+    },
+    {
+     "id": "ans_89e86758",
+     "label": "Playing a musical instrument"
+    },
+    {
+     "id": "ans_d8ef652b",
+     "label": "Learning magic tricks and surprise people"
+    },
+    {
+     "id": "ans_480c50a1",
+     "label": "Decorating my room nicely"
+    },
+    {
+     "id": "ans_e63d9314",
+     "label": "Writing neatly and beautifully"
+    },
+    {
+     "id": "ans_7da57c6a",
+     "label": "Writing funny jokes"
+    },
+    {
+     "id": "ans_2cf46e27",
+     "label": "How to start a conversation"
+    },
+    {
+     "id": "ans_dd1b8d6d",
+     "label": "Making awesome posters"
+    },
+    {
+     "id": "ans_c689c53b",
+     "label": "Drawing fun cartoons and comics"
+    },
+    {
+     "id": "ans_66541ea9",
+     "label": "Doing cool origami"
+    },
+    {
+     "id": "ans_889f6961",
+     "label": "Painting without making a mess"
+    },
+    {
+     "id": "ans_b2bb3358",
+     "label": "Making models with clay"
+    },
+    {
+     "id": "ans_f6f4f33c",
+     "label": "Learning to write in cursive"
+    },
+    {
+     "id": "ans_a26c62e7",
+     "label": "Creating a scrapbook"
+    },
+    {
+     "id": "ans_e48573aa",
+     "label": "Grow my own little plant"
+    }
+   ]
+  },
+  {
+   "id": "q_121e61b7",
+   "type": "scq",
+   "questionText": "What is your favourite food?",
+   "answers": [
+    {
+     "id": "ans_9f650831",
+     "label": "Pizza 🍕"
+    },
+    {
+     "id": "ans_83071b9a",
+     "label": "Ice Cream 🍦"
+    },
+    {
+     "id": "ans_1576861c",
+     "label": "Chocolate 🍫"
+    },
+    {
+     "id": "ans_4d2cef76",
+     "label": "Burger 🍔"
+    },
+    {
+     "id": "ans_75d48b06",
+     "label": "French Fries 🍟"
+    },
+    {
+     "id": "ans_48af80cd",
+     "label": "Pasta 🍝"
+    },
+    {
+     "id": "ans_9bff3064",
+     "label": "Noodles 🍜"
+    },
+    {
+     "id": "ans_1778bec5",
+     "label": "Biryani 🍛"
+    },
+    {
+     "id": "ans_bf341a1f",
+     "label": "Momos 🥟"
+    },
+    {
+     "id": "ans_a325a6f1",
+     "label": "Pani Puri"
+    },
+    {
+     "id": "ans_36341d8d",
+     "label": "Vada Pav 🍔"
+    },
+    {
+     "id": "ans_fb666313",
+     "label": "Pav Bhaji 🍛"
+    },
+    {
+     "id": "ans_9e62aa1a",
+     "label": "Chole Bhature 🍽"
+    },
+    {
+     "id": "ans_be409543",
+     "label": "Dosa 🥞"
+    },
+    {
+     "id": "ans_ca40e0ee",
+     "label": "Idli and Sambar 🥥"
+    },
+    {
+     "id": "ans_c0cb42f6",
+     "label": "Chapati and Sabzi 🌿"
+    },
+    {
+     "id": "ans_c776e2b9",
+     "label": "Milkshake 🥤"
+    },
+    {
+     "id": "ans_cc4d1785",
+     "label": "Popcorn 🍿"
+    },
+    {
+     "id": "ans_b4360252",
+     "label": "Cake 🎂"
+    },
+    {
+     "id": "ans_c3357fd9",
+     "label": "Cupcake 🧁"
+    },
+    {
+     "id": "ans_86f2f45c",
+     "label": "Donuts 🍩"
+    },
+    {
+     "id": "ans_c6b97a18",
+     "label": "Gulab Jamun 🍮"
+    },
+    {
+     "id": "ans_df67621c",
+     "label": "Falooda 🍧"
+    },
+    {
+     "id": "ans_0f7d4958",
+     "label": "Lassi 🥛"
+    },
+    {
+     "id": "ans_ea8c9f19",
+     "label": "Chicken Nuggets 🍖"
+    },
+    {
+     "id": "ans_99578a60",
+     "label": "Garlic Bread 🥖"
+    },
+    {
+     "id": "ans_4bb238e2",
+     "label": "Lasagna 🧀"
+    },
+    {
+     "id": "ans_1aa8742a",
+     "label": "Sushi 🍣"
+    },
+    {
+     "id": "ans_82d32f0c",
+     "label": "Ramen 🍜"
+    },
+    {
+     "id": "ans_9074c0ec",
+     "label": "Croissant 🥐"
+    },
+    {
+     "id": "ans_922f888b",
+     "label": "Waffles 🧇"
+    },
+    {
+     "id": "ans_0c89da1f",
+     "label": "Pancakes 🥞"
+    },
+    {
+     "id": "ans_d5ba6a2f",
+     "label": "Brownies 🍫"
+    },
+    {
+     "id": "ans_6a66c2de",
+     "label": "Marshmallows"
+    },
+    {
+     "id": "ans_e6e7c9e3",
+     "label": "Kebab 🥙"
+    },
+    {
+     "id": "ans_0142c3c6",
+     "label": "Shawarma 🥙"
+    },
+    {
+     "id": "ans_c4cfbe0c",
+     "label": "Nachos and Chips"
+    },
+    {
+     "id": "ans_cc89c696",
+     "label": "Samosa 🥟"
+    },
+    {
+     "id": "ans_21b72135",
+     "label": "Sandwich 🥪"
+    },
+    {
+     "id": "ans_ea69e38f",
+     "label": "Poha"
+    },
+    {
+     "id": "ans_2cbe5af5",
+     "label": "Upma"
+    },
+    {
+     "id": "ans_06999e8a",
+     "label": "Paratha 🫓"
+    },
+    {
+     "id": "ans_d4535796",
+     "label": "Curd Rice 🍚"
+    },
+    {
+     "id": "ans_bc3cba85",
+     "label": "Fried Rice 🍚"
+    },
+    {
+     "id": "ans_ac9f5986",
+     "label": "Spring Roll 🥠"
+    },
+    {
+     "id": "ans_8f64b8ce",
+     "label": "Cheese Balls 🧀"
+    },
+    {
+     "id": "ans_3111a25a",
+     "label": "Biscuits 🍪"
+    },
+    {
+     "id": "ans_87bf8d2c",
+     "label": "Fruit Salad 🍉"
+    },
+    {
+     "id": "ans_1ad5beca",
+     "label": "Dhokla 🍰"
+    },
+    {
+     "id": "ans_8f33edb3",
+     "label": "Thepla 🌿"
+    },
+    {
+     "id": "ans_60d659bd",
+     "label": "Rice & Dal 🍚"
+    },
+    {
+     "id": "ans_891f157a",
+     "label": "Khichdi 🥣"
+    },
+    {
+     "id": "ans_f0c9b4ab",
+     "label": "Misal Pav"
+    }
+   ]
+  },
+  {
+   "id": "q_054bf981",
+   "type": "scq",
+   "questionText": "What is one thing you can do really well?",
+   "answers": [
+    {
+     "id": "ans_295f0cc0",
+     "label": "Solving puzzles and riddles"
+    },
+    {
+     "id": "ans_f27eda34",
+     "label": "Keeping my things organised"
+    },
+    {
+     "id": "ans_2af04e70",
+     "label": "Playing board games"
+    },
+    {
+     "id": "ans_660578a8",
+     "label": "Helping my friends"
+    },
+    {
+     "id": "ans_6a9b6368",
+     "label": "Packing my own bag"
+    },
+    {
+     "id": "ans_2acaa641",
+     "label": "Dancing"
+    },
+    {
+     "id": "ans_b2fec380",
+     "label": "Telling interesting facts"
+    },
+    {
+     "id": "ans_006cab82",
+     "label": "Making new friends"
+    },
+    {
+     "id": "ans_468a9941",
+     "label": "Waking up early"
+    },
+    {
+     "id": "ans_a735a8b1",
+     "label": "Learning new words"
+    },
+    {
+     "id": "ans_8c2c62f2",
+     "label": "Making craft & models"
+    },
+    {
+     "id": "ans_e3259fb5",
+     "label": "Jumping really high"
+    },
+    {
+     "id": "ans_cefcc647",
+     "label": "Being a good team player"
+    },
+    {
+     "id": "ans_284ffaea",
+     "label": "Writing neatly"
+    },
+    {
+     "id": "ans_3eaa77cd",
+     "label": "Reciting poems"
+    },
+    {
+     "id": "ans_54ed3aae",
+     "label": "Trying new things without fear"
+    },
+    {
+     "id": "ans_0a75b2dc",
+     "label": "Explaining things to others"
+    },
+    {
+     "id": "ans_c77128a9",
+     "label": "Telling funny stories"
+    },
+    {
+     "id": "ans_b3536958",
+     "label": "Being polite to everyone"
+    },
+    {
+     "id": "ans_06d6db45",
+     "label": "Taking care of pets"
+    },
+    {
+     "id": "ans_1a3404b9",
+     "label": "Being brave during tough tasks"
+    },
+    {
+     "id": "ans_91605dc4",
+     "label": "Drawing and colouring"
+    },
+    {
+     "id": "ans_188e8869",
+     "label": "Playing my favourite sport"
+    },
+    {
+     "id": "ans_ab322afd",
+     "label": "Reading storybooks"
+    },
+    {
+     "id": "ans_c5f49665",
+     "label": "Learning from my mistakes"
+    },
+    {
+     "id": "ans_ca9b5656",
+     "label": "Speaking confidently in class"
+    },
+    {
+     "id": "ans_396830e5",
+     "label": "Running fast"
+    },
+    {
+     "id": "ans_f72d463e",
+     "label": "Taking care of plants"
+    },
+    {
+     "id": "ans_6f1ff105",
+     "label": "Taking care of my things"
+    },
+    {
+     "id": "ans_4dff6ec5",
+     "label": "Singing songs"
+    },
+    {
+     "id": "ans_2ab4bc80",
+     "label": "Keeping secrets"
+    },
+    {
+     "id": "ans_b3eee6f7",
+     "label": "Helping at home"
+    },
+    {
+     "id": "ans_a7732ffb",
+     "label": "Remembering things quickly"
+    }
+   ]
+  },
+  {
+   "id": "q_e8109525",
+   "type": "scq",
+   "questionText": "What is your favourite sport?",
+   "answers": [
+    {
+     "id": "ans_4abeab6b",
+     "label": "Football ⚽"
+    },
+    {
+     "id": "ans_196fa4a9",
+     "label": "Badminton 🏸"
+    },
+    {
+     "id": "ans_6ff9b5db",
+     "label": "Swimming 🏊‍♂️"
+    },
+    {
+     "id": "ans_d3d7a925",
+     "label": "Basketball 🏀"
+    },
+    {
+     "id": "ans_0d44f753",
+     "label": "Martial Arts 🥋"
+    },
+    {
+     "id": "ans_4aadc139",
+     "label": "Tennis 🎾"
+    },
+    {
+     "id": "ans_00ac9201",
+     "label": "Cricket 🏏"
+    },
+    {
+     "id": "ans_d5338119",
+     "label": "Table Tennis 🏓"
+    },
+    {
+     "id": "ans_0b7ddcba",
+     "label": "Kabaddi 🤼"
+    },
+    {
+     "id": "ans_ea58e8ec",
+     "label": "Kho Kho 🏃‍♂️"
+    },
+    {
+     "id": "ans_fde2477b",
+     "label": "Cycling 🚴‍♂️"
+    },
+    {
+     "id": "ans_a3136fed",
+     "label": "Skating ⛸"
+    },
+    {
+     "id": "ans_98ed3d85",
+     "label": "Gymnastics 🤸‍♂️"
+    },
+    {
+     "id": "ans_fde2ea8a",
+     "label": "Chess ♟"
+    },
+    {
+     "id": "ans_de0aa740",
+     "label": "Carrom 🎯"
+    },
+    {
+     "id": "ans_ea1dc62e",
+     "label": "Hide and Seek 🙈"
+    },
+    {
+     "id": "ans_2e4cf0d2",
+     "label": "Archery 🏹"
+    },
+    {
+     "id": "ans_94f5bb7f",
+     "label": "Volleyball 🏐"
+    },
+    {
+     "id": "ans_53137a14",
+     "label": "Dodgeball 🏐"
+    },
+    {
+     "id": "ans_e15cf867",
+     "label": "Horse Riding 🐎"
+    },
+    {
+     "id": "ans_6bb4934b",
+     "label": "Boxing 🥊"
+    },
+    {
+     "id": "ans_332eec7e",
+     "label": "Rope Skipping 🪢"
+    },
+    {
+     "id": "ans_94a407ce",
+     "label": "Frisbee 🥏"
+    },
+    {
+     "id": "ans_f40b3223",
+     "label": "Tug of War 🤼‍♂️"
+    },
+    {
+     "id": "ans_09a8ab8e",
+     "label": "Javelin Throw 🏹"
+    },
+    {
+     "id": "ans_033d29a4",
+     "label": "Hula Hooping 🟠"
+    },
+    {
+     "id": "ans_a058aff2",
+     "label": "Baseball ⚾"
+    },
+    {
+     "id": "ans_ff7b7fb3",
+     "label": "Rugby 🏉"
+    }
+   ]
+  },
+  {
+   "id": "q_b4288b03",
+   "type": "scq",
+   "questionText": "What is one thing you find difficult and hard to do?",
+   "answers": [
+    {
+     "id": "ans_682c840c",
+     "label": "Remembering where I put my things"
+    },
+    {
+     "id": "ans_dd9d72fc",
+     "label": "Staying calm when I lose a game"
+    },
+    {
+     "id": "ans_6e6e9002",
+     "label": "Waiting patiently in long lines"
+    },
+    {
+     "id": "ans_06e8fc90",
+     "label": "Writing neatly"
+    },
+    {
+     "id": "ans_ecc5d759",
+     "label": "Controlling my laughter"
+    },
+    {
+     "id": "ans_ea20afc0",
+     "label": "Drawing and colouring"
+    },
+    {
+     "id": "ans_ff4de5d7",
+     "label": "Running very fast"
+    },
+    {
+     "id": "ans_660215e1",
+     "label": "Jumping high"
+    },
+    {
+     "id": "ans_3a0d8e2a",
+     "label": "Swimming"
+    },
+    {
+     "id": "ans_5fa1a110",
+     "label": "Skating without falling"
+    },
+    {
+     "id": "ans_680d88a4",
+     "label": "Listening quietly for a long time"
+    },
+    {
+     "id": "ans_59da4536",
+     "label": "Waiting for my turn"
+    },
+    {
+     "id": "ans_57f101a9",
+     "label": "Finishing my classwork on time"
+    },
+    {
+     "id": "ans_b16aae8b",
+     "label": "Waking up early every day"
+    },
+    {
+     "id": "ans_cbc974da",
+     "label": "Making new friends quickly"
+    },
+    {
+     "id": "ans_f82161a1",
+     "label": "Saying sorry when I hurt someone"
+    },
+    {
+     "id": "ans_0b6b1fee",
+     "label": "Learning from my mistakes"
+    },
+    {
+     "id": "ans_7be0d37b",
+     "label": "Reading big words"
+    },
+    {
+     "id": "ans_ffdd7360",
+     "label": "Solving tricky math problems"
+    }
+   ]
+  },
+  {
+   "id": "q_37037000",
+   "type": "scq",
+   "questionText": "What is your favourite festival?",
+   "answers": [
+    {
+     "id": "ans_f018daf8",
+     "label": "Diwali 🎆"
+    },
+    {
+     "id": "ans_c8761d31",
+     "label": "Holi 🎨"
+    },
+    {
+     "id": "ans_9cf48381",
+     "label": "Christmas 🎄"
+    },
+    {
+     "id": "ans_ca9da152",
+     "label": "Eid 🌙"
+    },
+    {
+     "id": "ans_93c82fd9",
+     "label": "Ganesh Chaturthi"
+    },
+    {
+     "id": "ans_c6974880",
+     "label": "Navratri 💃"
+    },
+    {
+     "id": "ans_36b2cec6",
+     "label": "Dussehra 🏹"
+    },
+    {
+     "id": "ans_91297cc5",
+     "label": "Raksha Bandhan 🎁"
+    },
+    {
+     "id": "ans_570cdfa2",
+     "label": "Makar Sankranti 🪁"
+    },
+    {
+     "id": "ans_96b5042d",
+     "label": "Janmashtami"
+    },
+    {
+     "id": "ans_3f62f0a7",
+     "label": "Lohri 🔥"
+    },
+    {
+     "id": "ans_8a5f5f60",
+     "label": "Easter 🐣"
+    },
+    {
+     "id": "ans_206540ee",
+     "label": "Buddha Purnima"
+    },
+    {
+     "id": "ans_700cdf8a",
+     "label": "Onam 🌼"
+    },
+    {
+     "id": "ans_8c8c68d3",
+     "label": "Baisakhi 🌾"
+    },
+    {
+     "id": "ans_679cad44",
+     "label": "Pongal 🍚"
+    },
+    {
+     "id": "ans_2d6dd5ef",
+     "label": "New Year 🎉"
+    },
+    {
+     "id": "ans_681934a7",
+     "label": "Halloween 🎃"
+    },
+    {
+     "id": "ans_8fc56d19",
+     "label": "Thanksgiving 🦃"
+    },
+    {
+     "id": "ans_a01e7930",
+     "label": "Basant Panchami 🎨"
+    }
+   ]
+  },
+  {
+   "id": "q_bc7fe01e",
+   "type": "scq",
+   "questionText": "What is one thing you want to get better at?",
+   "answers": [
+    {
+     "id": "ans_e3c01501",
+     "label": "speaking more confidently"
+    },
+    {
+     "id": "ans_70d51137",
+     "label": "playing my favourite sports better"
+    },
+    {
+     "id": "ans_d76a8da0",
+     "label": "making new friends easily"
+    },
+    {
+     "id": "ans_f27984d6",
+     "label": "staying calm when I’m angry"
+    },
+    {
+     "id": "ans_7c515860",
+     "label": "spelling difficult words"
+    },
+    {
+     "id": "ans_b5494859",
+     "label": "writing neatly"
+    },
+    {
+     "id": "ans_6078f9b8",
+     "label": "telling stories in a fun way"
+    },
+    {
+     "id": "ans_605b62b1",
+     "label": "drawing and colouring better"
+    },
+    {
+     "id": "ans_19c0cfe5",
+     "label": "singing nicely"
+    },
+    {
+     "id": "ans_48e6890b",
+     "label": "listening carefully to others"
+    },
+    {
+     "id": "ans_20394f9e",
+     "label": "dancing better"
+    },
+    {
+     "id": "ans_2e4559f9",
+     "label": "running faster"
+    },
+    {
+     "id": "ans_a2a25dc7",
+     "label": "jumping higher"
+    },
+    {
+     "id": "ans_0f27f905",
+     "label": "saving my pocket money"
+    },
+    {
+     "id": "ans_1e2de62d",
+     "label": "reading big words easily"
+    },
+    {
+     "id": "ans_912ba6da",
+     "label": "solving tricky maths questions"
+    },
+    {
+     "id": "ans_f63e015e",
+     "label": "finishing homework on time"
+    },
+    {
+     "id": "ans_3fd8f626",
+     "label": "being a good team player"
+    },
+    {
+     "id": "ans_1c7988a1",
+     "label": "swimming without fear"
+    },
+    {
+     "id": "ans_3f2d27aa",
+     "label": "skating without falling"
+    },
+    {
+     "id": "ans_bcbece25",
+     "label": "staying calm when I lose a game"
+    },
+    {
+     "id": "ans_72f5d1c2",
+     "label": "waiting for my turn patiently"
+    },
+    {
+     "id": "ans_08e2930d",
+     "label": "riding a bicycle without help"
+    },
+    {
+     "id": "ans_bc9208b8",
+     "label": "keeping my room organized"
+    },
+    {
+     "id": "ans_b369bc34",
+     "label": "keeping my school bag packed properly"
+    },
+    {
+     "id": "ans_c0768480",
+     "label": "being ready on time for school"
+    },
+    {
+     "id": "ans_abd65560",
+     "label": "saying sorry when I make a mistake"
+    },
+    {
+     "id": "ans_6eddde85",
+     "label": "not interrupting when someone is talking"
+    }
+   ]
+  },
+  {
+   "id": "q_74f2839e",
+   "type": "scq",
+   "questionText": "What is one thing you do not enjoy doing?",
+   "answers": [
+    {
+     "id": "ans_80e8167d",
+     "label": "Eat bitter vegetables"
+    },
+    {
+     "id": "ans_2319afb3",
+     "label": "Wait in a long line"
+    },
+    {
+     "id": "ans_62465e04",
+     "label": "Sharpen pencils again and again"
+    },
+    {
+     "id": "ans_7242b4d1",
+     "label": "Drink plain milk"
+    },
+    {
+     "id": "ans_fbfeeef7",
+     "label": "Get my hands dirty with glue"
+    },
+    {
+     "id": "ans_afa48290",
+     "label": "Sit between two noisy friends"
+    },
+    {
+     "id": "ans_252927a1",
+     "label": "Wake up early"
+    },
+    {
+     "id": "ans_1ff58593",
+     "label": "Walk slowly in line"
+    },
+    {
+     "id": "ans_5da017fd",
+     "label": "Listen to a song I don’t know"
+    },
+    {
+     "id": "ans_fd0e8cc0",
+     "label": "Clean my room daily"
+    },
+    {
+     "id": "ans_52ee81d5",
+     "label": "Share my favourite toys"
+    },
+    {
+     "id": "ans_8223161d",
+     "label": "Write too much"
+    },
+    {
+     "id": "ans_0add1996",
+     "label": "Sit still for a long time"
+    },
+    {
+     "id": "ans_7bc8a019",
+     "label": "Go to bed early"
+    },
+    {
+     "id": "ans_2f51385d",
+     "label": "Lose in a game"
+    },
+    {
+     "id": "ans_37b44b32",
+     "label": "Read big words"
+    },
+    {
+     "id": "ans_6d4aa417",
+     "label": "Fold my clothes"
+    },
+    {
+     "id": "ans_36846cb1",
+     "label": "Read the same story again & again"
+    },
+    {
+     "id": "ans_424ca0f1",
+     "label": "Watch a movie without popcorn"
+    },
+    {
+     "id": "ans_ef5fe979",
+     "label": "Pack my own school bag"
+    },
+    {
+     "id": "ans_6ec3281e",
+     "label": "Do handwriting practice"
+    },
+    {
+     "id": "ans_7c330421",
+     "label": "Rewrite work neatly"
+    }
+   ]
+  },
+  {
+   "id": "q_3d537cbf",
+   "type": "scq",
+   "questionText": "Who is your idol? (the person you like a lot)",
+   "answers": [
+    {
+     "id": "ans_0c9d4b6d",
+     "label": "My mother"
+    },
+    {
+     "id": "ans_8fbbe9f2",
+     "label": "My father"
+    },
+    {
+     "id": "ans_a6d110cb",
+     "label": "My teacher 👩‍🏫"
+    },
+    {
+     "id": "ans_369bb209",
+     "label": "Cristiano Ronaldo ⚽"
+    },
+    {
+     "id": "ans_459509a7",
+     "label": "Virat Kohli 🏏"
+    },
+    {
+     "id": "ans_0c42f6e0",
+     "label": "M.S. Dhoni 🏏"
+    },
+    {
+     "id": "ans_201d2e9b",
+     "label": "Lionel Messi ⚽"
+    },
+    {
+     "id": "ans_1b5ed43a",
+     "label": "Sachin Tendulkar 🏏"
+    },
+    {
+     "id": "ans_0d781231",
+     "label": "My brother"
+    },
+    {
+     "id": "ans_e74c3dab",
+     "label": "My sister"
+    },
+    {
+     "id": "ans_fa3a835f",
+     "label": "Barack Obama 🏛️"
+    },
+    {
+     "id": "ans_035faece",
+     "label": "Neeraj Chopra 🏅"
+    },
+    {
+     "id": "ans_60b97a2f",
+     "label": "Mark Zuckerberg 💻"
+    },
+    {
+     "id": "ans_64f0de16",
+     "label": "Mary Kom 🥊"
+    },
+    {
+     "id": "ans_2702749e",
+     "label": "P.V. Sindhu"
+    },
+    {
+     "id": "ans_999b6caf",
+     "label": "My grandparents"
+    },
+    {
+     "id": "ans_c7b97c57",
+     "label": "Harmanpreet Kaur 🏏"
+    },
+    {
+     "id": "ans_7d8fd32a",
+     "label": "Rohit Sharma 🏏"
+    },
+    {
+     "id": "ans_9ad10c87",
+     "label": "Sunita Williams 🧑‍🚀"
+    },
+    {
+     "id": "ans_0467e120",
+     "label": "Usain Bolt 🏃‍♂️"
+    },
+    {
+     "id": "ans_d04f8d59",
+     "label": "Roger Federer 🎾"
+    },
+    {
+     "id": "ans_90df5c99",
+     "label": "Novak Djokovic 🎾"
+    },
+    {
+     "id": "ans_54e06fcb",
+     "label": "Stephen Curry 🏀"
+    },
+    {
+     "id": "ans_0db705c9",
+     "label": "Serena Williams 🎾"
+    },
+    {
+     "id": "ans_b49dd991",
+     "label": "Elon Musk 🚀"
+    },
+    {
+     "id": "ans_d0000d17",
+     "label": "Steve Jobs 💻"
+    },
+    {
+     "id": "ans_3d06cac8",
+     "label": "Sundar Pichai 💻"
+    },
+    {
+     "id": "ans_872b6dad",
+     "label": "Vishwanathan Anand ♟️"
+    },
+    {
+     "id": "ans_364b9065",
+     "label": "Gukesh Dommaraju ♟️"
+    },
+    {
+     "id": "ans_f10be610",
+     "label": "Albert Einstein"
+    },
+    {
+     "id": "ans_3840e3d4",
+     "label": "Isaac Newton"
+    },
+    {
+     "id": "ans_d74b7a0a",
+     "label": "Neil Armstrong 🌕"
+    },
+    {
+     "id": "ans_663362d2",
+     "label": "Ratan Tata"
+    },
+    {
+     "id": "ans_e1fc6612",
+     "label": "J.K. Rowling 📚"
+    },
+    {
+     "id": "ans_51a1b579",
+     "label": "Narendra Modi 🇮🇳"
+    },
+    {
+     "id": "ans_182d46e0",
+     "label": "Saina Nehwal 🏸"
+    },
+    {
+     "id": "ans_686e5dbd",
+     "label": "Dr A.P.J. Abdul Kalam 🚀"
+    }
+   ]
+  },
+  {
+   "id": "q_f2d925c4",
+   "type": "scq",
+   "questionText": "What is your favourite thing to do when you are not studying?",
+   "answers": [
+    {
+     "id": "ans_39e806e5",
+     "label": "Go to the beach"
+    },
+    {
+     "id": "ans_3867b4ab",
+     "label": "Go on road trips with my family"
+    },
+    {
+     "id": "ans_c2e46508",
+     "label": "Create origami"
+    },
+    {
+     "id": "ans_4cc6350a",
+     "label": "Play my favourite sport"
+    },
+    {
+     "id": "ans_9db14c87",
+     "label": "Draw comics & characters"
+    },
+    {
+     "id": "ans_e50a32ce",
+     "label": "Help my parents"
+    },
+    {
+     "id": "ans_10f258ee",
+     "label": "Go on a picnic with friends"
+    },
+    {
+     "id": "ans_edd621ed",
+     "label": "Make new friends"
+    },
+    {
+     "id": "ans_a372ed83",
+     "label": "Visit hills & mountains"
+    },
+    {
+     "id": "ans_a34a83b8",
+     "label": "Play with friends"
+    },
+    {
+     "id": "ans_3fbe45d5",
+     "label": "Try out science experiments"
+    },
+    {
+     "id": "ans_f9bacf91",
+     "label": "Collect stickers & cards"
+    },
+    {
+     "id": "ans_e84a5440",
+     "label": "Read storybooks"
+    },
+    {
+     "id": "ans_1d1bdb59",
+     "label": "Watch cartoons"
+    },
+    {
+     "id": "ans_a1878dac",
+     "label": "Go to the library"
+    },
+    {
+     "id": "ans_6744ed21",
+     "label": "Solve puzzles"
+    },
+    {
+     "id": "ans_fb36ccdb",
+     "label": "Take care of my pets"
+    },
+    {
+     "id": "ans_b315ddbd",
+     "label": "Tell funny jokes & stories"
+    },
+    {
+     "id": "ans_48b5f0a8",
+     "label": "Listen to music"
+    },
+    {
+     "id": "ans_9c26426f",
+     "label": "Sing songs"
+    },
+    {
+     "id": "ans_e32b41df",
+     "label": "Dance"
+    },
+    {
+     "id": "ans_fc40a980",
+     "label": "Draw and colour"
+    },
+    {
+     "id": "ans_3da1da99",
+     "label": "Ride my bicycle"
+    },
+    {
+     "id": "ans_8f76de11",
+     "label": "Climb trees during play"
+    },
+    {
+     "id": "ans_6f1634b4",
+     "label": "Help my friends at school"
+    },
+    {
+     "id": "ans_f9b4a8f0",
+     "label": "Take care of plants"
+    },
+    {
+     "id": "ans_1b35e0d2",
+     "label": "Write short stories"
+    },
+    {
+     "id": "ans_690212f9",
+     "label": "Act in dramas"
+    },
+    {
+     "id": "ans_b06f1795",
+     "label": "Explore new games"
+    },
+    {
+     "id": "ans_68c3091d",
+     "label": "Decorate my notebooks & projects"
+    }
+   ]
+  },
+  {
+   "id": "q_school_special_001",
+   "type": "scq",
+   "questionText": "What makes your school special for you?",
+   "answers": [
+    {
+     "id": "ans_school_special_01",
+     "label": "I enjoy participating in competitions and showing my talent"
+    },
+    {
+     "id": "ans_school_special_02",
+     "label": "I love that my school encourages me to try new things"
+    },
+    {
+     "id": "ans_school_special_03",
+     "label": "I feel very happy here because my school is like my second home"
+    },
+    {
+     "id": "ans_school_special_04",
+     "label": "I love that our school organises exciting events and celebrations"
+    },
+    {
+     "id": "ans_school_special_05",
+     "label": "I like that we get to play many fun sports and games here"
+    },
+    {
+     "id": "ans_school_special_06",
+     "label": "I like that my teachers always listen to me and understand me"
+    },
+    {
+     "id": "ans_school_special_07",
+     "label": "I feel happy here because my school motivates me to do better every day"
+    },
+    {
+     "id": "ans_school_special_08",
+     "label": "I love how our school celebrates our achievements so beautifully"
+    },
+    {
+     "id": "ans_school_special_09",
+     "label": "The most special thing is that everyone here treats each other kindly"
+    },
+    {
+     "id": "ans_school_special_10",
+     "label": "The best part is that I get many chances to participate in competitions and sports"
+    }
+   ]
+  }
+ ],
+ "AAM1-prep@legacyIds": [
+  {
+   "id": "q_e0830bbd",
+   "type": "scq",
+   "questionText": "If you had one superpower, what would it be? 🌟",
+   "answers": [
+    {
+     "id": "ans_0a2bae4a",
+     "label": "a) 🚀 Flying"
+    },
+    {
+     "id": "ans_4dd4aa0e",
+     "label": "b) 🕵️ Invisibility"
+    },
+    {
+     "id": "ans_d81ba6d7",
+     "label": "c) 💨 Super speed"
+    },
+    {
+     "id": "ans_e75d7dcf",
+     "label": "d) 🐾 Talking to animals"
+    },
+    {
+     "id": "ans_707e5b70",
+     "label": "e) ⏱️ Time travel"
+    },
+    {
+     "id": "ans_81a691a0",
+     "label": "f) 🍕 The power to turn anything into pizza"
+    }
+   ]
+  },
+  {
+   "id": "q_bcc62d02",
+   "type": "scq",
+   "questionText": "What would you like to be when you grow up?",
+   "answers": [
+    {
+     "id": "ans_6cea0c82",
+     "label": "Doctor 🩺"
+    },
+    {
+     "id": "ans_20ae8147",
+     "label": "Cricketer 🏏"
+    },
+    {
+     "id": "ans_130b972d",
+     "label": "Footballer ⚽"
+    },
+    {
+     "id": "ans_4c408fee",
+     "label": "Police officer 👮"
+    },
+    {
+     "id": "ans_25cc55f6",
+     "label": "Pilot ✈️"
+    },
+    {
+     "id": "ans_004184f3",
+     "label": "Judge ⚖️"
+    },
+    {
+     "id": "ans_60b8f9b3",
+     "label": "Lawyer 📚"
+    },
+    {
+     "id": "ans_468bd1f9",
+     "label": "Space scientist 🪐"
+    },
+    {
+     "id": "ans_b9396078",
+     "label": "Astronaut 👨‍🚀"
+    },
+    {
+     "id": "ans_f3c2b5d9",
+     "label": "Engineer"
+    },
+    {
+     "id": "ans_fabb97c6",
+     "label": "Sportsperson 🏅"
+    },
+    {
+     "id": "ans_a8aba3f1",
+     "label": "IAS officer"
+    },
+    {
+     "id": "ans_aff6b924",
+     "label": "Singer 🎤"
+    },
+    {
+     "id": "ans_40933af5",
+     "label": "Actor 🎭"
+    },
+    {
+     "id": "ans_88f3feba",
+     "label": "Architect 🏛️"
+    },
+    {
+     "id": "ans_88ed0ab0",
+     "label": "Scientist 🔬"
+    },
+    {
+     "id": "ans_a0117ba7",
+     "label": "Chef 👨‍🍳"
+    },
+    {
+     "id": "ans_72be9705",
+     "label": "Dancer"
+    },
+    {
+     "id": "ans_69466dc1",
+     "label": "Badminton player 🏸"
+    },
+    {
+     "id": "ans_88420708",
+     "label": "Artist 🎨"
+    },
+    {
+     "id": "ans_6663a7e6",
+     "label": "Businessperson"
+    },
+    {
+     "id": "ans_8bb46c87",
+     "label": "IPS officer 🚓"
+    },
+    {
+     "id": "ans_701de558",
+     "label": "ISRO engineer 🚀"
+    },
+    {
+     "id": "ans_f8769831",
+     "label": "Chess player ♟️"
+    },
+    {
+     "id": "ans_9ff23fff",
+     "label": "Olympian 🏅"
+    },
+    {
+     "id": "ans_399f2f3d",
+     "label": "Karate champion 🥋"
+    },
+    {
+     "id": "ans_d51cab3e",
+     "label": "Environmentalist 🌿"
+    },
+    {
+     "id": "ans_dafbcb0e",
+     "label": "Musician 🎼"
+    },
+    {
+     "id": "ans_f78de5d8",
+     "label": "Author ✍️"
+    },
+    {
+     "id": "ans_ecd1682c",
+     "label": "Army officer 🪖"
+    },
+    {
+     "id": "ans_df4d1298",
+     "label": "Table tennis player 🏓"
+    },
+    {
+     "id": "ans_28882ba8",
+     "label": "Interior designer 🛋️"
+    },
+    {
+     "id": "ans_dfbe73c4",
+     "label": "Animator 🖌️"
+    },
+    {
+     "id": "ans_792ce417",
+     "label": "Photographer 📸"
+    },
+    {
+     "id": "ans_132a35f5",
+     "label": "News reporter 🎙️"
+    },
+    {
+     "id": "ans_982f65e4",
+     "label": "Marine biologist 🐬"
+    },
+    {
+     "id": "ans_72d1cc2f",
+     "label": "Skater ⛸️"
+    },
+    {
+     "id": "ans_7dada06a",
+     "label": "Event organiser 🎪"
+    },
+    {
+     "id": "ans_2fae4696",
+     "label": "Poet 📝"
+    },
+    {
+     "id": "ans_f6f77dd5",
+     "label": "Teacher 👩‍🏫"
+    },
+    {
+     "id": "ans_83908ba7",
+     "label": "Navy officer"
+    },
+    {
+     "id": "ans_ae5a77eb",
+     "label": "Fashion designer"
+    },
+    {
+     "id": "ans_32389dcf",
+     "label": "Hockey player 🏑"
+    },
+    {
+     "id": "ans_a9ca02f2",
+     "label": "School principal 🏫"
+    },
+    {
+     "id": "ans_6e0660e6",
+     "label": "Gymnast 🤸"
+    }
+   ]
+  },
+  {
+   "id": "q_39ba5b44",
+   "type": "rmcq",
+   "questionText": "Three things I enjoyed learning this school year.",
+   "answers": [
+    {
+     "id": "ans_852cc082",
+     "label": "Cool facts from my favourite subject"
+    },
+    {
+     "id": "ans_ab198097",
+     "label": "Multiplication tables"
+    },
+    {
+     "id": "ans_8bf9762d",
+     "label": "Writing a story or comic by myself"
+    },
+    {
+     "id": "ans_4ab89b1c",
+     "label": "Using a computer for learning"
+    },
+    {
+     "id": "ans_5cae77dc",
+     "label": "Making posters and charts on my favourite topics"
+    },
+    {
+     "id": "ans_79a0d4a0",
+     "label": "Using new words while speaking"
+    },
+    {
+     "id": "ans_5a5ea332",
+     "label": "Solving number puzzles and riddles"
+    },
+    {
+     "id": "ans_dc4d2884",
+     "label": "Doing science experiments"
+    },
+    {
+     "id": "ans_c4415e36",
+     "label": "Drawing simple maps of places"
+    },
+    {
+     "id": "ans_44d263c1",
+     "label": "Using a dictionary"
+    },
+    {
+     "id": "ans_cce72662",
+     "label": "Drawing and labelling a diagram"
+    },
+    {
+     "id": "ans_7dc40358",
+     "label": "Taking awesome photos"
+    },
+    {
+     "id": "ans_3de1e844",
+     "label": "Making my own bookmark"
+    },
+    {
+     "id": "ans_5785339a",
+     "label": "Creating fun riddles"
+    },
+    {
+     "id": "ans_b830cd56",
+     "label": "Playing a musical instrument"
+    },
+    {
+     "id": "ans_4b7026ca",
+     "label": "Performing magic tricks and surprising people"
+    },
+    {
+     "id": "ans_fbafc6b2",
+     "label": "Decorating my room nicely"
+    },
+    {
+     "id": "ans_af8d9e43",
+     "label": "Writing neatly and beautifully"
+    },
+    {
+     "id": "ans_460924ff",
+     "label": "Writing funny jokes"
+    },
+    {
+     "id": "ans_397a11ec",
+     "label": "Starting a conversation confidently"
+    },
+    {
+     "id": "ans_9ca29e45",
+     "label": "Making awesome posters"
+    },
+    {
+     "id": "ans_a2a9e16b",
+     "label": "Drawing fun cartoons and comics"
+    },
+    {
+     "id": "ans_4860d144",
+     "label": "Making cool origami"
+    },
+    {
+     "id": "ans_1c05c342",
+     "label": "Painting neatly without making a mess"
+    },
+    {
+     "id": "ans_faf8efc5",
+     "label": "Making models with clay"
+    },
+    {
+     "id": "ans_d5931eb5",
+     "label": "Writing in cursive"
+    },
+    {
+     "id": "ans_ec791820",
+     "label": "Creating a scrapbook"
+    },
+    {
+     "id": "ans_9e88752b",
+     "label": "Growing my own little plant"
+    }
+   ]
+  },
+  {
+   "id": "q_fba0df37",
+   "type": "scq",
+   "questionText": "What is your favourite food?",
+   "answers": [
+    {
+     "id": "ans_9429f417",
+     "label": "Vegetable Pasta 🍝"
+    },
+    {
+     "id": "ans_e1d85d75",
+     "label": "Vegetable Noodles 🍜"
+    },
+    {
+     "id": "ans_9403d6e2",
+     "label": "Biryani 🍛"
+    },
+    {
+     "id": "ans_8e44e677",
+     "label": "Pani Puri"
+    },
+    {
+     "id": "ans_557363a8",
+     "label": "Vada Pav 🍔"
+    },
+    {
+     "id": "ans_6c40b4b1",
+     "label": "Pav Bhaji 🍛"
+    },
+    {
+     "id": "ans_2726ffa8",
+     "label": "Chole Bhature 🍽"
+    },
+    {
+     "id": "ans_4304fa2b",
+     "label": "Dosa 🥞"
+    },
+    {
+     "id": "ans_f5d6f811",
+     "label": "Idli and Sambar 🥥"
+    },
+    {
+     "id": "ans_6992dfd7",
+     "label": "Chapati and Sabzi 🌿"
+    },
+    {
+     "id": "ans_34b212fb",
+     "label": "Milkshake 🥤"
+    },
+    {
+     "id": "ans_e316bfd9",
+     "label": "Popcorn 🍿"
+    },
+    {
+     "id": "ans_2628d487",
+     "label": "Cake 🎂"
+    },
+    {
+     "id": "ans_a9f81a74",
+     "label": "Gulab Jamun 🍮"
+    },
+    {
+     "id": "ans_9ebabe0b",
+     "label": "Lassi 🥛"
+    },
+    {
+     "id": "ans_b4e90197",
+     "label": "Garlic Bread 🥖"
+    },
+    {
+     "id": "ans_5ca4b55e",
+     "label": "Croissant 🥐"
+    },
+    {
+     "id": "ans_a007006e",
+     "label": "Waffles 🧇"
+    },
+    {
+     "id": "ans_45f89d57",
+     "label": "Pancakes 🥞"
+    },
+    {
+     "id": "ans_e2038454",
+     "label": "Kebab 🥙"
+    },
+    {
+     "id": "ans_4abfe469",
+     "label": "Shawarma 🥙"
+    },
+    {
+     "id": "ans_904898b9",
+     "label": "Samosa 🥟"
+    },
+    {
+     "id": "ans_c8a23658",
+     "label": "Sandwich 🥪"
+    },
+    {
+     "id": "ans_7333d513",
+     "label": "Poha"
+    },
+    {
+     "id": "ans_b5de57d0",
+     "label": "Upma"
+    },
+    {
+     "id": "ans_64c63165",
+     "label": "Paratha 🫓"
+    },
+    {
+     "id": "ans_8074fb03",
+     "label": "Curd Rice 🍚"
+    },
+    {
+     "id": "ans_c357a268",
+     "label": "Fried Rice 🍚"
+    },
+    {
+     "id": "ans_c4f1e7bc",
+     "label": "Spring Roll 🥠"
+    },
+    {
+     "id": "ans_90ba037b",
+     "label": "Fruit Salad 🍉"
+    },
+    {
+     "id": "ans_f9198777",
+     "label": "Dhokla 🍰"
+    },
+    {
+     "id": "ans_60bb8c3f",
+     "label": "Thepla 🌿"
+    },
+    {
+     "id": "ans_fd8297d1",
+     "label": "Rice & Dal 🍚"
+    },
+    {
+     "id": "ans_abf873f2",
+     "label": "Khichdi 🥣"
+    },
+    {
+     "id": "ans_31cf5d85",
+     "label": "Misal Pav"
+    }
+   ]
+  },
+  {
+   "id": "q_22ab8741",
+   "type": "scq",
+   "questionText": "What is one thing you can do really well?",
+   "answers": [
+    {
+     "id": "ans_8f6f373e",
+     "label": "Solving puzzles and riddles"
+    },
+    {
+     "id": "ans_49f9022b",
+     "label": "Keeping my things organised"
+    },
+    {
+     "id": "ans_6a44724c",
+     "label": "Playing board games"
+    },
+    {
+     "id": "ans_fae775c8",
+     "label": "Helping my friends"
+    },
+    {
+     "id": "ans_bbb11c14",
+     "label": "Packing my own bag"
+    },
+    {
+     "id": "ans_ccc36df3",
+     "label": "Dancing"
+    },
+    {
+     "id": "ans_826669f5",
+     "label": "Telling interesting facts"
+    },
+    {
+     "id": "ans_7f197732",
+     "label": "Making new friends"
+    },
+    {
+     "id": "ans_c9dc72a1",
+     "label": "Waking up early"
+    },
+    {
+     "id": "ans_b2bc5518",
+     "label": "Learning new words"
+    },
+    {
+     "id": "ans_a6e72dfe",
+     "label": "Making craft & models"
+    },
+    {
+     "id": "ans_e24171ea",
+     "label": "Jumping really high"
+    },
+    {
+     "id": "ans_6176d006",
+     "label": "Being a good team player"
+    },
+    {
+     "id": "ans_6cdf839f",
+     "label": "Writing neatly"
+    },
+    {
+     "id": "ans_221c426b",
+     "label": "Reciting poems"
+    },
+    {
+     "id": "ans_ce18f687",
+     "label": "Trying new things without fear, with parent guidance"
+    },
+    {
+     "id": "ans_15a37757",
+     "label": "Explaining things to others"
+    },
+    {
+     "id": "ans_7faf0c96",
+     "label": "Telling funny stories"
+    },
+    {
+     "id": "ans_efabe27c",
+     "label": "Being polite to everyone"
+    },
+    {
+     "id": "ans_7ab9bf60",
+     "label": "Taking care of pets"
+    },
+    {
+     "id": "ans_2c73c2bc",
+     "label": "Being brave during tough tasks"
+    },
+    {
+     "id": "ans_fe8249f7",
+     "label": "Drawing and colouring"
+    },
+    {
+     "id": "ans_0bb4f39d",
+     "label": "Playing my favourite sport"
+    },
+    {
+     "id": "ans_d6936e17",
+     "label": "Reading storybooks"
+    },
+    {
+     "id": "ans_be56e070",
+     "label": "Learning from my mistakes"
+    },
+    {
+     "id": "ans_d266316b",
+     "label": "Speaking confidently in class"
+    },
+    {
+     "id": "ans_3e177de5",
+     "label": "Running fast"
+    },
+    {
+     "id": "ans_12b70217",
+     "label": "Taking care of plants"
+    },
+    {
+     "id": "ans_e5990ce9",
+     "label": "Taking care of my things"
+    },
+    {
+     "id": "ans_63d99070",
+     "label": "Singing songs"
+    },
+    {
+     "id": "ans_ad9df102",
+     "label": "Helping at home"
+    },
+    {
+     "id": "ans_2f2102b9",
+     "label": "Remembering things quickly"
+    }
+   ]
+  },
+  {
+   "id": "q_233f5069",
+   "type": "scq",
+   "questionText": "What is your favourite sport?",
+   "answers": [
+    {
+     "id": "ans_dfb888d2",
+     "label": "Football ⚽"
+    },
+    {
+     "id": "ans_8eedd79d",
+     "label": "Badminton 🏸"
+    },
+    {
+     "id": "ans_a46fae0e",
+     "label": "Swimming 🏊‍♂️"
+    },
+    {
+     "id": "ans_dd621e86",
+     "label": "Basketball 🏀"
+    },
+    {
+     "id": "ans_3d3b648d",
+     "label": "Martial Arts 🥋"
+    },
+    {
+     "id": "ans_1a96470b",
+     "label": "Tennis 🎾"
+    },
+    {
+     "id": "ans_5456fd48",
+     "label": "Cricket 🏏"
+    },
+    {
+     "id": "ans_7ec5b967",
+     "label": "Table Tennis 🏓"
+    },
+    {
+     "id": "ans_adb15cca",
+     "label": "Kabaddi 🤼"
+    },
+    {
+     "id": "ans_994b6a01",
+     "label": "Kho Kho 🏃‍♂️"
+    },
+    {
+     "id": "ans_fa0dbcff",
+     "label": "Cycling 🚴‍♂️"
+    },
+    {
+     "id": "ans_fbd8a828",
+     "label": "Skating ⛸"
+    },
+    {
+     "id": "ans_3644daa8",
+     "label": "Gymnastics 🤸‍♂️"
+    },
+    {
+     "id": "ans_17fb9ad9",
+     "label": "Chess ♟"
+    },
+    {
+     "id": "ans_efd35ed1",
+     "label": "Carrom 🎯"
+    },
+    {
+     "id": "ans_d0a77c33",
+     "label": "Hide and Seek 🙈"
+    },
+    {
+     "id": "ans_e717a968",
+     "label": "Archery 🏹"
+    },
+    {
+     "id": "ans_34ff3b37",
+     "label": "Volleyball 🏐"
+    },
+    {
+     "id": "ans_4c848575",
+     "label": "Dodgeball 🏐"
+    },
+    {
+     "id": "ans_45a132e4",
+     "label": "Horse Riding 🐎"
+    },
+    {
+     "id": "ans_589c18bc",
+     "label": "Boxing 🥊"
+    },
+    {
+     "id": "ans_5dd1523c",
+     "label": "Rope Skipping 🪢"
+    },
+    {
+     "id": "ans_cf763495",
+     "label": "Frisbee 🥏"
+    },
+    {
+     "id": "ans_f3800b7d",
+     "label": "Tug of War 🤼‍♂️"
+    },
+    {
+     "id": "ans_48572090",
+     "label": "Javelin Throw 🏹"
+    },
+    {
+     "id": "ans_603a0d31",
+     "label": "Hula Hooping 🟠"
+    },
+    {
+     "id": "ans_dda0d13e",
+     "label": "Baseball ⚾"
+    },
+    {
+     "id": "ans_551b24ad",
+     "label": "Rugby 🏉"
+    }
+   ]
+  },
+  {
+   "id": "q_389cf6cc",
+   "type": "scq",
+   "questionText": "What is one thing you find difficult and hard to do?",
+   "answers": [
+    {
+     "id": "ans_58a682a2",
+     "label": "Remembering where I put my things"
+    },
+    {
+     "id": "ans_be51fe73",
+     "label": "Staying calm when I lose a game"
+    },
+    {
+     "id": "ans_4f05a77f",
+     "label": "Waiting patiently in long lines"
+    },
+    {
+     "id": "ans_3eb8c67b",
+     "label": "Writing neatly"
+    },
+    {
+     "id": "ans_ca7b89a7",
+     "label": "Controlling my laughter"
+    },
+    {
+     "id": "ans_c3cf3e64",
+     "label": "Drawing and colouring"
+    },
+    {
+     "id": "ans_bfa87113",
+     "label": "Running very fast"
+    },
+    {
+     "id": "ans_cb01ece3",
+     "label": "Jumping high"
+    },
+    {
+     "id": "ans_bb9a002d",
+     "label": "Swimming"
+    },
+    {
+     "id": "ans_1ebb5db8",
+     "label": "Skating without falling"
+    },
+    {
+     "id": "ans_acd759c0",
+     "label": "Listening quietly for a long time"
+    },
+    {
+     "id": "ans_01a2ee76",
+     "label": "Waiting for my turn"
+    },
+    {
+     "id": "ans_6d842065",
+     "label": "Finishing my classwork on time"
+    },
+    {
+     "id": "ans_5d26d8e0",
+     "label": "Waking up early every day"
+    },
+    {
+     "id": "ans_e2ab0fdb",
+     "label": "Making new friends quickly"
+    },
+    {
+     "id": "ans_15ed8f37",
+     "label": "Saying sorry when I hurt someone"
+    },
+    {
+     "id": "ans_a7b0e8d1",
+     "label": "Learning from my mistakes"
+    },
+    {
+     "id": "ans_b93282de",
+     "label": "Reading big words"
+    },
+    {
+     "id": "ans_4bf96989",
+     "label": "Solving tricky math problems"
+    }
+   ]
+  },
+  {
+   "id": "q_aad39223",
+   "type": "scq",
+   "questionText": "Which is your favourite festival?",
+   "answers": [
+    {
+     "id": "ans_26758046",
+     "label": "Diwali 🎆"
+    },
+    {
+     "id": "ans_5f8a44e1",
+     "label": "Holi 🎨"
+    },
+    {
+     "id": "ans_3f40cb6e",
+     "label": "Christmas 🎄"
+    },
+    {
+     "id": "ans_4c5e234d",
+     "label": "Eid 🌙"
+    },
+    {
+     "id": "ans_2473f6a5",
+     "label": "Ganesh Chaturthi"
+    },
+    {
+     "id": "ans_65ee2d8e",
+     "label": "Navratri 💃"
+    },
+    {
+     "id": "ans_a4bee685",
+     "label": "Dussehra 🏹"
+    },
+    {
+     "id": "ans_3d8585dc",
+     "label": "Raksha Bandhan 🎁"
+    },
+    {
+     "id": "ans_f807cf76",
+     "label": "Makar Sankranti 🪁"
+    },
+    {
+     "id": "ans_aafbaadf",
+     "label": "Janmashtami"
+    },
+    {
+     "id": "ans_27783744",
+     "label": "Lohri 🔥"
+    },
+    {
+     "id": "ans_ff1e14d9",
+     "label": "Easter 🐣"
+    },
+    {
+     "id": "ans_a5a0ef24",
+     "label": "Buddha Purnima"
+    },
+    {
+     "id": "ans_981e5e7c",
+     "label": "Onam 🌼"
+    },
+    {
+     "id": "ans_12d8529c",
+     "label": "Baisakhi 🌾"
+    },
+    {
+     "id": "ans_de6df50f",
+     "label": "Pongal 🍚"
+    },
+    {
+     "id": "ans_665e3cf6",
+     "label": "New Year 🎉"
+    },
+    {
+     "id": "ans_5fe9a63b",
+     "label": "Basant Panchami 🎨"
+    }
+   ]
+  },
+  {
+   "id": "q_6e099482",
+   "type": "scq",
+   "questionText": "What is one thing you want to get better at?",
+   "answers": [
+    {
+     "id": "ans_7fd7006b",
+     "label": "speaking more confidently"
+    },
+    {
+     "id": "ans_f361471f",
+     "label": "playing my favourite sports better"
+    },
+    {
+     "id": "ans_f84f7255",
+     "label": "making new friends easily"
+    },
+    {
+     "id": "ans_c80be3fc",
+     "label": "staying calm when I'm angry"
+    },
+    {
+     "id": "ans_51e3947d",
+     "label": "spelling difficult words"
+    },
+    {
+     "id": "ans_c2278721",
+     "label": "writing neatly"
+    },
+    {
+     "id": "ans_ff315972",
+     "label": "telling stories in a fun way"
+    },
+    {
+     "id": "ans_4da5c27d",
+     "label": "drawing and colouring better"
+    },
+    {
+     "id": "ans_dcd5b482",
+     "label": "singing nicely"
+    },
+    {
+     "id": "ans_dfa689d7",
+     "label": "listening carefully to others"
+    },
+    {
+     "id": "ans_39dab7b5",
+     "label": "dancing better"
+    },
+    {
+     "id": "ans_40c1c450",
+     "label": "running faster"
+    },
+    {
+     "id": "ans_bb1a846a",
+     "label": "jumping higher"
+    },
+    {
+     "id": "ans_b96f0b87",
+     "label": "saving my pocket money"
+    },
+    {
+     "id": "ans_94010477",
+     "label": "reading big words easily"
+    },
+    {
+     "id": "ans_ee34081a",
+     "label": "solving tricky maths questions"
+    },
+    {
+     "id": "ans_fb6a166a",
+     "label": "finishing homework on time"
+    },
+    {
+     "id": "ans_4764da5b",
+     "label": "being a good team player"
+    },
+    {
+     "id": "ans_6c843972",
+     "label": "swimming without fear"
+    },
+    {
+     "id": "ans_560ae3c1",
+     "label": "skating without falling"
+    },
+    {
+     "id": "ans_756fc504",
+     "label": "staying calm when I lose a game"
+    },
+    {
+     "id": "ans_322630cc",
+     "label": "waiting for my turn patiently"
+    },
+    {
+     "id": "ans_8f5b9af2",
+     "label": "riding a bicycle without help"
+    },
+    {
+     "id": "ans_6c7f9503",
+     "label": "keeping my room organized"
+    },
+    {
+     "id": "ans_2848fd35",
+     "label": "keeping my school bag packed properly"
+    },
+    {
+     "id": "ans_f576804a",
+     "label": "being ready on time for school"
+    },
+    {
+     "id": "ans_c1418193",
+     "label": "saying sorry when I make a mistake"
+    },
+    {
+     "id": "ans_b10722f4",
+     "label": "not interrupting when someone is talking"
+    }
+   ]
+  },
+  {
+   "id": "q_bdd0805e",
+   "type": "scq",
+   "questionText": "What is one thing you do not enjoy doing?",
+   "answers": [
+    {
+     "id": "ans_840ef55d",
+     "label": "Eat bitter vegetables"
+    },
+    {
+     "id": "ans_81becfa1",
+     "label": "Wait in a long line"
+    },
+    {
+     "id": "ans_1c7520fd",
+     "label": "Sharpen pencils again and again"
+    },
+    {
+     "id": "ans_33277075",
+     "label": "Drink plain milk"
+    },
+    {
+     "id": "ans_e4a47dce",
+     "label": "Get my hands dirty with glue"
+    },
+    {
+     "id": "ans_ed50e735",
+     "label": "Sit between two noisy friends"
+    },
+    {
+     "id": "ans_bf4dc6ea",
+     "label": "Wake up early"
+    },
+    {
+     "id": "ans_2702d69e",
+     "label": "Walk slowly in line"
+    },
+    {
+     "id": "ans_311c57fa",
+     "label": "Listen to a song I don't know"
+    },
+    {
+     "id": "ans_8d0f87f7",
+     "label": "Clean my room daily"
+    },
+    {
+     "id": "ans_f30a829a",
+     "label": "Share my favourite toys"
+    },
+    {
+     "id": "ans_6abc225e",
+     "label": "Write too much"
+    },
+    {
+     "id": "ans_7e14f8a6",
+     "label": "Sit still for a long time"
+    },
+    {
+     "id": "ans_a208e081",
+     "label": "Go to bed early"
+    },
+    {
+     "id": "ans_68999647",
+     "label": "Lose in a game"
+    },
+    {
+     "id": "ans_5a5199d9",
+     "label": "Read big words"
+    },
+    {
+     "id": "ans_07e4980a",
+     "label": "Fold my clothes"
+    },
+    {
+     "id": "ans_b8b28093",
+     "label": "Read the same story again & again"
+    },
+    {
+     "id": "ans_939fa23a",
+     "label": "Watch a movie without popcorn"
+    },
+    {
+     "id": "ans_484be076",
+     "label": "Pack my own school bag"
+    },
+    {
+     "id": "ans_fe4a3ea4",
+     "label": "Do handwriting practice"
+    },
+    {
+     "id": "ans_8ba7a013",
+     "label": "Rewrite work neatly"
+    }
+   ]
+  },
+  {
+   "id": "q_1a018127",
+   "type": "scq",
+   "questionText": "Who is your idol? (the person you like a lot)",
+   "answers": [
+    {
+     "id": "ans_486edc02",
+     "label": "My mother"
+    },
+    {
+     "id": "ans_5ca86c95",
+     "label": "My father"
+    },
+    {
+     "id": "ans_5d2e90d5",
+     "label": "My teacher 👩‍🏫"
+    },
+    {
+     "id": "ans_41d5dfe3",
+     "label": "Chhatrapati Shivaji Maharaj"
+    },
+    {
+     "id": "ans_c28680a4",
+     "label": "Dr. Prakash Amte"
+    },
+    {
+     "id": "ans_f761e6e4",
+     "label": "Cristiano Ronaldo ⚽"
+    },
+    {
+     "id": "ans_949e895c",
+     "label": "Virat Kohli 🏏"
+    },
+    {
+     "id": "ans_3dded392",
+     "label": "M.S. Dhoni 🏏"
+    },
+    {
+     "id": "ans_67781154",
+     "label": "Lionel Messi ⚽"
+    },
+    {
+     "id": "ans_19bc0972",
+     "label": "Sachin Tendulkar 🏏"
+    },
+    {
+     "id": "ans_b8fe6eec",
+     "label": "My brother"
+    },
+    {
+     "id": "ans_3359af27",
+     "label": "My sister"
+    },
+    {
+     "id": "ans_f068ddd9",
+     "label": "Barack Obama 🏛️"
+    },
+    {
+     "id": "ans_ab483803",
+     "label": "Neeraj Chopra 🏅"
+    },
+    {
+     "id": "ans_a5a4c859",
+     "label": "Mark Zuckerberg 💻"
+    },
+    {
+     "id": "ans_9217354b",
+     "label": "Mary Kom 🥊"
+    },
+    {
+     "id": "ans_9cb6cb64",
+     "label": "P.V. Sindhu"
+    },
+    {
+     "id": "ans_1f6274fb",
+     "label": "My grandparents"
+    },
+    {
+     "id": "ans_fd82a889",
+     "label": "Harmanpreet Kaur 🏏"
+    },
+    {
+     "id": "ans_9b77b0e4",
+     "label": "Sindhutai Sapkal"
+    },
+    {
+     "id": "ans_9bf2715f",
+     "label": "Rohit Sharma 🏏"
+    },
+    {
+     "id": "ans_95fcbadc",
+     "label": "Sunita Williams 🧑‍🚀"
+    },
+    {
+     "id": "ans_cdfa583c",
+     "label": "Roger Federer 🎾"
+    },
+    {
+     "id": "ans_11321bfb",
+     "label": "Novak Djokovic 🎾"
+    },
+    {
+     "id": "ans_334bda9e",
+     "label": "Serena Williams 🎾"
+    },
+    {
+     "id": "ans_4099ed99",
+     "label": "Elon Musk 🚀"
+    },
+    {
+     "id": "ans_3633cc99",
+     "label": "Steve Jobs 💻"
+    },
+    {
+     "id": "ans_50a8da06",
+     "label": "Sundar Pichai 💻"
+    },
+    {
+     "id": "ans_39dd9865",
+     "label": "Vishwanathan Anand ♟️"
+    },
+    {
+     "id": "ans_497618bd",
+     "label": "Gukesh Dommaraju ♟️"
+    },
+    {
+     "id": "ans_ba2e7941",
+     "label": "Albert Einstein"
+    },
+    {
+     "id": "ans_b4922269",
+     "label": "Isaac Newton"
+    },
+    {
+     "id": "ans_0b7576df",
+     "label": "Neil Armstrong 🌕"
+    },
+    {
+     "id": "ans_6028c9f0",
+     "label": "Mr. Ratan Tata"
+    },
+    {
+     "id": "ans_af2ab7d9",
+     "label": "J.K. Rowling 📚"
+    },
+    {
+     "id": "ans_1a7a5bea",
+     "label": "Saina Nehwal 🏸"
+    },
+    {
+     "id": "ans_51f4d706",
+     "label": "Dr A.P.J. Abdul Kalam 🚀"
+    }
+   ]
+  },
+  {
+   "id": "q_6510693d",
+   "type": "scq",
+   "questionText": "What is your favourite thing to do when you are not studying?",
+   "answers": [
+    {
+     "id": "ans_898ebcbb",
+     "label": "Create origami"
+    },
+    {
+     "id": "ans_1dec2580",
+     "label": "Play my favourite sport"
+    },
+    {
+     "id": "ans_c94ed170",
+     "label": "Draw comics & characters"
+    },
+    {
+     "id": "ans_d0a9b1d6",
+     "label": "Help my parents"
+    },
+    {
+     "id": "ans_d51c381a",
+     "label": "Play with friends"
+    },
+    {
+     "id": "ans_46706672",
+     "label": "Try out science experiments"
+    },
+    {
+     "id": "ans_33e0509c",
+     "label": "Collect stickers & cards"
+    },
+    {
+     "id": "ans_0a926ef7",
+     "label": "Read storybooks"
+    },
+    {
+     "id": "ans_5aa5fb1e",
+     "label": "Watch cartoons"
+    },
+    {
+     "id": "ans_c5894d4f",
+     "label": "Go to the library"
+    },
+    {
+     "id": "ans_ca339d69",
+     "label": "Solve puzzles"
+    },
+    {
+     "id": "ans_bec226d7",
+     "label": "Take care of my pets"
+    },
+    {
+     "id": "ans_a0856bcd",
+     "label": "Tell funny jokes & stories"
+    },
+    {
+     "id": "ans_b855c4d3",
+     "label": "Listen to music"
+    },
+    {
+     "id": "ans_aa695287",
+     "label": "Sing songs"
+    },
+    {
+     "id": "ans_8d41cb2e",
+     "label": "Dance"
+    },
+    {
+     "id": "ans_d875e87a",
+     "label": "Draw and colour"
+    },
+    {
+     "id": "ans_cc5068ab",
+     "label": "Ride my bicycle"
+    },
+    {
+     "id": "ans_0f1ddd7a",
+     "label": "Take care of plants"
+    },
+    {
+     "id": "ans_92524747",
+     "label": "Write short stories"
+    },
+    {
+     "id": "ans_0007bde5",
+     "label": "Explore new games"
+    },
+    {
+     "id": "ans_d0f46186",
+     "label": "Decorate my notebooks & projects"
+    }
+   ]
+  }
+ ]
+}
