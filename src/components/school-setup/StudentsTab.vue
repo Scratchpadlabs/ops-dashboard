@@ -6,9 +6,18 @@
         <Button label="Import CSV" icon="pi pi-upload" size="small" outlined @click="importVisible = true" />
         <Button label="Sample CSV" icon="pi pi-download" size="small" text @click="downloadSample" />
         <Button label="Export CSV" icon="pi pi-file-export" size="small" text @click="exportCsv" />
+        <Button label="Match with school list" icon="pi pi-check-square" size="small" outlined
+                :disabled="!students.length" @click="matchVisible = true" />
         <Button label="Add Student" icon="pi pi-plus" size="small" @click="openAddStudent" />
       </div>
     </div>
+
+    <RosterMatchDialog
+      v-model:visible="matchVisible"
+      :school-id="schoolId"
+      :students="students"
+      @removed="onRemoved"
+    />
 
     <CsvImportDialog
       v-model:visible="importVisible"
@@ -162,6 +171,7 @@ import IconField from 'primevue/iconfield'
 import InputIcon from 'primevue/inputicon'
 import ProgressSpinner from 'primevue/progressspinner'
 import CsvImportDialog from './CsvImportDialog.vue'
+import RosterMatchDialog from './RosterMatchDialog.vue'
 import ConfigEmptyState from './ConfigEmptyState.vue'
 
 import { schoolCollection, schoolDoc } from '../../firebase/schoolCollections.js'
@@ -178,6 +188,13 @@ const classes = ref([])
 const loading = ref(false)
 
 const GENDER_OPTIONS = ['Male', 'Female', 'Other']
+
+// ── Match with the school's own list ─────────────────────────────────────
+const matchVisible = ref(false)
+function onRemoved() {
+  matchVisible.value = false
+  loadAll()
+}
 
 async function loadAll() {
   if (!props.schoolId) { students.value = []; classes.value = []; return }
