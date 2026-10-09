@@ -17,6 +17,10 @@ const versionFile = () => ({
 // https://vite.dev/config/
 export default defineConfig(({ command }) => ({
   plugins: [vue(), versionFile()],
+  // The Year-Wrap preview imports the video templates from video/, which has
+  // its own node_modules in a dev checkout. One copy of React and Remotion,
+  // or hooks and the Player's context break.
+  resolve: { dedupe: ['react', 'react-dom', 'remotion'] },
   define: {
     __BUILD_ID__: JSON.stringify(command === 'build' ? BUILD_ID : 'dev'),
   },

@@ -1,0 +1,212 @@
+{
+  "renderable": true,
+  "segment": "mid",
+  "fps": 30,
+  "durationInFrames": 1965,
+  "student": {
+    "id": "demo-ananya",
+    "name": "ANANYA IYER",
+    "className": "VI_B"
+  },
+  "school": {
+    "id": "demo",
+    "name": "Sunrise Public School"
+  },
+  "academicYear": "2025–26",
+  "scenes": [
+    {
+      "type": "intro",
+      "durationInFrames": 150,
+      "schoolName": "Sunrise Public School",
+      "name": "Ananya",
+      "academicYear": "2025–26",
+      "classLabel": "Class VI B",
+      "title": "My Year, My Story"
+    },
+    {
+      "type": "evolution",
+      "durationInFrames": 210,
+      "role": "dream",
+      "kicker": "THE DREAM",
+      "mode": "changed",
+      "startLine": "When the year began, you wanted to be",
+      "endLine": "And by the end of the year, you’d set your sights on",
+      "start": {
+        "text": "Doctor",
+        "emoji": "🩺",
+        "raw": "Doctor 🩺"
+      },
+      "end": {
+        "text": "Space scientist",
+        "emoji": "🪐",
+        "raw": "Space scientist 🪐"
+      }
+    },
+    {
+      "type": "list",
+      "durationInFrames": 195,
+      "kicker": "THE GAME PLAN",
+      "title": "To become a Space scientist you said you'd…",
+      "items": [
+        {
+          "text": "Asking questions and staying curious",
+          "emoji": "",
+          "raw": "Asking questions and staying curious"
+        },
+        {
+          "text": "Attend workshops, camps, and competitions to gain experience",
+          "emoji": "",
+          "raw": "Attend workshops, camps, and competitions to gain experience"
+        },
+        {
+          "text": "Asking questions when you don’t understand something",
+          "emoji": "",
+          "raw": "Asking questions when I don’t understand something"
+        },
+        {
+          "text": "Making a study schedule for each subject",
+          "emoji": "",
+          "raw": "Making a study schedule for each subject"
+        }
+      ]
+    },
+    {
+      "type": "evolution",
+      "durationInFrames": 210,
+      "role": "superpower",
+      "kicker": "IF YOU HAD ONE SUPERPOWER…",
+      "mode": "same",
+      "startLine": "At the start of the year, you wished for",
+      "endLine": "A whole year later, still the same choice. Some powers are forever!",
+      "start": {
+        "text": "Invisibility",
+        "emoji": "🕵️",
+        "raw": "b) 🕵️ Invisibility"
+      },
+      "end": {
+        "text": "Invisibility",
+        "emoji": "🕵️",
+        "raw": "b) 🕵️ Invisibility"
+      }
+    },
+    {
+      "type": "evolution",
+      "durationInFrames": 210,
+      "role": "freeTime",
+      "kicker": "YOUR HAPPY PLACE",
+      "mode": "changed",
+      "startLine": "In the first months, you loved",
+      "endLine": "Then a new favourite took over",
+      "start": {
+        "text": "Reading storybooks and novels",
+        "emoji": "",
+        "raw": "Reading storybooks and novels"
+      },
+      "end": {
+        "text": "Learning about space and planets",
+        "emoji": "",
+        "raw": "Learning about space and planets"
+      }
+    },
+    {
+      "type": "goal",
+      "durationInFrames": 225,
+      "kicker": "MY ACADEMIC GOAL",
+      "goal": {
+        "text": "Understand science experiments and concepts better",
+        "emoji": "",
+        "raw": "Understand science experiments and concepts better"
+      },
+      "was": {
+        "text": "Solve tricky maths problems faster",
+        "emoji": "",
+        "raw": "Solve tricky maths problems faster"
+      },
+      "why": {
+        "text": "It will help you in your future career",
+        "emoji": "",
+        "raw": "It will help me in my future career"
+      },
+      "steps": [
+        {
+          "text": "Read extra books and use educational videos to learn better",
+          "emoji": "",
+          "raw": "Read extra books and use educational videos to learn better"
+        },
+        {
+          "text": "Ask teachers and your friends when you don’t understand something",
+          "emoji": "",
+          "raw": "Ask teachers and my friends when I don’t understand something"
+        }
+      ]
+    },
+    {
+      "type": "goal",
+      "durationInFrames": 225,
+      "kicker": "MY PERSONAL GOAL",
+      "goal": {
+        "text": "Be more confident in yourself",
+        "emoji": "",
+        "raw": "Be more confident in myself"
+      },
+      "was": null,
+      "why": {
+        "text": "It will help you overcome your fears and try new things",
+        "emoji": "",
+        "raw": "It will help me overcome my fears and try new things"
+      },
+      "steps": [
+        {
+          "text": "Practise speaking in front of a mirror to gain confidence",
+          "emoji": "",
+          "raw": "Practise speaking in front of a mirror to gain confidence"
+        },
+        {
+          "text": "Wake up early and follow a routine",
+          "emoji": "",
+          "raw": "Wake up early and follow a routine"
+        }
+      ]
+    },
+    {
+      "type": "pair",
+      "durationInFrames": 195,
+      "kicker": "YOUR BIG HEART",
+      "items": [
+        {
+          "label": "You show kindness by",
+          "answer": {
+            "text": "Helping a new student feel comfortable",
+            "emoji": "",
+            "raw": "Helping a new student feel comfortable"
+          }
+        },
+        {
+          "label": "Your proudest moments come from",
+          "answer": {
+            "text": "Overcoming your fear",
+            "emoji": "",
+            "raw": "Overcoming my fear"
+          }
+        }
+      ]
+    },
+    {
+      "type": "quote",
+      "durationInFrames": 165,
+      "kicker": "IN YOUR OWN WORDS",
+      "line": "What makes your school special?",
+      "quote": "I like that my teachers always listen to me and understand me",
+      "schoolName": "Sunrise Public School"
+    },
+    {
+      "type": "outro",
+      "durationInFrames": 180,
+      "name": "Ananya",
+      "line": "Keep dreaming big. The best chapters are still unwritten.",
+      "next": "Next stop: Class 7!",
+      "schoolName": "Sunrise Public School"
+    }
+  ],
+  "warnings": []
+}

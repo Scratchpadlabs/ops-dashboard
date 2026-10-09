@@ -289,6 +289,7 @@ const baseNavItems = [
   { to: '/school-setup', label: 'School Setup', icon: 'pi pi-shield' },
   { to: '/import',      label: 'Import',      icon: 'pi pi-cloud-upload' },
   { to: '/surveys',     label: 'Surveys',     icon: 'pi pi-inbox' },
+  { to: '/year-wrap',   label: 'Year-Wrap Videos', icon: 'pi pi-video' },
   { to: '/aap-remarks', label: 'AAP Remarks', icon: 'pi pi-comments' },
   { to: '/smart-remarks', label: 'Smart Remarks', icon: 'pi pi-check-square' },
   { to: '/quotations',  label: 'Quotations',  icon: 'pi pi-file' },
@@ -298,7 +299,7 @@ const baseNavItems = [
   { to: '/settings',    label: 'Settings',    icon: 'pi pi-cog' },
 ]
 
-const ADMIN_ONLY_NAV_PATHS = ['/school-setup', '/import', '/surveys', '/aap-remarks', '/smart-remarks']
+const ADMIN_ONLY_NAV_PATHS = ['/school-setup', '/import', '/surveys', '/year-wrap', '/aap-remarks', '/smart-remarks']
 const HIDDEN_NAV_PATHS_BY_EMAIL = {
   'ruchika@ops.clarified.in': ['/expenses'],
 }
