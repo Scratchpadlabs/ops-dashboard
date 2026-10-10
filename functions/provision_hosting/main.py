@@ -34,22 +34,22 @@ path, and it is safe.
 
 Deploy (see README.md in this directory):
   gcloud functions deploy hosting_preview   --gen2 --runtime python312 --region asia-south1 \
-    --source . --entry-point hosting_preview --trigger-http --no-allow-unauthenticated \
+    --source . --entry-point hosting_preview --trigger-http --allow-unauthenticated \
     --memory 512MB --timeout 120s --max-instances 3 --project clarified-1501 \
     --vpc-connector ops-egress --egress-settings all \
     --set-secrets NAMECHEAP_API_KEY=NAMECHEAP_API_KEY:latest,NAMECHEAP_API_USER=NAMECHEAP_API_USER:latest,NAMECHEAP_CLIENT_IP=NAMECHEAP_CLIENT_IP:latest
   gcloud functions deploy hosting_provision --gen2 --runtime python312 --region asia-south1 \
-    --source . --entry-point hosting_provision --trigger-http --no-allow-unauthenticated \
+    --source . --entry-point hosting_provision --trigger-http --allow-unauthenticated \
     --memory 512MB --timeout 300s --max-instances 2 --project clarified-1501 \
     --vpc-connector ops-egress --egress-settings all \
     --set-secrets NAMECHEAP_API_KEY=NAMECHEAP_API_KEY:latest,NAMECHEAP_API_USER=NAMECHEAP_API_USER:latest,NAMECHEAP_CLIENT_IP=NAMECHEAP_CLIENT_IP:latest,GITHUB_DISPATCH_PAT=GITHUB_DISPATCH_PAT:latest
   gcloud functions deploy hosting_status    --gen2 --runtime python312 --region asia-south1 \
-    --source . --entry-point hosting_status --trigger-http --no-allow-unauthenticated \
+    --source . --entry-point hosting_status --trigger-http --allow-unauthenticated \
     --memory 256MB --timeout 60s --max-instances 5 --project clarified-1501 \
     --set-secrets GITHUB_DISPATCH_PAT=GITHUB_DISPATCH_PAT:latest
 
   gcloud functions deploy hosting_sites     --gen2 --runtime python312 --region asia-south1 \
-    --source . --entry-point hosting_sites --trigger-http --no-allow-unauthenticated \
+    --source . --entry-point hosting_sites --trigger-http --allow-unauthenticated \
     --memory 256MB --timeout 120s --max-instances 3 --project clarified-1501
 """
 from __future__ import annotations
