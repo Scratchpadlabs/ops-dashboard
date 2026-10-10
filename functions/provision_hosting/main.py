@@ -76,6 +76,7 @@ from namecheap_dns import (
     records_from_firebase_dns_updates,
 )
 from ops_admins import OPS_ADMIN_EMAILS
+from ops_team import is_ops_team
 from site_registry import custom_domains, newest_run_per_site, resolve_school, site_id_from_name
 
 firebase_admin.initialize_app()
@@ -112,8 +113,8 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _require_ops_admin(req: https_fn.Request) -> str:
-    """Verify the Firebase ID token and the ops-admin allowlist. Returns email."""
+def _verified_email(req: https_fn.Request) -> str:
+    """Verify the Firebase ID token. Returns the caller's email (lower case)."""
     header = req.headers.get("Authorization", "")
     if not header.startswith("Bearer "):
         raise PermissionError("Missing bearer token")
@@ -121,9 +122,22 @@ def _require_ops_admin(req: https_fn.Request) -> str:
         decoded = fb_auth.verify_id_token(header.split(" ", 1)[1])
     except Exception as exc:  # noqa: BLE001 — any verification failure is a 401
         raise PermissionError(f"Invalid token: {exc}") from exc
-    email = (decoded.get("email") or "").strip().lower()
+    return (decoded.get("email") or "").strip().lower()
+
+
+def _require_ops_admin(req: https_fn.Request) -> str:
+    """Verify the Firebase ID token and the ops-admin allowlist. Returns email."""
+    email = _verified_email(req)
     if email not in OPS_ADMIN_EMAILS:
         raise PermissionError(f"{email or 'caller'} is not an ops admin")
+    return email
+
+
+def _require_ops_team(req: https_fn.Request) -> str:
+    """Verify the Firebase ID token and that the caller is on the ops team."""
+    email = _verified_email(req)
+    if not is_ops_team(email):
+        raise PermissionError(f"{email or 'caller'} is not on the ops team")
     return email
 
 
@@ -542,12 +556,14 @@ def hosting_sites(req: https_fn.Request) -> https_fn.Response:
     console shows up too. `source` says where the school match came from — see
     site_registry.py.
     """
+    # Listing which website each school has is read-only and needed by every
+    # ops user (Student Pamphlets prints it); assigning stays admin-only.
+    body = req.get_json(silent=True) or {}
     try:
-        actor = _require_ops_admin(req)
+        actor = _require_ops_admin(req) if body.get("action") == "assign" else _require_ops_team(req)
     except PermissionError as exc:
         return _json_error(str(exc), 401)
 
-    body = req.get_json(silent=True) or {}
     db = firestore.client()
 
     if body.get("action") == "assign":
