@@ -103,7 +103,7 @@ own whitelist.
 cd functions/provision_hosting
 
 COMMON="--gen2 --runtime python312 --region asia-south1 --source . \
-  --trigger-http --no-allow-unauthenticated --project clarified-1501 \
+  --trigger-http --allow-unauthenticated --project clarified-1501 \
   --vpc-connector ops-egress --egress-settings all"
 
 NC="NAMECHEAP_API_KEY=NAMECHEAP_API_KEY:latest,\
@@ -127,10 +127,20 @@ gcloud functions deploy hosting_status $COMMON \
 The service account these run as needs **Firebase Hosting Admin** on
 `clarified-1501` to create sites and custom domains.
 
-Note `--no-allow-unauthenticated`, unlike the `generate_*` functions. These
-endpoints create Hosting sites, edit live DNS and trigger deploys — they verify a
-Firebase ID token and check the caller against `OPS_ADMIN_EMAILS` in `main.py`.
-Keep that set in step with `src/config/opsAdmins.js`.
+Deploy with `--allow-unauthenticated` — NOT `--no-allow-unauthenticated`. The
+dashboard calls these straight from the browser with a *Firebase* ID token, which
+Cloud Run's IAM gate doesn't accept, and the gate also rejects the browser's CORS
+preflight (it carries no token at all) — so with IAM on, every call fails as a
+CORS error. Access control is in the code instead: each endpoint verifies the
+Firebase ID token, and hosting_preview / hosting_provision / hosting_status (and
+hosting_sites "assign") require the caller to be in `OPS_ADMIN_EMAILS`, while
+listing sites (hosting_sites) allows any @ops.clarified.in login (`ops_team.py`).
+Keep `OPS_ADMIN_EMAILS` in step with `src/config/opsAdmins.js`.
+
+Already deployed with IAM on? Open it up without redeploying:
+
+    gcloud functions add-invoker-policy-binding hosting_sites \
+      --region asia-south1 --member=allUsers --project clarified-1501
 
 ---
 

@@ -221,14 +221,20 @@
         for new admissions or lost pamphlets.
       </p>
       <div class="flex items-end gap-3 flex-wrap">
-        <div v-for="d in ['foundational', 'middle']" :key="d">
+        <!-- One PDF per design: Foundational and Middle + Prep are printed separately. -->
+        <div v-for="d in ['foundational', 'middle']" :key="d" class="rounded-lg border border-slate-200 px-3 py-2">
           <label class="form-label">{{ DESIGN_LABEL[d] }}</label>
-          <InputNumber v-model="blankCounts[d]" :min="0" :max="2000" showButtons class="w-32" inputClass="w-full" />
+          <div class="flex items-center gap-2">
+            <InputNumber v-model="blankCounts[d]" :min="0" :max="2000" showButtons class="w-28" inputClass="w-full" />
+            <Button :label="`Download (${blankCounts[d] || 0})`" icon="pi pi-file" outlined size="small"
+                    :loading="busy === 'blank:' + d" :disabled="!canGenerateBlank || !blankCounts[d] || !!busy"
+                    @click="generate('blank', null, d)" />
+          </div>
           <div class="text-[11px] text-slate-400 mt-1">10% of {{ designStudentCounts[d] }} student{{ designStudentCounts[d] === 1 ? '' : 's' }}</div>
         </div>
-        <Button :label="`Download blank copies (${blankTotal})`" icon="pi pi-file" outlined :loading="busy === 'blank'"
-                :disabled="!canGenerateBlank || !blankTotal || !!busy" @click="generate('blank')" />
-        <span v-if="busy === 'blank' && progress" class="text-xs text-slate-500">{{ progress }}</span>
+        <Button label="Both, as two PDFs (ZIP)" icon="pi pi-folder" text
+                :loading="busy === 'blankZip'" :disabled="!canGenerateBlank || !blankTotal || !!busy" @click="generate('blankZip')" />
+        <span v-if="String(busy).startsWith('blank') && progress" class="text-xs text-slate-500">{{ progress }}</span>
         <span v-else-if="!website" class="text-xs text-amber-600">Add the website first.</span>
         <span v-else-if="!printedSchoolName.trim()" class="text-xs text-amber-600">Add the school name first.</span>
       </div>
@@ -624,9 +630,6 @@ watch(designStudentCounts, counts => {
   }
 }, { immediate: true })
 const blankTotal = computed(() => (blankCounts.foundational || 0) + (blankCounts.middle || 0))
-function blankList() {
-  return ['foundational', 'middle'].flatMap(d => blankCopies(d, blankCounts[d]))
-}
 
 // ── Generate ──────────────────────────────────────────────────────────────
 const busy = ref('')
@@ -648,15 +651,30 @@ async function build(list, label) {
 }
 
 async function generate(kind, student = null, stageKey = null) {
-  busy.value = kind === 'one' ? `one:${student.id}` : kind === 'stage' ? `stage:${stageKey}` : kind
+  busy.value = kind === 'one' ? `one:${student.id}` : kind === 'stage' ? `stage:${stageKey}`
+    : kind === 'blank' ? `blank:${stageKey}` : kind
   progress.value = 'Loading templates…'
   const school = printedSchoolName.value.trim()
   try {
+    // Blank copies: one PDF per design (stageKey carries the design here).
     if (kind === 'blank') {
-      const list = blankList()
-      const bytes = await build(list, 'Blank copies: ')
-      deliverFile(new Blob([bytes], { type: 'application/pdf' }), pamphletFilename(school, 'Blank'))
-      toast.add({ severity: 'success', summary: 'Blank copies ready', detail: `${list.length} copies`, life: 2500 })
+      const d = stageKey
+      const list = blankCopies(d, blankCounts[d])
+      const bytes = await build(list, `Blank ${DESIGN_LABEL[d]}: `)
+      deliverFile(new Blob([bytes], { type: 'application/pdf' }), pamphletFilename(school, `Blank - ${DESIGN_LABEL[d]}`))
+      toast.add({ severity: 'success', summary: 'Blank copies ready', detail: `${list.length} ${DESIGN_LABEL[d]}`, life: 2500 })
+      return
+    }
+    if (kind === 'blankZip') {
+      const zip = new JSZip()
+      for (const d of ['foundational', 'middle']) {
+        if (!blankCounts[d]) continue
+        const bytes = await build(blankCopies(d, blankCounts[d]), `Blank ${DESIGN_LABEL[d]}: `)
+        zip.file(pamphletFilename(school, `Blank - ${DESIGN_LABEL[d]}`), bytes)
+      }
+      progress.value = 'Zipping…'
+      deliverFile(await zip.generateAsync({ type: 'blob' }), pamphletFilename(school, 'Blank').replace(/\.pdf$/, '.zip'))
+      toast.add({ severity: 'success', summary: 'Blank copies ready', detail: `${blankTotal.value} copies in two PDFs`, life: 2500 })
       return
     }
     if (kind === 'one') {
